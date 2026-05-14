@@ -1,0 +1,63 @@
+import type { VectorTuple } from '../engine/MathTypes';
+import type { CharacterId } from '../characters/CharacterDefinition';
+import type { MaterialKey } from '../render/Materials';
+
+export interface StaticBoxDefinition {
+  id: string;
+  position: VectorTuple;
+  size: VectorTuple;
+  material: MaterialKey;
+}
+
+export interface DynamicBoxDefinition {
+  id: string;
+  position: VectorTuple;
+  size: VectorTuple;
+  mass: number;
+  material: MaterialKey;
+}
+
+export interface DoorDefinition {
+  id: string;
+  position: VectorTuple;
+  size: VectorTuple;
+  openOffset: VectorTuple;
+  speed: number;
+  material: MaterialKey;
+  button: {
+    id: string;
+    label: string;
+    position: VectorTuple;
+    size: VectorTuple;
+  };
+}
+
+export interface NPCDefinition {
+  id: string;
+  position: VectorTuple;
+  characterId: CharacterId;
+}
+
+export interface TriggerDefinition {
+  id: string;
+  position: VectorTuple;
+  size: VectorTuple;
+  once: boolean;
+  dialogue: {
+    speaker?: string;
+    text: string;
+    duration: number;
+  };
+}
+
+export interface LevelDefinition {
+  id: string;
+  title: string;
+  background: number;
+  playerStart: VectorTuple;
+  staticBoxes: StaticBoxDefinition[];
+  dynamicBoxes: DynamicBoxDefinition[];
+  doors: DoorDefinition[];
+  npcs: NPCDefinition[];
+  triggers: TriggerDefinition[];
+}

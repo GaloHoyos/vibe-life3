@@ -1,0 +1,208 @@
+:root {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: #edf4ff;
+  background: #05070b;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: #05070b;
+}
+
+.game-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: #edf4ff;
+}
+
+.hud__stats {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  display: grid;
+  gap: 6px;
+  min-width: 170px;
+  padding: 10px 12px;
+  border: 1px solid rgb(125 180 210 / 0.35);
+  background: rgb(7 14 20 / 0.72);
+  backdrop-filter: blur(8px);
+  font-size: 14px;
+}
+
+.hud__ammo {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  min-width: 122px;
+  padding: 10px 12px;
+  border: 1px solid rgb(125 180 210 / 0.35);
+  background: rgb(7 14 20 / 0.72);
+  backdrop-filter: blur(8px);
+  text-align: right;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.hud__crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+}
+
+.hud__crosshair::before,
+.hud__crosshair::after {
+  position: absolute;
+  content: "";
+  background: rgb(237 244 255 / 0.9);
+  box-shadow: 0 0 8px rgb(70 230 255 / 0.8);
+}
+
+.hud__crosshair::before {
+  left: 8px;
+  top: 0;
+  width: 2px;
+  height: 18px;
+}
+
+.hud__crosshair::after {
+  left: 0;
+  top: 8px;
+  width: 18px;
+  height: 2px;
+}
+
+.hud__prompt {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 38px);
+  transform: translateX(-50%);
+  min-width: 190px;
+  padding: 8px 12px;
+  border: 1px solid rgb(133 229 255 / 0.35);
+  background: rgb(7 14 20 / 0.76);
+  text-align: center;
+  font-size: 14px;
+}
+
+.hud__prompt:empty {
+  display: none;
+}
+
+.subtitles {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  width: min(680px, calc(100% - 36px));
+  transform: translateX(-50%);
+  padding: 10px 14px;
+  border-left: 3px solid #89e9ff;
+  background: rgb(7 14 20 / 0.78);
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.subtitles:empty {
+  display: none;
+}
+
+.main-menu,
+.pause-menu {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(rgb(5 7 11 / 0.48), rgb(5 7 11 / 0.78)),
+    radial-gradient(circle at 50% 40%, rgb(60 110 130 / 0.28), transparent 40%);
+  color: #edf4ff;
+}
+
+.main-menu__panel,
+.pause-menu__panel {
+  width: min(420px, calc(100% - 36px));
+  padding: 22px;
+  border: 1px solid rgb(125 180 210 / 0.38);
+  background: rgb(7 14 20 / 0.82);
+}
+
+.main-menu__title,
+.pause-menu__title {
+  margin: 0 0 10px;
+  font-size: 26px;
+  font-weight: 750;
+}
+
+.main-menu__text,
+.pause-menu__text {
+  margin: 0 0 18px;
+  color: #b7c8d4;
+  line-height: 1.4;
+}
+
+.main-menu__button {
+  width: 100%;
+  height: 42px;
+  border: 1px solid #89e9ff;
+  background: #12313b;
+  color: #edf4ff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.main-menu__button:hover {
+  background: #174653;
+}
+
+.debug-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  min-width: 230px;
+  padding: 10px;
+  border: 1px solid rgb(160 255 180 / 0.34);
+  background: rgb(2 7 5 / 0.78);
+  color: #c7ffd1;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.is-hidden {
+  display: none;
+}
