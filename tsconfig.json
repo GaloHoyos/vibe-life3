@@ -9,11 +9,18 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "Bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@engine/*": ["./src/engine/*"],
+      "@game/*": ["./src/game/*"],
+      "@shared/*": ["./src/shared/*"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }

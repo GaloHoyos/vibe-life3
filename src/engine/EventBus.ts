@@ -1,8 +1,19 @@
 type Handler<TPayload> = (payload: TPayload) => void;
 
+/**
+ * Pub/sub tipado por un mapa de eventos.
+ *
+ * `TEvents` es un objeto `{ "event.name": PayloadType }`. Tanto `on` como
+ * `emit` están tipados respecto a esa shape, de forma que el callback
+ * recibe el payload correcto sin casts.
+ *
+ * El bus es agnóstico al dominio: el motor lo provee como clase y la
+ * capa de juego instancia uno tipado por `GameEventMap`.
+ */
 export class EventBus<TEvents extends object> {
   private readonly handlers = new Map<keyof TEvents, Set<Handler<TEvents[keyof TEvents]>>>();
 
+  /** Suscribe `handler` a `eventName`. Devuelve un disposer idempotente. */
   on<TKey extends keyof TEvents>(eventName: TKey, handler: Handler<TEvents[TKey]>): () => void {
     const handlers = this.getHandlers(eventName);
     handlers.add(handler as Handler<TEvents[keyof TEvents]>);
@@ -12,6 +23,7 @@ export class EventBus<TEvents extends object> {
     };
   }
 
+  /** Notifica sincrónicamente a todos los handlers registrados para `eventName`. */
   emit<TKey extends keyof TEvents>(eventName: TKey, payload: TEvents[TKey]): void {
     const handlers = this.handlers.get(eventName);
 
@@ -24,6 +36,7 @@ export class EventBus<TEvents extends object> {
     });
   }
 
+  /** Borra todas las suscripciones. Usar al destruir la instancia del bus. */
   clear(): void {
     this.handlers.clear();
   }

@@ -1,3 +1,10 @@
+/**
+ * Estado de tiempo del game loop. Lo actualiza `GameLoop`; los sistemas
+ * lo consumen como snapshot read-only por frame.
+ *
+ * `delta` viene clamped a 1/20 s (50 ms) para que físicas y animaciones
+ * no se vuelvan locas tras un tab inactivo. `fps` está suavizado.
+ */
 export class Time {
   delta = 0;
   elapsed = 0;

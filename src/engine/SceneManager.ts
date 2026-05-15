@@ -1,5 +1,9 @@
 import { Color, Scene } from 'three';
 
+/**
+ * Wrapper de la `Scene` raíz de Three.js con helpers de fondo.
+ * El motor expone una única instancia compartida por toda la app.
+ */
 export class SceneManager {
   readonly scene = new Scene();
 

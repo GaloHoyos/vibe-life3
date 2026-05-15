@@ -1,6 +1,7 @@
 import { Engine } from "./engine/Engine";
+import { Game } from "./game/Game";
 import "./style.css";
-import "./ui/menu/MenuStyles.css";
+import "./game/ui/menu/MenuStyles.css";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -9,7 +10,8 @@ if (!app) {
 }
 
 const engine = new Engine(app);
+const game = new Game(engine);
 
-engine.init().then(() => {
-  engine.start();
+game.init().then(() => {
+  game.start();
 });
