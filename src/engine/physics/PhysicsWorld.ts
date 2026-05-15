@@ -26,6 +26,15 @@ export interface PhysicsBoxOptions {
   metadata?: Partial<PhysicsMetadata>;
 }
 
+/**
+ * Wrapper de Rapier3D-compat. Expone helpers para crear cuerpos estáticos /
+ * dinámicos / kinemáticos, mantiene un mapa de metadata por collider (id,
+ * kind, body part) y sincroniza mallas Three.js de cuerpos dinámicos en
+ * cada `step()`.
+ *
+ * `init()` es async porque Rapier carga su WASM al arrancar; el motor lo
+ * llama una sola vez antes de cualquier creación de cuerpos.
+ */
 export class PhysicsWorld {
   world!: RAPIER.World;
 

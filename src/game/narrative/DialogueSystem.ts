@@ -2,6 +2,10 @@
 import type { GameEventBus } from "../GameEvents";
 import type { Subtitles } from '../ui/Subtitles';
 
+/**
+ * Bridge entre los eventos de diálogo (`dialogue.show` / `subtitle.show`)
+ * y el componente `Subtitles`. Limpia sus suscripciones en `dispose()`.
+ */
 export class DialogueSystem implements Disposable {
   private readonly unsubscribers: Array<() => void> = [];
 

@@ -2,6 +2,11 @@ import { Time } from './Time';
 
 export type GameLoopCallback = (time: Time) => void;
 
+/**
+ * Loop principal sobre `requestAnimationFrame`. Acepta un único callback
+ * y le pasa un `Time` con `delta`/`elapsed`/`fps` calculados. Idempotente:
+ * llamadas dobles a `start` mientras corre son no-op.
+ */
 export class GameLoop {
   readonly time = new Time();
 

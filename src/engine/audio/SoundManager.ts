@@ -21,6 +21,14 @@ interface SoundInstance {
   loop: boolean;
 }
 
+/**
+ * Carga clips del `AudioClipCatalog` bajo demanda y los reproduce a través
+ * del bus indicado en cada clip (o uno explícito en `PlayOptions.bus`).
+ *
+ * Soporta loops con fade-in y fade-out por id (`playLoop` / `fadeOut`),
+ * y one-shots sin tracking (`play`). Llamar `hasSound(id)` antes de
+ * reproducir si el catálogo puede no contener el clip.
+ */
 export class SoundManager {
   private readonly buffers = new Map<string, AudioBuffer>();
   private readonly active = new Map<string, SoundInstance[]>();

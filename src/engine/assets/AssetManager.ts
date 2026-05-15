@@ -21,6 +21,11 @@ export interface ModelInstance {
   error?: Error;
 }
 
+/**
+ * Carga y cachea modelos GLTF declarados en `AssetManifest`. Devuelve
+ * instancias clonadas (via `SkeletonUtils.clone` cuando hay skinning)
+ * para que cada NPC/arma tenga su propio árbol mutable.
+ */
 export class AssetManager {
   private readonly loader = new GLTFLoader();
   private readonly modelCache = new Map<ModelAssetId, Promise<ModelLoadResult>>();

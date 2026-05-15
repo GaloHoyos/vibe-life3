@@ -9,6 +9,11 @@ interface RuntimeTrigger {
   active: boolean;
 }
 
+/**
+ * Volúmenes invisibles que disparan diálogos al cruzarlos. Cada nivel
+ * registra los suyos vía `LevelDefinition.triggers`. Si `once: true`,
+ * el trigger se desactiva tras el primer disparo.
+ */
 export class TriggerSystem {
   private readonly triggers: RuntimeTrigger[] = [];
 

@@ -7,6 +7,11 @@ import { getMaterial } from '../../engine/render/Materials';
 import { CharacterPresets } from './CharacterPresets';
 import type { CharacterId } from '../../engine/characters/CharacterDefinition';
 
+/**
+ * Instancia NPCs a partir de un `CharacterId` registrado en `CharacterPresets`:
+ * carga el modelo (o usa un placeholder humanoid), aplica escala/offset
+ * declarados y construye el `NPC` con sus dependencias.
+ */
 export class CharacterFactory {
   constructor(
     private readonly assets: AssetManager,

@@ -95,7 +95,26 @@ Subwidgets (`Crosshair`, `DamageIndicator`, `WeaponHUD`, …) son hojas: clase c
 ✅ Fase 9 — UI consistente (HUDState inlined, `SubtitleView` → `SubtitlesView`, dispose en todos los widgets con timers/DOM)  
 ✅ Fase 10 — Audio data-driven (tablas declarativas `WeaponAudio`/`EnemyAudio` en `game/config/audio.config.ts`; `npc.*` lleva `characterId`)  
 ✅ Fase 11 — Strings/diálogos externalizados (`game/config/strings.ts`; magic numbers de gameplay en `gameplay.config.ts`)  
-⬜ Fase 12 — JSDoc en APIs públicas + smoke test
+✅ Fase 12 — JSDoc en APIs públicas (engine + fachadas game) y `npm run build` verde
+
+**Refactor completado — las 13 fases (0 a 12) están cerradas.**
+
+## Smoke test manual (Fase 12 punto 43)
+
+Para verificar regresiones después de cambios estructurales, abrir `npm run dev` y ejecutar:
+
+- [ ] Menú principal carga sin errores en consola.
+- [ ] "Nueva Partida" → Demo: el nivel se carga, el pointer-lock activa al click.
+- [ ] WASD + mouse mueven al jugador; salto con espacio.
+- [ ] Cambiar de arma con 1-5 y rueda del mouse.
+- [ ] Disparar cada arma (pistol/SMG/AR3/crowbar/gravity gun) — todas suenan, recoil visible, tracer/decals.
+- [ ] Recoger un weapon pickup duplicado suma ammo.
+- [ ] E sobre el botón de la puerta: abre/cierra con diálogo.
+- [ ] Recibir daño del NPC zombie: HUD parpadea, vida baja.
+- [ ] Matar al NPC: ragdoll cae, subtítulo "Entidad hostil neutralizada".
+- [ ] Audio de pasos suena al caminar (snow).
+- [ ] F3 toggle del debug overlay (FPS, posición, NPCs).
+- [ ] Esc pausa el juego; reanudar lo destraba.
 
 ## Convenciones
 

@@ -10,6 +10,11 @@ import { createWeapon, getWeapon } from "./WeaponFactory";
 import { WeaponViewModel } from "./WeaponViewModel";
 import type { WeaponId } from "./WeaponDefinition";
 
+/**
+ * Orquesta el flujo de armas del jugador: selección (teclas 1-5 + rueda),
+ * disparo (semi/auto), reload, recoil y view-model. Posee la `WeaponInventory`
+ * y delega la cinemática del disparo a la `Weapon` activa.
+ */
 export class WeaponController {
   readonly inventory: WeaponInventory;
 

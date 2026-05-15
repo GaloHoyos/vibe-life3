@@ -19,6 +19,11 @@ export interface LoadedLevel {
   weaponPickups: WeaponPickup[];
 }
 
+/**
+ * Materializa un `LevelDefinition` en escena: crea cuerpos físicos, mallas,
+ * puertas con sus botones interactuables, instancia NPCs vía `CharacterFactory`,
+ * arma pickups y registra triggers.
+ */
 export class LevelLoader {
   constructor(
     private readonly scene: Scene,

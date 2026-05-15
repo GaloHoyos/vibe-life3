@@ -10,6 +10,11 @@ export interface RaycastHit {
   toi: number;
 }
 
+/**
+ * Lanza un rayo en el `PhysicsWorld` y devuelve el primer impacto con
+ * `metadata` enriquecida (id, kind, body part). Disparos de armas, line
+ * of sight de NPCs e interacciones lo usan.
+ */
 export class Raycast {
   constructor(private readonly physics: PhysicsWorld) {}
 

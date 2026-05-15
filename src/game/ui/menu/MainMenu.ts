@@ -12,6 +12,12 @@ export interface MainMenuCallbacks {
   onGetVolume: (bus: AudioBusName) => number;
 }
 
+/**
+ * Componente del menú principal y pausa (patrón Component+View con
+ * `MainMenuView`). Maneja transiciones entre estados (`mainMenu`,
+ * `newGameMenu`, `paused`, `options`, etc.) y propaga acciones del
+ * usuario vía callbacks (`onStartChapter`, `onResume`, ...).
+ */
 export class MainMenu implements Disposable {
   readonly element: HTMLDivElement;
   private state: GameMenuState = "mainMenu";

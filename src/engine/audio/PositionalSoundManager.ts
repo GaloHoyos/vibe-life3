@@ -15,6 +15,11 @@ interface AttachedSound {
   object: Object3D;
 }
 
+/**
+ * Reproduce clips como `PositionalAudio` de Three.js, atachados a un
+ * `Object3D` para que la atenuación / dirección sigan al objeto en el
+ * mundo. Mantiene un mapa por objeto para poder limpiar al destruir.
+ */
 export class PositionalSoundManager {
   private readonly listener: AudioListener;
   private readonly attached = new Map<Object3D, AttachedSound[]>();

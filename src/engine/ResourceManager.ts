@@ -1,3 +1,8 @@
+/**
+ * Almacenamiento clave/valor genérico para datos cargados en runtime
+ * (niveles, configs JSON, etc.). No tipa la naturaleza del recurso: el
+ * llamador especifica `TResource` al recuperar.
+ */
 export class ResourceManager {
   private readonly resources = new Map<string, unknown>();
 

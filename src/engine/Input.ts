@@ -3,6 +3,13 @@ export interface MouseDelta {
   y: number;
 }
 
+/**
+ * Encapsula entradas de teclado/mouse/wheel y pointer lock.
+ *
+ * Mantiene tres conjuntos por dispositivo: *down* (sostenido), *pressed*
+ * (este frame), *released* (este frame). El consumidor llama `endFrame()`
+ * al final de cada update para resetear los frame-locales.
+ */
 export class Input {
   private readonly keysDown = new Set<string>();
   private readonly keysPressed = new Set<string>();

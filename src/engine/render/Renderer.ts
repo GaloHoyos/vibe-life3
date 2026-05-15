@@ -1,5 +1,10 @@
 import { Camera, Scene, WebGLRenderer } from 'three';
 
+/**
+ * Wrapper del `WebGLRenderer` de Three.js: monta el canvas en el
+ * contenedor del juego, configura pixel ratio + shadows y maneja resize
+ * automático. Las escenas se pasan en cada `render()`.
+ */
 export class Renderer {
   readonly renderer: WebGLRenderer;
   readonly canvas: HTMLCanvasElement;

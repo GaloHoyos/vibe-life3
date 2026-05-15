@@ -25,6 +25,13 @@ const defaultVolumes: Record<AudioBusName, number> = {
 
 const storageKey = "hl3.audio.volumes";
 
+/**
+ * Núcleo del audio: posee el `AudioContext`, un set de buses (master/music/
+ * ambience/sfx/weapons/...) y persiste los volúmenes en `localStorage`.
+ *
+ * El contexto se crea lazy en el primer `unlock()` (típicamente disparado
+ * por un click del usuario, requisito de los navegadores).
+ */
 export class AudioSystem {
   private context: AudioContext | null = null;
   private readonly buses = new Map<AudioBusName, AudioBus>();

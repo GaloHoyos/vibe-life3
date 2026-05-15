@@ -1,5 +1,10 @@
 import { AmbientLight, DirectionalLight, HemisphereLight, Scene } from 'three';
 
+/**
+ * Iluminación canónica del juego: ambient + hemisphere + direccional con
+ * sombras. La capa de juego llama `attach(scene)` después de cargar el
+ * nivel para insertar las luces.
+ */
 export class LightingSystem {
   private readonly lights = {
     ambient: new AmbientLight(0x9fb7c5, 0.32),
