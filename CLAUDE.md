@@ -94,7 +94,7 @@ Subwidgets (`Crosshair`, `DamageIndicator`, `WeaponHUD`, …) son hojas: clase c
 ✅ Fase 8 — Ragdoll fachada documentada (`RagdollSystem` con `liveSensors`/`passiveRagdoll`), `ActiveRagdollController` → `HitReactionAnimator`, `KinematicCharacterBase` compartido Player/NPC  
 ✅ Fase 9 — UI consistente (HUDState inlined, `SubtitleView` → `SubtitlesView`, dispose en todos los widgets con timers/DOM)  
 ✅ Fase 10 — Audio data-driven (tablas declarativas `WeaponAudio`/`EnemyAudio` en `game/config/audio.config.ts`; `npc.*` lleva `characterId`)  
-⬜ Fase 11 — Strings/diálogos fuera del código  
+✅ Fase 11 — Strings/diálogos externalizados (`game/config/strings.ts`; magic numbers de gameplay en `gameplay.config.ts`)  
 ⬜ Fase 12 — JSDoc en APIs públicas + smoke test
 
 ## Convenciones

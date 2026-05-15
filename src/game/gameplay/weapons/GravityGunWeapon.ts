@@ -1,3 +1,4 @@
+import { Dialogue } from "../../config/strings";
 import { Weapon, type WeaponFireContext } from "./Weapon";
 
 /**
@@ -12,10 +13,6 @@ import { Weapon, type WeaponFireContext } from "./Weapon";
  */
 export class GravityGunWeapon extends Weapon {
   protected performFire(_context: WeaponFireContext): void {
-    this.context.eventBus.emit("subtitle.show", {
-      speaker: "HEV",
-      text: "Gravity Gun functionality pending.",
-      duration: 1.6,
-    });
+    this.context.eventBus.emit("subtitle.show", Dialogue.gravityGunPending);
   }
 }

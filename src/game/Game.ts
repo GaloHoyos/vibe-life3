@@ -8,6 +8,7 @@ import { EngineTokens } from "../engine/ServiceTokens";
 import type { Time } from "../engine/Time";
 import { CharacterFactory } from "./characters/CharacterFactory";
 import { FootstepsConfig } from "./config/audio.config";
+import { MenuStrings } from "./config/strings";
 import { DialogueAudioSystem } from "./audio/DialogueAudioSystem";
 import { EnemySoundSystem } from "./audio/EnemySoundSystem";
 import { UISoundSystem } from "./audio/UISoundSystem";
@@ -355,7 +356,7 @@ export class Game {
     hud.setVisible(state === "playing");
 
     if (state === "playing") {
-      mainMenu.setStatus("Sistema activo. Preparado para combate.");
+      mainMenu.setStatus(MenuStrings.ready);
       input.requestPointerLock();
     } else if (state === "mainMenu") {
       ambience.stop();
@@ -371,7 +372,11 @@ export class Game {
     const ambience = s.resolve(GameTokens.BackgroundAmbience);
     const music = s.resolve(GameTokens.Music);
 
-    mainMenu.setStatus(`Cargando ${this.currentLevel?.title ?? "nivel"}...`);
+    mainMenu.setStatus(
+      this.currentLevel
+        ? MenuStrings.loadingLevel(this.currentLevel.title)
+        : MenuStrings.loadingFallback,
+    );
     audio.unlock();
 
     if (this.currentLevel) {

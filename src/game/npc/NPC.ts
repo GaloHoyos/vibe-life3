@@ -3,6 +3,7 @@ import { StateMachine } from "../../engine/ai/StateMachine";
 import type { ProceduralAnimationState } from "../../engine/animation/ProceduralCharacterAnimator";
 import type { CharacterDefinition } from "../../engine/characters/CharacterDefinition";
 import type { Damageable } from "../../shared/types/lifecycle";
+import { Dialogue } from "../config/strings";
 import type { GameEventBus } from "../GameEvents";
 import { Health } from "../gameplay/Health";
 import {
@@ -234,11 +235,7 @@ export class NPC implements Damageable {
       id: this.mesh.name,
       characterId: this.definition.id,
     });
-    this.eventBus.emit("dialogue.show", {
-      speaker: "Sistema",
-      text: "Entidad hostil neutralizada.",
-      duration: 2.4,
-    });
+    this.eventBus.emit("dialogue.show", Dialogue.npcKilled);
   }
 
   isAlive(): boolean {

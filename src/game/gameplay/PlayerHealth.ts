@@ -1,4 +1,6 @@
 ﻿import type { Vector3 } from "three";
+import { PlayerHealthConfig } from "../config/gameplay.config";
+import { Dialogue } from "../config/strings";
 import type { GameEventBus } from "../GameEvents";
 import { Health } from "./Health";
 
@@ -63,11 +65,7 @@ export class PlayerHealth {
     if (currentHealth <= 0 && !this.dead) {
       this.dead = true;
       this.eventBus.emit("player.dead", { reason: "damage" });
-      this.eventBus.emit("subtitle.show", {
-        speaker: "HEV",
-        text: "CRITICAL FAILURE",
-        duration: 3,
-      });
+      this.eventBus.emit("subtitle.show", Dialogue.playerDead);
     }
 
     return currentHealth;
@@ -102,7 +100,10 @@ export class PlayerHealth {
       return 0;
     }
 
-    const absorption = Math.min(this.armorCurrent, amount * 0.35);
+    const absorption = Math.min(
+      this.armorCurrent,
+      amount * PlayerHealthConfig.armorAbsorptionRatio,
+    );
     this.armorCurrent = Math.max(0, this.armorCurrent - absorption);
     this.emitArmorChanged();
     return absorption;

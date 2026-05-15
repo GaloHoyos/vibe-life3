@@ -1,10 +1,12 @@
 ﻿import type { Object3D } from 'three';
+import { InteractionsConfig } from '../../config/gameplay.config';
+import { Dialogue } from '../../config/strings';
 import type { GameEventBus } from "../../GameEvents";
 import type { Interactable } from './Interactable';
 import type { SlidingDoor } from './SlidingDoor';
 
 export class DoorButton implements Interactable {
-  readonly maxDistance = 3;
+  readonly maxDistance = InteractionsConfig.doorButtonRange;
 
   constructor(
     readonly id: string,
@@ -20,10 +22,9 @@ export class DoorButton implements Interactable {
       id: this.door.id,
       open,
     });
-    this.eventBus.emit('dialogue.show', {
-      speaker: 'Sistema',
-      text: open ? 'Puerta de laboratorio abierta.' : 'Puerta de laboratorio cerrada.',
-      duration: 2.2,
-    });
+    this.eventBus.emit(
+      'dialogue.show',
+      open ? Dialogue.doorOpened : Dialogue.doorClosed,
+    );
   }
 }

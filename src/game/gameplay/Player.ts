@@ -7,6 +7,7 @@ import type { PhysicsWorld } from "../../engine/physics/PhysicsWorld";
 import type { Raycast } from "../../engine/physics/Raycast";
 import { CharacterController } from "../../engine/physics/CharacterController";
 import type { Damageable } from "../../shared/types/lifecycle";
+import { PlayerConfig } from "../config/gameplay.config";
 import { PlayerHealth } from "./PlayerHealth";
 import { WeaponController } from "./weapons/WeaponController";
 
@@ -23,14 +24,18 @@ export class Player implements Damageable {
     scene: Scene,
     private readonly eventBus: GameEventBus,
   ) {
-    this.health = new PlayerHealth(eventBus, 100, 0);
+    this.health = new PlayerHealth(
+      eventBus,
+      PlayerConfig.vitals.maxHealth,
+      PlayerConfig.vitals.armorMax,
+    );
     this.controller = new CharacterController(physics, {
       position: startPosition,
-      radius: 0.35,
-      halfHeight: 0.7,
-      speed: 6.2,
-      jumpSpeed: 9.2,
-      eyeHeight: 0.62,
+      radius: PlayerConfig.collider.radius,
+      halfHeight: PlayerConfig.collider.halfHeight,
+      speed: PlayerConfig.movement.speed,
+      jumpSpeed: PlayerConfig.movement.jumpSpeed,
+      eyeHeight: PlayerConfig.collider.eyeHeight,
     });
     physics.registerCollider(this.controller.collider, {
       id: "player",

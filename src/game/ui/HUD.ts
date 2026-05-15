@@ -1,4 +1,5 @@
 import type { Disposable } from "../../shared/types/lifecycle";
+import { Objectives } from "../config/strings";
 import type { GameEventBus } from "../GameEvents";
 import type { HUDValue } from "./HealthArmorHUD";
 import { HUDView } from "./HUDView";
@@ -18,7 +19,7 @@ const DefaultHUDState = (): HUDStateShape => ({
   armor: { current: 0, max: 100 },
   armorEnabled: false,
   weapon: { name: "UNARMED", ammo: 0, reserve: 0 },
-  objective: "Explorar la instalacion",
+  objective: Objectives.exploreFacility,
 });
 
 /**
