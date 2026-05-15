@@ -1,4 +1,4 @@
-import { MathUtils, Object3D, Vector3 } from 'three';
+import { MathUtils, Object3D, Vector3 } from "three";
 
 export interface ActiveRagdollConfig {
   swayStrength: number;
@@ -25,9 +25,21 @@ export class ActiveRagdollController {
   ) {}
 
   update(update: ActiveRagdollUpdate): void {
-    const lateralSway = MathUtils.clamp(-update.acceleration.x * 0.015, -0.18, 0.18);
-    const forwardLean = MathUtils.clamp(update.velocity.length() * 0.025, 0, 0.12);
-    const turnLag = MathUtils.clamp(-update.yawDelta * this.config.turnLagStrength, -0.18, 0.18);
+    const lateralSway = MathUtils.clamp(
+      -update.acceleration.x * 0.015,
+      -0.18,
+      0.18,
+    );
+    const forwardLean = MathUtils.clamp(
+      update.velocity.length() * 0.025,
+      0,
+      0.12,
+    );
+    const turnLag = MathUtils.clamp(
+      -update.yawDelta * this.config.turnLagStrength,
+      -0.18,
+      0.18,
+    );
     const stumble = update.balanceIntensity * this.config.stumbleLean;
 
     this.root.rotation.x += forwardLean + stumble;

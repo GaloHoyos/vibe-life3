@@ -2,17 +2,22 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import { Object3D, Quaternion, Vector3 } from 'three';
 import type { PhysicsWorld } from '../physics/PhysicsWorld';
 import { PhysicsBoneLink } from './PhysicsBoneLink';
+import type { RagdollBodyPart } from './RagdollBodyPart';
 import type { RagdollConfig } from './RagdollDefinition';
+import { RagdollPoseDriver } from './RagdollPoseDriver';
 
 export class RagdollController {
   private active = true;
+  private readonly poseDriver = new RagdollPoseDriver();
   private readonly fallbackRootInitialScale: Vector3;
   private highDampingTimer: number;
 
   constructor(
     private readonly physics: PhysicsWorld,
     private readonly links: PhysicsBoneLink[],
+    private readonly parts: RagdollBodyPart[],
     private readonly bodies: RAPIER.RigidBody[],
+    private readonly joints: RAPIER.ImpulseJoint[],
     private readonly config: RagdollConfig,
     private readonly fallbackRoot?: Object3D,
     private readonly fallbackBody?: RAPIER.RigidBody,
@@ -34,17 +39,20 @@ export class RagdollController {
       });
     }
 
-    this.links.forEach((link) => link.syncBodyToBone());
+    this.links.forEach((link) => this.poseDriver.apply(link));
     this.syncFallbackRoot();
   }
 
-  applyImpulse(direction: Vector3, scale: number): void {
+  applyImpulse(direction: Vector3, scale: number, partName?: string): void {
     if (direction.lengthSq() <= 0.001) {
       return;
     }
 
     const impulse = direction.clone().normalize().multiplyScalar(scale);
-    this.bodies.forEach((body) => {
+    const targetParts = partName ? this.parts.filter((part) => part.name === partName) : [];
+    const targetBodies = targetParts.length > 0 ? targetParts.map((part) => part.rigidBody) : this.bodies;
+
+    targetBodies.forEach((body) => {
       body.applyImpulse({ x: impulse.x, y: Math.max(0, impulse.y) * 0.15, z: impulse.z }, true);
       clampRigidBodyVelocity(body, this.config.maxDeathLinearVelocity, this.config.maxDeathAngularVelocity);
     });
@@ -69,8 +77,23 @@ export class RagdollController {
     this.bodies.forEach((body) => body.setEnabled(active));
   }
 
+  setPassive(): void {
+    this.bodies.forEach((body) => {
+      body.setLinearDamping(this.config.linearDamping);
+      body.setAngularDamping(this.config.angularDamping);
+    });
+  }
+
   getBodyCount(): number {
     return this.bodies.length;
+  }
+
+  getPartCount(): number {
+    return this.parts.length;
+  }
+
+  getJointCount(): number {
+    return this.joints.length;
   }
 
   private syncFallbackRoot(): void {

@@ -1,5 +1,6 @@
 import { Bone, MathUtils, Object3D, Vector3 } from 'three';
 import type { BoneMap } from './BoneMapper';
+import { applyBoneRotationOffset } from './BoneRotation';
 
 export class ProceduralBalance {
   applyIdle(root: Object3D, bones: BoneMap, time: number, intensity: number): void {
@@ -36,19 +37,13 @@ export class ProceduralBalance {
 }
 
 function rotateX(bone: Bone | undefined, radians: number): void {
-  if (bone) {
-    bone.rotation.x += radians;
-  }
+  applyBoneRotationOffset(bone, 'x', radians);
 }
 
 function rotateY(bone: Bone | undefined, radians: number): void {
-  if (bone) {
-    bone.rotation.y += radians;
-  }
+  applyBoneRotationOffset(bone, 'y', radians);
 }
 
 function rotateZ(bone: Bone | undefined, radians: number): void {
-  if (bone) {
-    bone.rotation.z += radians;
-  }
+  applyBoneRotationOffset(bone, 'z', radians);
 }

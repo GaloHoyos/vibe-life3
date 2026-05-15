@@ -1,11 +1,14 @@
 import { Bone, MathUtils, Object3D, Vector3 } from 'three';
 import type { PhysicsWorld } from '../physics/PhysicsWorld';
+import type { Damageable } from '../engine/GameObject';
 import type { CharacterAnimationConfig } from '../characters/CharacterDefinition';
 import { AnimationDebug } from './AnimationDebug';
 import { BoneMapper } from './BoneMapper';
+import { applyBoneRotationOffset } from './BoneRotation';
+import { HumanoidRestPose } from './HumanoidRestPose';
 import { PoseSnapshot } from './PoseSnapshot';
 import { ProceduralBalance } from './ProceduralBalance';
-import { DefaultWalkConfig, ProceduralWalk, type ProceduralWalkConfig } from './ProceduralWalk';
+import { DefaultWalkConfig, DefaultWalkOptions, ProceduralWalk, type ProceduralWalkConfig } from './ProceduralWalk';
 import type { RagdollConfig } from './RagdollDefinition';
 import { RagdollSystem } from './RagdollSystem';
 
@@ -18,6 +21,7 @@ export interface ProceduralAnimatorOptions {
   walk?: Partial<ProceduralWalkConfig>;
   ragdoll?: Partial<RagdollConfig>;
   animation?: CharacterAnimationConfig;
+  owner?: Damageable;
   debug?: boolean;
 }
 
@@ -35,6 +39,7 @@ export class ProceduralCharacterAnimator {
   readonly mapper: BoneMapper;
 
   private readonly pose: PoseSnapshot;
+  private readonly restPose: HumanoidRestPose;
   private readonly walk: ProceduralWalk;
   private readonly balance = new ProceduralBalance();
   private readonly ragdoll: RagdollSystem;
@@ -47,12 +52,16 @@ export class ProceduralCharacterAnimator {
   constructor(private readonly options: ProceduralAnimatorOptions) {
     this.mapper = new BoneMapper(options.root, { debug: options.debug });
     this.pose = new PoseSnapshot(options.root);
+    this.restPose = new HumanoidRestPose(options.animation);
     this.walk = new ProceduralWalk({
       ...DefaultWalkConfig,
       ...options.walk,
       style: options.animation?.walkStyle ?? options.walk?.style ?? DefaultWalkConfig.style,
       maxHeadYaw: options.animation?.maxHeadYaw ?? DefaultWalkConfig.maxHeadYaw,
       maxHeadPitch: options.animation?.maxHeadPitch ?? DefaultWalkConfig.maxHeadPitch,
+    }, {
+      boneAxes: options.animation?.boneAxes ?? DefaultWalkOptions.boneAxes,
+      armsMode: options.animation?.armsMode ?? DefaultWalkOptions.armsMode,
     });
     this.ragdoll = new RagdollSystem({
       id: options.id,
@@ -60,7 +69,11 @@ export class ProceduralCharacterAnimator {
       physics: options.physics,
       mapper: this.mapper,
       config: options.ragdoll,
+      owner: options.owner,
     });
+    if ((options.ragdoll?.activeWhileAlive ?? true) && this.mapper.hasSkeleton()) {
+      this.ragdoll.ensureLiveSensors();
+    }
     this.debug = new AnimationDebug(options.debug);
     this.debug.logMapping(this.mapper);
   }
@@ -78,10 +91,12 @@ export class ProceduralCharacterAnimator {
     }
 
     this.pose.restore();
+    this.restPose.apply(this.mapper.bones);
     this.currentState = this.resolveState(update);
     this.applyState(update);
     this.applyLookAt(update.lookDirection);
     this.balance.applyVelocityLean(this.options.root, update.velocity, update.desiredDirection, 1);
+    this.ragdoll.updateLiveSensors();
   }
 
   hit(direction?: Vector3): void {
@@ -95,22 +110,22 @@ export class ProceduralCharacterAnimator {
     this.attackTimer = 0.35;
   }
 
-  die(hitDirection?: Vector3): void {
+  die(hitDirection?: Vector3, hitPartName?: string): void {
     if (this.currentState === 'dead') {
       return;
     }
 
     this.currentState = 'dead';
-    this.ragdoll.activate(hitDirection ?? this.hitDirection);
+    this.ragdoll.activate(hitDirection ?? this.hitDirection, undefined, hitPartName);
   }
 
-  dieWithVelocity(hitDirection: Vector3 | undefined, currentVelocity: Vector3): void {
+  dieWithVelocity(hitDirection: Vector3 | undefined, currentVelocity: Vector3, hitPartName?: string): void {
     if (this.currentState === 'dead') {
       return;
     }
 
     this.currentState = 'dead';
-    this.ragdoll.activate(hitDirection ?? this.hitDirection, currentVelocity);
+    this.ragdoll.activate(hitDirection ?? this.hitDirection, currentVelocity, hitPartName);
   }
 
   isRagdollActive(): boolean {
@@ -212,10 +227,10 @@ export class ProceduralCharacterAnimator {
     const yaw = MathUtils.clamp(Math.atan2(localDirection.x, localDirection.z), -maxYaw, maxYaw);
     const pitch = MathUtils.clamp(Math.asin(MathUtils.clamp(localDirection.y, -1, 1)), -maxPitch, maxPitch);
 
-    rotateY(this.mapper.bones.head, yaw);
+    applyBoneRotationOffset(this.mapper.bones.head, this.options.animation?.boneAxes.headYawAxis ?? 'y', yaw);
     rotateX(this.mapper.bones.head, -pitch);
-    rotateY(this.mapper.bones.neck, yaw * 0.35);
-    rotateY(this.mapper.bones.chest, yaw * 0.18);
+    applyBoneRotationOffset(this.mapper.bones.neck, this.options.animation?.boneAxes.headYawAxis ?? 'y', yaw * 0.35);
+    applyBoneRotationOffset(this.mapper.bones.chest, this.options.animation?.boneAxes.headYawAxis ?? 'y', yaw * 0.18);
   }
 
   private applyRootFallback(update: ProceduralAnimatorUpdate): void {
@@ -240,19 +255,13 @@ export class ProceduralCharacterAnimator {
 }
 
 function rotateX(bone: Bone | undefined, radians: number): void {
-  if (bone) {
-    bone.rotation.x += radians;
-  }
+  applyBoneRotationOffset(bone, 'x', radians);
 }
 
 function rotateY(bone: Bone | undefined, radians: number): void {
-  if (bone) {
-    bone.rotation.y += radians;
-  }
+  applyBoneRotationOffset(bone, 'y', radians);
 }
 
 function rotateZ(bone: Bone | undefined, radians: number): void {
-  if (bone) {
-    bone.rotation.z += radians;
-  }
+  applyBoneRotationOffset(bone, 'z', radians);
 }

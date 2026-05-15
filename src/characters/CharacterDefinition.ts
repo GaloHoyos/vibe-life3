@@ -12,6 +12,8 @@ export interface CharacterMovementConfig {
   turnSpeed: number;
   rotationSmoothing: number;
   faceTargetDeadzone: number;
+  turnBeforeMoveAngle: number;
+  minMoveFacingDot: number;
   gravity: number;
   linearDamping: number;
   angularDamping: number;
@@ -29,9 +31,42 @@ export interface CharacterHealthConfig {
   maxHealth: number;
 }
 
+export type BoneAxis = 'x' | 'y' | 'z';
+export type RestPoseType = 'none' | 'tpose_to_relaxed' | 'zombie';
+export type ArmsMode = 'relaxed' | 'zombieForward' | 'weaponAim';
+
+export interface BoneRotationOffset {
+  x?: number;
+  y?: number;
+  z?: number;
+}
+
+export interface HumanoidRestPoseConfig {
+  type: RestPoseType;
+  leftUpperArm?: BoneRotationOffset;
+  rightUpperArm?: BoneRotationOffset;
+  leftForearm?: BoneRotationOffset;
+  rightForearm?: BoneRotationOffset;
+  spine?: BoneRotationOffset;
+  chest?: BoneRotationOffset;
+  head?: BoneRotationOffset;
+}
+
+export interface HumanoidBoneAxesConfig {
+  legSwingAxis: BoneAxis;
+  armSwingAxis: BoneAxis;
+  kneeBendAxis: BoneAxis;
+  elbowBendAxis: BoneAxis;
+  spineLeanAxis: BoneAxis;
+  headYawAxis: BoneAxis;
+}
+
 export interface CharacterAnimationConfig {
   mode: 'procedural';
   ignoreBakedAnimations: boolean;
+  restPose: HumanoidRestPoseConfig;
+  armsMode: ArmsMode;
+  boneAxes: HumanoidBoneAxesConfig;
   walkStyle: WalkStyle;
   useLookAt: boolean;
   useStumble: boolean;

@@ -14,19 +14,24 @@ export interface CharacterMotorConfig {
   turnSpeed: number;
   rotationSmoothing: number;
   faceTargetDeadzone: number;
+  turnBeforeMoveAngle: number;
+  minMoveFacingDot: number;
   gravity: number;
   stepOffset: number;
   snapToGround: number;
+  debug?: boolean;
   metadata: PhysicsMetadata;
 }
 
 export interface CharacterMotorSnapshot {
   position: Vector3;
   velocity: Vector3;
+  desiredVelocity: Vector3;
   forward: Vector3;
   grounded: boolean;
   yaw: number;
   targetYaw: number;
+  distanceToTarget: number;
 }
 
 export class CharacterMotor {
@@ -35,9 +40,11 @@ export class CharacterMotor {
 
   private readonly controller: RAPIER.KinematicCharacterController;
   private readonly velocity = new Vector3();
+  private readonly actualVelocity = new Vector3();
   private readonly horizontalVelocity = new Vector3();
   private readonly desiredVelocity = new Vector3();
   private readonly forward = new Vector3(0, 0, 1);
+  private distanceToTarget = Number.POSITIVE_INFINITY;
   private yaw = 0;
   private targetYaw = 0;
   private grounded = false;
@@ -70,6 +77,7 @@ export class CharacterMotor {
     const position = this.getPosition();
     const directionToTarget = targetPosition ? targetPosition.clone().sub(position) : new Vector3();
     directionToTarget.y = 0;
+    this.distanceToTarget = directionToTarget.length();
 
     if (directionToTarget.lengthSq() > this.config.faceTargetDeadzone * this.config.faceTargetDeadzone) {
       directionToTarget.normalize();
@@ -81,7 +89,15 @@ export class CharacterMotor {
     this.forward.set(Math.sin(this.yaw), 0, Math.cos(this.yaw)).normalize();
 
     if (wantsMove) {
-      this.desiredVelocity.copy(this.forward).multiplyScalar(this.config.maxSpeed);
+      const facingDot = targetPosition ? MathUtils.clamp(this.forward.dot(directionToTarget), -1, 1) : 1;
+      const angleToTarget = Math.acos(facingDot);
+      const facingSpeedFactor = MathUtils.smoothstep(
+        facingDot,
+        this.config.minMoveFacingDot,
+        1,
+      );
+      const turnSlowdown = angleToTarget > this.config.turnBeforeMoveAngle ? 0.35 : 1;
+      this.desiredVelocity.copy(this.forward).multiplyScalar(this.config.maxSpeed * facingSpeedFactor * turnSlowdown);
     } else {
       this.desiredVelocity.set(0, 0, 0);
     }
@@ -103,8 +119,16 @@ export class CharacterMotor {
     this.velocity.y += -this.config.gravity * delta;
 
     const desiredMovement = this.velocity.clone().multiplyScalar(delta);
-    this.controller.computeColliderMovement(this.collider, desiredMovement);
+    this.controller.computeColliderMovement(
+      this.collider,
+      desiredMovement,
+      RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+      undefined,
+      (collider) => this.shouldCollideWith(collider),
+    );
     const corrected = this.controller.computedMovement();
+    const invDelta = delta > 0 ? 1 / delta : 0;
+    this.actualVelocity.set(corrected.x * invDelta, corrected.y * invDelta, corrected.z * invDelta);
     const current = this.body.translation();
     this.body.setNextKinematicTranslation({
       x: current.x + corrected.x,
@@ -123,17 +147,20 @@ export class CharacterMotor {
     const position = this.getPosition();
     return {
       position,
-      velocity: this.velocity.clone(),
+      velocity: this.actualVelocity.clone(),
+      desiredVelocity: this.desiredVelocity.clone(),
       forward: this.forward.clone(),
       grounded: this.grounded,
       yaw: this.yaw,
       targetYaw: this.targetYaw,
+      distanceToTarget: this.distanceToTarget,
     };
   }
 
   disable(): void {
     this.enabled = false;
     this.velocity.set(0, 0, 0);
+    this.actualVelocity.set(0, 0, 0);
     this.horizontalVelocity.set(0, 0, 0);
     this.collider.setEnabled(false);
     this.body.setEnabled(false);
@@ -150,6 +177,15 @@ export class CharacterMotor {
 
   getYaw(): number {
     return this.yaw;
+  }
+
+  private shouldCollideWith(collider: RAPIER.Collider): boolean {
+    if (collider.handle === this.collider.handle || collider.isSensor()) {
+      return false;
+    }
+
+    const metadata = this.physics.getColliderMetadata(collider);
+    return metadata?.damageable !== this.config.metadata.damageable;
   }
 }
 

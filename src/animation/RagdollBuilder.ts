@@ -1,8 +1,10 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Bone, Object3D, Quaternion, Vector3 } from 'three';
+import type { Damageable } from '../engine/GameObject';
 import type { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { BoneMapper } from './BoneMapper';
 import { getBoneWorldTransform, PhysicsBoneLink } from './PhysicsBoneLink';
+import type { RagdollBodyPart } from './RagdollBodyPart';
 import {
   DefaultRagdollConfig,
   DefaultRagdollDefinition,
@@ -10,6 +12,7 @@ import {
   type RagdollPartDefinition,
 } from './RagdollDefinition';
 import { RagdollController } from './RagdollController';
+import { RagdollJointManager } from './RagdollJointManager';
 
 export interface RagdollBuildOptions {
   id: string;
@@ -19,6 +22,7 @@ export interface RagdollBuildOptions {
   config?: Partial<RagdollConfig>;
   hitDirection?: Vector3;
   currentVelocity?: Vector3;
+  owner?: Damageable;
 }
 
 export class RagdollBuilder {
@@ -26,6 +30,7 @@ export class RagdollBuilder {
     const config = { ...DefaultRagdollConfig, ...options.config };
     const links: PhysicsBoneLink[] = [];
     const bodies: RAPIER.RigidBody[] = [];
+    const parts: RagdollBodyPart[] = [];
 
     DefaultRagdollDefinition.forEach((part) => {
       const bone = options.mapper.get(part.bone);
@@ -33,29 +38,27 @@ export class RagdollBuilder {
         return;
       }
 
-      const body = this.createBodyForBone(options, part, bone, config);
+      const { body, collider } = this.createBodyForBone(options, part, bone, config);
       bodies.push(body);
+      parts.push({
+        name: part.id,
+        boneName: part.bone,
+        bone,
+        rigidBody: body,
+        collider,
+        parentPartName: part.parentPartName,
+        damageMultiplier: part.damageMultiplier,
+      });
       links.push(new PhysicsBoneLink(bone, body, part.localOffset));
     });
 
     if (links.length === 0) {
       const fallbackBody = this.createFallbackBody(options.root, options.physics, config, `${options.id}-fallback`);
-      const controller = new RagdollController(options.physics, [], [fallbackBody], config, options.root, fallbackBody);
-      controller.clampDeathVelocity(options.currentVelocity);
-      controller.applyImpulse(options.hitDirection ?? new Vector3(), config.impulseScale);
-      return controller;
+      return new RagdollController(options.physics, [], [], [fallbackBody], [], config, options.root, fallbackBody);
     }
 
-    const controller = new RagdollController(options.physics, links, bodies, config);
-    controller.clampDeathVelocity(options.currentVelocity);
-    controller.applyImpulse(options.hitDirection ?? new Vector3(), config.impulseScale);
-
-    if (config.enableJoints && config.debug) {
-      // TODO: Replace the loose-linked ragdoll with tuned impulse joints per limb.
-      console.warn('[RagdollBuilder] Joint constraints are reserved for the next ragdoll pass.');
-    }
-
-    return controller;
+    const joints = config.enableJoints ? new RagdollJointManager(options.physics).connect(parts) : [];
+    return new RagdollController(options.physics, links, parts, bodies, joints, config);
   }
 
   private createBodyForBone(
@@ -63,7 +66,7 @@ export class RagdollBuilder {
     part: RagdollPartDefinition,
     bone: Bone,
     config: RagdollConfig,
-  ): RAPIER.RigidBody {
+  ): { body: RAPIER.RigidBody; collider: RAPIER.Collider } {
     const transform = getBoneWorldTransform(bone);
     const position = transform.position.clone().add(part.localOffset.clone().applyQuaternion(transform.rotation));
     position.y = Math.max(position.y, 0.18);
@@ -71,7 +74,7 @@ export class RagdollBuilder {
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(position.x, position.y, position.z)
         .setRotation(toRapierRotation(transform.rotation))
-        .setLinearDamping(config.linearDamping)
+        .setLinearDamping(config.bodyPartDamping)
         .setAngularDamping(config.angularDamping),
     );
 
@@ -79,9 +82,14 @@ export class RagdollBuilder {
     options.physics.registerCollider(collider, {
       id: `${options.id}-ragdoll-${part.id}`,
       kind: 'ragdoll',
+      damageable: options.owner,
+      bodyPart: {
+        name: part.id,
+        damageMultiplier: part.damageMultiplier,
+      },
     });
 
-    return body;
+    return { body, collider };
   }
 
   private createFallbackBody(

@@ -39,25 +39,27 @@ export class HitscanWeapon extends Weapon {
     const parent = hit.collider.parent();
 
     if (parent && parent.isDynamic()) {
-      this.applyImpulse(parent, direction);
+      const impulseScale = hit.metadata?.kind === 'ragdoll' ? Math.min(this.impulse, 1.25) : this.impulse;
+      this.applyImpulse(parent, direction, impulseScale);
     }
 
-    hit.metadata?.damageable?.applyDamage(this.damage, direction.clone());
+    const damageMultiplier = hit.metadata?.bodyPart?.damageMultiplier ?? 1;
+    hit.metadata?.damageable?.applyDamage(this.damage * damageMultiplier, direction.clone(), hit.metadata?.bodyPart?.name);
 
     this.context.eventBus.emit('weapon.hit', {
       weaponName: this.name,
       targetId: hit.metadata?.id,
       point: hit.point,
-      damage: this.damage,
+      damage: this.damage * damageMultiplier,
     });
   }
 
-  private applyImpulse(rigidBody: RAPIER.RigidBody, direction: Vector3): void {
+  private applyImpulse(rigidBody: RAPIER.RigidBody, direction: Vector3, impulseScale: number): void {
     rigidBody.applyImpulse(
       {
-        x: direction.x * this.impulse,
-        y: direction.y * this.impulse,
-        z: direction.z * this.impulse,
+        x: direction.x * impulseScale,
+        y: direction.y * impulseScale,
+        z: direction.z * impulseScale,
       },
       true,
     );

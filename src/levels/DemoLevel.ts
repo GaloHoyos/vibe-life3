@@ -43,7 +43,7 @@ export const DemoLevel: LevelDefinition = {
     },
   ],
   npcs: [
-    { id: 'npc-zombie-01', position: [0, 0.95, -13.8], characterId: 'zombie' },
+    { id: 'npc-zombie-01', position: [4.6, 0.95, 1.5], characterId: 'zombie' },
   ],
   triggers: [
     {

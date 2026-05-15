@@ -7,6 +7,10 @@ export interface PhysicsMetadata {
   id: string;
   kind: 'static' | 'dynamic' | 'door' | 'npc' | 'player' | 'ragdoll';
   damageable?: Damageable;
+  bodyPart?: {
+    name: string;
+    damageMultiplier: number;
+  };
 }
 
 export interface PhysicsBinding {

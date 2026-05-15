@@ -42,7 +42,11 @@ export class PhysicsBoneLink {
       parent.updateWorldMatrix(true, false);
       parent.getWorldQuaternion(this.parentWorldRotation);
       this.parentWorldRotationInverse.copy(this.parentWorldRotation).invert();
-      this.bone.position.copy(parent.worldToLocal(this.worldPosition.clone()));
+      if (parent instanceof Bone) {
+        this.bone.position.copy(this.initialLocalPosition);
+      } else {
+        this.bone.position.copy(parent.worldToLocal(this.worldPosition.clone()));
+      }
       this.bone.quaternion.copy(this.parentWorldRotationInverse.multiply(this.worldRotation));
     } else {
       this.bone.position.copy(this.worldPosition);
