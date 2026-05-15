@@ -145,10 +145,6 @@ export abstract class Weapon {
   }
 
   protected emitAmmoChanged(): void {
-    this.context.eventBus.emit("ammo.changed", {
-      current: this.getAmmo(),
-      reserve: this.getReserveAmmo(),
-    });
     this.context.eventBus.emit("weapon.ammo.changed", {
       current: this.getAmmo(),
       reserve: this.getReserveAmmo(),

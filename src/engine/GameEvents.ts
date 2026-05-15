@@ -32,10 +32,6 @@ export interface GameEventMap {
   "weapon.empty": {
     weaponName: string;
   };
-  "ammo.changed": {
-    current: number;
-    reserve: number;
-  };
   "weapon.ammo.changed": {
     current: number;
     reserve: number;
@@ -75,10 +71,6 @@ export interface GameEventMap {
     text: string;
     duration: number;
   };
-  "player.healthChanged": {
-    current: number;
-    max: number;
-  };
   "player.health.changed": {
     current: number;
     max: number;
@@ -103,9 +95,6 @@ export interface GameEventMap {
   };
   "player.pickup.weapon": {
     weaponName: string;
-  };
-  "interact.changed": {
-    label?: string;
   };
   "interaction.focus": {
     label: string;

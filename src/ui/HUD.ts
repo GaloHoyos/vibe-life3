@@ -16,9 +16,6 @@ export class HUD implements Disposable {
     this.render();
 
     this.unsubscribers.push(
-      eventBus.on("player.healthChanged", ({ current, max }) =>
-        this.setHealth(current, max),
-      ),
       eventBus.on("player.health.changed", ({ current, max }) =>
         this.setHealth(current, max),
       ),
@@ -30,9 +27,6 @@ export class HUD implements Disposable {
       ),
       eventBus.on("weapon.changed", ({ weaponName, ammo, reserve }) =>
         this.setWeapon(weaponName, ammo, reserve),
-      ),
-      eventBus.on("ammo.changed", ({ current, reserve }) =>
-        this.setAmmo(current, reserve),
       ),
       eventBus.on("weapon.ammo.changed", ({ current, reserve }) =>
         this.setAmmo(current, reserve),
@@ -46,9 +40,6 @@ export class HUD implements Disposable {
           this.view.crosshair.pulseHit();
         }
       }),
-      eventBus.on("interact.changed", ({ label }) =>
-        this.setInteraction(label),
-      ),
       eventBus.on("interaction.focus", ({ label }) =>
         this.setInteraction(label),
       ),

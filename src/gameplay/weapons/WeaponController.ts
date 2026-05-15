@@ -74,10 +74,6 @@ export class WeaponController {
             current: existing.getAmmo(),
             reserve: existing.getReserveAmmo(),
           });
-          this.eventBus.emit("ammo.changed", {
-            current: existing.getAmmo(),
-            reserve: existing.getReserveAmmo(),
-          });
         }
         this.eventBus.emit("player.pickup.ammo", {
           amount: gained,

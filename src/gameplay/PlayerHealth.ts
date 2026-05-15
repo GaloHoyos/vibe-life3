@@ -109,10 +109,6 @@ export class PlayerHealth {
   }
 
   private emitHealthChanged(): void {
-    this.eventBus.emit("player.healthChanged", {
-      current: this.health.current,
-      max: this.health.max,
-    });
     this.eventBus.emit("player.health.changed", {
       current: this.health.current,
       max: this.health.max,
