@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(npm run build *)",
+      "Bash(npm run dev *)",
+      "Bash(npm run preview *)",
+      "PowerShell(npx tsc *)",
+      "PowerShell(npx vite *)",
+      "PowerShell(npm run *)",
+      "PowerShell($out = npx tsc --noEmit *)",
+      "PowerShell($out = npx vite build *)",
+      "PowerShell(git status *)",
+      "PowerShell(git diff *)",
+      "PowerShell(git log *)",
+      "PowerShell(git mv *)",
+      "PowerShell(git add *)",
+      "PowerShell(git restore --staged *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Get-Content *)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(New-Item -ItemType Directory *)",
+      "PowerShell(New-Item *)",
+      "PowerShell(Measure-Object *)",
+      "PowerShell(git *)",
+      "Read(//c/Users/galoh/.claude/**)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(echo \"tsc: $?\")",
+      "Bash(npx vite *)",
+      "Bash(echo \"build: $?\")",
+      "Bash(git restore *)",
+      "Bash(git merge *)",
+      "Bash(git branch *)",
+      "Bash(git worktree *)",
+      "Bash(dir src *)",
+      "Bash(findstr /v node_modules)"
+    ],
+    "deny": [
+      "PowerShell(git push --force *)",
+      "PowerShell(git reset --hard *)",
+      "PowerShell(Remove-Item -Recurse -Force *)"
+    ]
+  },
+  "worktree": {
+    "baseRef": "head"
+  }
+}
