@@ -35,7 +35,8 @@
       "Bash(git branch *)",
       "Bash(git worktree *)",
       "Bash(dir src *)",
-      "Bash(findstr /v node_modules)"
+      "Bash(findstr /v node_modules)",
+      "Bash(git lfs *)"
     ],
     "deny": [
       "PowerShell(git push --force *)",

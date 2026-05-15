@@ -1,9 +1,9 @@
-const zombieUrl = new URL('../models/characters/zombie/zombie.glb', import.meta.url).href;
-const crowbarUrl = new URL('../models/weapons/crowbar.glb', import.meta.url).href;
-const pistolUrl = new URL('../models/weapons/pistol.glb', import.meta.url).href;
-const smgUrl = new URL('../models/weapons/smg.glb', import.meta.url).href;
-const ar3Url = new URL('../models/weapons/ar3.glb', import.meta.url).href;
-const gravityGunUrl = new URL('../models/weapons/gravitygun.glb', import.meta.url).href;
+const zombieUrl = new URL('../../models/characters/zombie/zombie.glb', import.meta.url).href;
+const crowbarUrl = new URL('../../models/weapons/crowbar.glb', import.meta.url).href;
+const pistolUrl = new URL('../../models/weapons/pistol.glb', import.meta.url).href;
+const smgUrl = new URL('../../models/weapons/smg.glb', import.meta.url).href;
+const ar3Url = new URL('../../models/weapons/ar3.glb', import.meta.url).href;
+const gravityGunUrl = new URL('../../models/weapons/gravitygun.glb', import.meta.url).href;
 
 export type ModelAssetType = 'character' | 'weapon' | 'prop' | 'environment' | 'generated';
 
