@@ -1,6 +1,6 @@
-import { Scene, Vector3 } from "three";
+﻿import { Scene, Vector3 } from "three";
 import type { AssetManager } from "../../engine/assets/AssetManager";
-import type { GameEventBus } from "../../engine/GameEvents";
+import type { GameEventBus } from "../GameEvents";
 import type { Input } from "../../engine/Input";
 import type { CameraSystem } from "../../engine/render/CameraSystem";
 import type { PhysicsWorld } from "../../engine/physics/PhysicsWorld";

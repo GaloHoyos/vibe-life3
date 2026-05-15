@@ -1,4 +1,7 @@
-import type { HUDValue } from './HUDState';
+export interface HUDValue {
+  current: number;
+  max: number;
+}
 
 export class HealthArmorHUD {
   readonly element = document.createElement('section');

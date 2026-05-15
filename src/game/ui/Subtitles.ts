@@ -1,9 +1,16 @@
-import { SubtitleView } from './SubtitleView';
+import type { Disposable } from "../../shared/types/lifecycle";
+import { SubtitlesView } from "./SubtitlesView";
 
-export class Subtitles {
+/**
+ * Componente de subtítulos. Sigue el patrón Component+View del HUD:
+ * `Subtitles` administra el ciclo de vida y la API pública, y delega el
+ * render al `SubtitlesView`. La lógica de tiempo (decay del subtítulo) es
+ * mínima y vive en el view directamente.
+ */
+export class Subtitles implements Disposable {
   readonly element: HTMLDivElement;
 
-  private readonly view = new SubtitleView();
+  private readonly view = new SubtitlesView();
 
   constructor(container: HTMLElement) {
     this.element = this.view.element;
@@ -16,5 +23,9 @@ export class Subtitles {
 
   update(delta: number): void {
     this.view.update(delta);
+  }
+
+  dispose(): void {
+    this.view.dispose();
   }
 }

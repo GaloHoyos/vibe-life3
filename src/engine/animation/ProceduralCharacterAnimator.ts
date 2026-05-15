@@ -1,7 +1,7 @@
 import { Bone, MathUtils, Object3D, Vector3 } from 'three';
 import type { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { Damageable } from '../../shared/types/lifecycle';
-import type { CharacterAnimationConfig } from '../../characters/CharacterDefinition';
+import type { CharacterAnimationConfig } from '../characters/CharacterDefinition';
 import { AnimationDebug } from './AnimationDebug';
 import { BoneMapper } from './BoneMapper';
 import { applyBoneRotationOffset } from './BoneRotation';

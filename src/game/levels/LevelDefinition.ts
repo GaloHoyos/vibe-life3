@@ -1,5 +1,5 @@
 import type { VectorTuple } from '../../shared/math/VectorTuple';
-import type { CharacterId } from '../characters/CharacterDefinition';
+import type { CharacterId } from '../../engine/characters/CharacterDefinition';
 import type { WeaponId } from '../gameplay/weapons/WeaponDefinition';
 import type { MaterialKey } from '../../engine/render/Materials';
 
@@ -57,11 +57,21 @@ export interface TriggerDefinition {
   };
 }
 
+export interface LevelAudioDefinition {
+  /** Sounds en loop que se reproducen como ambiente del nivel. */
+  ambiences: string[];
+  /** Pool de pasos que el jugador y los NPCs randomizan al caminar. */
+  footstepSounds: string[];
+  /** Id opcional de la música del nivel. */
+  music?: string;
+}
+
 export interface LevelDefinition {
   id: string;
   title: string;
   background: number;
   playerStart: VectorTuple;
+  audio: LevelAudioDefinition;
   staticBoxes: StaticBoxDefinition[];
   dynamicBoxes: DynamicBoxDefinition[];
   doors: DoorDefinition[];

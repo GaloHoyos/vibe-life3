@@ -1,3 +1,4 @@
+import type { Disposable } from "../../../shared/types/lifecycle";
 import { MainMenuView } from "./MainMenuView";
 import { DefaultChapters, type GameMenuState } from "./MainMenuState";
 import type { AudioBusName } from "../../../engine/audio/AudioSystem";
@@ -11,7 +12,7 @@ export interface MainMenuCallbacks {
   onGetVolume: (bus: AudioBusName) => number;
 }
 
-export class MainMenu {
+export class MainMenu implements Disposable {
   readonly element: HTMLDivElement;
   private state: GameMenuState = "mainMenu";
   private backTarget: GameMenuState = "mainMenu";
@@ -71,5 +72,9 @@ export class MainMenu {
 
   setDebugEnabled(enabled: boolean): void {
     this.view.setDebugEnabled(enabled);
+  }
+
+  dispose(): void {
+    this.element.remove();
   }
 }

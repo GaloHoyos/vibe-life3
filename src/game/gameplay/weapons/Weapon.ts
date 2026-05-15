@@ -1,5 +1,5 @@
-import { Vector3 } from "three";
-import type { GameEventBus } from "../../../engine/GameEvents";
+﻿import { Vector3 } from "three";
+import type { GameEventBus } from "../../GameEvents";
 import type { Raycast } from "../../../engine/physics/Raycast";
 import type { WeaponDefinition } from "./WeaponDefinition";
 

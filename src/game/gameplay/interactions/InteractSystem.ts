@@ -1,5 +1,5 @@
-import { Object3D, Raycaster, Vector3 } from 'three';
-import type { GameEventBus } from '../../../engine/GameEvents';
+﻿import { Object3D, Raycaster, Vector3 } from 'three';
+import type { GameEventBus } from "../../GameEvents";
 import type { Input } from '../../../engine/Input';
 import type { Interactable } from './Interactable';
 

@@ -1,4 +1,6 @@
-export class Crosshair {
+import type { Disposable } from '../../shared/types/lifecycle';
+
+export class Crosshair implements Disposable {
   readonly element = document.createElement('div');
 
   private hitTimer = 0;
@@ -23,5 +25,10 @@ export class Crosshair {
     this.element.classList.add('is-hit');
     window.clearTimeout(this.hitTimer);
     this.hitTimer = window.setTimeout(() => this.element.classList.remove('is-hit'), 150);
+  }
+
+  dispose(): void {
+    window.clearTimeout(this.hitTimer);
+    window.clearTimeout(this.fireTimer);
   }
 }

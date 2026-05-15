@@ -1,4 +1,4 @@
-import type { GameEventBus } from '../../../engine/GameEvents';
+﻿import type { GameEventBus } from "../../GameEvents";
 import type { Weapon } from './Weapon';
 import type { WeaponId } from './WeaponDefinition';
 

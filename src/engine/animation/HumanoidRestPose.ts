@@ -1,4 +1,4 @@
-import type { CharacterAnimationConfig, HumanoidRestPoseConfig } from '../../characters/CharacterDefinition';
+import type { CharacterAnimationConfig, HumanoidRestPoseConfig } from '../characters/CharacterDefinition';
 import type { BoneMap } from './BoneMapper';
 import { applyBoneRotationOffsets } from './BoneRotation';
 

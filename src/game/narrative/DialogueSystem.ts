@@ -1,5 +1,5 @@
-import type { Disposable } from '../../shared/types/lifecycle';
-import type { GameEventBus } from '../../engine/GameEvents';
+﻿import type { Disposable } from '../../shared/types/lifecycle';
+import type { GameEventBus } from "../GameEvents";
 import type { Subtitles } from '../ui/Subtitles';
 
 export class DialogueSystem implements Disposable {

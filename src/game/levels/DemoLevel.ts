@@ -1,10 +1,19 @@
 import type { LevelDefinition } from './LevelDefinition';
 
 export const DemoLevel: LevelDefinition = {
-  id: 'demo-lab',
+  id: 'demo',
   title: 'Instalacion de pruebas',
   background: 0x071019,
   playerStart: [0, 1.05, 8],
+  audio: {
+    ambiences: ['background.wind'],
+    footstepSounds: [
+      'footsteps.snow1',
+      'footsteps.snow2',
+      'footsteps.snow3',
+      'footsteps.snow4',
+    ],
+  },
   staticBoxes: [
     { id: 'floor-main', position: [0, -0.5, 0], size: [28, 1, 34], material: 'floor' },
     { id: 'ceiling-main', position: [0, 4.2, 0], size: [28, 0.4, 34], material: 'wall' },

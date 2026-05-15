@@ -1,5 +1,5 @@
-import type { Vector3 } from "three";
-import type { GameEventBus } from "../../engine/GameEvents";
+﻿import type { Vector3 } from "three";
+import type { GameEventBus } from "../GameEvents";
 import { Health } from "./Health";
 
 export class PlayerHealth {

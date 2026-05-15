@@ -1,11 +1,11 @@
-import { Bone, BoxGeometry, Group, Mesh, MeshStandardMaterial, Object3D, SphereGeometry, Vector3 } from 'three';
+﻿import { Bone, BoxGeometry, Group, Mesh, MeshStandardMaterial, Object3D, SphereGeometry, Vector3 } from 'three';
 import type { AssetManager } from '../../engine/assets/AssetManager';
-import { NPC } from '../ai/NPC';
-import type { GameEventBus } from '../../engine/GameEvents';
+import { NPC } from '../npc/NPC';
+import type { GameEventBus } from "../GameEvents";
 import type { PhysicsWorld } from '../../engine/physics/PhysicsWorld';
 import { getMaterial } from '../../engine/render/Materials';
 import { CharacterPresets } from './CharacterPresets';
-import type { CharacterId } from './CharacterDefinition';
+import type { CharacterId } from '../../engine/characters/CharacterDefinition';
 
 export class CharacterFactory {
   constructor(

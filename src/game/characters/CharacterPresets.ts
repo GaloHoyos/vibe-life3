@@ -1,5 +1,5 @@
 import { Vector3 } from "three";
-import type { CharacterDefinition, CharacterId } from "./CharacterDefinition";
+import type { CharacterDefinition, CharacterId } from "../../engine/characters/CharacterDefinition";
 
 const baseHumanoid = {
   type: "humanoid",

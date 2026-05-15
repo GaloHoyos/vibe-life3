@@ -1,10 +1,10 @@
 import type { Object3D, Vector3 } from "three";
-import type { ModelAssetId } from "../../engine/assets/AssetManifest";
+import type { ModelAssetId } from "../assets/AssetManifest";
 import type {
   ProceduralWalkConfig,
   WalkStyle,
-} from "../../engine/animation/ProceduralWalk";
-import type { RagdollConfig } from "../../engine/animation/RagdollDefinition";
+} from "../animation/ProceduralWalk";
+import type { RagdollConfig } from "../animation/RagdollDefinition";
 
 export type CharacterType = "humanoid" | "creature" | "robot" | "prop";
 export type CharacterId = string;

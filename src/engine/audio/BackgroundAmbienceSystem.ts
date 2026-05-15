@@ -1,45 +1,36 @@
-import { AudioManifest } from "./AudioManifest";
+import { AudioClipCatalog } from "./AudioManifest";
 import type { SoundManager } from "./SoundManager";
 
+/**
+ * Reproduce ambientes en loop a partir de una lista de ids de clips.
+ *
+ * Es agnóstico al juego: no conoce niveles ni eventos. La capa de juego
+ * le pasa los ids al cargar un nivel y los detiene al salir.
+ */
 export class BackgroundAmbienceSystem {
   private readonly activeIds = new Set<string>();
 
   constructor(private readonly sounds: SoundManager) {}
 
-  startForLevel(levelId: string): void {
-    if (levelId !== "demo") {
-      return;
-    }
-
-    const ambienceIds = ["background.wind"];
-
+  /** Inicia los ambientes indicados. Ignora ids no presentes en el catálogo. */
+  start(ambienceIds: readonly string[], fadeIn = 2): void {
     ambienceIds.forEach((id) => {
       if (this.activeIds.has(id)) {
         return;
       }
+      const clip = AudioClipCatalog[id];
+      if (!clip) {
+        return;
+      }
       this.activeIds.add(id);
-      const clip = AudioManifest.background.wind;
-      this.sounds.playLoop(id, { volume: clip.volume, fadeIn: 2 });
+      this.sounds.playLoop(id, { volume: clip.volume, fadeIn });
     });
   }
 
-  stopForLevel(levelId: string): void {
-    if (levelId !== "demo") {
-      return;
-    }
-
-    this.fadeOut(1.4);
-  }
-
-  fadeIn(duration = 2): void {
+  /** Detiene todos los ambientes activos con fade-out. */
+  stop(fadeOut = 1.4): void {
     this.activeIds.forEach((id) => {
-      this.sounds.playLoop(id, { fadeIn: duration });
-    });
-  }
-
-  fadeOut(duration = 1.2): void {
-    this.activeIds.forEach((id) => {
-      this.sounds.fadeOut(id, duration);
+      this.sounds.fadeOut(id, fadeOut);
     });
     this.activeIds.clear();
   }

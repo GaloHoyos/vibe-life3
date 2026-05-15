@@ -1,14 +1,11 @@
-export type NPCState =
+export type NpcAiState =
   | "idle"
   | "alert"
   | "chase"
   | "attack"
-  | "stagger"
-  | "fallen"
-  | "recovering"
   | "dead";
 
-export type NPCBalanceState =
+export type NpcBalanceState =
   | "balanced"
   | "stumbling"
   | "fallen"

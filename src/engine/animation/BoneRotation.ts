@@ -1,5 +1,5 @@
 import { Quaternion, Vector3, type Bone } from 'three';
-import type { BoneAxis, BoneRotationOffset } from '../../characters/CharacterDefinition';
+import type { BoneAxis, BoneRotationOffset } from '../characters/CharacterDefinition';
 
 const AxisVectors: Record<BoneAxis, Vector3> = {
   x: new Vector3(1, 0, 0),

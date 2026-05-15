@@ -1,7 +1,10 @@
-import RAPIER from '@dimforge/rapier3d-compat';
-import { MathUtils, Quaternion, Vector3 } from 'three';
-import { createCharacterCollider } from './CharacterCollider';
-import type { PhysicsWorld, PhysicsMetadata } from './PhysicsWorld';
+import RAPIER from "@dimforge/rapier3d-compat";
+import { MathUtils, Quaternion, Vector3 } from "three";
+import {
+  KinematicCharacterBase,
+  type KinematicCharacterBaseOptions,
+} from "./KinematicCharacterBase";
+import type { PhysicsMetadata, PhysicsWorld } from "./PhysicsWorld";
 
 export interface CharacterMotorConfig {
   id: string;
@@ -34,12 +37,12 @@ export interface CharacterMotorSnapshot {
   distanceToTarget: number;
 }
 
-export class CharacterMotor {
-  readonly body: RAPIER.RigidBody;
-  readonly collider: RAPIER.Collider;
-
-  private readonly controller: RAPIER.KinematicCharacterController;
-  private readonly velocity = new Vector3();
+/**
+ * Motor cinemático para NPCs: locomoción con yaw, target-facing y
+ * desaceleración suave. Hereda el manejo de cápsula / step / snap-to-ground
+ * de `KinematicCharacterBase`.
+ */
+export class CharacterMotor extends KinematicCharacterBase {
   private readonly actualVelocity = new Vector3();
   private readonly horizontalVelocity = new Vector3();
   private readonly desiredVelocity = new Vector3();
@@ -47,57 +50,59 @@ export class CharacterMotor {
   private distanceToTarget = Number.POSITIVE_INFINITY;
   private yaw = 0;
   private targetYaw = 0;
-  private grounded = false;
   private enabled = true;
 
   constructor(
-    private readonly physics: PhysicsWorld,
+    physics: PhysicsWorld,
     private readonly config: CharacterMotorConfig,
   ) {
-    const character = createCharacterCollider(physics, {
-      id: config.id,
-      position: config.position,
-      height: config.height,
-      radius: config.radius,
-      mass: config.mass,
-      metadata: config.metadata,
-    });
-    this.body = character.body;
-    this.collider = character.collider;
-    this.controller = physics.createCharacterController(0.03);
-    this.controller.enableAutostep(config.stepOffset, config.radius * 0.65, true);
-    this.controller.enableSnapToGround(config.snapToGround);
+    super(physics, motorBaseOptions(physics, config));
   }
 
-  update(delta: number, targetPosition: Vector3 | null, wantsMove: boolean): void {
+  update(
+    delta: number,
+    targetPosition: Vector3 | null,
+    wantsMove: boolean,
+  ): void {
     if (!this.enabled) {
       return;
     }
 
     const position = this.getPosition();
-    const directionToTarget = targetPosition ? targetPosition.clone().sub(position) : new Vector3();
+    const directionToTarget = targetPosition
+      ? targetPosition.clone().sub(position)
+      : new Vector3();
     directionToTarget.y = 0;
     this.distanceToTarget = directionToTarget.length();
 
-    if (directionToTarget.lengthSq() > this.config.faceTargetDeadzone * this.config.faceTargetDeadzone) {
+    if (
+      directionToTarget.lengthSq() >
+      this.config.faceTargetDeadzone * this.config.faceTargetDeadzone
+    ) {
       directionToTarget.normalize();
       this.targetYaw = Math.atan2(directionToTarget.x, directionToTarget.z);
-      const turnLambda = this.config.turnSpeed * Math.max(0.15, 1 - this.config.rotationSmoothing);
+      const turnLambda =
+        this.config.turnSpeed * Math.max(0.15, 1 - this.config.rotationSmoothing);
       this.yaw = dampAngle(this.yaw, this.targetYaw, turnLambda, delta);
     }
 
     this.forward.set(Math.sin(this.yaw), 0, Math.cos(this.yaw)).normalize();
 
     if (wantsMove) {
-      const facingDot = targetPosition ? MathUtils.clamp(this.forward.dot(directionToTarget), -1, 1) : 1;
+      const facingDot = targetPosition
+        ? MathUtils.clamp(this.forward.dot(directionToTarget), -1, 1)
+        : 1;
       const angleToTarget = Math.acos(facingDot);
       const facingSpeedFactor = MathUtils.smoothstep(
         facingDot,
         this.config.minMoveFacingDot,
         1,
       );
-      const turnSlowdown = angleToTarget > this.config.turnBeforeMoveAngle ? 0.35 : 1;
-      this.desiredVelocity.copy(this.forward).multiplyScalar(this.config.maxSpeed * facingSpeedFactor * turnSlowdown);
+      const turnSlowdown =
+        angleToTarget > this.config.turnBeforeMoveAngle ? 0.35 : 1;
+      this.desiredVelocity
+        .copy(this.forward)
+        .multiplyScalar(this.config.maxSpeed * facingSpeedFactor * turnSlowdown);
     } else {
       this.desiredVelocity.set(0, 0, 0);
     }
@@ -118,35 +123,23 @@ export class CharacterMotor {
     this.velocity.z = this.horizontalVelocity.z;
     this.velocity.y += -this.config.gravity * delta;
 
-    const desiredMovement = this.velocity.clone().multiplyScalar(delta);
-    this.controller.computeColliderMovement(
-      this.collider,
-      desiredMovement,
-      RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-      undefined,
-      (collider) => this.shouldCollideWith(collider),
+    const { corrected } = this.stepMovement(delta, (collider) =>
+      this.shouldCollideWith(collider),
     );
-    const corrected = this.controller.computedMovement();
     const invDelta = delta > 0 ? 1 / delta : 0;
-    this.actualVelocity.set(corrected.x * invDelta, corrected.y * invDelta, corrected.z * invDelta);
-    const current = this.body.translation();
-    this.body.setNextKinematicTranslation({
-      x: current.x + corrected.x,
-      y: current.y + corrected.y,
-      z: current.z + corrected.z,
-    });
-    this.body.setNextKinematicRotation(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), this.yaw));
-    this.grounded = this.controller.computedGrounded();
-
-    if (this.grounded && this.velocity.y < 0) {
-      this.velocity.y = 0;
-    }
+    this.actualVelocity.set(
+      corrected.x * invDelta,
+      corrected.y * invDelta,
+      corrected.z * invDelta,
+    );
+    this.body.setNextKinematicRotation(
+      new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), this.yaw),
+    );
   }
 
   syncFromPhysics(): CharacterMotorSnapshot {
-    const position = this.getPosition();
     return {
-      position,
+      position: this.getPosition(),
       velocity: this.actualVelocity.clone(),
       desiredVelocity: this.desiredVelocity.clone(),
       forward: this.forward.clone(),
@@ -164,11 +157,6 @@ export class CharacterMotor {
     this.horizontalVelocity.set(0, 0, 0);
     this.collider.setEnabled(false);
     this.body.setEnabled(false);
-  }
-
-  getPosition(): Vector3 {
-    const position = this.body.translation();
-    return new Vector3(position.x, position.y, position.z);
   }
 
   getVelocity(): Vector3 {
@@ -189,7 +177,34 @@ export class CharacterMotor {
   }
 }
 
-function dampAngle(current: number, target: number, lambda: number, delta: number): number {
-  const deltaAngle = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+function motorBaseOptions(
+  physics: PhysicsWorld,
+  config: CharacterMotorConfig,
+): KinematicCharacterBaseOptions {
+  return {
+    physics,
+    position: config.position,
+    radius: config.radius,
+    halfHeight: getCapsuleHalfHeight(config.height, config.radius),
+    metadata: config.metadata,
+    stepOffset: config.stepOffset,
+    snapToGround: config.snapToGround,
+  };
+}
+
+function getCapsuleHalfHeight(height: number, radius: number): number {
+  return Math.max((height - radius * 2) / 2, 0.05);
+}
+
+function dampAngle(
+  current: number,
+  target: number,
+  lambda: number,
+  delta: number,
+): number {
+  const deltaAngle = Math.atan2(
+    Math.sin(target - current),
+    Math.cos(target - current),
+  );
   return current + deltaAngle * (1 - Math.exp(-lambda * delta));
 }

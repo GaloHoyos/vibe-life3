@@ -1,5 +1,5 @@
-import type { Object3D } from 'three';
-import type { GameEventBus } from '../../../engine/GameEvents';
+﻿import type { Object3D } from 'three';
+import type { GameEventBus } from "../../GameEvents";
 import type { Interactable } from './Interactable';
 import type { SlidingDoor } from './SlidingDoor';
 

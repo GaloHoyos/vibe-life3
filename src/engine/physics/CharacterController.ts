@@ -1,9 +1,10 @@
-import RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3 } from "three";
 import type { Input } from "../Input";
 import type { CameraSystem } from "../render/CameraSystem";
+import { KinematicCharacterBase } from "./KinematicCharacterBase";
 import type { PhysicsWorld } from "./PhysicsWorld";
-import { createCapsuleCollider } from "./Colliders";
+
+const PlayerGravity = 28;
 
 export interface CharacterControllerOptions {
   position: Vector3;
@@ -14,34 +15,19 @@ export interface CharacterControllerOptions {
   eyeHeight: number;
 }
 
-export class CharacterController {
-  readonly rigidBody: RAPIER.RigidBody;
-  readonly collider: RAPIER.Collider;
-
-  private readonly controller: RAPIER.KinematicCharacterController;
-  private readonly velocity = new Vector3();
-  private readonly desiredMovement = new Vector3();
-  private grounded = false;
-
+/** Character controller del jugador: WASD + salto + cámara FPS. */
+export class CharacterController extends KinematicCharacterBase {
   constructor(
-    private readonly physics: PhysicsWorld,
+    physics: PhysicsWorld,
     private readonly options: CharacterControllerOptions,
   ) {
-    this.rigidBody = physics.world.createRigidBody(
-      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
-        options.position.x,
-        options.position.y,
-        options.position.z,
-      ),
-    );
-    this.collider = physics.world.createCollider(
-      createCapsuleCollider(options.radius, options.halfHeight),
-      this.rigidBody,
-    );
-    physics.registerCollider(this.collider, { id: "player", kind: "player" });
-    this.controller = physics.createCharacterController(0.03);
-    this.controller.enableAutostep(0.45, 0.25, true);
-    this.controller.enableSnapToGround(0.45);
+    super(physics, {
+      physics,
+      position: options.position,
+      radius: options.radius,
+      halfHeight: options.halfHeight,
+      metadata: { id: "player", kind: "player" },
+    });
   }
 
   update(delta: number, input: Input, cameraSystem: CameraSystem): void {
@@ -65,37 +51,9 @@ export class CharacterController {
       this.grounded = false;
     }
 
-    this.velocity.y += -28 * delta;
+    this.velocity.y += -PlayerGravity * delta;
 
-    this.desiredMovement.set(
-      this.velocity.x * delta,
-      this.velocity.y * delta,
-      this.velocity.z * delta,
-    );
-
-    this.controller.computeColliderMovement(
-      this.collider,
-      this.desiredMovement,
-    );
-    const corrected = this.controller.computedMovement();
-    const current = this.rigidBody.translation();
-
-    this.rigidBody.setNextKinematicTranslation({
-      x: current.x + corrected.x,
-      y: current.y + corrected.y,
-      z: current.z + corrected.z,
-    });
-
-    this.grounded = this.controller.computedGrounded();
-
-    if (this.grounded && this.velocity.y < 0) {
-      this.velocity.y = 0;
-    }
-  }
-
-  getPosition(): Vector3 {
-    const position = this.rigidBody.translation();
-    return new Vector3(position.x, position.y, position.z);
+    this.stepMovement(delta);
   }
 
   getEyePosition(): Vector3 {

@@ -1,12 +1,12 @@
-import type { Scene } from 'three';
+﻿import type { Scene } from 'three';
 import type { AssetManager } from '../../engine/assets/AssetManager';
 import type { CharacterFactory } from '../characters/CharacterFactory';
 import type { VectorTuple } from '../../shared/math/VectorTuple';
 import { tupleToVector3 } from '../../shared/math/VectorTuple';
-import type { GameEventBus } from '../../engine/GameEvents';
+import type { GameEventBus } from "../GameEvents";
 import { DoorButton, InteractSystem, SlidingDoor } from '../gameplay/interactions';
 import { WeaponPickup } from '../gameplay/weapons/WeaponPickup';
-import { NPC } from '../ai/NPC';
+import { NPC } from '../npc/NPC';
 import type { PhysicsWorld } from '../../engine/physics/PhysicsWorld';
 import { createBoxMesh } from '../../engine/render/PrimitiveFactory';
 import type { MaterialKey } from '../../engine/render/Materials';

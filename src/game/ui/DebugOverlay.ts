@@ -1,4 +1,5 @@
 import type { Vector3 } from "three";
+import type { Disposable } from "../../shared/types/lifecycle";
 import type { GameEventBus } from "../GameEvents";
 
 export interface DebugSnapshot {
@@ -8,7 +9,7 @@ export interface DebugSnapshot {
   npcStates: string[];
 }
 
-export class DebugOverlay {
+export class DebugOverlay implements Disposable {
   readonly element: HTMLDivElement;
 
   private enabled = false;
@@ -54,5 +55,9 @@ export class DebugOverlay {
       `Physics bodies: ${snapshot.physicsBodies}`,
       `NPCs: ${snapshot.npcStates.join(", ") || "none"}`,
     ].join("\n");
+  }
+
+  dispose(): void {
+    this.element.remove();
   }
 }

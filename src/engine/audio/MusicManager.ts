@@ -1,5 +1,12 @@
 import type { SoundManager } from "./SoundManager";
 
+/**
+ * Reproduce un track musical en loop, con crossfade entre tracks.
+ *
+ * Es agnóstico al juego: recibe ids de clips registrados en el catálogo.
+ * `Game` consulta `LevelDefinition.audio.music` y le pasa el id al cargar
+ * un nivel (o llama `stopMusic()` si el nivel no define música).
+ */
 export class MusicManager {
   private currentId: string | null = null;
 

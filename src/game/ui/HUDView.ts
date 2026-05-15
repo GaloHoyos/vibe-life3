@@ -1,3 +1,4 @@
+import type { Disposable } from '../../shared/types/lifecycle';
 import { Crosshair } from './Crosshair';
 import { DamageIndicator } from './DamageIndicator';
 import { HealthArmorHUD } from './HealthArmorHUD';
@@ -7,7 +8,12 @@ import { WeaponHUD } from './WeaponHUD';
 
 export type HUDNotificationTone = 'info' | 'pickup' | 'warning';
 
-export class HUDView {
+/**
+ * Vista del HUD. Composita los subwidgets (`Crosshair`, `WeaponHUD`, etc.)
+ * y los inserta en el árbol DOM. La lógica viva (estado, suscripciones)
+ * está en `HUD`; este archivo es puro layout y mutaciones DOM.
+ */
+export class HUDView implements Disposable {
   readonly element = document.createElement('div');
   readonly healthArmor = new HealthArmorHUD();
   readonly weapon = new WeaponHUD();
@@ -17,6 +23,7 @@ export class HUDView {
   readonly objective = new ObjectiveHUD();
 
   private readonly feed = document.createElement('div');
+  private readonly pendingNotificationTimers: number[] = [];
 
   constructor(container: HTMLElement) {
     container.querySelectorAll(':scope > .hud').forEach((existing) => existing.remove());
@@ -39,11 +46,18 @@ export class HUDView {
     item.className = `hev-feed__item hev-feed__item--${tone}`;
     item.textContent = message.toUpperCase();
     this.feed.prepend(item);
-    window.setTimeout(() => item.classList.add('is-expired'), 2200);
-    window.setTimeout(() => item.remove(), 2800);
+    this.pendingNotificationTimers.push(
+      window.setTimeout(() => item.classList.add('is-expired'), 2200),
+      window.setTimeout(() => item.remove(), 2800),
+    );
   }
 
   dispose(): void {
+    this.pendingNotificationTimers.forEach((id) => window.clearTimeout(id));
+    this.pendingNotificationTimers.length = 0;
+    this.crosshair.dispose();
+    this.damage.dispose();
+    this.weapon.dispose();
     this.element.remove();
   }
 }

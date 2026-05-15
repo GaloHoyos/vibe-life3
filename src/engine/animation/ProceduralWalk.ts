@@ -1,5 +1,5 @@
 import { MathUtils, Vector3 } from 'three';
-import type { ArmsMode, HumanoidBoneAxesConfig } from '../../characters/CharacterDefinition';
+import type { ArmsMode, HumanoidBoneAxesConfig } from '../characters/CharacterDefinition';
 import type { BoneMap } from './BoneMapper';
 import { applyBoneRotationOffset } from './BoneRotation';
 

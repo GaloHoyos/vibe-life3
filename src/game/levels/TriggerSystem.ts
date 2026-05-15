@@ -1,5 +1,5 @@
-import { Box3, Vector3 } from 'three';
-import type { GameEventBus } from '../../engine/GameEvents';
+﻿import { Box3, Vector3 } from 'three';
+import type { GameEventBus } from "../GameEvents";
 import { tupleToVector3 } from '../../shared/math/VectorTuple';
 import type { TriggerDefinition } from './LevelDefinition';
 

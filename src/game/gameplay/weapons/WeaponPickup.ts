@@ -4,7 +4,7 @@ import type { AssetManager } from '../../../engine/assets/AssetManager';
 import type { PhysicsWorld } from '../../../engine/physics/PhysicsWorld';
 import type { WeaponController } from './WeaponController';
 import type { WeaponId } from './WeaponDefinition';
-import { WeaponRegistry } from './WeaponRegistry';
+import { getWeapon } from './WeaponFactory';
 
 const PickupRadius = 1.35;
 const SpawnLift = 0.85;
@@ -27,7 +27,7 @@ export class WeaponPickup {
     private readonly physics: PhysicsWorld,
     private readonly options: WeaponPickupOptions,
   ) {
-    const definition = WeaponRegistry.get(options.weaponId);
+    const definition = getWeapon(options.weaponId);
     this.object.name = options.id;
     this.object.scale.setScalar(definition.pickupScale);
     this.scene.add(this.object);
@@ -66,7 +66,7 @@ export class WeaponPickup {
     options: WeaponPickupOptions,
   ): Promise<WeaponPickup> {
     const pickup = new WeaponPickup(scene, physics, options);
-    const definition = WeaponRegistry.get(options.weaponId);
+    const definition = getWeapon(options.weaponId);
     const instance = await assets.instantiateModel(definition.pickupModelId);
     pickup.object.add(instance.root ?? createFallbackPickup(definition.displayName));
     return pickup;

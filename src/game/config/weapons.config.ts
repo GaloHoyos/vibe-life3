@@ -1,19 +1,13 @@
 import { Euler, Vector3 } from "three";
-import type { GameEventBus } from "../../../engine/GameEvents";
-import type { Raycast } from "../../../engine/physics/Raycast";
-import type { Weapon } from "./Weapon";
-import type { WeaponDefinition, WeaponId } from "./WeaponDefinition";
-import { AR3 } from "./weapons/AR3";
-import { Crowbar } from "./weapons/Crowbar";
-import { GravityGun } from "./weapons/GravityGun";
-import { Pistol } from "./weapons/Pistol";
-import { SMG } from "./weapons/SMG";
+import type { WeaponDefinition, WeaponId } from "../gameplay/weapons/WeaponDefinition";
 
-export interface WeaponCreateContext {
-  eventBus: GameEventBus;
-  raycast: Raycast;
-}
-
+/**
+ * Configuración data-driven de todas las armas del juego.
+ *
+ * Agregar un arma nueva = añadir una entrada acá + (si su comportamiento no
+ * encaja en hitscan/melee/special) crear una subclase de `Weapon`.
+ * El factory en `WeaponFactory.createWeapon` la instancia según `type`.
+ */
 export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
   crowbar: {
     id: "crowbar",
@@ -177,21 +171,22 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
   },
 };
 
-export class WeaponRegistry {
-  static get(id: WeaponId): WeaponDefinition {
-    return WeaponDefinitions[id];
-  }
-
-  static all(): WeaponDefinition[] {
-    return Object.values(WeaponDefinitions).sort((a, b) => a.slot - b.slot);
-  }
-
-  static create(id: WeaponId, context: WeaponCreateContext): Weapon {
-    const definition = WeaponDefinitions[id];
-    if (id === "crowbar") return new Crowbar(definition, context);
-    if (id === "pistol") return new Pistol(definition, context);
-    if (id === "smg") return new SMG(definition, context);
-    if (id === "ar3") return new AR3(definition, context);
-    return new GravityGun(definition, context);
-  }
+export function getWeaponDefinition(id: WeaponId): WeaponDefinition {
+  return WeaponDefinitions[id];
 }
+
+export function getAllWeaponDefinitions(): WeaponDefinition[] {
+  return Object.values(WeaponDefinitions).sort((a, b) => a.slot - b.slot);
+}
+
+/** Límites globales del sistema de efectos de armas. */
+export const WeaponEffectsConfig = {
+  /** Máximo de tracers (líneas de disparo) en escena simultáneos. */
+  maxTracers: 24,
+  /** Máximo de decals (marcas de impacto) en escena simultáneos. */
+  maxDecals: 48,
+  /** Duración (s) del tracer antes de desvanecerse. */
+  tracerDuration: 0.06,
+  /** Duración (s) del decal antes de desvanecerse. */
+  decalDuration: 16,
+} as const;

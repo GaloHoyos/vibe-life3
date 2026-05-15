@@ -1,13 +1,13 @@
 import { MathUtils, Object3D, Vector3 } from "three";
 
-export interface ActiveRagdollConfig {
+export interface HitReactionAnimatorConfig {
   swayStrength: number;
   turnLagStrength: number;
   flinchStrength: number;
   stumbleLean: number;
 }
 
-export interface ActiveRagdollUpdate {
+export interface HitReactionUpdate {
   velocity: Vector3;
   acceleration: Vector3;
   yawDelta: number;
@@ -15,16 +15,24 @@ export interface ActiveRagdollUpdate {
   deltaTime: number;
 }
 
-export class ActiveRagdollController {
+/**
+ * Animación procedural de "reacción" sobre el root del personaje.
+ *
+ * A pesar del nombre histórico (`ActiveRagdollController`), **no** maneja
+ * física: solamente deforma `root.rotation.x` / `root.rotation.z` para
+ * dar inercia visual (sway, turn-lag, stumble lean, flinch). El sistema
+ * de ragdoll físico real vive en `RagdollSystem`/`RagdollController`.
+ */
+export class HitReactionAnimator {
   private readonly flinch = new Vector3();
   private flinchTimer = 0;
 
   constructor(
     private readonly root: Object3D,
-    private readonly config: ActiveRagdollConfig,
+    private readonly config: HitReactionAnimatorConfig,
   ) {}
 
-  update(update: ActiveRagdollUpdate): void {
+  update(update: HitReactionUpdate): void {
     const lateralSway = MathUtils.clamp(
       -update.acceleration.x * 0.015,
       -0.18,

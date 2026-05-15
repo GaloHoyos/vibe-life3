@@ -1,4 +1,4 @@
-import {
+﻿import {
   AdditiveBlending,
   CircleGeometry,
   CylinderGeometry,
@@ -8,7 +8,8 @@ import {
   Scene,
   Vector3,
 } from "three";
-import type { GameEventBus } from "../../../engine/GameEvents";
+import { WeaponEffectsConfig } from "../../config/weapons.config";
+import type { GameEventBus } from "../../GameEvents";
 
 const worldUp = new Vector3(0, 1, 0);
 const worldForward = new Vector3(0, 0, 1);
@@ -21,6 +22,15 @@ interface TrackedEffect {
   duration: number;
 }
 
+/**
+ * Render de tracers y decals al disparar.
+ *
+ * Se suscribe a `weapon.fired` / `weapon.hit` en el constructor y guarda
+ * las funciones de unsubscribe. Ownership: `Game.dispose()` lo libera y
+ * con eso quedan limpios los listeners del bus. Si en el futuro hubiera
+ * recarga de nivel sin recrear `Game`, llamar `dispose()` manualmente
+ * antes de instanciar otro `WeaponEffects` para no acumular handlers.
+ */
 export class WeaponEffects {
   private readonly traces: TrackedEffect[] = [];
   private readonly decals: TrackedEffect[] = [];
@@ -47,6 +57,7 @@ export class WeaponEffects {
 
   dispose(): void {
     this.unsubscribers.forEach((unsubscribe) => unsubscribe());
+    this.unsubscribers.length = 0;
     this.clearEffects(this.traces);
     this.clearEffects(this.decals);
   }
@@ -78,8 +89,13 @@ export class WeaponEffects {
     mesh.renderOrder = 40;
     this.scene.add(mesh);
 
-    this.traces.push({ mesh, material, remaining: 0.06, duration: 0.06 });
-    this.enforceLimit(this.traces, 24);
+    this.traces.push({
+      mesh,
+      material,
+      remaining: WeaponEffectsConfig.tracerDuration,
+      duration: WeaponEffectsConfig.tracerDuration,
+    });
+    this.enforceLimit(this.traces, WeaponEffectsConfig.maxTracers);
   }
 
   private createDecal(
@@ -120,8 +136,13 @@ export class WeaponEffects {
     mesh.renderOrder = 41;
     this.scene.add(mesh);
 
-    this.decals.push({ mesh, material, remaining: 16, duration: 16 });
-    this.enforceLimit(this.decals, 48);
+    this.decals.push({
+      mesh,
+      material,
+      remaining: WeaponEffectsConfig.decalDuration,
+      duration: WeaponEffectsConfig.decalDuration,
+    });
+    this.enforceLimit(this.decals, WeaponEffectsConfig.maxDecals);
   }
 
   private updateEffects(effects: TrackedEffect[], delta: number): void {

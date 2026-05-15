@@ -1,12 +1,12 @@
-import type { AssetManager } from "../../../engine/assets/AssetManager";
-import type { GameEventBus } from "../../../engine/GameEvents";
+﻿import type { AssetManager } from "../../../engine/assets/AssetManager";
+import type { GameEventBus } from "../../GameEvents";
 import type { Input } from "../../../engine/Input";
 import type { CameraSystem } from "../../../engine/render/CameraSystem";
 import type { Raycast } from "../../../engine/physics/Raycast";
 import type { Scene } from "three";
 import { Recoil } from "./Recoil";
 import { WeaponInventory } from "./WeaponInventory";
-import { WeaponRegistry } from "./WeaponRegistry";
+import { createWeapon, getWeapon } from "./WeaponFactory";
 import { WeaponViewModel } from "./WeaponViewModel";
 import type { WeaponId } from "./WeaponDefinition";
 
@@ -64,7 +64,7 @@ export class WeaponController {
 
   pickupWeapon(id: WeaponId): boolean {
     const existing = this.inventory.getWeapon(id);
-    const definition = WeaponRegistry.get(id);
+    const definition = getWeapon(id);
 
     if (existing) {
       const gained = existing.addPickupAmmo(false);
@@ -85,7 +85,7 @@ export class WeaponController {
       return false;
     }
 
-    const weapon = WeaponRegistry.create(id, {
+    const weapon = createWeapon(id, {
       eventBus: this.eventBus,
       raycast: this.raycast,
     });

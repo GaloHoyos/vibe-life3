@@ -1,12 +1,9 @@
 import { Group, MathUtils, Object3D, Vector3 } from "three";
-import { ActiveRagdollController } from "../../engine/animation/ActiveRagdollController";
-import {
-  ProceduralCharacterAnimator,
-  type ProceduralAnimationState,
-} from "../../engine/animation/ProceduralCharacterAnimator";
-import type { CharacterDefinition } from "../characters/CharacterDefinition";
+import { StateMachine } from "../../engine/ai/StateMachine";
+import type { ProceduralAnimationState } from "../../engine/animation/ProceduralCharacterAnimator";
+import type { CharacterDefinition } from "../../engine/characters/CharacterDefinition";
 import type { Damageable } from "../../shared/types/lifecycle";
-import type { GameEventBus } from "../../engine/GameEvents";
+import type { GameEventBus } from "../GameEvents";
 import { Health } from "../gameplay/Health";
 import {
   CharacterMotor,
@@ -14,7 +11,9 @@ import {
 } from "../../engine/physics/CharacterMotor";
 import type { PhysicsWorld } from "../../engine/physics/PhysicsWorld";
 import { Raycast } from "../../engine/physics/Raycast";
-import type { NPCBalanceState, NPCState } from "./NPCState";
+import { NpcAnimationBridge } from "./NpcAnimationBridge";
+import { NpcCombat } from "./NpcCombat";
+import type { NpcAiState, NpcBalanceState } from "./NPCState";
 
 export interface NPCOptions {
   id: string;
@@ -26,50 +25,49 @@ export interface NPCOptions {
   hasSkeleton: boolean;
 }
 
+/**
+ * NPC controlado por dos máquinas de estado (`StateMachine`):
+ *  - AI: `idle | alert | chase | attack | dead` — qué quiere hacer.
+ *  - Balance: `balanced | stumbling | fallen | recovering | dead` — su
+ *    condición física. Cuando no está balanceado, la AI queda suspendida.
+ *
+ * Composición de componentes:
+ *  - `CharacterMotor`     — locomoción cinemática (engine).
+ *  - `NpcAnimationBridge` — animación procedural + ragdoll reactivo.
+ *  - `NpcCombat`          — cooldown, windup, hit-window, LOS y daño.
+ */
 export class NPC implements Damageable {
   readonly mesh = new Group();
   readonly health: Health;
   readonly id: string;
 
   private readonly motor: CharacterMotor;
-  private readonly animator: ProceduralCharacterAnimator;
-  private readonly activeRagdoll: ActiveRagdollController;
-  private readonly visualRoot: Object3D;
+  private readonly animation: NpcAnimationBridge;
+  private readonly combat: NpcCombat;
   private readonly definition: CharacterDefinition;
   private readonly eventBus: GameEventBus;
-  private readonly previousVelocity = new Vector3();
-  private readonly acceleration = new Vector3();
+  private readonly raycast: Raycast;
   private readonly targetPosition = new Vector3();
   private readonly lastHitDirection = new Vector3(0, 0, 1);
+  private readonly aiFsm: StateMachine<NpcAiState>;
+  private readonly balanceFsm: StateMachine<NpcBalanceState>;
+
+  private currentPlayer: Damageable | null = null;
   private lastMotorSnapshot: CharacterMotorSnapshot | null = null;
   private lastHitPartName: string | undefined;
-  private state: NPCState = "idle";
-  private balanceState: NPCBalanceState = "balanced";
-  private attackCooldown = 0;
-  private attackStartedAt = 0;
-  private hasAppliedDamageThisAttack = false;
-  private lastAttackTime = -Infinity;
-  private totalTime = 0;
   private stumbleTimer = 0;
   private fallenTimer = 0;
   private recoverTimer = 0;
-  private lastYaw = 0;
   private deadHandled = false;
-  private aiEnabled = true;
-  private locomotionEnabled = true;
-  private proceduralAnimationEnabled = true;
-  private activeRagdollEnabled = true;
-  private readonly raycast: Raycast;
 
   constructor(options: NPCOptions) {
     this.id = options.id;
     this.definition = options.definition;
     this.eventBus = options.eventBus;
     this.health = new Health(options.definition.health.maxHealth);
-    this.visualRoot = options.visualRoot;
     this.mesh.name = options.id;
     this.mesh.position.copy(options.position);
-    this.mesh.add(this.visualRoot);
+    this.mesh.add(options.visualRoot);
 
     this.raycast = new Raycast(options.physics);
 
@@ -93,56 +91,64 @@ export class NPC implements Damageable {
       metadata: { id: options.id, kind: "npc", damageable: this },
     });
 
-    this.animator = new ProceduralCharacterAnimator({
-      id: options.id,
-      root: this.visualRoot,
-      physics: options.physics,
-      walk: options.definition.animation.walk,
-      ragdoll: options.definition.ragdoll,
-      animation: options.definition.animation,
-      owner: this,
-      debug: options.definition.debug,
-    });
-    this.activeRagdoll = new ActiveRagdollController(this.visualRoot, {
-      swayStrength: 1,
-      turnLagStrength: 0.08,
-      flinchStrength: 0.42,
-      stumbleLean: 0.16,
-    });
+    this.animation = new NpcAnimationBridge(
+      options.id,
+      options.definition,
+      options.visualRoot,
+      options.physics,
+      this,
+    );
+
+    this.combat = new NpcCombat(
+      options.id,
+      options.definition,
+      options.eventBus,
+      this.raycast,
+    );
+
+    this.aiFsm = this.buildAiFsm();
+    this.balanceFsm = this.buildBalanceFsm();
   }
 
   update(delta: number, playerPosition: Vector3, player: Damageable): void {
-    if (this.state === "dead") {
-      this.animator.update(this.createAnimationUpdate(delta, "dead"));
+    if (this.deadHandled) {
+      this.animation.updateStandalone(delta, "dead");
       return;
     }
 
-    this.totalTime += delta;
-    this.attackCooldown = Math.max(0, this.attackCooldown - delta);
+    this.combat.tickCooldown(delta);
     this.targetPosition.copy(playerPosition);
-    this.updateState(delta, player);
+    this.currentPlayer = player;
 
-    if (this.state === "attack") {
-      this.updateAttack(delta, player);
+    this.balanceFsm.update(delta);
+    if (this.balanceFsm.getState() === "balanced") {
+      this.aiFsm.update(delta);
     }
 
-    const wantsMove =
-      this.locomotionEnabled &&
-      this.state === "chase" &&
-      this.balanceState === "balanced";
-    const target =
-      this.aiEnabled &&
-      this.state !== "idle" &&
-      this.state !== "fallen" &&
-      this.state !== "recovering"
-        ? this.targetPosition
-        : null;
-    this.motor.update(delta, target, wantsMove);
+    if (this.aiFsm.getState() === "attack") {
+      const stillAttacking = this.combat.tickAttack(delta, {
+        npcPosition: this.mesh.position,
+        npcForward: this.getForwardDirection(),
+        targetPosition: this.targetPosition,
+        player,
+        balanceLocked: this.balanceLocked(),
+      });
+      if (!stillAttacking) {
+        this.aiFsm.setState("chase");
+      }
+    }
+
+    const ai = this.aiFsm.getState();
+    const balance = this.balanceFsm.getState();
+    const wantsMove = ai === "chase" && balance === "balanced";
+    const useTarget =
+      ai !== "idle" && balance !== "fallen" && balance !== "recovering";
+    this.motor.update(delta, useTarget ? this.targetPosition : null, wantsMove);
   }
 
   syncFromPhysics(): void {
-    if (this.state === "dead") {
-      this.animator.update(this.createAnimationUpdate(1 / 60, "dead"));
+    if (this.deadHandled) {
+      this.animation.updateStandalone(1 / 60, "dead");
       return;
     }
 
@@ -150,7 +156,12 @@ export class NPC implements Damageable {
     this.lastMotorSnapshot = snapshot;
     this.mesh.position.copy(snapshot.position);
     this.mesh.rotation.set(0, snapshot.yaw, 0);
-    this.updateAnimationFromMotor(snapshot);
+    this.animation.updateFromMotor({
+      snapshot,
+      state: this.getAnimationState(),
+      lookTarget: this.targetPosition,
+      balanceIsStumbling: this.balanceFsm.getState() === "stumbling",
+    });
   }
 
   applyDamage(
@@ -166,7 +177,7 @@ export class NPC implements Damageable {
     hitDirection = new Vector3(0, 0.2, 1),
     hitPartName?: string,
   ): void {
-    if (!this.health.isAlive() || this.state === "dead") {
+    if (!this.health.isAlive() || this.deadHandled) {
       return;
     }
 
@@ -179,11 +190,11 @@ export class NPC implements Damageable {
     const currentHealth = this.health.applyDamage(amount);
     this.eventBus.emit("npc.damaged", {
       id: this.mesh.name,
+      characterId: this.definition.id,
       amount,
       health: currentHealth,
     });
-    this.animator.hit(this.lastHitDirection);
-    this.activeRagdoll.flinchFrom(
+    this.animation.notifyHit(
       this.lastHitDirection,
       MathUtils.clamp(amount / this.definition.health.maxHealth, 0.2, 1),
     );
@@ -195,12 +206,13 @@ export class NPC implements Damageable {
 
     const hitStrength = amount / this.definition.health.maxHealth;
     if (hitStrength >= this.definition.stumble.stumbleImpulseThreshold) {
-      this.enterStumble(hitStrength);
+      const fell =
+        hitStrength > this.definition.stumble.fallAngleThreshold;
+      this.balanceFsm.setState(fell ? "fallen" : "stumbling");
     }
 
-    if (this.state === "idle") {
-      this.state = "alert";
-      this.eventBus.emit("npc.alert", { id: this.mesh.name });
+    if (this.aiFsm.getState() === "idle") {
+      this.aiFsm.setState("alert");
     }
   }
 
@@ -210,19 +222,18 @@ export class NPC implements Damageable {
     }
 
     this.deadHandled = true;
-    this.state = "dead";
-    this.balanceState = "dead";
-    this.aiEnabled = false;
-    this.locomotionEnabled = false;
-    this.proceduralAnimationEnabled = false;
-    this.activeRagdollEnabled = false;
+    this.aiFsm.setState("dead");
+    this.balanceFsm.setState("dead");
     this.motor.disable();
-    this.animator.dieWithVelocity(
+    this.animation.notifyDeath(
       hitDirection,
       this.motor.getVelocity(),
       hitPartName,
     );
-    this.eventBus.emit("npc.killed", { id: this.mesh.name });
+    this.eventBus.emit("npc.killed", {
+      id: this.mesh.name,
+      characterId: this.definition.id,
+    });
     this.eventBus.emit("dialogue.show", {
       speaker: "Sistema",
       text: "Entidad hostil neutralizada.",
@@ -235,301 +246,163 @@ export class NPC implements Damageable {
   }
 
   getState(): string {
+    const ai = this.aiFsm.getState();
+    const balance = this.balanceFsm.getState();
     if (this.definition.debug && this.lastMotorSnapshot) {
-      return `${this.state}/${this.balanceState} d:${this.lastMotorSnapshot.distanceToTarget.toFixed(1)} v:${this.lastMotorSnapshot.velocity.length().toFixed(2)} dv:${this.lastMotorSnapshot.desiredVelocity.length().toFixed(2)} g:${this.lastMotorSnapshot.grounded ? "1" : "0"}`;
+      const m = this.lastMotorSnapshot;
+      return `${ai}/${balance} d:${m.distanceToTarget.toFixed(1)} v:${m.velocity.length().toFixed(2)} dv:${m.desiredVelocity.length().toFixed(2)} g:${m.grounded ? "1" : "0"}`;
     }
-
-    return `${this.state}/${this.balanceState}`;
+    return `${ai}/${balance}`;
   }
 
-  private updateState(delta: number, player: Damageable): void {
-    if (!this.aiEnabled) {
-      return;
-    }
+  // ---------------------------------------------------------------------------
+  // State machines
+  // ---------------------------------------------------------------------------
 
-    const attackConfig = this.definition.attack;
-    if (
-      this.state === "attack" &&
-      this.attackStartedAt < attackConfig.windup + attackConfig.hitWindow
-    ) {
-      return;
-    }
-
-    if (this.balanceState === "stumbling") {
-      this.stumbleTimer -= delta;
-      if (this.stumbleTimer <= 0) {
-        this.balanceState = "balanced";
-        this.state = "chase";
-      }
-      return;
-    }
-
-    if (this.balanceState === "fallen") {
-      this.fallenTimer -= delta;
-      if (this.fallenTimer <= 0) {
-        this.balanceState = "recovering";
-        this.state = "recovering";
-        this.recoverTimer = this.definition.stumble.recoverDuration;
-      }
-      return;
-    }
-
-    if (this.balanceState === "recovering") {
-      this.recoverTimer -= delta;
-      if (this.recoverTimer <= 0) {
-        this.balanceState = "balanced";
-        this.state = "chase";
-      }
-      return;
-    }
-
-    const distanceSq = this.mesh.position.distanceToSquared(
-      this.targetPosition,
-    );
-    const detectionSq =
+  private buildAiFsm(): StateMachine<NpcAiState> {
+    const fsm = new StateMachine<NpcAiState>("idle");
+    const distSq = () => this.mesh.position.distanceToSquared(this.targetPosition);
+    const detectSq = () =>
       this.definition.ai.detectionRange * this.definition.ai.detectionRange;
-    const attackSq = attackConfig.range * attackConfig.range;
+    const attackSq = () =>
+      this.definition.attack.range * this.definition.attack.range;
 
-    if (distanceSq > detectionSq) {
-      this.state = "idle";
-      return;
-    }
+    fsm.addState("idle", {
+      update: () => {
+        if (distSq() <= detectSq()) {
+          fsm.setState("chase");
+        }
+      },
+    });
 
-    if (
-      attackConfig.enabled &&
-      player.isAlive() &&
-      distanceSq <= attackSq &&
-      this.attackCooldown <= 0
-    ) {
-      this.state = "attack";
-      this.animator.attack();
-      this.attackCooldown = attackConfig.cooldown;
-      this.attackStartedAt = 0;
-      this.hasAppliedDamageThisAttack = false;
-      this.lastAttackTime = this.totalTime;
-      this.eventBus.emit("npc.attack", { id: this.mesh.name });
-      this.logAttack("attack start");
-      return;
-    }
+    fsm.addState("alert", {
+      enter: () =>
+        this.eventBus.emit("npc.alert", {
+          id: this.mesh.name,
+          characterId: this.definition.id,
+        }),
+      update: () => fsm.setState("chase"),
+    });
 
-    this.state = "chase";
+    fsm.addState("chase", {
+      update: () => {
+        const player = this.currentPlayer;
+        const dSq = distSq();
+        if (dSq > detectSq()) {
+          fsm.setState("idle");
+          return;
+        }
+        if (
+          this.combat.isReady() &&
+          player &&
+          player.isAlive() &&
+          dSq <= attackSq()
+        ) {
+          fsm.setState("attack");
+        }
+      },
+    });
+
+    fsm.addState("attack", {
+      enter: () => {
+        if (!this.combat.start()) {
+          fsm.setState("chase");
+          return;
+        }
+        this.animation.notifyAttack();
+      },
+    });
+
+    fsm.addState("dead", {});
+
+    return fsm;
   }
 
-  private updateAnimationFromMotor(snapshot: CharacterMotorSnapshot): void {
-    const velocity = snapshot.velocity;
-    this.acceleration.copy(velocity).sub(this.previousVelocity);
-    this.previousVelocity.copy(velocity);
+  private buildBalanceFsm(): StateMachine<NpcBalanceState> {
+    const fsm = new StateMachine<NpcBalanceState>("balanced");
 
-    const yawDelta = Math.atan2(
-      Math.sin(snapshot.yaw - this.lastYaw),
-      Math.cos(snapshot.yaw - this.lastYaw),
-    );
-    this.lastYaw = snapshot.yaw;
+    fsm.addState("balanced", {});
 
-    if (this.proceduralAnimationEnabled) {
-      this.animator.update({
-        velocity,
-        desiredDirection: snapshot.forward,
-        isGrounded: snapshot.grounded,
-        state: this.getAnimationState(),
-        deltaTime: 1 / 60,
-        time: performance.now() / 1000,
-        lookDirection: this.targetPosition
-          .clone()
-          .sub(snapshot.position)
-          .normalize(),
-      });
-    }
+    fsm.addState("stumbling", {
+      enter: () => {
+        this.stumbleTimer = this.definition.stumble.stumbleDuration;
+        this.interruptAttack();
+      },
+      update: (delta) => {
+        this.stumbleTimer -= delta;
+        if (this.stumbleTimer <= 0) {
+          fsm.setState("balanced");
+          this.aiFsm.setState("chase");
+        }
+      },
+    });
 
-    if (this.activeRagdollEnabled) {
-      this.activeRagdoll.update({
-        velocity,
-        acceleration: this.acceleration,
-        yawDelta,
-        balanceIntensity: this.balanceState === "stumbling" ? 1 : 0,
-        deltaTime: 1 / 60,
-      });
-    }
+    fsm.addState("fallen", {
+      enter: () => {
+        this.fallenTimer = this.definition.stumble.getUpDelay;
+        this.interruptAttack();
+      },
+      update: (delta) => {
+        this.fallenTimer -= delta;
+        if (this.fallenTimer <= 0) {
+          fsm.setState("recovering");
+        }
+      },
+    });
+
+    fsm.addState("recovering", {
+      enter: () => {
+        this.recoverTimer = this.definition.stumble.recoverDuration;
+      },
+      update: (delta) => {
+        this.recoverTimer -= delta;
+        if (this.recoverTimer <= 0) {
+          fsm.setState("balanced");
+          this.aiFsm.setState("chase");
+        }
+      },
+    });
+
+    fsm.addState("dead", {});
+
+    return fsm;
   }
 
-  private createAnimationUpdate(
-    delta: number,
-    state: ProceduralAnimationState,
-  ) {
-    return {
-      velocity: new Vector3(),
-      desiredDirection: new Vector3(),
-      isGrounded: true,
-      state,
-      deltaTime: delta,
-      time: performance.now() / 1000,
-    };
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  private balanceLocked(): boolean {
+    const state = this.balanceFsm.getState();
+    return state === "fallen" || state === "recovering";
+  }
+
+  private interruptAttack(): void {
+    if (this.aiFsm.getState() === "attack") {
+      this.combat.cancel();
+      this.aiFsm.setState("chase");
+    }
   }
 
   private getAnimationState(): ProceduralAnimationState {
-    if (this.state === "dead") {
-      return "dead";
-    }
+    const ai = this.aiFsm.getState();
+    const balance = this.balanceFsm.getState();
 
-    if (this.state === "attack") {
-      return "attack";
-    }
-
-    if (this.state === "stagger" || this.balanceState === "stumbling") {
-      return "hit";
-    }
-
-    if (this.state === "chase") {
-      return "walk";
-    }
-
+    if (ai === "dead") return "dead";
+    if (ai === "attack") return "attack";
+    if (balance === "stumbling") return "hit";
+    if (ai === "chase") return "walk";
     return "idle";
-  }
-
-  private updateAttack(delta: number, player: Damageable): void {
-    const attackConfig = this.definition.attack;
-    if (!attackConfig.enabled) {
-      this.state = "chase";
-      return;
-    }
-
-    this.attackStartedAt += delta;
-
-    if (
-      !this.hasAppliedDamageThisAttack &&
-      this.attackStartedAt >= attackConfig.windup
-    ) {
-      const windowEnd = attackConfig.windup + attackConfig.hitWindow;
-      if (this.attackStartedAt <= windowEnd) {
-        const hitResult = this.tryApplyAttackDamage(player, attackConfig);
-        if (!hitResult && this.definition.debug) {
-          this.logAttack("attack missed");
-        }
-      }
-    }
-
-    if (this.attackStartedAt >= attackConfig.windup + attackConfig.hitWindow) {
-      this.state = "chase";
-    }
-  }
-
-  private tryApplyAttackDamage(
-    player: Damageable,
-    attackConfig: CharacterDefinition["attack"],
-  ): boolean {
-    if (!this.canHitPlayer(player, attackConfig)) {
-      return false;
-    }
-
-    const directionToPlayer = this.getDirectionToPlayer();
-    player.applyDamage(attackConfig.damage, directionToPlayer);
-    const knockbackReceiver = player as {
-      applyKnockback?: (direction: Vector3, strength: number) => void;
-    };
-    if (attackConfig.knockback > 0 && knockbackReceiver.applyKnockback) {
-      knockbackReceiver.applyKnockback(
-        directionToPlayer,
-        attackConfig.knockback,
-      );
-    }
-
-    this.hasAppliedDamageThisAttack = true;
-    this.logAttack(`damage applied (${attackConfig.damage})`);
-    return true;
-  }
-
-  private canHitPlayer(
-    player: Damageable,
-    attackConfig: CharacterDefinition["attack"],
-  ): boolean {
-    if (!this.health.isAlive() || this.state === "dead" || !player.isAlive()) {
-      return false;
-    }
-
-    if (this.balanceState === "fallen" || this.balanceState === "recovering") {
-      return false;
-    }
-
-    const directionToPlayer = this.getDirectionToPlayer();
-    const distanceSq = this.mesh.position.distanceToSquared(
-      this.targetPosition,
-    );
-    if (distanceSq > attackConfig.range * attackConfig.range) {
-      if (this.definition.debug) {
-        this.logAttack("attack failed: out of range");
-      }
-      return false;
-    }
-
-    const npcForward = this.getForwardDirection();
-    const facingDot = npcForward.dot(directionToPlayer);
-    if (facingDot < attackConfig.facingDotThreshold) {
-      if (this.definition.debug) {
-        this.logAttack("attack failed: facing");
-      }
-      return false;
-    }
-
-    if (
-      attackConfig.requireLineOfSight &&
-      !this.hasLineOfSight(directionToPlayer, Math.sqrt(distanceSq))
-    ) {
-      if (this.definition.debug) {
-        this.logAttack("attack failed: line of sight");
-      }
-      return false;
-    }
-
-    return true;
-  }
-
-  private getDirectionToPlayer(): Vector3 {
-    const direction = this.targetPosition.clone().sub(this.mesh.position);
-    direction.y = 0;
-    if (direction.lengthSq() < 0.0001) {
-      return new Vector3(0, 0, 1);
-    }
-    return direction.normalize();
   }
 
   private getForwardDirection(): Vector3 {
     if (this.lastMotorSnapshot) {
       return this.lastMotorSnapshot.forward.clone().normalize();
     }
-
     return new Vector3(
       Math.sin(this.mesh.rotation.y),
       0,
       Math.cos(this.mesh.rotation.y),
     ).normalize();
-  }
-
-  private hasLineOfSight(
-    directionToPlayer: Vector3,
-    distance: number,
-  ): boolean {
-    const origin = this.mesh.position.clone().add(new Vector3(0, 0.9, 0));
-    const hit = this.raycast.cast(origin, directionToPlayer, distance + 0.2);
-    return hit?.metadata?.id === "player";
-  }
-
-  private logAttack(message: string): void {
-    if (!this.definition.debug) {
-      return;
-    }
-
-    console.info(`[NPC:${this.id}] ${message}`);
-  }
-
-  private enterStumble(hitStrength: number): void {
-    this.balanceState = "stumbling";
-    this.state = "stagger";
-    this.stumbleTimer = this.definition.stumble.stumbleDuration;
-
-    if (hitStrength > this.definition.stumble.fallAngleThreshold) {
-      this.balanceState = "fallen";
-      this.state = "fallen";
-      this.fallenTimer = this.definition.stumble.getUpDelay;
-    }
   }
 }

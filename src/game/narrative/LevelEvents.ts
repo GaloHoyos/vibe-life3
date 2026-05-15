@@ -1,4 +1,4 @@
-import type { GameEventBus } from '../../engine/GameEvents';
+﻿import type { GameEventBus } from "../GameEvents";
 
 export class LevelEvents {
   constructor(private readonly eventBus: GameEventBus) {}

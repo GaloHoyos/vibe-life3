@@ -1,5 +1,6 @@
 import type { Vector3 } from "three";
-import type { EventBus } from "./EventBus";
+import type { CharacterId } from "../engine/characters/CharacterDefinition";
+import type { EventBus } from "../engine/EventBus";
 
 export interface GameEventMap {
   "weapon.fired": {
@@ -43,21 +44,26 @@ export interface GameEventMap {
   };
   "npc.damaged": {
     id: string;
+    characterId: CharacterId;
     amount: number;
     health: number;
   };
   "npc.alert": {
     id: string;
+    characterId: CharacterId;
   };
   "npc.attack": {
     id: string;
+    characterId: CharacterId;
   };
   "npc.footstep": {
     id: string;
+    characterId: CharacterId;
     position?: Vector3;
   };
   "npc.killed": {
     id: string;
+    characterId: CharacterId;
   };
   "door.opened": {
     id: string;

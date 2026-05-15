@@ -1,10 +1,12 @@
+import type { Disposable } from '../../shared/types/lifecycle';
+
 export interface WeaponHUDState {
   name: string;
   ammo: number;
   reserve: number;
 }
 
-export class WeaponHUD {
+export class WeaponHUD implements Disposable {
   readonly element = document.createElement('section');
 
   private readonly weaponName = document.createElement('span');
@@ -42,5 +44,9 @@ export class WeaponHUD {
     this.element.classList.add('is-firing');
     window.clearTimeout(this.fireTimer);
     this.fireTimer = window.setTimeout(() => this.element.classList.remove('is-firing'), 120);
+  }
+
+  dispose(): void {
+    window.clearTimeout(this.fireTimer);
   }
 }

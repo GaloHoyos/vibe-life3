@@ -1,12 +1,38 @@
 import type { Disposable } from "../../shared/types/lifecycle";
-import type { GameEventBus } from "../../engine/GameEvents";
-import { createDefaultHUDState, type HUDState } from "./HUDState";
+import type { GameEventBus } from "../GameEvents";
+import type { HUDValue } from "./HealthArmorHUD";
 import { HUDView } from "./HUDView";
+import type { WeaponHUDState } from "./WeaponHUD";
 
+interface HUDStateShape {
+  health: HUDValue;
+  armor: HUDValue;
+  armorEnabled: boolean;
+  weapon: WeaponHUDState;
+  interactionLabel?: string;
+  objective: string;
+}
+
+const DefaultHUDState = (): HUDStateShape => ({
+  health: { current: 100, max: 100 },
+  armor: { current: 0, max: 100 },
+  armorEnabled: false,
+  weapon: { name: "UNARMED", ammo: 0, reserve: 0 },
+  objective: "Explorar la instalacion",
+});
+
+/**
+ * Componente principal del HUD.
+ *
+ * Patrón Component+View: este archivo posee la lógica (escucha el event bus,
+ * mantiene un estado en memoria) y delega el render a `HUDView` y sus
+ * subwidgets (`HealthArmorHUD`, `WeaponHUD`, `Crosshair`, etc.). El estado
+ * vive inline porque no aporta como módulo separado.
+ */
 export class HUD implements Disposable {
   readonly element: HTMLDivElement;
 
-  private readonly state: HUDState = createDefaultHUDState();
+  private readonly state: HUDStateShape = DefaultHUDState();
   private readonly view: HUDView;
   private readonly unsubscribers: Array<() => void> = [];
 
@@ -96,6 +122,7 @@ export class HUD implements Disposable {
 
   dispose(): void {
     this.unsubscribers.forEach((unsubscribe) => unsubscribe());
+    this.unsubscribers.length = 0;
     this.view.dispose();
   }
 
