@@ -14,21 +14,21 @@ export class Input {
   private wheelDelta = 0;
 
   constructor(private readonly target: HTMLElement) {
-    window.addEventListener('keydown', this.handleKeyDown);
-    window.addEventListener('keyup', this.handleKeyUp);
-    window.addEventListener('mousedown', this.handleMouseDown);
-    window.addEventListener('mouseup', this.handleMouseUp);
-    window.addEventListener('mousemove', this.handleMouseMove);
-    window.addEventListener('wheel', this.handleWheel, { passive: false });
+    window.addEventListener("keydown", this.handleKeyDown);
+    window.addEventListener("keyup", this.handleKeyUp);
+    window.addEventListener("mousedown", this.handleMouseDown);
+    window.addEventListener("mouseup", this.handleMouseUp);
+    window.addEventListener("mousemove", this.handleMouseMove);
+    window.addEventListener("wheel", this.handleWheel, { passive: false });
   }
 
   dispose(): void {
-    window.removeEventListener('keydown', this.handleKeyDown);
-    window.removeEventListener('keyup', this.handleKeyUp);
-    window.removeEventListener('mousedown', this.handleMouseDown);
-    window.removeEventListener('mouseup', this.handleMouseUp);
-    window.removeEventListener('mousemove', this.handleMouseMove);
-    window.removeEventListener('wheel', this.handleWheel);
+    window.removeEventListener("keydown", this.handleKeyDown);
+    window.removeEventListener("keyup", this.handleKeyUp);
+    window.removeEventListener("mousedown", this.handleMouseDown);
+    window.removeEventListener("mouseup", this.handleMouseUp);
+    window.removeEventListener("mousemove", this.handleMouseMove);
+    window.removeEventListener("wheel", this.handleWheel);
   }
 
   requestPointerLock(): void {
@@ -49,6 +49,10 @@ export class Input {
 
   wasMousePressed(button: number): boolean {
     return this.mouseButtonsPressed.has(button);
+  }
+
+  isMouseDown(button: number): boolean {
+    return this.mouseButtonsDown.has(button);
   }
 
   getMouseDelta(): MouseDelta {

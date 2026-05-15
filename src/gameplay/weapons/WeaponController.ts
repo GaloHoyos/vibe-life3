@@ -1,14 +1,14 @@
-import type { AssetManager } from '../../assets/AssetManager';
-import type { GameEventBus } from '../../engine/GameEvents';
-import type { Input } from '../../engine/Input';
-import type { CameraSystem } from '../../render/CameraSystem';
-import type { Raycast } from '../../physics/Raycast';
-import type { Scene } from 'three';
-import { Recoil } from './Recoil';
-import { WeaponInventory } from './WeaponInventory';
-import { WeaponRegistry } from './WeaponRegistry';
-import { WeaponViewModel } from './WeaponViewModel';
-import type { WeaponId } from './WeaponDefinition';
+import type { AssetManager } from "../../assets/AssetManager";
+import type { GameEventBus } from "../../engine/GameEvents";
+import type { Input } from "../../engine/Input";
+import type { CameraSystem } from "../../render/CameraSystem";
+import type { Raycast } from "../../physics/Raycast";
+import type { Scene } from "three";
+import { Recoil } from "./Recoil";
+import { WeaponInventory } from "./WeaponInventory";
+import { WeaponRegistry } from "./WeaponRegistry";
+import { WeaponViewModel } from "./WeaponViewModel";
+import type { WeaponId } from "./WeaponDefinition";
 
 export class WeaponController {
   readonly inventory: WeaponInventory;
@@ -27,18 +27,27 @@ export class WeaponController {
     this.emitUnarmed();
   }
 
-  update(delta: number, input: Input, cameraSystem: CameraSystem, elapsed: number, speed: number): void {
+  update(
+    delta: number,
+    input: Input,
+    cameraSystem: CameraSystem,
+    elapsed: number,
+    speed: number,
+  ): void {
     this.handleSelectionInput(input);
     const activeWeapon = this.inventory.getActiveWeapon();
     this.recoil.update(delta, activeWeapon?.definition.recoil.recovery ?? 10);
 
-    if (activeWeapon && input.wasKeyPressed('KeyR')) {
+    if (activeWeapon && input.wasKeyPressed("KeyR")) {
       if (activeWeapon.tryReload(elapsed)) {
         this.viewModel.reload();
       }
     }
 
-    if (activeWeapon && input.wasMousePressed(0)) {
+    if (
+      activeWeapon &&
+      this.shouldFireWeapon(activeWeapon.definition.fireMode, input)
+    ) {
       const fired = activeWeapon.tryFire({
         origin: cameraSystem.camera.position.clone(),
         direction: cameraSystem.getForwardDirection(),
@@ -61,16 +70,16 @@ export class WeaponController {
       const gained = existing.addPickupAmmo(false);
       if (gained > 0) {
         if (this.inventory.getActiveWeapon() === existing) {
-          this.eventBus.emit('weapon.ammo.changed', {
+          this.eventBus.emit("weapon.ammo.changed", {
             current: existing.getAmmo(),
             reserve: existing.getReserveAmmo(),
           });
-          this.eventBus.emit('ammo.changed', {
+          this.eventBus.emit("ammo.changed", {
             current: existing.getAmmo(),
             reserve: existing.getReserveAmmo(),
           });
         }
-        this.eventBus.emit('player.pickup.ammo', {
+        this.eventBus.emit("player.pickup.ammo", {
           amount: gained,
           weaponName: existing.name,
         });
@@ -86,7 +95,9 @@ export class WeaponController {
     });
     const shouldEquip = this.inventory.isEmpty();
     this.inventory.addWeapon(weapon);
-    this.eventBus.emit('player.pickup.weapon', { weaponName: definition.displayName });
+    this.eventBus.emit("player.pickup.weapon", {
+      weaponName: definition.displayName,
+    });
     if (shouldEquip) {
       void this.viewModel.equip(weapon.definition);
     }
@@ -109,20 +120,31 @@ export class WeaponController {
 
     const wheel = input.getWheelDelta();
     if (wheel !== 0) {
-      const weapon = wheel > 0 ? this.inventory.nextWeapon() : this.inventory.previousWeapon();
+      const weapon =
+        wheel > 0
+          ? this.inventory.nextWeapon()
+          : this.inventory.previousWeapon();
       if (weapon) {
         void this.viewModel.equip(weapon.definition);
       }
     }
   }
 
+  private shouldFireWeapon(fireMode: "semi" | "auto", input: Input): boolean {
+    if (fireMode === "auto") {
+      return input.isMouseDown(0);
+    }
+
+    return input.wasMousePressed(0);
+  }
+
   private emitUnarmed(): void {
-    this.eventBus.emit('weapon.changed', {
-      weaponName: 'UNARMED',
+    this.eventBus.emit("weapon.changed", {
+      weaponName: "UNARMED",
       ammo: 0,
       reserve: 0,
     });
-    this.eventBus.emit('weapon.ammo.changed', {
+    this.eventBus.emit("weapon.ammo.changed", {
       current: 0,
       reserve: 0,
     });

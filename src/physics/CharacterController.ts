@@ -1,9 +1,9 @@
-import RAPIER from '@dimforge/rapier3d-compat';
-import { Vector3 } from 'three';
-import type { Input } from '../engine/Input';
-import type { CameraSystem } from '../render/CameraSystem';
-import type { PhysicsWorld } from './PhysicsWorld';
-import { createCapsuleCollider } from './Colliders';
+import RAPIER from "@dimforge/rapier3d-compat";
+import { Vector3 } from "three";
+import type { Input } from "../engine/Input";
+import type { CameraSystem } from "../render/CameraSystem";
+import type { PhysicsWorld } from "./PhysicsWorld";
+import { createCapsuleCollider } from "./Colliders";
 
 export interface CharacterControllerOptions {
   position: Vector3;
@@ -34,8 +34,11 @@ export class CharacterController {
         options.position.z,
       ),
     );
-    this.collider = physics.world.createCollider(createCapsuleCollider(options.radius, options.halfHeight), this.rigidBody);
-    physics.registerCollider(this.collider, { id: 'player', kind: 'player' });
+    this.collider = physics.world.createCollider(
+      createCapsuleCollider(options.radius, options.halfHeight),
+      this.rigidBody,
+    );
+    physics.registerCollider(this.collider, { id: "player", kind: "player" });
     this.controller = physics.createCharacterController(0.03);
     this.controller.enableAutostep(0.45, 0.25, true);
     this.controller.enableSnapToGround(0.45);
@@ -57,7 +60,7 @@ export class CharacterController {
     this.velocity.x = horizontal.x;
     this.velocity.z = horizontal.z;
 
-    if (this.grounded && input.wasKeyPressed('Space')) {
+    if (this.grounded && input.wasKeyPressed("Space")) {
       this.velocity.y = this.options.jumpSpeed;
       this.grounded = false;
     }
@@ -70,7 +73,10 @@ export class CharacterController {
       this.velocity.z * delta,
     );
 
-    this.controller.computeColliderMovement(this.collider, this.desiredMovement);
+    this.controller.computeColliderMovement(
+      this.collider,
+      this.desiredMovement,
+    );
     const corrected = this.controller.computedMovement();
     const current = this.rigidBody.translation();
 
@@ -96,22 +102,33 @@ export class CharacterController {
     return this.getPosition().add(new Vector3(0, this.options.eyeHeight, 0));
   }
 
+  applyImpulse(direction: Vector3, strength: number): void {
+    if (strength <= 0) {
+      return;
+    }
+
+    const impulse = direction.clone().normalize().multiplyScalar(strength);
+    this.velocity.x += impulse.x;
+    this.velocity.y += Math.max(0, impulse.y * 0.6);
+    this.velocity.z += impulse.z;
+  }
+
   private readMoveInput(input: Input): Vector3 {
     const move = new Vector3();
 
-    if (input.isKeyDown('KeyW')) {
+    if (input.isKeyDown("KeyW")) {
       move.z += 1;
     }
 
-    if (input.isKeyDown('KeyS')) {
+    if (input.isKeyDown("KeyS")) {
       move.z -= 1;
     }
 
-    if (input.isKeyDown('KeyA')) {
+    if (input.isKeyDown("KeyA")) {
       move.x -= 1;
     }
 
-    if (input.isKeyDown('KeyD')) {
+    if (input.isKeyDown("KeyD")) {
       move.x += 1;
     }
 

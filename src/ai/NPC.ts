@@ -1,9 +1,4 @@
-import {
-  Group,
-  MathUtils,
-  Object3D,
-  Vector3,
-} from "three";
+import { Group, MathUtils, Object3D, Vector3 } from "three";
 import { ActiveRagdollController } from "../animation/ActiveRagdollController";
 import {
   ProceduralCharacterAnimator,
@@ -18,6 +13,7 @@ import {
   type CharacterMotorSnapshot,
 } from "../physics/CharacterMotor";
 import type { PhysicsWorld } from "../physics/PhysicsWorld";
+import { Raycast } from "../physics/Raycast";
 import type { NPCBalanceState, NPCState } from "./NPCState";
 
 export interface NPCOptions {
@@ -50,6 +46,10 @@ export class NPC implements Damageable {
   private state: NPCState = "idle";
   private balanceState: NPCBalanceState = "balanced";
   private attackCooldown = 0;
+  private attackStartedAt = 0;
+  private hasAppliedDamageThisAttack = false;
+  private lastAttackTime = -Infinity;
+  private totalTime = 0;
   private stumbleTimer = 0;
   private fallenTimer = 0;
   private recoverTimer = 0;
@@ -59,6 +59,7 @@ export class NPC implements Damageable {
   private locomotionEnabled = true;
   private proceduralAnimationEnabled = true;
   private activeRagdollEnabled = true;
+  private readonly raycast: Raycast;
 
   constructor(options: NPCOptions) {
     this.id = options.id;
@@ -69,6 +70,8 @@ export class NPC implements Damageable {
     this.mesh.name = options.id;
     this.mesh.position.copy(options.position);
     this.mesh.add(this.visualRoot);
+
+    this.raycast = new Raycast(options.physics);
 
     this.motor = new CharacterMotor(options.physics, {
       id: options.id,
@@ -108,15 +111,20 @@ export class NPC implements Damageable {
     });
   }
 
-  update(delta: number, playerPosition: Vector3): void {
+  update(delta: number, playerPosition: Vector3, player: Damageable): void {
     if (this.state === "dead") {
       this.animator.update(this.createAnimationUpdate(delta, "dead"));
       return;
     }
 
+    this.totalTime += delta;
     this.attackCooldown = Math.max(0, this.attackCooldown - delta);
     this.targetPosition.copy(playerPosition);
-    this.updateState(delta);
+    this.updateState(delta, player);
+
+    if (this.state === "attack") {
+      this.updateAttack(delta, player);
+    }
 
     const wantsMove =
       this.locomotionEnabled &&
@@ -145,11 +153,19 @@ export class NPC implements Damageable {
     this.updateAnimationFromMotor(snapshot);
   }
 
-  applyDamage(amount: number, hitDirection?: Vector3, hitPartName?: string): void {
+  applyDamage(
+    amount: number,
+    hitDirection?: Vector3,
+    hitPartName?: string,
+  ): void {
     this.takeDamage(amount, hitDirection, hitPartName);
   }
 
-  takeDamage(amount: number, hitDirection = new Vector3(0, 0.2, 1), hitPartName?: string): void {
+  takeDamage(
+    amount: number,
+    hitDirection = new Vector3(0, 0.2, 1),
+    hitPartName?: string,
+  ): void {
     if (!this.health.isAlive() || this.state === "dead") {
       return;
     }
@@ -184,6 +200,7 @@ export class NPC implements Damageable {
 
     if (this.state === "idle") {
       this.state = "alert";
+      this.eventBus.emit("npc.alert", { id: this.mesh.name });
     }
   }
 
@@ -200,7 +217,11 @@ export class NPC implements Damageable {
     this.proceduralAnimationEnabled = false;
     this.activeRagdollEnabled = false;
     this.motor.disable();
-    this.animator.dieWithVelocity(hitDirection, this.motor.getVelocity(), hitPartName);
+    this.animator.dieWithVelocity(
+      hitDirection,
+      this.motor.getVelocity(),
+      hitPartName,
+    );
     this.eventBus.emit("npc.killed", { id: this.mesh.name });
     this.eventBus.emit("dialogue.show", {
       speaker: "Sistema",
@@ -215,14 +236,22 @@ export class NPC implements Damageable {
 
   getState(): string {
     if (this.definition.debug && this.lastMotorSnapshot) {
-      return `${this.state}/${this.balanceState} d:${this.lastMotorSnapshot.distanceToTarget.toFixed(1)} v:${this.lastMotorSnapshot.velocity.length().toFixed(2)} dv:${this.lastMotorSnapshot.desiredVelocity.length().toFixed(2)} g:${this.lastMotorSnapshot.grounded ? '1' : '0'}`;
+      return `${this.state}/${this.balanceState} d:${this.lastMotorSnapshot.distanceToTarget.toFixed(1)} v:${this.lastMotorSnapshot.velocity.length().toFixed(2)} dv:${this.lastMotorSnapshot.desiredVelocity.length().toFixed(2)} g:${this.lastMotorSnapshot.grounded ? "1" : "0"}`;
     }
 
     return `${this.state}/${this.balanceState}`;
   }
 
-  private updateState(delta: number): void {
+  private updateState(delta: number, player: Damageable): void {
     if (!this.aiEnabled) {
+      return;
+    }
+
+    const attackConfig = this.definition.attack;
+    if (
+      this.state === "attack" &&
+      this.attackStartedAt < attackConfig.windup + attackConfig.hitWindow
+    ) {
       return;
     }
 
@@ -259,18 +288,27 @@ export class NPC implements Damageable {
     );
     const detectionSq =
       this.definition.ai.detectionRange * this.definition.ai.detectionRange;
-    const attackSq =
-      this.definition.ai.attackRange * this.definition.ai.attackRange;
+    const attackSq = attackConfig.range * attackConfig.range;
 
     if (distanceSq > detectionSq) {
       this.state = "idle";
       return;
     }
 
-    if (distanceSq <= attackSq && this.attackCooldown <= 0) {
+    if (
+      attackConfig.enabled &&
+      player.isAlive() &&
+      distanceSq <= attackSq &&
+      this.attackCooldown <= 0
+    ) {
       this.state = "attack";
       this.animator.attack();
-      this.attackCooldown = this.definition.ai.attackCooldown;
+      this.attackCooldown = attackConfig.cooldown;
+      this.attackStartedAt = 0;
+      this.hasAppliedDamageThisAttack = false;
+      this.lastAttackTime = this.totalTime;
+      this.eventBus.emit("npc.attack", { id: this.mesh.name });
+      this.logAttack("attack start");
       return;
     }
 
@@ -346,6 +384,141 @@ export class NPC implements Damageable {
     }
 
     return "idle";
+  }
+
+  private updateAttack(delta: number, player: Damageable): void {
+    const attackConfig = this.definition.attack;
+    if (!attackConfig.enabled) {
+      this.state = "chase";
+      return;
+    }
+
+    this.attackStartedAt += delta;
+
+    if (
+      !this.hasAppliedDamageThisAttack &&
+      this.attackStartedAt >= attackConfig.windup
+    ) {
+      const windowEnd = attackConfig.windup + attackConfig.hitWindow;
+      if (this.attackStartedAt <= windowEnd) {
+        const hitResult = this.tryApplyAttackDamage(player, attackConfig);
+        if (!hitResult && this.definition.debug) {
+          this.logAttack("attack missed");
+        }
+      }
+    }
+
+    if (this.attackStartedAt >= attackConfig.windup + attackConfig.hitWindow) {
+      this.state = "chase";
+    }
+  }
+
+  private tryApplyAttackDamage(
+    player: Damageable,
+    attackConfig: CharacterDefinition["attack"],
+  ): boolean {
+    if (!this.canHitPlayer(player, attackConfig)) {
+      return false;
+    }
+
+    const directionToPlayer = this.getDirectionToPlayer();
+    player.applyDamage(attackConfig.damage, directionToPlayer);
+    const knockbackReceiver = player as {
+      applyKnockback?: (direction: Vector3, strength: number) => void;
+    };
+    if (attackConfig.knockback > 0 && knockbackReceiver.applyKnockback) {
+      knockbackReceiver.applyKnockback(
+        directionToPlayer,
+        attackConfig.knockback,
+      );
+    }
+
+    this.hasAppliedDamageThisAttack = true;
+    this.logAttack(`damage applied (${attackConfig.damage})`);
+    return true;
+  }
+
+  private canHitPlayer(
+    player: Damageable,
+    attackConfig: CharacterDefinition["attack"],
+  ): boolean {
+    if (!this.health.isAlive() || this.state === "dead" || !player.isAlive()) {
+      return false;
+    }
+
+    if (this.balanceState === "fallen" || this.balanceState === "recovering") {
+      return false;
+    }
+
+    const directionToPlayer = this.getDirectionToPlayer();
+    const distanceSq = this.mesh.position.distanceToSquared(
+      this.targetPosition,
+    );
+    if (distanceSq > attackConfig.range * attackConfig.range) {
+      if (this.definition.debug) {
+        this.logAttack("attack failed: out of range");
+      }
+      return false;
+    }
+
+    const npcForward = this.getForwardDirection();
+    const facingDot = npcForward.dot(directionToPlayer);
+    if (facingDot < attackConfig.facingDotThreshold) {
+      if (this.definition.debug) {
+        this.logAttack("attack failed: facing");
+      }
+      return false;
+    }
+
+    if (
+      attackConfig.requireLineOfSight &&
+      !this.hasLineOfSight(directionToPlayer, Math.sqrt(distanceSq))
+    ) {
+      if (this.definition.debug) {
+        this.logAttack("attack failed: line of sight");
+      }
+      return false;
+    }
+
+    return true;
+  }
+
+  private getDirectionToPlayer(): Vector3 {
+    const direction = this.targetPosition.clone().sub(this.mesh.position);
+    direction.y = 0;
+    if (direction.lengthSq() < 0.0001) {
+      return new Vector3(0, 0, 1);
+    }
+    return direction.normalize();
+  }
+
+  private getForwardDirection(): Vector3 {
+    if (this.lastMotorSnapshot) {
+      return this.lastMotorSnapshot.forward.clone().normalize();
+    }
+
+    return new Vector3(
+      Math.sin(this.mesh.rotation.y),
+      0,
+      Math.cos(this.mesh.rotation.y),
+    ).normalize();
+  }
+
+  private hasLineOfSight(
+    directionToPlayer: Vector3,
+    distance: number,
+  ): boolean {
+    const origin = this.mesh.position.clone().add(new Vector3(0, 0.9, 0));
+    const hit = this.raycast.cast(origin, directionToPlayer, distance + 0.2);
+    return hit?.metadata?.id === "player";
+  }
+
+  private logAttack(message: string): void {
+    if (!this.definition.debug) {
+      return;
+    }
+
+    console.info(`[NPC:${this.id}] ${message}`);
   }
 
   private enterStumble(hitStrength: number): void {

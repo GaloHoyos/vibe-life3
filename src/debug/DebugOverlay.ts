@@ -1,5 +1,5 @@
-import type { Vector3 } from 'three';
-import type { GameEventBus } from '../engine/GameEvents';
+import type { Vector3 } from "three";
+import type { GameEventBus } from "../engine/GameEvents";
 
 export interface DebugSnapshot {
   fps: number;
@@ -13,16 +13,33 @@ export class DebugOverlay {
 
   private enabled = false;
 
-  constructor(container: HTMLElement, private readonly eventBus: GameEventBus) {
-    this.element = document.createElement('div');
-    this.element.className = 'debug-overlay is-hidden';
+  constructor(
+    container: HTMLElement,
+    private readonly eventBus: GameEventBus,
+  ) {
+    this.element = document.createElement("div");
+    this.element.className = "debug-overlay is-hidden";
     container.append(this.element);
   }
 
   toggle(): void {
     this.enabled = !this.enabled;
-    this.element.classList.toggle('is-hidden', !this.enabled);
-    this.eventBus.emit('debug.toggle', { enabled: this.enabled });
+    this.element.classList.toggle("is-hidden", !this.enabled);
+    this.eventBus.emit("debug.toggle", { enabled: this.enabled });
+  }
+
+  setEnabled(enabled: boolean): void {
+    if (this.enabled === enabled) {
+      return;
+    }
+
+    this.enabled = enabled;
+    this.element.classList.toggle("is-hidden", !this.enabled);
+    this.eventBus.emit("debug.toggle", { enabled: this.enabled });
+  }
+
+  isEnabled(): boolean {
+    return this.enabled;
   }
 
   update(snapshot: DebugSnapshot): void {
@@ -35,7 +52,7 @@ export class DebugOverlay {
       `FPS: ${snapshot.fps.toFixed(0)}`,
       `Player: ${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}`,
       `Physics bodies: ${snapshot.physicsBodies}`,
-      `NPCs: ${snapshot.npcStates.join(', ') || 'none'}`,
-    ].join('\n');
+      `NPCs: ${snapshot.npcStates.join(", ") || "none"}`,
+    ].join("\n");
   }
 }

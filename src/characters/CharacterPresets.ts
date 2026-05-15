@@ -1,8 +1,8 @@
-import { Vector3 } from 'three';
-import type { CharacterDefinition, CharacterId } from './CharacterDefinition';
+import { Vector3 } from "three";
+import type { CharacterDefinition, CharacterId } from "./CharacterDefinition";
 
 const baseHumanoid = {
-  type: 'humanoid',
+  type: "humanoid",
   height: 1.75,
   radius: 0.35,
   mass: 60,
@@ -25,10 +25,10 @@ const baseHumanoid = {
     maxHealth: 100,
   },
   animation: {
-    mode: 'procedural',
+    mode: "procedural",
     ignoreBakedAnimations: true,
     restPose: {
-      type: 'tpose_to_relaxed',
+      type: "tpose_to_relaxed",
       leftUpperArm: { z: 1.05 },
       rightUpperArm: { z: -1.05 },
       leftForearm: { z: 0.2 },
@@ -37,16 +37,16 @@ const baseHumanoid = {
       chest: { x: 0.02 },
       head: { x: -0.02 },
     },
-    armsMode: 'relaxed',
+    armsMode: "relaxed",
     boneAxes: {
-      legSwingAxis: 'x',
-      armSwingAxis: 'x',
-      kneeBendAxis: 'x',
-      elbowBendAxis: 'x',
-      spineLeanAxis: 'x',
-      headYawAxis: 'y',
+      legSwingAxis: "x",
+      armSwingAxis: "x",
+      kneeBendAxis: "x",
+      elbowBendAxis: "x",
+      spineLeanAxis: "x",
+      headYawAxis: "y",
     },
-    walkStyle: 'normal',
+    walkStyle: "normal",
     useLookAt: true,
     useStumble: true,
     walk: {},
@@ -55,7 +55,7 @@ const baseHumanoid = {
   },
   ragdoll: {
     enabled: true,
-    mode: 'passiveOnDeath',
+    mode: "passiveOnDeath",
     activeWhileAlive: true,
     passiveOnDeath: true,
     bodyPartCollisions: true,
@@ -95,8 +95,18 @@ const baseHumanoid = {
   },
   ai: {
     detectionRange: 24,
-    attackRange: 1.8,
-    attackCooldown: 1.1,
+  },
+  attack: {
+    enabled: false,
+    type: "melee",
+    damage: 8,
+    range: 1.4,
+    cooldown: 1.2,
+    windup: 0.35,
+    hitWindow: 0.2,
+    knockback: 1.6,
+    requireLineOfSight: false,
+    facingDotThreshold: 0.35,
   },
   stumble: {
     stumbleImpulseThreshold: 0.2,
@@ -106,13 +116,13 @@ const baseHumanoid = {
     recoverDuration: 0.65,
   },
   debug: false,
-} satisfies Omit<CharacterDefinition, 'id' | 'modelId'>;
+} satisfies Omit<CharacterDefinition, "id" | "modelId">;
 
 export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
   zombie: {
     ...baseHumanoid,
-    id: 'zombie',
-    modelId: 'zombie',
+    id: "zombie",
+    modelId: "zombie",
     visualOffset: new Vector3(0, -0.875, 0),
     movement: {
       ...baseHumanoid.movement,
@@ -126,7 +136,7 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     animation: {
       ...baseHumanoid.animation,
       restPose: {
-        type: 'zombie',
+        type: "zombie",
         leftUpperArm: { z: 1.18, x: -0.18 },
         rightUpperArm: { z: -1.18, x: -0.18 },
         leftForearm: { z: 0.32, x: -0.42 },
@@ -135,16 +145,16 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
         chest: { x: 0.06 },
         head: { x: -0.05 },
       },
-      armsMode: 'zombieForward',
+      armsMode: "zombieForward",
       boneAxes: {
-        legSwingAxis: 'x',
-        armSwingAxis: 'x',
-        kneeBendAxis: 'x',
-        elbowBendAxis: 'x',
-        spineLeanAxis: 'x',
-        headYawAxis: 'y',
+        legSwingAxis: "x",
+        armSwingAxis: "x",
+        kneeBendAxis: "x",
+        elbowBendAxis: "x",
+        spineLeanAxis: "x",
+        headYawAxis: "y",
       },
-      walkStyle: 'staggered',
+      walkStyle: "staggered",
       walk: {
         stepFrequency: 3,
         strideLength: 0.45,
@@ -171,10 +181,22 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       ...baseHumanoid.ai,
       detectionRange: 26,
     },
+    attack: {
+      enabled: true,
+      type: "melee",
+      damage: 12,
+      range: 1.6,
+      cooldown: 1.1,
+      windup: 0.35,
+      hitWindow: 0.25,
+      knockback: 2.0,
+      requireLineOfSight: false,
+      facingDotThreshold: 0.35,
+    },
   },
   placeholderHumanoid: {
     ...baseHumanoid,
-    id: 'placeholderHumanoid',
+    id: "placeholderHumanoid",
     modelId: undefined,
   },
 };

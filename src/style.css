@@ -1,6 +1,11 @@
 :root {
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
     sans-serif;
   color: #edf4ff;
   background: #05070b;
@@ -25,6 +30,11 @@ body,
 
 body {
   background: #05070b;
+}
+
+.is-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .game-root {
@@ -53,7 +63,8 @@ body {
   --hev-red: #ff3e27;
   --hev-bg: rgb(20 12 4 / 0.36);
   --hev-border: rgb(255 178 74 / 0.42);
-  font-family: "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
+  font-family:
+    "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   letter-spacing: 0;
   text-shadow: 0 0 10px rgb(255 138 26 / 0.28);
 }
@@ -206,8 +217,12 @@ body {
   height: 8px;
 }
 
-.hev-crosshair span:nth-child(1) { top: 0; }
-.hev-crosshair span:nth-child(2) { bottom: 0; }
+.hev-crosshair span:nth-child(1) {
+  top: 0;
+}
+.hev-crosshair span:nth-child(2) {
+  bottom: 0;
+}
 
 .hev-crosshair span:nth-child(3),
 .hev-crosshair span:nth-child(4) {
@@ -216,8 +231,12 @@ body {
   height: 2px;
 }
 
-.hev-crosshair span:nth-child(3) { left: 0; }
-.hev-crosshair span:nth-child(4) { right: 0; }
+.hev-crosshair span:nth-child(3) {
+  left: 0;
+}
+.hev-crosshair span:nth-child(4) {
+  right: 0;
+}
 
 .hev-crosshair i {
   left: 14px;
@@ -286,7 +305,12 @@ body {
   transform: translateX(-50%);
   padding: 8px 12px;
   border-bottom: 1px solid rgb(255 178 74 / 0.34);
-  background: linear-gradient(90deg, transparent, rgb(20 12 4 / 0.38), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(20 12 4 / 0.38),
+    transparent
+  );
   text-align: center;
   opacity: 0;
 }
@@ -340,8 +364,11 @@ body {
 .hev-damage {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(circle at 50% 50%, transparent 44%, rgb(255 62 39 / var(--damage-alpha, 0.22)) 100%);
+  background: radial-gradient(
+    circle at 50% 50%,
+    transparent 44%,
+    rgb(255 62 39 / var(--damage-alpha, 0.22)) 100%
+  );
   opacity: 0;
 }
 
@@ -370,14 +397,24 @@ body {
 }
 
 @keyframes hev-critical {
-  from { border-color: rgb(255 178 74 / 0.35); }
-  to { border-color: rgb(255 62 39 / 0.8); }
+  from {
+    border-color: rgb(255 178 74 / 0.35);
+  }
+  to {
+    border-color: rgb(255 62 39 / 0.8);
+  }
 }
 
 @keyframes hev-damage {
-  0% { opacity: 0; }
-  18% { opacity: 1; }
-  100% { opacity: 0; }
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 .main-menu,

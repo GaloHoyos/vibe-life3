@@ -1,8 +1,9 @@
-import { Euler, Vector3 } from 'three';
-import type { ModelAssetId } from '../../assets/AssetManifest';
+import { Euler, Vector3 } from "three";
+import type { ModelAssetId } from "../../assets/AssetManifest";
 
-export type WeaponId = 'crowbar' | 'pistol' | 'smg' | 'ar3' | 'gravityGun';
-export type WeaponType = 'melee' | 'hitscan' | 'special';
+export type WeaponId = "crowbar" | "pistol" | "smg" | "ar3" | "gravityGun";
+export type WeaponType = "melee" | "hitscan" | "special";
+export type WeaponFireMode = "semi" | "auto";
 
 export interface RecoilDefinition {
   vertical: number;
@@ -34,6 +35,8 @@ export interface WeaponDefinition {
   impulse: number;
   reloadTime: number;
   recoil: RecoilDefinition;
+  fireMode: WeaponFireMode;
+  reloadAnimationPitch: number;
   muzzleFlash: MuzzleFlashDefinition;
   canReceiveAmmoFromDuplicatePickup: boolean;
   hasAmmo: boolean;

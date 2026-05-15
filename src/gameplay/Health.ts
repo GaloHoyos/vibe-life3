@@ -22,6 +22,11 @@ export class Health {
     return this.current;
   }
 
+  reset(): void {
+    this.current = this.max;
+    this.depleted = false;
+  }
+
   isAlive(): boolean {
     return this.current > 0;
   }

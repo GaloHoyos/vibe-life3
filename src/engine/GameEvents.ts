@@ -1,99 +1,125 @@
-import type { Vector3 } from 'three';
-import type { EventBus } from './EventBus';
+import type { Vector3 } from "three";
+import type { EventBus } from "./EventBus";
 
 export interface GameEventMap {
-  'weapon.fired': {
+  "weapon.fired": {
     weaponName: string;
     ammo: number;
     origin: Vector3;
     direction: Vector3;
+    range: number;
   };
-  'weapon.hit': {
+  "weapon.hit": {
     weaponName: string;
     targetId?: string;
+    surfaceKind?:
+      | "static"
+      | "dynamic"
+      | "door"
+      | "npc"
+      | "player"
+      | "ragdoll"
+      | "weaponPickup";
     point: Vector3;
+    normal?: Vector3;
     damage: number;
   };
-  'weapon.reloaded': {
+  "weapon.reloaded": {
     weaponName: string;
     ammo: number;
     reserve: number;
   };
-  'ammo.changed': {
+  "weapon.empty": {
+    weaponName: string;
+  };
+  "ammo.changed": {
     current: number;
     reserve: number;
   };
-  'weapon.ammo.changed': {
+  "weapon.ammo.changed": {
     current: number;
     reserve: number;
   };
-  'weapon.changed': {
+  "weapon.changed": {
     weaponName: string;
     ammo: number;
     reserve: number;
   };
-  'npc.damaged': {
+  "npc.damaged": {
     id: string;
     amount: number;
     health: number;
   };
-  'npc.killed': {
+  "npc.alert": {
     id: string;
   };
-  'door.opened': {
+  "npc.attack": {
+    id: string;
+  };
+  "npc.footstep": {
+    id: string;
+    position?: Vector3;
+  };
+  "npc.killed": {
+    id: string;
+  };
+  "door.opened": {
     id: string;
     open: boolean;
   };
-  'trigger.entered': {
+  "trigger.entered": {
     id: string;
   };
-  'dialogue.show': {
+  "dialogue.show": {
     speaker?: string;
     text: string;
     duration: number;
   };
-  'player.healthChanged': {
+  "player.healthChanged": {
     current: number;
     max: number;
   };
-  'player.health.changed': {
+  "player.health.changed": {
     current: number;
     max: number;
   };
-  'player.armor.changed': {
+  "player.armor.changed": {
     current: number;
     max: number;
   };
-  'player.damaged': {
+  "player.damaged": {
     amount: number;
     direction?: Vector3;
   };
-  'player.pickup.health': {
+  "player.dead": {
+    reason: string;
+  };
+  "player.pickup.health": {
     amount: number;
   };
-  'player.pickup.ammo': {
+  "player.pickup.ammo": {
     amount: number;
     weaponName?: string;
   };
-  'player.pickup.weapon': {
+  "player.pickup.weapon": {
     weaponName: string;
   };
-  'interact.changed': {
+  "interact.changed": {
     label?: string;
   };
-  'interaction.focus': {
+  "interaction.focus": {
     label: string;
   };
-  'interaction.blur': Record<string, never>;
-  'subtitle.show': {
+  "interaction.blur": Record<string, never>;
+  "subtitle.show": {
     speaker?: string;
     text: string;
     duration: number;
   };
-  'objective.updated': {
+  "objective.updated": {
     text: string;
   };
-  'debug.toggle': {
+  "debug.toggle": {
     enabled: boolean;
   };
 }

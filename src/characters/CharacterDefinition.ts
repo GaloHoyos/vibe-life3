@@ -1,9 +1,12 @@
-import type { Object3D, Vector3 } from 'three';
-import type { ModelAssetId } from '../assets/AssetManifest';
-import type { ProceduralWalkConfig, WalkStyle } from '../animation/ProceduralWalk';
-import type { RagdollConfig } from '../animation/RagdollDefinition';
+import type { Object3D, Vector3 } from "three";
+import type { ModelAssetId } from "../assets/AssetManifest";
+import type {
+  ProceduralWalkConfig,
+  WalkStyle,
+} from "../animation/ProceduralWalk";
+import type { RagdollConfig } from "../animation/RagdollDefinition";
 
-export type CharacterType = 'humanoid' | 'creature' | 'robot' | 'prop';
+export type CharacterType = "humanoid" | "creature" | "robot" | "prop";
 export type CharacterId = string;
 
 export interface CharacterMovementConfig {
@@ -31,9 +34,9 @@ export interface CharacterHealthConfig {
   maxHealth: number;
 }
 
-export type BoneAxis = 'x' | 'y' | 'z';
-export type RestPoseType = 'none' | 'tpose_to_relaxed' | 'zombie';
-export type ArmsMode = 'relaxed' | 'zombieForward' | 'weaponAim';
+export type BoneAxis = "x" | "y" | "z";
+export type RestPoseType = "none" | "tpose_to_relaxed" | "zombie";
+export type ArmsMode = "relaxed" | "zombieForward" | "weaponAim";
 
 export interface BoneRotationOffset {
   x?: number;
@@ -62,7 +65,7 @@ export interface HumanoidBoneAxesConfig {
 }
 
 export interface CharacterAnimationConfig {
-  mode: 'procedural';
+  mode: "procedural";
   ignoreBakedAnimations: boolean;
   restPose: HumanoidRestPoseConfig;
   armsMode: ArmsMode;
@@ -77,7 +80,7 @@ export interface CharacterAnimationConfig {
 
 export interface CharacterRagdollConfig extends Partial<RagdollConfig> {
   enabled: boolean;
-  mode: 'passiveOnDeath';
+  mode: "passiveOnDeath";
   maxDeathLinearVelocity: number;
   maxDeathAngularVelocity: number;
   initialDampingDuration: number;
@@ -85,8 +88,21 @@ export interface CharacterRagdollConfig extends Partial<RagdollConfig> {
 
 export interface CharacterAIConfig {
   detectionRange: number;
-  attackRange: number;
-  attackCooldown: number;
+}
+
+export type CharacterAttackType = "melee" | "ranged";
+
+export interface CharacterAttackConfig {
+  enabled: boolean;
+  type: CharacterAttackType;
+  damage: number;
+  range: number;
+  cooldown: number;
+  windup: number;
+  hitWindow: number;
+  knockback: number;
+  requireLineOfSight: boolean;
+  facingDotThreshold: number;
 }
 
 export interface CharacterStumbleConfig {
@@ -113,6 +129,7 @@ export interface CharacterDefinition {
   ragdoll: CharacterRagdollConfig;
   collider: CharacterColliderConfig;
   ai: CharacterAIConfig;
+  attack: CharacterAttackConfig;
   stumble: CharacterStumbleConfig;
   debug: boolean;
 }

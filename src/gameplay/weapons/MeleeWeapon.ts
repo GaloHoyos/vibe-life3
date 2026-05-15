@@ -1,7 +1,7 @@
-import { Vector3 } from 'three';
-import type RAPIER from '@dimforge/rapier3d-compat';
-import { Weapon, type WeaponContext, type WeaponFireContext } from './Weapon';
-import type { WeaponDefinition } from './WeaponDefinition';
+import { Vector3 } from "three";
+import type RAPIER from "@dimforge/rapier3d-compat";
+import { Weapon, type WeaponContext, type WeaponFireContext } from "./Weapon";
+import type { WeaponDefinition } from "./WeaponDefinition";
 
 export class MeleeWeapon extends Weapon {
   constructor(definition: WeaponDefinition, context: WeaponContext) {
@@ -9,10 +9,20 @@ export class MeleeWeapon extends Weapon {
   }
 
   protected performFire(context: WeaponFireContext): void {
-    const origin = context.origin.clone().addScaledVector(context.direction, 0.35);
-    const hit = this.context.raycast.cast(origin, context.direction, this.definition.range);
+    const origin = context.origin
+      .clone()
+      .addScaledVector(context.direction, 0.35);
+    const hit = this.context.raycast.cast(
+      origin,
+      context.direction,
+      this.definition.range,
+    );
 
     if (!hit) {
+      return;
+    }
+
+    if (hit.metadata?.kind === "player") {
       return;
     }
 
@@ -22,17 +32,27 @@ export class MeleeWeapon extends Weapon {
     }
 
     const damageMultiplier = hit.metadata?.bodyPart?.damageMultiplier ?? 1;
-    hit.metadata?.damageable?.applyDamage(this.definition.damage * damageMultiplier, context.direction.clone(), hit.metadata?.bodyPart?.name);
+    hit.metadata?.damageable?.applyDamage(
+      this.definition.damage * damageMultiplier,
+      context.direction.clone(),
+      hit.metadata?.bodyPart?.name,
+    );
 
-    this.context.eventBus.emit('weapon.hit', {
+    this.context.eventBus.emit("weapon.hit", {
       weaponName: this.name,
       targetId: hit.metadata?.id,
+      surfaceKind: hit.metadata?.kind,
       point: hit.point,
+      normal: hit.normal,
       damage: this.definition.damage * damageMultiplier,
     });
   }
 
-  private applyImpulse(rigidBody: RAPIER.RigidBody, direction: Vector3, impulseScale: number): void {
+  private applyImpulse(
+    rigidBody: RAPIER.RigidBody,
+    direction: Vector3,
+    impulseScale: number,
+  ): void {
     rigidBody.applyImpulse(
       {
         x: direction.x * impulseScale,

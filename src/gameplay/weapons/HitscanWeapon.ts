@@ -1,7 +1,7 @@
-import { Vector3 } from 'three';
-import type RAPIER from '@dimforge/rapier3d-compat';
-import { Weapon, type WeaponContext, type WeaponFireContext } from './Weapon';
-import type { WeaponDefinition } from './WeaponDefinition';
+import { Vector3 } from "three";
+import type RAPIER from "@dimforge/rapier3d-compat";
+import { Weapon, type WeaponContext, type WeaponFireContext } from "./Weapon";
+import type { WeaponDefinition } from "./WeaponDefinition";
 
 const spreadRight = new Vector3();
 const spreadUp = new Vector3();
@@ -14,30 +14,51 @@ export class HitscanWeapon extends Weapon {
   protected performFire(context: WeaponFireContext): void {
     const direction = applySpread(context.direction, this.definition.spread);
     const rayOrigin = context.origin.clone().addScaledVector(direction, 0.45);
-    const hit = this.context.raycast.cast(rayOrigin, direction, this.definition.range);
+    const hit = this.context.raycast.cast(
+      rayOrigin,
+      direction,
+      this.definition.range,
+    );
 
     if (!hit) {
       return;
     }
 
+    if (hit.metadata?.kind === "player") {
+      return;
+    }
+
     const parent = hit.collider.parent();
     if (parent && parent.isDynamic()) {
-      const impulseScale = hit.metadata?.kind === 'ragdoll' ? Math.min(this.definition.impulse, 1.25) : this.definition.impulse;
+      const impulseScale =
+        hit.metadata?.kind === "ragdoll"
+          ? Math.min(this.definition.impulse, 1.25)
+          : this.definition.impulse;
       this.applyImpulse(parent, direction, impulseScale);
     }
 
     const damageMultiplier = hit.metadata?.bodyPart?.damageMultiplier ?? 1;
-    hit.metadata?.damageable?.applyDamage(this.definition.damage * damageMultiplier, direction.clone(), hit.metadata?.bodyPart?.name);
+    hit.metadata?.damageable?.applyDamage(
+      this.definition.damage * damageMultiplier,
+      direction.clone(),
+      hit.metadata?.bodyPart?.name,
+    );
 
-    this.context.eventBus.emit('weapon.hit', {
+    this.context.eventBus.emit("weapon.hit", {
       weaponName: this.name,
       targetId: hit.metadata?.id,
+      surfaceKind: hit.metadata?.kind,
       point: hit.point,
+      normal: hit.normal,
       damage: this.definition.damage * damageMultiplier,
     });
   }
 
-  private applyImpulse(rigidBody: RAPIER.RigidBody, direction: Vector3, impulseScale: number): void {
+  private applyImpulse(
+    rigidBody: RAPIER.RigidBody,
+    direction: Vector3,
+    impulseScale: number,
+  ): void {
     rigidBody.applyImpulse(
       {
         x: direction.x * impulseScale,

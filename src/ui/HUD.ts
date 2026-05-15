@@ -1,7 +1,7 @@
-import type { Disposable } from '../engine/GameObject';
-import type { GameEventBus } from '../engine/GameEvents';
-import { createDefaultHUDState, type HUDState } from './HUDState';
-import { HUDView } from './HUDView';
+import type { Disposable } from "../engine/GameObject";
+import type { GameEventBus } from "../engine/GameEvents";
+import { createDefaultHUDState, type HUDState } from "./HUDState";
+import { HUDView } from "./HUDView";
 
 export class HUD implements Disposable {
   readonly element: HTMLDivElement;
@@ -16,33 +16,59 @@ export class HUD implements Disposable {
     this.render();
 
     this.unsubscribers.push(
-      eventBus.on('player.healthChanged', ({ current, max }) => this.setHealth(current, max)),
-      eventBus.on('player.health.changed', ({ current, max }) => this.setHealth(current, max)),
-      eventBus.on('player.armor.changed', ({ current, max }) => this.setArmor(current, max)),
-      eventBus.on('player.damaged', ({ amount }) => this.view.damage.flash(amount)),
-      eventBus.on('weapon.changed', ({ weaponName, ammo, reserve }) => this.setWeapon(weaponName, ammo, reserve)),
-      eventBus.on('ammo.changed', ({ current, reserve }) => this.setAmmo(current, reserve)),
-      eventBus.on('weapon.ammo.changed', ({ current, reserve }) => this.setAmmo(current, reserve)),
-      eventBus.on('weapon.fired', () => {
+      eventBus.on("player.healthChanged", ({ current, max }) =>
+        this.setHealth(current, max),
+      ),
+      eventBus.on("player.health.changed", ({ current, max }) =>
+        this.setHealth(current, max),
+      ),
+      eventBus.on("player.armor.changed", ({ current, max }) =>
+        this.setArmor(current, max),
+      ),
+      eventBus.on("player.damaged", ({ amount }) =>
+        this.view.damage.flash(amount),
+      ),
+      eventBus.on("weapon.changed", ({ weaponName, ammo, reserve }) =>
+        this.setWeapon(weaponName, ammo, reserve),
+      ),
+      eventBus.on("ammo.changed", ({ current, reserve }) =>
+        this.setAmmo(current, reserve),
+      ),
+      eventBus.on("weapon.ammo.changed", ({ current, reserve }) =>
+        this.setAmmo(current, reserve),
+      ),
+      eventBus.on("weapon.fired", () => {
         this.view.crosshair.pulseFire();
         this.view.weapon.pulseFire();
       }),
-      eventBus.on('weapon.hit', ({ targetId }) => {
+      eventBus.on("weapon.hit", ({ targetId }) => {
         if (targetId) {
           this.view.crosshair.pulseHit();
         }
       }),
-      eventBus.on('interact.changed', ({ label }) => this.setInteraction(label)),
-      eventBus.on('interaction.focus', ({ label }) => this.setInteraction(label)),
-      eventBus.on('interaction.blur', () => this.setInteraction(undefined)),
-      eventBus.on('objective.updated', ({ text }) => this.setObjective(text)),
-      eventBus.on('player.pickup.health', ({ amount }) => this.view.notify(`+${amount} health`, 'pickup')),
-      eventBus.on('player.pickup.ammo', ({ amount, weaponName }) => {
-        this.view.notify(`+${amount} ${weaponName ?? 'ammo'}`, 'pickup');
+      eventBus.on("interact.changed", ({ label }) =>
+        this.setInteraction(label),
+      ),
+      eventBus.on("interaction.focus", ({ label }) =>
+        this.setInteraction(label),
+      ),
+      eventBus.on("interaction.blur", () => this.setInteraction(undefined)),
+      eventBus.on("objective.updated", ({ text }) => this.setObjective(text)),
+      eventBus.on("player.pickup.health", ({ amount }) =>
+        this.view.notify(`+${amount} health`, "pickup"),
+      ),
+      eventBus.on("player.pickup.ammo", ({ amount, weaponName }) => {
+        this.view.notify(`+${amount} ${weaponName ?? "ammo"}`, "pickup");
       }),
-      eventBus.on('player.pickup.weapon', ({ weaponName }) => this.view.notify(`weapon acquired: ${weaponName}`, 'pickup')),
-      eventBus.on('dialogue.show', ({ text }) => this.view.notify(text, 'info')),
-      eventBus.on('subtitle.show', ({ text }) => this.view.notify(text, 'info')),
+      eventBus.on("player.pickup.weapon", ({ weaponName }) =>
+        this.view.notify(`weapon acquired: ${weaponName}`, "pickup"),
+      ),
+      eventBus.on("dialogue.show", ({ text }) =>
+        this.view.notify(text, "info"),
+      ),
+      eventBus.on("subtitle.show", ({ text }) =>
+        this.view.notify(text, "info"),
+      ),
     );
   }
 
@@ -80,6 +106,10 @@ export class HUD implements Disposable {
   dispose(): void {
     this.unsubscribers.forEach((unsubscribe) => unsubscribe());
     this.view.dispose();
+  }
+
+  setVisible(visible: boolean): void {
+    this.element.classList.toggle("is-hidden", !visible);
   }
 
   private render(): void {

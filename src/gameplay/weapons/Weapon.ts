@@ -1,7 +1,7 @@
-import { Vector3 } from 'three';
-import type { GameEventBus } from '../../engine/GameEvents';
-import type { Raycast } from '../../physics/Raycast';
-import type { WeaponDefinition } from './WeaponDefinition';
+import { Vector3 } from "three";
+import type { GameEventBus } from "../../engine/GameEvents";
+import type { Raycast } from "../../physics/Raycast";
+import type { WeaponDefinition } from "./WeaponDefinition";
 
 export interface WeaponContext {
   eventBus: GameEventBus;
@@ -16,6 +16,7 @@ export interface WeaponFireContext {
 
 export abstract class Weapon {
   protected lastFireTime = -Infinity;
+  private lastDryFireTime = -Infinity;
   protected magazine: number;
   protected reserve: number;
   private reloadingUntil = 0;
@@ -25,7 +26,9 @@ export abstract class Weapon {
     protected readonly context: WeaponContext,
   ) {
     this.magazine = definition.hasAmmo ? definition.magazineSize : 0;
-    this.reserve = definition.hasAmmo ? Math.min(definition.ammoPerPickup, definition.reserveAmmoMax) : 0;
+    this.reserve = definition.hasAmmo
+      ? Math.min(definition.ammoPerPickup, definition.reserveAmmoMax)
+      : 0;
   }
 
   get id(): string {
@@ -45,12 +48,18 @@ export abstract class Weapon {
   }
 
   addPickupAmmo(emit = true): number {
-    if (!this.definition.hasAmmo || !this.definition.canReceiveAmmoFromDuplicatePickup) {
+    if (
+      !this.definition.hasAmmo ||
+      !this.definition.canReceiveAmmoFromDuplicatePickup
+    ) {
       return 0;
     }
 
     const before = this.reserve;
-    this.reserve = Math.min(this.reserve + this.definition.ammoPerPickup, this.definition.reserveAmmoMax);
+    this.reserve = Math.min(
+      this.reserve + this.definition.ammoPerPickup,
+      this.definition.reserveAmmoMax,
+    );
     if (emit) {
       this.emitAmmoChanged();
     }
@@ -70,6 +79,23 @@ export abstract class Weapon {
   }
 
   tryFire(fireContext: WeaponFireContext): boolean {
+    if (
+      this.definition.hasAmmo &&
+      this.magazine <= 0 &&
+      fireContext.now >= this.reloadingUntil
+    ) {
+      if (
+        fireContext.now - this.lastDryFireTime >=
+        1 / this.definition.fireRate
+      ) {
+        this.lastDryFireTime = fireContext.now;
+        this.context.eventBus.emit("weapon.empty", {
+          weaponName: this.name,
+        });
+      }
+      return false;
+    }
+
     if (!this.canFire(fireContext.now)) {
       return false;
     }
@@ -79,11 +105,12 @@ export abstract class Weapon {
       this.magazine = Math.max(0, this.magazine - 1);
     }
 
-    this.context.eventBus.emit('weapon.fired', {
+    this.context.eventBus.emit("weapon.fired", {
       weaponName: this.name,
       ammo: this.getAmmo(),
       origin: fireContext.origin,
       direction: fireContext.direction,
+      range: this.definition.range,
     });
     this.performFire(fireContext);
     this.emitAmmoChanged();
@@ -91,7 +118,11 @@ export abstract class Weapon {
   }
 
   tryReload(now: number): boolean {
-    if (!this.definition.hasAmmo || this.magazine >= this.definition.magazineSize || this.reserve <= 0) {
+    if (
+      !this.definition.hasAmmo ||
+      this.magazine >= this.definition.magazineSize ||
+      this.reserve <= 0
+    ) {
       return false;
     }
 
@@ -101,7 +132,7 @@ export abstract class Weapon {
     this.magazine += moved;
     this.reserve -= moved;
     this.emitAmmoChanged();
-    this.context.eventBus.emit('weapon.reloaded', {
+    this.context.eventBus.emit("weapon.reloaded", {
       weaponName: this.name,
       ammo: this.magazine,
       reserve: this.reserve,
@@ -114,11 +145,11 @@ export abstract class Weapon {
   }
 
   protected emitAmmoChanged(): void {
-    this.context.eventBus.emit('ammo.changed', {
+    this.context.eventBus.emit("ammo.changed", {
       current: this.getAmmo(),
       reserve: this.getReserveAmmo(),
     });
-    this.context.eventBus.emit('weapon.ammo.changed', {
+    this.context.eventBus.emit("weapon.ammo.changed", {
       current: this.getAmmo(),
       reserve: this.getReserveAmmo(),
     });
