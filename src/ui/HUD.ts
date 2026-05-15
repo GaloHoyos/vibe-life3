@@ -1,55 +1,91 @@
 import type { Disposable } from '../engine/GameObject';
 import type { GameEventBus } from '../engine/GameEvents';
+import { createDefaultHUDState, type HUDState } from './HUDState';
+import { HUDView } from './HUDView';
 
 export class HUD implements Disposable {
   readonly element: HTMLDivElement;
 
-  private readonly healthElement: HTMLDivElement;
-  private readonly ammoElement: HTMLDivElement;
-  private readonly promptElement: HTMLDivElement;
+  private readonly state: HUDState = createDefaultHUDState();
+  private readonly view: HUDView;
   private readonly unsubscribers: Array<() => void> = [];
 
   constructor(container: HTMLElement, eventBus: GameEventBus) {
-    this.element = document.createElement('div');
-    this.element.className = 'hud';
-
-    const crosshair = document.createElement('div');
-    crosshair.className = 'hud__crosshair';
-
-    this.healthElement = document.createElement('div');
-    this.healthElement.className = 'hud__stats';
-
-    this.ammoElement = document.createElement('div');
-    this.ammoElement.className = 'hud__ammo';
-
-    this.promptElement = document.createElement('div');
-    this.promptElement.className = 'hud__prompt';
-
-    this.element.append(crosshair, this.healthElement, this.ammoElement, this.promptElement);
-    container.append(this.element);
+    this.view = new HUDView(container);
+    this.element = this.view.element;
+    this.render();
 
     this.unsubscribers.push(
-      eventBus.on('player.healthChanged', ({ current, max }) => {
-        this.setHealth(current, max);
+      eventBus.on('player.healthChanged', ({ current, max }) => this.setHealth(current, max)),
+      eventBus.on('player.health.changed', ({ current, max }) => this.setHealth(current, max)),
+      eventBus.on('player.armor.changed', ({ current, max }) => this.setArmor(current, max)),
+      eventBus.on('player.damaged', ({ amount }) => this.view.damage.flash(amount)),
+      eventBus.on('weapon.changed', ({ weaponName, ammo, reserve }) => this.setWeapon(weaponName, ammo, reserve)),
+      eventBus.on('ammo.changed', ({ current, reserve }) => this.setAmmo(current, reserve)),
+      eventBus.on('weapon.ammo.changed', ({ current, reserve }) => this.setAmmo(current, reserve)),
+      eventBus.on('weapon.fired', () => {
+        this.view.crosshair.pulseFire();
+        this.view.weapon.pulseFire();
       }),
-      eventBus.on('ammo.changed', ({ current, reserve }) => {
-        this.setAmmo(current, reserve);
+      eventBus.on('weapon.hit', ({ targetId }) => {
+        if (targetId) {
+          this.view.crosshair.pulseHit();
+        }
       }),
-      eventBus.on('interact.changed', ({ label }) => {
-        this.promptElement.textContent = label ?? '';
+      eventBus.on('interact.changed', ({ label }) => this.setInteraction(label)),
+      eventBus.on('interaction.focus', ({ label }) => this.setInteraction(label)),
+      eventBus.on('interaction.blur', () => this.setInteraction(undefined)),
+      eventBus.on('objective.updated', ({ text }) => this.setObjective(text)),
+      eventBus.on('player.pickup.health', ({ amount }) => this.view.notify(`+${amount} health`, 'pickup')),
+      eventBus.on('player.pickup.ammo', ({ amount, weaponName }) => {
+        this.view.notify(`+${amount} ${weaponName ?? 'ammo'}`, 'pickup');
       }),
+      eventBus.on('player.pickup.weapon', ({ weaponName }) => this.view.notify(`weapon acquired: ${weaponName}`, 'pickup')),
+      eventBus.on('dialogue.show', ({ text }) => this.view.notify(text, 'info')),
+      eventBus.on('subtitle.show', ({ text }) => this.view.notify(text, 'info')),
     );
   }
 
   setHealth(current: number, max: number): void {
-    this.healthElement.textContent = `Vida: ${Math.ceil(current)} / ${max}`;
+    this.state.health = { current, max };
+    this.view.healthArmor.setHealth(this.state.health);
+  }
+
+  setArmor(current: number, max: number): void {
+    this.state.armor = { current, max };
+    this.state.armorEnabled = true;
+    this.view.healthArmor.setArmor(this.state.armor, true);
   }
 
   setAmmo(current: number, reserve: number): void {
-    this.ammoElement.textContent = `${current} | ${reserve}`;
+    this.state.weapon = { ...this.state.weapon, ammo: current, reserve };
+    this.view.weapon.setWeapon(this.state.weapon);
+  }
+
+  setWeapon(name: string, ammo: number, reserve: number): void {
+    this.state.weapon = { name, ammo, reserve };
+    this.view.weapon.setWeapon(this.state.weapon);
+  }
+
+  setInteraction(label?: string): void {
+    this.state.interactionLabel = label;
+    this.view.interaction.setLabel(label);
+  }
+
+  setObjective(text: string): void {
+    this.state.objective = text;
+    this.view.objective.setObjective(text);
   }
 
   dispose(): void {
     this.unsubscribers.forEach((unsubscribe) => unsubscribe());
+    this.view.dispose();
+  }
+
+  private render(): void {
+    this.view.healthArmor.setHealth(this.state.health);
+    this.view.healthArmor.setArmor(this.state.armor, this.state.armorEnabled);
+    this.view.weapon.setWeapon(this.state.weapon);
+    this.view.objective.setObjective(this.state.objective);
   }
 }

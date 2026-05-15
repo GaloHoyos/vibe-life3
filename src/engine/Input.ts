@@ -11,6 +11,7 @@ export class Input {
   private readonly mouseButtonsPressed = new Set<number>();
   private readonly mouseButtonsReleased = new Set<number>();
   private readonly mouseDelta: MouseDelta = { x: 0, y: 0 };
+  private wheelDelta = 0;
 
   constructor(private readonly target: HTMLElement) {
     window.addEventListener('keydown', this.handleKeyDown);
@@ -18,6 +19,7 @@ export class Input {
     window.addEventListener('mousedown', this.handleMouseDown);
     window.addEventListener('mouseup', this.handleMouseUp);
     window.addEventListener('mousemove', this.handleMouseMove);
+    window.addEventListener('wheel', this.handleWheel, { passive: false });
   }
 
   dispose(): void {
@@ -26,6 +28,7 @@ export class Input {
     window.removeEventListener('mousedown', this.handleMouseDown);
     window.removeEventListener('mouseup', this.handleMouseUp);
     window.removeEventListener('mousemove', this.handleMouseMove);
+    window.removeEventListener('wheel', this.handleWheel);
   }
 
   requestPointerLock(): void {
@@ -52,6 +55,10 @@ export class Input {
     return this.mouseDelta;
   }
 
+  getWheelDelta(): number {
+    return this.wheelDelta;
+  }
+
   endFrame(): void {
     this.keysPressed.clear();
     this.keysReleased.clear();
@@ -59,6 +66,7 @@ export class Input {
     this.mouseButtonsReleased.clear();
     this.mouseDelta.x = 0;
     this.mouseDelta.y = 0;
+    this.wheelDelta = 0;
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
@@ -94,5 +102,14 @@ export class Input {
 
     this.mouseDelta.x += event.movementX;
     this.mouseDelta.y += event.movementY;
+  };
+
+  private readonly handleWheel = (event: WheelEvent): void => {
+    if (!this.isPointerLocked()) {
+      return;
+    }
+
+    event.preventDefault();
+    this.wheelDelta += event.deltaY;
   };
 }

@@ -45,6 +45,13 @@ export const DemoLevel: LevelDefinition = {
   npcs: [
     { id: 'npc-zombie-01', position: [4.6, 0.95, 1.5], characterId: 'zombie' },
   ],
+  weaponPickups: [
+    { id: 'pickup-crowbar', weaponId: 'crowbar', position: [-4.8, 0.35, 8.4] },
+    { id: 'pickup-pistol', weaponId: 'pistol', position: [-2.8, 0.35, 8.3] },
+    { id: 'pickup-smg', weaponId: 'smg', position: [-0.8, 0.35, 8.2] },
+    { id: 'pickup-ar3', weaponId: 'ar3', position: [1.2, 0.35, 8.2] },
+    { id: 'pickup-gravity-gun', weaponId: 'gravityGun', position: [3.4, 0.35, 8.4] },
+  ],
   triggers: [
     {
       id: 'intro-trigger',

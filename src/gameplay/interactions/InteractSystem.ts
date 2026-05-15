@@ -37,6 +37,13 @@ export class InteractSystem {
       this.eventBus.emit('interact.changed', {
         label: this.current ? `[E] ${this.current.label}` : undefined,
       });
+      if (this.current) {
+        this.eventBus.emit('interaction.focus', {
+          label: this.current.label,
+        });
+      } else {
+        this.eventBus.emit('interaction.blur', {});
+      }
     }
 
     if (this.current && input.wasKeyPressed('KeyE')) {

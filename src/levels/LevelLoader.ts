@@ -1,9 +1,11 @@
 import type { Scene } from 'three';
+import type { AssetManager } from '../assets/AssetManager';
 import type { CharacterFactory } from '../characters/CharacterFactory';
 import type { VectorTuple } from '../engine/MathTypes';
 import { tupleToVector3 } from '../engine/MathTypes';
 import type { GameEventBus } from '../engine/GameEvents';
 import { DoorButton, InteractSystem, SlidingDoor } from '../gameplay/interactions';
+import { WeaponPickup } from '../gameplay/weapons/WeaponPickup';
 import { NPC } from '../ai/NPC';
 import type { PhysicsWorld } from '../physics/PhysicsWorld';
 import { createBoxMesh } from '../render/PrimitiveFactory';
@@ -14,6 +16,7 @@ import type { TriggerSystem } from './TriggerSystem';
 export interface LoadedLevel {
   npcs: NPC[];
   doors: SlidingDoor[];
+  weaponPickups: WeaponPickup[];
 }
 
 export class LevelLoader {
@@ -24,11 +27,13 @@ export class LevelLoader {
     private readonly interactSystem: InteractSystem,
     private readonly triggerSystem: TriggerSystem,
     private readonly characters: CharacterFactory,
+    private readonly assets: AssetManager,
   ) {}
 
   async load(level: LevelDefinition): Promise<LoadedLevel> {
     const npcs: NPC[] = [];
     const doors: SlidingDoor[] = [];
+    const weaponPickups: WeaponPickup[] = [];
 
     level.staticBoxes.forEach((definition) => {
       const mesh = createLevelBox(definition.id, definition.position, definition.size, definition.material);
@@ -96,11 +101,21 @@ export class LevelLoader {
       npcs.push(npc);
     }
 
+    for (const definition of level.weaponPickups) {
+      weaponPickups.push(
+        await WeaponPickup.create(this.scene, this.physics, this.assets, {
+          id: definition.id,
+          weaponId: definition.weaponId,
+          position: tupleToVector3(definition.position),
+        }),
+      );
+    }
+
     level.triggers.forEach((definition) => {
       this.triggerSystem.addTrigger(definition);
     });
 
-    return { npcs, doors };
+    return { npcs, doors, weaponPickups };
   }
 }
 

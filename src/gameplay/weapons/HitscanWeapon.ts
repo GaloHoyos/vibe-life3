@@ -1,56 +1,39 @@
 import { Vector3 } from 'three';
 import type RAPIER from '@dimforge/rapier3d-compat';
-import type { Raycast } from '../../physics/Raycast';
-import { Weapon, type WeaponContext } from './Weapon';
+import { Weapon, type WeaponContext, type WeaponFireContext } from './Weapon';
+import type { WeaponDefinition } from './WeaponDefinition';
 
-export interface HitscanWeaponOptions {
-  name: string;
-  ammo: number;
-  reserveAmmo: number;
-  cooldown: number;
-  range: number;
-  damage: number;
-  impulse: number;
-  raycast: Raycast;
-}
+const spreadRight = new Vector3();
+const spreadUp = new Vector3();
 
 export class HitscanWeapon extends Weapon {
-  private readonly range: number;
-  private readonly damage: number;
-  private readonly impulse: number;
-  private readonly raycast: Raycast;
-
-  constructor(context: WeaponContext, options: HitscanWeaponOptions) {
-    super(options.name, context, options.ammo, options.reserveAmmo, options.cooldown);
-    this.range = options.range;
-    this.damage = options.damage;
-    this.impulse = options.impulse;
-    this.raycast = options.raycast;
+  constructor(definition: WeaponDefinition, context: WeaponContext) {
+    super(definition, context);
   }
 
-  protected fire(origin: Vector3, direction: Vector3): void {
-    const rayOrigin = origin.clone().addScaledVector(direction, 0.6);
-    const hit = this.raycast.cast(rayOrigin, direction, this.range);
+  protected performFire(context: WeaponFireContext): void {
+    const direction = applySpread(context.direction, this.definition.spread);
+    const rayOrigin = context.origin.clone().addScaledVector(direction, 0.45);
+    const hit = this.context.raycast.cast(rayOrigin, direction, this.definition.range);
 
     if (!hit) {
       return;
     }
 
     const parent = hit.collider.parent();
-
     if (parent && parent.isDynamic()) {
-      const impulseScale = hit.metadata?.kind === 'ragdoll' ? Math.min(this.impulse, 1.25) : this.impulse;
+      const impulseScale = hit.metadata?.kind === 'ragdoll' ? Math.min(this.definition.impulse, 1.25) : this.definition.impulse;
       this.applyImpulse(parent, direction, impulseScale);
     }
 
     const damageMultiplier = hit.metadata?.bodyPart?.damageMultiplier ?? 1;
-    hit.metadata?.damageable?.applyDamage(this.damage * damageMultiplier, direction.clone(), hit.metadata?.bodyPart?.name);
+    hit.metadata?.damageable?.applyDamage(this.definition.damage * damageMultiplier, direction.clone(), hit.metadata?.bodyPart?.name);
 
     this.context.eventBus.emit('weapon.hit', {
       weaponName: this.name,
       targetId: hit.metadata?.id,
       point: hit.point,
-      damage: this.damage * damageMultiplier,
+      damage: this.definition.damage * damageMultiplier,
     });
   }
 
@@ -64,4 +47,23 @@ export class HitscanWeapon extends Weapon {
       true,
     );
   }
+}
+
+function applySpread(direction: Vector3, spread: number): Vector3 {
+  if (spread <= 0) {
+    return direction.clone().normalize();
+  }
+
+  spreadRight.crossVectors(direction, new Vector3(0, 1, 0));
+  if (spreadRight.lengthSq() < 0.001) {
+    spreadRight.set(1, 0, 0);
+  }
+  spreadRight.normalize();
+  spreadUp.crossVectors(spreadRight, direction).normalize();
+
+  return direction
+    .clone()
+    .addScaledVector(spreadRight, (Math.random() - 0.5) * spread)
+    .addScaledVector(spreadUp, (Math.random() - 0.5) * spread)
+    .normalize();
 }

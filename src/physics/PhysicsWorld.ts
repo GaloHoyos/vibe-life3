@@ -5,7 +5,7 @@ import { createBoxCollider } from './Colliders';
 
 export interface PhysicsMetadata {
   id: string;
-  kind: 'static' | 'dynamic' | 'door' | 'npc' | 'player' | 'ragdoll';
+  kind: 'static' | 'dynamic' | 'door' | 'npc' | 'player' | 'ragdoll' | 'weaponPickup';
   damageable?: Damageable;
   bodyPart?: {
     name: string;

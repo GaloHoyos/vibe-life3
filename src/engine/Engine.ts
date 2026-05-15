@@ -5,6 +5,7 @@ import { CharacterFactory } from '../characters/CharacterFactory';
 import { DebugOverlay } from '../debug/DebugOverlay';
 import { Gizmos } from '../debug/Gizmos';
 import { Player } from '../gameplay/Player';
+import type { WeaponPickup } from '../gameplay/weapons/WeaponPickup';
 import { InteractSystem, type SlidingDoor } from '../gameplay/interactions';
 import { DemoLevel } from '../levels/DemoLevel';
 import { LevelEvents } from '../narrative/LevelEvents';
@@ -55,6 +56,7 @@ export class Engine {
   private player: Player | null = null;
   private npcs: NPC[] = [];
   private doors: SlidingDoor[] = [];
+  private weaponPickups: WeaponPickup[] = [];
 
   constructor(container: HTMLElement) {
     this.root = document.createElement('div');
@@ -93,11 +95,20 @@ export class Engine {
       this.interactSystem,
       this.triggerSystem,
       this.characters,
+      this.assets,
     );
     const loaded = await loader.load(DemoLevel);
     this.npcs = loaded.npcs;
     this.doors = loaded.doors;
-    this.player = new Player(new Vector3(...DemoLevel.playerStart), this.physics, this.raycast, this.eventBus);
+    this.weaponPickups = loaded.weaponPickups;
+    this.player = new Player(
+      new Vector3(...DemoLevel.playerStart),
+      this.physics,
+      this.raycast,
+      this.assets,
+      this.sceneManager.scene,
+      this.eventBus,
+    );
     this.cameraSystem.syncToPosition(this.player.getEyePosition());
     levelEvents.announceLevel(DemoLevel.title);
   }
@@ -111,6 +122,7 @@ export class Engine {
     this.renderer.canvas.removeEventListener('click', this.handleCanvasClick);
     document.removeEventListener('pointerlockchange', this.handlePointerLockChange);
     this.dialogueSystem.dispose();
+    this.player?.dispose();
     this.hud.dispose();
     this.input.dispose();
     this.renderer.dispose();
@@ -133,6 +145,7 @@ export class Engine {
     }
 
     const playerPosition = this.player.getPosition();
+    this.weaponPickups.forEach((pickup) => pickup.update(time.delta, playerPosition, this.player!.weapons));
     this.npcs.forEach((npc) => npc.update(time.delta, playerPosition));
     this.doors.forEach((door) => door.update(time.delta));
     this.physics.step(time.delta);

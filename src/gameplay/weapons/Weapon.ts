@@ -1,53 +1,128 @@
 import { Vector3 } from 'three';
 import type { GameEventBus } from '../../engine/GameEvents';
+import type { Raycast } from '../../physics/Raycast';
+import type { WeaponDefinition } from './WeaponDefinition';
 
 export interface WeaponContext {
   eventBus: GameEventBus;
+  raycast: Raycast;
+}
+
+export interface WeaponFireContext {
+  origin: Vector3;
+  direction: Vector3;
+  now: number;
 }
 
 export abstract class Weapon {
   protected lastFireTime = -Infinity;
+  protected magazine: number;
+  protected reserve: number;
+  private reloadingUntil = 0;
 
   constructor(
-    readonly name: string,
+    readonly definition: WeaponDefinition,
     protected readonly context: WeaponContext,
-    protected ammo: number,
-    protected reserveAmmo: number,
-    protected cooldown: number,
-  ) {}
+  ) {
+    this.magazine = definition.hasAmmo ? definition.magazineSize : 0;
+    this.reserve = definition.hasAmmo ? Math.min(definition.ammoPerPickup, definition.reserveAmmoMax) : 0;
+  }
+
+  get id(): string {
+    return this.definition.id;
+  }
+
+  get name(): string {
+    return this.definition.displayName;
+  }
 
   getAmmo(): number {
-    return this.ammo;
+    return this.definition.hasAmmo ? this.magazine : 0;
   }
 
   getReserveAmmo(): number {
-    return this.reserveAmmo;
+    return this.definition.hasAmmo ? this.reserve : 0;
+  }
+
+  addPickupAmmo(emit = true): number {
+    if (!this.definition.hasAmmo || !this.definition.canReceiveAmmoFromDuplicatePickup) {
+      return 0;
+    }
+
+    const before = this.reserve;
+    this.reserve = Math.min(this.reserve + this.definition.ammoPerPickup, this.definition.reserveAmmoMax);
+    if (emit) {
+      this.emitAmmoChanged();
+    }
+    return this.reserve - before;
   }
 
   canFire(now: number): boolean {
-    return this.ammo > 0 && now - this.lastFireTime >= this.cooldown;
-  }
-
-  tryFire(origin: Vector3, direction: Vector3, now: number): boolean {
-    if (!this.canFire(now)) {
+    if (now < this.reloadingUntil) {
       return false;
     }
 
-    this.lastFireTime = now;
-    this.ammo -= 1;
+    if (now - this.lastFireTime < 1 / this.definition.fireRate) {
+      return false;
+    }
+
+    return !this.definition.hasAmmo || this.magazine > 0;
+  }
+
+  tryFire(fireContext: WeaponFireContext): boolean {
+    if (!this.canFire(fireContext.now)) {
+      return false;
+    }
+
+    this.lastFireTime = fireContext.now;
+    if (this.definition.hasAmmo) {
+      this.magazine = Math.max(0, this.magazine - 1);
+    }
+
     this.context.eventBus.emit('weapon.fired', {
       weaponName: this.name,
-      ammo: this.ammo,
-      origin,
-      direction,
+      ammo: this.getAmmo(),
+      origin: fireContext.origin,
+      direction: fireContext.direction,
     });
-    this.context.eventBus.emit('ammo.changed', {
-      current: this.ammo,
-      reserve: this.reserveAmmo,
-    });
-    this.fire(origin, direction);
+    this.performFire(fireContext);
+    this.emitAmmoChanged();
     return true;
   }
 
-  protected abstract fire(origin: Vector3, direction: Vector3): void;
+  tryReload(now: number): boolean {
+    if (!this.definition.hasAmmo || this.magazine >= this.definition.magazineSize || this.reserve <= 0) {
+      return false;
+    }
+
+    this.reloadingUntil = now + this.definition.reloadTime;
+    const missing = this.definition.magazineSize - this.magazine;
+    const moved = Math.min(missing, this.reserve);
+    this.magazine += moved;
+    this.reserve -= moved;
+    this.emitAmmoChanged();
+    this.context.eventBus.emit('weapon.reloaded', {
+      weaponName: this.name,
+      ammo: this.magazine,
+      reserve: this.reserve,
+    });
+    return true;
+  }
+
+  isReloading(now: number): boolean {
+    return now < this.reloadingUntil;
+  }
+
+  protected emitAmmoChanged(): void {
+    this.context.eventBus.emit('ammo.changed', {
+      current: this.getAmmo(),
+      reserve: this.getReserveAmmo(),
+    });
+    this.context.eventBus.emit('weapon.ammo.changed', {
+      current: this.getAmmo(),
+      reserve: this.getReserveAmmo(),
+    });
+  }
+
+  protected abstract performFire(context: WeaponFireContext): void;
 }

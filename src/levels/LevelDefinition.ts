@@ -1,5 +1,6 @@
 import type { VectorTuple } from '../engine/MathTypes';
 import type { CharacterId } from '../characters/CharacterDefinition';
+import type { WeaponId } from '../gameplay/weapons/WeaponDefinition';
 import type { MaterialKey } from '../render/Materials';
 
 export interface StaticBoxDefinition {
@@ -38,6 +39,12 @@ export interface NPCDefinition {
   characterId: CharacterId;
 }
 
+export interface WeaponPickupDefinition {
+  id: string;
+  weaponId: WeaponId;
+  position: VectorTuple;
+}
+
 export interface TriggerDefinition {
   id: string;
   position: VectorTuple;
@@ -59,5 +66,6 @@ export interface LevelDefinition {
   dynamicBoxes: DynamicBoxDefinition[];
   doors: DoorDefinition[];
   npcs: NPCDefinition[];
+  weaponPickups: WeaponPickupDefinition[];
   triggers: TriggerDefinition[];
 }

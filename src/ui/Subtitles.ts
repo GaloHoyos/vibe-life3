@@ -1,28 +1,20 @@
+import { SubtitleView } from './SubtitleView';
+
 export class Subtitles {
   readonly element: HTMLDivElement;
 
-  private remaining = 0;
+  private readonly view = new SubtitleView();
 
   constructor(container: HTMLElement) {
-    this.element = document.createElement('div');
-    this.element.className = 'subtitles';
+    this.element = this.view.element;
     container.append(this.element);
   }
 
   show(text: string, duration: number, speaker?: string): void {
-    this.element.textContent = speaker ? `${speaker}: ${text}` : text;
-    this.remaining = duration;
+    this.view.show(text, duration, speaker);
   }
 
   update(delta: number): void {
-    if (this.remaining <= 0) {
-      return;
-    }
-
-    this.remaining -= delta;
-
-    if (this.remaining <= 0) {
-      this.element.textContent = '';
-    }
+    this.view.update(delta);
   }
 }

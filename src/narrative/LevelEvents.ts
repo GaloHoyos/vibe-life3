@@ -9,5 +9,8 @@ export class LevelEvents {
       text: `Cargando ${title}.`,
       duration: 2.5,
     });
+    this.eventBus.emit('objective.updated', {
+      text: 'Explorar la instalacion de pruebas',
+    });
   }
 }
