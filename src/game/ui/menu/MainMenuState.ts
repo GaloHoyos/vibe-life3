@@ -1,3 +1,5 @@
+import { getAllLevels } from "../../levels/LevelRegistry";
+
 export type GameMenuState =
   | "mainMenu"
   | "newGameMenu"
@@ -6,7 +8,8 @@ export type GameMenuState =
   | "controls"
   | "credits"
   | "playing"
-  | "paused";
+  | "paused"
+  | "loading";
 
 export interface MenuChapter {
   id: string;
@@ -14,11 +17,12 @@ export interface MenuChapter {
   description: string;
 }
 
-export const DefaultChapters: MenuChapter[] = [
-  {
-    id: "demo",
-    title: "Mapa de Pruebas",
+/** Construye la lista de capítulos seleccionables a partir del `LevelRegistry`. */
+export function buildChapters(): MenuChapter[] {
+  return getAllLevels().map((level, index) => ({
+    id: level.id,
+    title: `Capitulo ${index + 1}. ${level.title}`,
     description:
-      "Entorno de desarrollo para probar armas, NPCs, fisicas e interaccion.",
-  },
-];
+      level.description ?? "Mapa disponible para iniciar una nueva partida.",
+  }));
+}

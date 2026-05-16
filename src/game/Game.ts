@@ -38,15 +38,19 @@ import type { GameMenuState } from "./ui/menu/MainMenuState";
  * Recibe un `Engine` ya construido, registra todos los servicios
  * específicos del juego (UI, audio reactiva a eventos, gameplay,
  * narrativa) y maneja el bucle principal a través del engine.
+ *
+ * El nivel no se carga en `init()`: solo cuando el usuario elige un mapa
+ * desde el menú principal (`startNewGame`). "Salir al menú principal"
+ * desde la pausa reinicia la página para garantizar un teardown limpio.
  */
 export interface GameOptions {
-  /** Id del nivel inicial a cargar. Default: "demo". */
-  initialLevelId?: LevelId;
+  /** Opcional: bootear directamente en un nivel concreto sin pasar por el menú. */
+  bootIntoLevel?: LevelId;
 }
 
 export class Game {
   private readonly root: HTMLElement;
-  private readonly initialLevelId: LevelId;
+  private readonly bootIntoLevel?: LevelId;
 
   private gameState: GameMenuState = "mainMenu";
   private currentLevel: LevelDefinition | null = null;
@@ -57,7 +61,7 @@ export class Game {
 
   constructor(private readonly engine: Engine, options: GameOptions = {}) {
     this.root = engine.root;
-    this.initialLevelId = options.initialLevelId ?? "demo";
+    this.bootIntoLevel = options.bootIntoLevel;
 
     this.registerEventBus();
     this.registerAudio();
@@ -79,56 +83,16 @@ export class Game {
     await this.engine.init();
 
     const services = this.engine.services;
-    const physics = services.resolve(EngineTokens.Physics);
     const sceneManager = services.resolve(EngineTokens.Scene);
     const lighting = services.resolve(EngineTokens.Lighting);
-    const resources = services.resolve(EngineTokens.Resources);
-    const assets = services.resolve(EngineTokens.Assets);
-    const raycast = services.resolve(EngineTokens.Raycast);
-    const camera = services.resolve(EngineTokens.Camera);
-    const eventBus = services.resolve(GameTokens.EventBus);
-    const interactSystem = services.resolve(GameTokens.InteractSystem);
-    const triggerSystem = services.resolve(GameTokens.TriggerSystem);
-    const characters = services.resolve(GameTokens.Characters);
-
-    const level = getLevel(this.initialLevelId);
-    this.currentLevel = level;
-
-    sceneManager.setBackground(level.background);
-    lighting.attach(sceneManager.scene);
-    resources.register(`level.${level.id}`, level);
-
     const footsteps = services.resolve(GameTokens.Footsteps);
+
+    lighting.attach(sceneManager.scene);
     footsteps.configure(FootstepsConfig);
-    footsteps.setSounds(level.audio.footstepSounds);
 
-    const levelEvents = new LevelEvents(eventBus);
-    const loader = new LevelLoader(
-      sceneManager.scene,
-      physics,
-      eventBus,
-      interactSystem,
-      triggerSystem,
-      characters,
-      assets,
-    );
-
-    const loaded = await loader.load(level);
-    this.npcs = loaded.npcs;
-    this.doors = loaded.doors;
-    this.weaponPickups = loaded.weaponPickups;
-
-    this.player = new Player(
-      new Vector3(...level.playerStart),
-      physics,
-      raycast,
-      assets,
-      sceneManager.scene,
-      eventBus,
-    );
-
-    camera.syncToPosition(this.player.getEyePosition());
-    levelEvents.announceLevel(level.title);
+    if (this.bootIntoLevel) {
+      await this.startNewGame(this.bootIntoLevel);
+    }
   }
 
   start(): void {
@@ -216,9 +180,11 @@ export class Game {
     s.register(
       GameTokens.MainMenu,
       new MainMenu(this.root, {
-        onStartChapter: (chapterId) => this.startNewGame(chapterId),
+        onStartChapter: (chapterId) => {
+          void this.startNewGame(chapterId as LevelId);
+        },
         onResume: () => this.setGameState("playing"),
-        onReturnToMain: () => this.setGameState("mainMenu"),
+        onExitToMain: () => this.exitToMainMenu(),
         onToggleDebug: (enabled) => debugOverlay.setEnabled(enabled),
         onVolumeChange: (bus, value) => audio.setVolume(bus, value),
         onGetVolume: (bus) => audio.getVolume(bus),
@@ -231,10 +197,6 @@ export class Game {
   // ---------------------------------------------------------------------------
 
   private update(time: Time): void {
-    if (!this.player) {
-      return;
-    }
-
     const s = this.engine.services;
     const input = s.resolve(EngineTokens.Input);
     const debugOverlay = s.resolve(GameTokens.DebugOverlay);
@@ -247,7 +209,7 @@ export class Game {
       this.setGameState("paused");
     }
 
-    if (this.gameState !== "playing") {
+    if (this.gameState !== "playing" || !this.player) {
       this.engine.renderFrame();
       input.endFrame();
       return;
@@ -350,7 +312,6 @@ export class Game {
     const mainMenu = s.resolve(GameTokens.MainMenu);
     const hud = s.resolve(GameTokens.HUD);
     const input = s.resolve(EngineTokens.Input);
-    const ambience = s.resolve(GameTokens.BackgroundAmbience);
 
     mainMenu.setState(state);
     hud.setVisible(state === "playing");
@@ -358,26 +319,28 @@ export class Game {
     if (state === "playing") {
       mainMenu.setStatus(MenuStrings.ready);
       input.requestPointerLock();
-    } else if (state === "mainMenu") {
-      ambience.stop();
     }
   }
 
-  private startNewGame(chapterId: string): void {
-    void chapterId; // El nivel actual lo determina `currentLevel`; ver `init()`.
-
+  private async startNewGame(levelId: LevelId): Promise<void> {
     const s = this.engine.services;
     const mainMenu = s.resolve(GameTokens.MainMenu);
     const audio = s.resolve(EngineTokens.Audio);
+
+    audio.unlock();
+
+    const level = getLevel(levelId);
+    mainMenu.showLoading(MenuStrings.loadingLevel(level.title));
+
+    // Permitir que el navegador pinte la pantalla de carga antes del trabajo síncrono.
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+
+    await this.loadLevel(levelId);
+
     const ambience = s.resolve(GameTokens.BackgroundAmbience);
     const music = s.resolve(GameTokens.Music);
-
-    mainMenu.setStatus(
-      this.currentLevel
-        ? MenuStrings.loadingLevel(this.currentLevel.title)
-        : MenuStrings.loadingFallback,
-    );
-    audio.unlock();
 
     if (this.currentLevel) {
       ambience.start(this.currentLevel.audio.ambiences);
@@ -389,5 +352,80 @@ export class Game {
     }
 
     this.setGameState("playing");
+  }
+
+  private async loadLevel(levelId: LevelId): Promise<void> {
+    const services = this.engine.services;
+    const physics = services.resolve(EngineTokens.Physics);
+    const sceneManager = services.resolve(EngineTokens.Scene);
+    const resources = services.resolve(EngineTokens.Resources);
+    const assets = services.resolve(EngineTokens.Assets);
+    const raycast = services.resolve(EngineTokens.Raycast);
+    const camera = services.resolve(EngineTokens.Camera);
+    const eventBus = services.resolve(GameTokens.EventBus);
+    const interactSystem = services.resolve(GameTokens.InteractSystem);
+    const triggerSystem = services.resolve(GameTokens.TriggerSystem);
+    const characters = services.resolve(GameTokens.Characters);
+    const footsteps = services.resolve(GameTokens.Footsteps);
+
+    const level = getLevel(levelId);
+    this.currentLevel = level;
+
+    sceneManager.setBackground(level.background);
+    resources.register(`level.${level.id}`, level);
+    footsteps.setSounds(level.audio.footstepSounds);
+
+    const levelEvents = new LevelEvents(eventBus);
+    const loader = new LevelLoader(
+      sceneManager.scene,
+      physics,
+      eventBus,
+      interactSystem,
+      triggerSystem,
+      characters,
+      assets,
+    );
+
+    const loaded = await loader.load(level);
+    this.npcs = loaded.npcs;
+    this.doors = loaded.doors;
+    this.weaponPickups = loaded.weaponPickups;
+
+    this.player = new Player(
+      new Vector3(...level.playerStart),
+      physics,
+      raycast,
+      assets,
+      sceneManager.scene,
+      eventBus,
+    );
+
+    camera.syncToPosition(this.player.getEyePosition());
+    levelEvents.announceLevel(level.title);
+  }
+
+  /**
+   * Salir al menú principal desde la pausa.
+   *
+   * Reinicia la página: es la forma más robusta de devolver el motor,
+   * la física y la escena al estado inicial. La página vuelve a bootear
+   * en el menú principal y el usuario puede cargar cualquier mapa otra
+   * vez (incluido el que acaba de salir).
+   */
+  private exitToMainMenu(): void {
+    const s = this.engine.services;
+    const mainMenu = s.resolve(GameTokens.MainMenu);
+    const ambience = s.resolve(GameTokens.BackgroundAmbience);
+    const music = s.resolve(GameTokens.Music);
+
+    ambience.stop();
+    music.stopMusic();
+    mainMenu.showLoading("Volviendo al menu principal...");
+
+    // Pequeña espera para que el overlay de carga llegue a pintarse antes de
+    // que el navegador descarte la página por el reload.
+    window.setTimeout(() => {
+      window.location.reload();
+    }, 250);
   }
 }

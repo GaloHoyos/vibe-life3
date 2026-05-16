@@ -1,28 +1,56 @@
+interface KeyBinding {
+  key: string;
+  action: string;
+}
+
+const KEY_BINDINGS: KeyBinding[] = [
+  { key: "W A S D", action: "Mover" },
+  { key: "Mouse", action: "Mirar" },
+  { key: "Clic izquierdo", action: "Disparar / Atacar" },
+  { key: "Clic derecho", action: "Funcion alternativa" },
+  { key: "R", action: "Recargar" },
+  { key: "E", action: "Interactuar" },
+  { key: "Espacio", action: "Saltar" },
+  { key: "Shift", action: "Correr" },
+  { key: "1 - 5", action: "Seleccionar arma" },
+  { key: "Rueda", action: "Cambiar arma" },
+  { key: "F3", action: "Mostrar / ocultar debug" },
+  { key: "Esc", action: "Pausa" },
+];
+
 export class ControlsMenu {
   readonly element = document.createElement("section");
 
   constructor(onBack: () => void) {
-    this.element.className = "hl3-panel hl3-panel--content";
+    this.element.className = "hl2-panel hl2-panel--content";
     this.element.innerHTML = `
-      <div class="hl3-panel__header">
-        <h2>Controles</h2>
-        <p>Configuracion actual.</p>
+      <div class="hl2-panel__header">
+        <h2>CONTROLES</h2>
+        <p>Asignacion actual del teclado y raton.</p>
       </div>
-      <ul class="hl3-controls">
-        <li><strong>WASD</strong> mover</li>
-        <li><strong>Mouse</strong> mirar</li>
-        <li><strong>Click izquierdo</strong> disparar / atacar</li>
-        <li><strong>R</strong> recargar</li>
-        <li><strong>E</strong> usar / interactuar</li>
-        <li><strong>Espacio</strong> saltar</li>
-        <li><strong>Shift</strong> correr (si existe)</li>
-        <li><strong>1-5</strong> seleccionar arma</li>
-        <li><strong>Rueda del mouse</strong> cambiar arma</li>
-        <li><strong>F3</strong> debug</li>
-        <li><strong>Esc</strong> pausa / menu</li>
-      </ul>
-      <div class="hl3-actions">
-        <button class="hl3-button" type="button" data-action="back">Volver</button>
+      <table class="hl2-keymap">
+        <thead>
+          <tr>
+            <th>TECLA</th>
+            <th>ACCION</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${KEY_BINDINGS.map(
+            (row) => `
+              <tr>
+                <td><kbd>${row.key}</kbd></td>
+                <td>${row.action}</td>
+              </tr>
+            `,
+          ).join("")}
+        </tbody>
+      </table>
+      <div class="hl2-actions">
+        <button class="hl2-button" type="button" data-action="back">
+          <span class="hl2-button__marker"></span>
+          <span class="hl2-button__label">VOLVER</span>
+        </button>
       </div>
     `;
 

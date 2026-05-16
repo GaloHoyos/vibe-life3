@@ -69,6 +69,8 @@ export interface LevelAudioDefinition {
 export interface LevelDefinition {
   id: string;
   title: string;
+  /** Texto corto que se muestra en el selector de mapas del menú. */
+  description?: string;
   background: number;
   playerStart: VectorTuple;
   audio: LevelAudioDefinition;

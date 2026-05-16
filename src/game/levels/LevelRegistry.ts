@@ -22,3 +22,8 @@ export function getLevel(id: LevelId): LevelDefinition {
   }
   return level;
 }
+
+/** Lista todos los niveles registrados. La utiliza el menú para construir el selector de mapas. */
+export function getAllLevels(): LevelDefinition[] {
+  return Object.values(LevelRegistry);
+}

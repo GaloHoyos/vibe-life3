@@ -7,79 +7,126 @@ export interface OptionsMenuCallbacks {
   getVolume: (bus: AudioBusName) => number;
 }
 
+interface VolumeRow {
+  bus: AudioBusName;
+  label: string;
+  defaultValue: number;
+}
+
+const AUDIO_BUSES: VolumeRow[] = [
+  { bus: "master", label: "Volumen general", defaultValue: 100 },
+  { bus: "music", label: "Volumen musica", defaultValue: 65 },
+  { bus: "ambience", label: "Volumen ambiente", defaultValue: 75 },
+  { bus: "sfx", label: "Volumen efectos", defaultValue: 85 },
+  { bus: "dialogue", label: "Volumen dialogo", defaultValue: 80 },
+];
+
 export class OptionsMenu {
   readonly element = document.createElement("section");
-  private readonly sensitivityValue: HTMLElement;
-  private readonly qualityValue: HTMLElement;
   private readonly debugToggle: HTMLInputElement;
 
   constructor(callbacks: OptionsMenuCallbacks) {
-    this.element.className = "hl3-panel hl3-panel--content";
+    this.element.className = "hl2-panel hl2-panel--content";
     this.element.innerHTML = `
-      <div class="hl3-panel__header">
-        <h2>Opciones</h2>
-        <p>Configuracion basica. TODO: conectar al motor.</p>
+      <div class="hl2-panel__header">
+        <h2>OPCIONES</h2>
+        <p>Ajustes del simulador.</p>
       </div>
-      <div class="hl3-options">
-        <label class="hl3-option">
-          <span>Volumen general</span>
-          <input type="range" min="0" max="100" value="100" data-bus="master" />
-          <strong class="hl3-option__value" data-value="master">100</strong>
-        </label>
-        <label class="hl3-option">
-          <span>Volumen musica</span>
-          <input type="range" min="0" max="100" value="65" data-bus="music" />
-          <strong class="hl3-option__value" data-value="music">65</strong>
-        </label>
-        <label class="hl3-option">
-          <span>Volumen ambiente</span>
-          <input type="range" min="0" max="100" value="75" data-bus="ambience" />
-          <strong class="hl3-option__value" data-value="ambience">75</strong>
-        </label>
-        <label class="hl3-option">
-          <span>Volumen efectos</span>
-          <input type="range" min="0" max="100" value="85" data-bus="sfx" />
-          <strong class="hl3-option__value" data-value="sfx">85</strong>
-        </label>
-        <label class="hl3-option">
-          <span>Volumen dialogo</span>
-          <input type="range" min="0" max="100" value="80" data-bus="dialogue" />
-          <strong class="hl3-option__value" data-value="dialogue">80</strong>
-        </label>
-        <label class="hl3-option">
-          <span>Sensibilidad del mouse</span>
-          <input type="range" min="1" max="100" value="45" />
-          <strong class="hl3-option__value" data-value="sensitivity">45</strong>
-        </label>
-        <label class="hl3-option">
+      <div class="hl2-tabs" role="tablist">
+        <button class="hl2-tab is-active" data-tab="audio" type="button">AUDIO</button>
+        <button class="hl2-tab" data-tab="video" type="button">VIDEO</button>
+        <button class="hl2-tab" data-tab="mouse" type="button">MOUSE</button>
+        <button class="hl2-tab" data-tab="game" type="button">JUEGO</button>
+      </div>
+      <div class="hl2-options" data-panel="audio">
+        ${AUDIO_BUSES.map(
+          (row) => `
+            <label class="hl2-option">
+              <span>${row.label}</span>
+              <input type="range" min="0" max="100" value="${row.defaultValue}" data-bus="${row.bus}" />
+              <strong class="hl2-option__value" data-value="${row.bus}">${row.defaultValue}</strong>
+            </label>
+          `,
+        ).join("")}
+      </div>
+      <div class="hl2-options is-hidden" data-panel="video">
+        <label class="hl2-option">
           <span>Calidad grafica</span>
-          <select>
+          <select data-action="quality">
             <option>Baja</option>
             <option selected>Media</option>
             <option>Alta</option>
           </select>
-          <strong class="hl3-option__value" data-value="quality">Media</strong>
+          <strong class="hl2-option__value" data-value="quality">Media</strong>
         </label>
-        <div class="hl3-option hl3-option--toggle">
+        <div class="hl2-option hl2-option--toggle">
           <span>Pantalla completa</span>
-          <button class="hl3-button" type="button" data-action="fullscreen">Activar</button>
+          <button class="hl2-button" type="button" data-action="fullscreen">
+            <span class="hl2-button__marker"></span>
+            <span class="hl2-button__label">ACTIVAR</span>
+          </button>
         </div>
-        <label class="hl3-option hl3-option--toggle">
+      </div>
+      <div class="hl2-options is-hidden" data-panel="mouse">
+        <label class="hl2-option">
+          <span>Sensibilidad del mouse</span>
+          <input type="range" min="1" max="100" value="45" data-action="sensitivity" />
+          <strong class="hl2-option__value" data-value="sensitivity">45</strong>
+        </label>
+        <label class="hl2-option hl2-option--toggle">
+          <span>Invertir eje Y</span>
+          <input type="checkbox" data-action="invertY" />
+        </label>
+      </div>
+      <div class="hl2-options is-hidden" data-panel="game">
+        <label class="hl2-option hl2-option--toggle">
           <span>Mostrar FPS / debug</span>
           <input type="checkbox" data-action="debug" />
         </label>
       </div>
-      <div class="hl3-actions">
-        <button class="hl3-button" type="button" data-action="back">Volver</button>
+      <div class="hl2-actions">
+        <button class="hl2-button" type="button" data-action="back">
+          <span class="hl2-button__marker"></span>
+          <span class="hl2-button__label">VOLVER</span>
+        </button>
       </div>
     `;
 
-    const volumeInputs =
+    this.wireTabs();
+    this.wireAudio(callbacks);
+    this.wireSensitivity();
+    this.wireQuality();
+    this.wireFullscreen();
+    this.debugToggle = this.wireDebug(callbacks);
+    this.wireBack(callbacks);
+  }
+
+  setDebugEnabled(enabled: boolean): void {
+    this.debugToggle.checked = enabled;
+  }
+
+  private wireTabs(): void {
+    const tabs = this.element.querySelectorAll<HTMLButtonElement>(".hl2-tab");
+    const panels = this.element.querySelectorAll<HTMLElement>("[data-panel]");
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const target = tab.dataset.tab;
+        if (!target) return;
+        tabs.forEach((t) => t.classList.toggle("is-active", t === tab));
+        panels.forEach((panel) => {
+          panel.classList.toggle("is-hidden", panel.dataset.panel !== target);
+        });
+      });
+    });
+  }
+
+  private wireAudio(callbacks: OptionsMenuCallbacks): void {
+    const inputs =
       this.element.querySelectorAll<HTMLInputElement>("input[data-bus]");
-    volumeInputs.forEach((input) => {
+    inputs.forEach((input) => {
       const bus = (input.dataset.bus ?? "master") as AudioBusName;
       const label = this.element.querySelector(
-        `.hl3-option__value[data-value="${bus}"]`,
+        `.hl2-option__value[data-value="${bus}"]`,
       ) as HTMLElement;
       const currentValue = Math.round(callbacks.getVolume(bus) * 100);
       input.value = String(currentValue);
@@ -91,55 +138,67 @@ export class OptionsMenu {
         callbacks.onVolumeChange(bus, value / 100);
       });
     });
-
-    const sliders = this.element.querySelectorAll<HTMLInputElement>(
-      'input[type="range"]:not([data-bus])',
-    );
-    this.sensitivityValue = this.element.querySelector(
-      '.hl3-option__value[data-value="sensitivity"]',
-    ) as HTMLElement;
-    this.qualityValue = this.element.querySelector(
-      '.hl3-option__value[data-value="quality"]',
-    ) as HTMLElement;
-
-    sliders[0]?.addEventListener("input", (event) => {
-      const value = (event.target as HTMLInputElement).value;
-      this.sensitivityValue.textContent = value;
-    });
-
-    const select = this.element.querySelector("select") as HTMLSelectElement;
-    select?.addEventListener("change", () => {
-      this.qualityValue.textContent = select.value;
-    });
-
-    const fullscreenButton = this.element.querySelector(
-      '[data-action="fullscreen"]',
-    ) as HTMLButtonElement;
-    fullscreenButton.addEventListener("click", () => {
-      if (document.fullscreenElement) {
-        void document.exitFullscreen();
-        fullscreenButton.textContent = "Activar";
-        return;
-      }
-
-      void document.documentElement.requestFullscreen();
-      fullscreenButton.textContent = "Salir";
-    });
-
-    this.debugToggle = this.element.querySelector(
-      '[data-action="debug"]',
-    ) as HTMLInputElement;
-    this.debugToggle.addEventListener("change", () => {
-      callbacks.onToggleDebug(this.debugToggle.checked);
-    });
-
-    const backButton = this.element.querySelector(
-      '[data-action="back"]',
-    ) as HTMLButtonElement;
-    backButton.addEventListener("click", callbacks.onBack);
   }
 
-  setDebugEnabled(enabled: boolean): void {
-    this.debugToggle.checked = enabled;
+  private wireSensitivity(): void {
+    const slider = this.element.querySelector<HTMLInputElement>(
+      'input[data-action="sensitivity"]',
+    );
+    if (!slider) return;
+    const label = this.element.querySelector(
+      '.hl2-option__value[data-value="sensitivity"]',
+    ) as HTMLElement;
+    slider.addEventListener("input", () => {
+      label.textContent = slider.value;
+    });
+  }
+
+  private wireQuality(): void {
+    const select = this.element.querySelector<HTMLSelectElement>(
+      'select[data-action="quality"]',
+    );
+    if (!select) return;
+    const label = this.element.querySelector(
+      '.hl2-option__value[data-value="quality"]',
+    ) as HTMLElement;
+    select.addEventListener("change", () => {
+      label.textContent = select.value;
+    });
+  }
+
+  private wireFullscreen(): void {
+    const button = this.element.querySelector<HTMLButtonElement>(
+      '[data-action="fullscreen"]',
+    );
+    if (!button) return;
+    const label = button.querySelector(".hl2-button__label") as HTMLElement;
+    button.addEventListener("click", () => {
+      if (document.fullscreenElement) {
+        void document.exitFullscreen();
+        label.textContent = "ACTIVAR";
+        return;
+      }
+      void document.documentElement.requestFullscreen();
+      label.textContent = "SALIR";
+    });
+  }
+
+  private wireDebug(callbacks: OptionsMenuCallbacks): HTMLInputElement {
+    const toggle = this.element.querySelector<HTMLInputElement>(
+      '[data-action="debug"]',
+    );
+    if (!toggle) throw new Error("debug toggle missing");
+    toggle.addEventListener("change", () => {
+      callbacks.onToggleDebug(toggle.checked);
+    });
+    return toggle;
+  }
+
+  private wireBack(callbacks: OptionsMenuCallbacks): void {
+    const back = this.element.querySelector<HTMLButtonElement>(
+      '[data-action="back"]',
+    );
+    if (!back) return;
+    back.addEventListener("click", callbacks.onBack);
   }
 }

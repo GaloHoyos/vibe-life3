@@ -2,7 +2,8 @@ import type { LevelDefinition } from './LevelDefinition';
 
 export const DemoLevel: LevelDefinition = {
   id: 'demo',
-  title: 'Instalacion de pruebas',
+  title: 'Instalacion de Pruebas',
+  description: 'Sector de entrenamiento Black Mesa Norte. Movimiento, interaccion y armamento basico.',
   background: 0x071019,
   playerStart: [0, 1.05, 8],
   audio: {
