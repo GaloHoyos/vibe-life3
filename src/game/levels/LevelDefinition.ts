@@ -2,6 +2,7 @@ import type { VectorTuple } from '../../shared/math/VectorTuple';
 import type { CharacterId } from '../../engine/characters/CharacterDefinition';
 import type { WeaponId } from '../gameplay/weapons/WeaponDefinition';
 import type { MaterialKey } from '../../engine/render/Materials';
+import type { HeightSource } from '../../shared/math/HeightField';
 
 export interface StaticBoxDefinition {
   id: string;
@@ -57,6 +58,20 @@ export interface TriggerDefinition {
   };
 }
 
+export interface TerrainDefinition {
+  id: string;
+  /** Centro del terreno en world space. */
+  position: VectorTuple;
+  /** Tamaño total en metros [ancho X, profundidad Z]. */
+  size: [number, number];
+  /** Cantidad de muestras a lo largo de X. Más alto = más detalle / más costo. */
+  widthSamples: number;
+  /** Cantidad de muestras a lo largo de Z. */
+  depthSamples: number;
+  source: HeightSource;
+  material: MaterialKey;
+}
+
 export interface LevelAudioDefinition {
   /** Sounds en loop que se reproducen como ambiente del nivel. */
   ambiences: string[];
@@ -74,6 +89,8 @@ export interface LevelDefinition {
   background: number;
   playerStart: VectorTuple;
   audio: LevelAudioDefinition;
+  /** Terreno opcional. Cuando está definido, agrega un heightfield (mesh + collider). */
+  terrain?: TerrainDefinition;
   staticBoxes: StaticBoxDefinition[];
   dynamicBoxes: DynamicBoxDefinition[];
   doors: DoorDefinition[];

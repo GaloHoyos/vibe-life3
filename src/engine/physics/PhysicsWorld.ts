@@ -1,6 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { Object3D, Vector3 } from 'three';
 import type { Damageable } from '../../shared/types/lifecycle';
+import type { HeightField } from '../../shared/math/HeightField';
 import { createBoxCollider } from './Colliders';
 
 export interface PhysicsMetadata {
@@ -23,6 +24,15 @@ export interface PhysicsBoxOptions {
   position: Vector3;
   size: Vector3;
   mass?: number;
+  metadata?: Partial<PhysicsMetadata>;
+}
+
+export interface PhysicsHeightfieldOptions {
+  id: string;
+  /** Centro del heightfield en world space. */
+  position: Vector3;
+  /** Tamaño total en metros [ancho X, profundidad Z]. La escala Y siempre es 1 porque las alturas ya están en metros. */
+  size: [number, number];
   metadata?: Partial<PhysicsMetadata>;
 }
 
@@ -81,6 +91,29 @@ export class PhysicsWorld {
     return rigidBody;
   }
 
+  createHeightfield(field: HeightField, options: PhysicsHeightfieldOptions): RAPIER.RigidBody {
+    const expectedLength = field.widthSamples * field.depthSamples;
+    if (field.heights.length !== expectedLength) {
+      throw new Error(
+        `PhysicsWorld.createHeightfield: heights.length (${field.heights.length}) != widthSamples*depthSamples (${expectedLength}).`,
+      );
+    }
+
+    const { vertices, indices } = buildTerrainTrimesh(field, options.size);
+
+    const rigidBody = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.fixed().setTranslation(options.position.x, options.position.y, options.position.z),
+    );
+    const colliderDesc = RAPIER.ColliderDesc.trimesh(vertices, indices);
+    const collider = this.world.createCollider(colliderDesc, rigidBody);
+    this.registerCollider(collider, {
+      id: options.id,
+      kind: 'static',
+      ...options.metadata,
+    });
+    return rigidBody;
+  }
+
   createKinematicBox(options: PhysicsBoxOptions): RAPIER.RigidBody {
     const rigidBody = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
@@ -128,4 +161,44 @@ export class PhysicsWorld {
       mesh.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
     });
   }
+}
+
+function buildTerrainTrimesh(
+  field: HeightField,
+  size: [number, number],
+): { vertices: Float32Array; indices: Uint32Array } {
+  const { widthSamples, depthSamples, heights } = field;
+  const [sizeX, sizeZ] = size;
+  const vertices = new Float32Array(widthSamples * depthSamples * 3);
+  const cellCount = (widthSamples - 1) * (depthSamples - 1);
+  const indices = new Uint32Array(cellCount * 6);
+
+  for (let xi = 0; xi < widthSamples; xi++) {
+    for (let zi = 0; zi < depthSamples; zi++) {
+      const i = xi + zi * widthSamples;
+      const u = widthSamples > 1 ? xi / (widthSamples - 1) : 0;
+      const v = depthSamples > 1 ? zi / (depthSamples - 1) : 0;
+      vertices[i * 3 + 0] = (u - 0.5) * sizeX;
+      vertices[i * 3 + 1] = heights[i];
+      vertices[i * 3 + 2] = (v - 0.5) * sizeZ;
+    }
+  }
+
+  let idx = 0;
+  for (let zi = 0; zi < depthSamples - 1; zi++) {
+    for (let xi = 0; xi < widthSamples - 1; xi++) {
+      const a = xi + zi * widthSamples;
+      const b = a + 1;
+      const c = a + widthSamples;
+      const d = c + 1;
+      indices[idx++] = a;
+      indices[idx++] = c;
+      indices[idx++] = b;
+      indices[idx++] = b;
+      indices[idx++] = c;
+      indices[idx++] = d;
+    }
+  }
+
+  return { vertices, indices };
 }
