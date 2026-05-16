@@ -9,7 +9,9 @@ import { WeaponPickup } from '../gameplay/weapons/WeaponPickup';
 import { NPC } from '../npc/NPC';
 import type { PhysicsWorld } from '../../engine/physics/PhysicsWorld';
 import { createBoxMesh } from '../../engine/render/PrimitiveFactory';
+import { createTerrainMesh } from '../../engine/render/TerrainMesh';
 import type { MaterialKey } from '../../engine/render/Materials';
+import { generateHeightField } from '../../shared/math/HeightField';
 import type { LevelDefinition } from './LevelDefinition';
 import type { TriggerSystem } from './TriggerSystem';
 
@@ -39,6 +41,28 @@ export class LevelLoader {
     const npcs: NPC[] = [];
     const doors: SlidingDoor[] = [];
     const weaponPickups: WeaponPickup[] = [];
+
+    if (level.terrain) {
+      const terrain = level.terrain;
+      const field = generateHeightField({
+        widthSamples: terrain.widthSamples,
+        depthSamples: terrain.depthSamples,
+        size: terrain.size,
+        source: terrain.source,
+      });
+      const mesh = createTerrainMesh(field, {
+        id: terrain.id,
+        position: terrain.position,
+        size: terrain.size,
+        material: terrain.material,
+      });
+      this.scene.add(mesh);
+      this.physics.createHeightfield(field, {
+        id: terrain.id,
+        position: tupleToVector3(terrain.position),
+        size: terrain.size,
+      });
+    }
 
     level.staticBoxes.forEach((definition) => {
       const mesh = createLevelBox(definition.id, definition.position, definition.size, definition.material);

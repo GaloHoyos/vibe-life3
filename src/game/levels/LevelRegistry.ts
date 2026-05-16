@@ -1,7 +1,8 @@
 import { DemoLevel } from "./DemoLevel";
+import { SnowFieldLevel } from "./SnowFieldLevel";
 import type { LevelDefinition } from "./LevelDefinition";
 
-export type LevelId = "demo";
+export type LevelId = "demo" | "snow-field";
 
 /**
  * Registro central de niveles del juego.
@@ -13,6 +14,7 @@ export type LevelId = "demo";
  */
 export const LevelRegistry: Record<LevelId, LevelDefinition> = {
   demo: DemoLevel,
+  "snow-field": SnowFieldLevel,
 };
 
 export function getLevel(id: LevelId): LevelDefinition {

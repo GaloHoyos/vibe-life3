@@ -36,7 +36,12 @@
       "Bash(git worktree *)",
       "Bash(dir src *)",
       "Bash(findstr /v node_modules)",
-      "Bash(git lfs *)"
+      "Bash(git lfs *)",
+      "Bash(grep -ohE \"rawshape_heightfield[^,;{]{0,300}\" \"C:/Users/galoh/Documents/Programacion/vibe-life 3/node_modules/@dimforge/rapier3d-compat/rapier.es.js\")",
+      "PowerShell($content = Get-Content \"node_modules\\\\@dimforge\\\\rapier3d-compat\\\\rapier.es.js\" -Raw; [regex]::Matches\\($content, \"intoRaw[^{]{0,80}\\\\{[^}]{0,800}heightfield[^}]{0,500}\"\\) | ForEach-Object { $_.Value.Substring\\(0, [Math]::Min\\(1200, $_.Value.Length\\)\\) })",
+      "PowerShell($content = Get-Content \"node_modules\\\\@dimforge\\\\rapier3d-compat\\\\rapier.es.js\" -Raw; [regex]::Matches\\($content, \"static intoRaw\\\\\\([A-Z]\\\\\\)\\\\{[^}]{0,300}RawVector[^}]{0,300}\"\\) | Select-Object -First 5 | ForEach-Object { $_.Value.Substring\\(0, [Math]::Min\\(500, $_.Value.Length\\)\\) })",
+      "PowerShell($content = Get-Content \"node_modules\\\\@dimforge\\\\rapier3d-compat\\\\rapier.es.js\" -Raw; [regex]::Matches\\($content, \"static intoRaw[^{]{0,40}\\\\{[^}]{0,300}\"\\) | Select-Object -First 8 | ForEach-Object { $_.Value })",
+      "PowerShell(Get-ChildItem -Path . -Recurse -Directory | Where-Object { $_.Name -eq \"textures\" -or $_.Name -eq \"assets\" } | Select-Object FullName)"
     ],
     "deny": [
       "PowerShell(git push --force *)",

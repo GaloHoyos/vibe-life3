@@ -71,8 +71,8 @@ Subsistemas reutilizables. No conoce armas, NPCs, niveles ni UI concreta.
 | `ServiceTokens.ts`       | `EngineTokens` — tokens canónicos del motor.                             |
 | `GameLoop.ts`, `Time.ts` | RAF, delta time, sub-stepping.                                           |
 | `Input.ts`               | Teclado, mouse, pointer-lock.                                            |
-| `render/`                | `Renderer`, `CameraSystem`, `LightingSystem`, materiales y primitivas.   |
-| `physics/`               | `PhysicsWorld` (Rapier), `Raycast`, `KinematicCharacterBase`.            |
+| `render/`                | `Renderer`, `CameraSystem`, `LightingSystem`, `TerrainMesh`, materiales. |
+| `physics/`               | `PhysicsWorld` (Rapier, boxes + heightfields), `Raycast`, `KinematicCharacterBase`. |
 | `audio/`                 | `AudioSystem`, `SoundManager`, `PositionalSoundManager`, `MusicManager`. |
 | `animation/`             | Animación procedural, ragdoll (`RagdollSystem`), `HitReactionAnimator`.  |
 | `assets/`                | `AssetManager`, manifest de GLB/audio.                                   |
@@ -93,7 +93,7 @@ Todo lo que conoce las reglas concretas: armas, NPCs, niveles, narrativa, HUD pr
 | `npc/`              | `NPC` (FSM AI + FSM balance), `NpcCombat`, `NpcAnimationBridge`.            |
 | `gameplay/`         | `Player`, `Health`, `PlayerHealth`, interactions.                           |
 | `gameplay/weapons/` | `Weapon` base, `HitscanWeapon`, `MeleeWeapon`, `GravityGunWeapon`, etc.     |
-| `levels/`           | `LevelDefinition`, `LevelRegistry`, `LevelLoader`, `TriggerSystem`.         |
+| `levels/`           | `LevelDefinition`, `LevelRegistry`, `LevelLoader`, `TriggerSystem`, `builders/` (helpers reusables tipo `HouseBuilder`). |
 | `narrative/`        | `DialogueSystem`, `ScriptedSequence`, `LevelEvents`.                        |
 | `ui/`               | `HUD`, `MainMenu`, `PauseMenu`, `DebugOverlay`, `Subtitles`, widgets.       |
 | `audio/`            | Sistemas reactivos a eventos: weapon/enemy/dialogue/UI sound.               |
@@ -102,6 +102,8 @@ Todo lo que conoce las reglas concretas: armas, NPCs, niveles, narrativa, HUD pr
 ### `shared/` — código compartido
 
 - `math/Vec3.ts`, `math/VectorTuple.ts` — utilidades de vectores.
+- `math/Noise.ts` — value noise 2D + fbm fractal, determinista por seed.
+- `math/HeightField.ts` — tipo `HeightField` + generador desde `HeightSource` (noise|flat).
 - `types/lifecycle.ts` — interfaces `Damageable`, `Disposable`, `Updatable`.
 
 Nada de Three.js fuera de tipos estructurales (`Vector3`, `Object3D`).
@@ -191,6 +193,22 @@ La base actual usa rutas relativas; ambos estilos conviven.
 1. Crear `src/game/levels/MyLevel.ts` exportando un `LevelDefinition`.
 2. Sumar el id al type `LevelId` y la entrada al mapa en `LevelRegistry`.
 3. El `audio.ambiences` / `audio.footstepSounds` / `audio.music` se resuelven solos vía `LevelLoader`.
+4. (Opcional) Agregar campo `terrain` para colinas/dunas — ver receta siguiente.
+5. (Opcional) Usar builders de `src/game/levels/builders/` (ej. `buildHouse`) para generar grupos de `StaticBoxDefinition` sin hardcodear cada caja. Si la geometría tiene chance de aparecer en otro nivel, **proponer extraerla a un builder nuevo** antes de inlinearla.
+
+### Agregar terreno a un nivel
+
+Heightfield 2.5D (no soporta cuevas/overhangs). Mesh visual y collider físico se generan a partir del mismo `HeightField`, así quedan alineados.
+
+1. En `LevelDefinition.terrain` definir `size`, `widthSamples` / `depthSamples` (resolución de la grilla), `position` (centro) y `material`.
+2. Elegir `source`:
+   - `{ kind: 'flat', height: 0 }` — terreno plano (debug).
+   - `{ kind: 'noise', seed, octaves, frequency, amplitude, persistence?, lacunarity?, baseHeight?, flattenRegions? }` — fbm fractal. `frequency` chico = features grandes; `amplitude` en metros pico-a-valle.
+3. Para asentar edificios/estructuras sobre el terreno, agregar `flattenRegions` al noise source: array de `{ center: [x, z], radius, falloff, height }` (coords locales al terreno). Crea plateaus circulares a la altura dada con anillo de transición suave. Múltiples regiones se combinan, gana la de mayor peso.
+4. El `LevelLoader` crea automáticamente el mesh (`createTerrainMesh`) y el collider de física (`PhysicsWorld.createHeightfield`, internamente un trimesh).
+5. Spawnear al player/pickups algunos metros por encima del terreno — la gravedad los asienta.
+
+Ejemplo: ver `src/game/levels/SnowFieldLevel.ts`.
 
 ### Agregar un NPC
 
