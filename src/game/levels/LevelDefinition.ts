@@ -2,6 +2,8 @@ import type { VectorTuple } from '../../shared/math/VectorTuple';
 import type { CharacterId } from '../../engine/characters/CharacterDefinition';
 import type { WeaponId } from '../gameplay/weapons/WeaponDefinition';
 import type { MaterialKey } from '../../engine/render/Materials';
+import type { SkyboxId } from '../../engine/render/Skybox';
+import type { SunOptions } from '../../engine/render/LightingSystem';
 import type { HeightSource } from '../../shared/math/HeightField';
 
 export interface StaticBoxDefinition {
@@ -86,7 +88,12 @@ export interface LevelDefinition {
   title: string;
   /** Texto corto que se muestra en el selector de mapas del menú. */
   description?: string;
+  /** Color de fondo de fallback (cuando no hay skybox o el HDRI falla). */
   background: number;
+  /** HDRI a usar como cielo + IBL. Si se omite, usa `'default'`. */
+  skybox?: SkyboxId;
+  /** Configuración del sol (luz direccional principal). Si se omite, usa los defaults. */
+  sun?: SunOptions;
   playerStart: VectorTuple;
   audio: LevelAudioDefinition;
   /** Terreno opcional. Cuando está definido, agrega un heightfield (mesh + collider). */

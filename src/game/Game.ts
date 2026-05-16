@@ -362,6 +362,8 @@ export class Game {
     const assets = services.resolve(EngineTokens.Assets);
     const raycast = services.resolve(EngineTokens.Raycast);
     const camera = services.resolve(EngineTokens.Camera);
+    const lighting = services.resolve(EngineTokens.Lighting);
+    const environment = services.resolve(EngineTokens.Environment);
     const eventBus = services.resolve(GameTokens.EventBus);
     const interactSystem = services.resolve(GameTokens.InteractSystem);
     const triggerSystem = services.resolve(GameTokens.TriggerSystem);
@@ -371,7 +373,8 @@ export class Game {
     const level = getLevel(levelId);
     this.currentLevel = level;
 
-    sceneManager.setBackground(level.background);
+    await environment.applySkybox(sceneManager.scene, level.skybox ?? 'default', level.background);
+    lighting.configureSun(level.sun);
     resources.register(`level.${level.id}`, level);
     footsteps.setSounds(level.audio.footstepSounds);
 

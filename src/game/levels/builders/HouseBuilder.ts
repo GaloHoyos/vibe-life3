@@ -36,8 +36,8 @@ export interface HouseSpec {
  */
 export function buildHouse(spec: HouseSpec): StaticBoxDefinition[] {
   const wallT = spec.wallThickness ?? 0.4;
-  const wallMat = spec.wallMaterial ?? 'wall';
-  const roofMat = spec.roofMaterial ?? 'trim';
+  const wallMat = spec.wallMaterial ?? 'brick';
+  const roofMat = spec.roofMaterial ?? 'roof';
   const [cx, cz] = spec.center;
   const { floorY: fy, width: w, depth: d, height: h } = spec;
   const wallCenterY = fy + h / 2;

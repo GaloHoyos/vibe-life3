@@ -1,4 +1,4 @@
-import { Camera, Scene, WebGLRenderer } from 'three';
+import { ACESFilmicToneMapping, Camera, Scene, WebGLRenderer } from 'three';
 
 /**
  * Wrapper del `WebGLRenderer` de Three.js: monta el canvas en el
@@ -14,6 +14,8 @@ export class Renderer {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.shadowMap.enabled = true;
+    this.renderer.toneMapping = ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
 
     this.canvas = this.renderer.domElement;
     this.canvas.className = 'game-canvas';

@@ -10,8 +10,6 @@ const HOUSES: HouseSpec[] = [
     depth: 5,
     height: 3,
     door: { side: 'south', width: 1.2 },
-    wallMaterial: 'trim',
-    roofMaterial: 'wall',
   },
   {
     id: 'house',
@@ -30,8 +28,6 @@ const HOUSES: HouseSpec[] = [
     depth: 4,
     height: 3,
     removeWall: 'west',
-    wallMaterial: 'crate',
-    roofMaterial: 'trim',
   },
   {
     id: 'tower',
@@ -49,6 +45,11 @@ export const SnowFieldLevel: LevelDefinition = {
   title: 'Campo Nevado',
   description: 'Exterior abierto con colinas suaves y 4 estructuras esparcidas. Demo del sistema de terreno.',
   background: 0xb6c7d6,
+  sun: {
+    direction: [0.4, 1.0, 0.3],
+    color: 0xe8edf2,
+    intensity: 1.8,
+  },
   playerStart: [0, 10, 0],
   audio: {
     ambiences: ['background.wind'],

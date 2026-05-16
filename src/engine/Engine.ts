@@ -6,6 +6,7 @@ import { Gizmos } from "./debug/Gizmos";
 import { PhysicsWorld } from "./physics/PhysicsWorld";
 import { Raycast } from "./physics/Raycast";
 import { CameraSystem } from "./render/CameraSystem";
+import { EnvironmentSystem } from "./render/EnvironmentSystem";
 import { LightingSystem } from "./render/LightingSystem";
 import { Renderer } from "./render/Renderer";
 import { GameLoop } from "./GameLoop";
@@ -67,6 +68,7 @@ export class Engine {
   dispose(): void {
     this.loop.stop();
     this.services.resolve(EngineTokens.Input).dispose();
+    this.services.resolve(EngineTokens.Environment).dispose();
     this.services.resolve(EngineTokens.Renderer).dispose();
     this.services.resolve(EngineTokens.Camera).dispose();
     this.services.clear();
@@ -86,6 +88,7 @@ export class Engine {
     const renderer = c.register(EngineTokens.Renderer, new Renderer(this.root));
     const camera = c.register(EngineTokens.Camera, new CameraSystem(this.root));
     c.register(EngineTokens.Lighting, new LightingSystem());
+    c.register(EngineTokens.Environment, new EnvironmentSystem(renderer.renderer));
 
     const physics = c.register(EngineTokens.Physics, new PhysicsWorld());
     c.register(EngineTokens.Raycast, new Raycast(physics));

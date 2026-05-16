@@ -2,7 +2,7 @@ import { BufferAttribute, BufferGeometry, Mesh } from 'three';
 import type { VectorTuple } from '../../shared/math/VectorTuple';
 import { tupleToVector3 } from '../../shared/math/VectorTuple';
 import type { HeightField } from '../../shared/math/HeightField';
-import { getMaterial, type MaterialKey } from './Materials';
+import { getMaterial, materialNeedsUv1, type MaterialKey } from './Materials';
 
 export interface TerrainMeshOptions {
   id: string;
@@ -66,6 +66,9 @@ export function createTerrainMesh(field: HeightField, options: TerrainMeshOption
   geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
   geometry.setIndex(new BufferAttribute(indices, 1));
   geometry.computeVertexNormals();
+  if (materialNeedsUv1(options.material)) {
+    geometry.setAttribute('uv1', geometry.attributes.uv);
+  }
 
   const mesh = new Mesh(geometry, getMaterial(options.material));
   mesh.name = options.id;
