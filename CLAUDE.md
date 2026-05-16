@@ -71,7 +71,7 @@ Subsistemas reutilizables. No conoce armas, NPCs, niveles ni UI concreta.
 | `ServiceTokens.ts`       | `EngineTokens` — tokens canónicos del motor.                             |
 | `GameLoop.ts`, `Time.ts` | RAF, delta time, sub-stepping.                                           |
 | `Input.ts`               | Teclado, mouse, pointer-lock.                                            |
-| `render/`                | `Renderer`, `CameraSystem`, `LightingSystem`, `TerrainMesh`, materiales. |
+| `render/`                | `Renderer`, `CameraSystem`, `LightingSystem`, `TerrainMesh`, `Materials`, `Textures` (manifest + loader cacheado). |
 | `physics/`               | `PhysicsWorld` (Rapier, boxes + heightfields), `Raycast`, `KinematicCharacterBase`. |
 | `audio/`                 | `AudioSystem`, `SoundManager`, `PositionalSoundManager`, `MusicManager`. |
 | `animation/`             | Animación procedural, ragdoll (`RagdollSystem`), `HitReactionAnimator`.  |
