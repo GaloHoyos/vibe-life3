@@ -1,5 +1,4 @@
 import type { Disposable } from "../../shared/types/lifecycle";
-import { Objectives } from "../config/strings";
 import type { GameEventBus } from "../GameEvents";
 import type { HUDValue } from "./HealthArmorHUD";
 import { HUDView } from "./HUDView";
@@ -11,7 +10,6 @@ interface HUDStateShape {
   armorEnabled: boolean;
   weapon: WeaponHUDState;
   interactionLabel?: string;
-  objective: string;
 }
 
 const DefaultHUDState = (): HUDStateShape => ({
@@ -19,7 +17,6 @@ const DefaultHUDState = (): HUDStateShape => ({
   armor: { current: 0, max: 100 },
   armorEnabled: false,
   weapon: { name: "UNARMED", ammo: 0, reserve: 0 },
-  objective: Objectives.exploreFacility,
 });
 
 /**
@@ -67,11 +64,19 @@ export class HUD implements Disposable {
           this.view.crosshair.pulseHit();
         }
       }),
+      eventBus.on("weapon.selector.opened", (state) =>
+        this.view.weaponSelector.show(state),
+      ),
+      eventBus.on("weapon.selector.cycled", (state) =>
+        this.view.weaponSelector.show(state),
+      ),
+      eventBus.on("weapon.selector.closed", () =>
+        this.view.weaponSelector.hide(),
+      ),
       eventBus.on("interaction.focus", ({ label }) =>
         this.setInteraction(label),
       ),
       eventBus.on("interaction.blur", () => this.setInteraction(undefined)),
-      eventBus.on("objective.updated", ({ text }) => this.setObjective(text)),
       eventBus.on("player.pickup.health", ({ amount }) =>
         this.view.notify(`+${amount} health`, "pickup"),
       ),
@@ -116,11 +121,6 @@ export class HUD implements Disposable {
     this.view.interaction.setLabel(label);
   }
 
-  setObjective(text: string): void {
-    this.state.objective = text;
-    this.view.objective.setObjective(text);
-  }
-
   dispose(): void {
     this.unsubscribers.forEach((unsubscribe) => unsubscribe());
     this.unsubscribers.length = 0;
@@ -135,6 +135,5 @@ export class HUD implements Disposable {
     this.view.healthArmor.setHealth(this.state.health);
     this.view.healthArmor.setArmor(this.state.armor, this.state.armorEnabled);
     this.view.weapon.setWeapon(this.state.weapon);
-    this.view.objective.setObjective(this.state.objective);
   }
 }

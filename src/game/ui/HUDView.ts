@@ -3,8 +3,8 @@ import { Crosshair } from './Crosshair';
 import { DamageIndicator } from './DamageIndicator';
 import { HealthArmorHUD } from './HealthArmorHUD';
 import { InteractionPrompt } from './InteractionPrompt';
-import { ObjectiveHUD } from './ObjectiveHUD';
 import { WeaponHUD } from './WeaponHUD';
+import { WeaponSelectorView } from './WeaponSelectorView';
 
 export type HUDNotificationTone = 'info' | 'pickup' | 'warning';
 
@@ -20,7 +20,7 @@ export class HUDView implements Disposable {
   readonly crosshair = new Crosshair();
   readonly damage = new DamageIndicator();
   readonly interaction = new InteractionPrompt();
-  readonly objective = new ObjectiveHUD();
+  readonly weaponSelector = new WeaponSelectorView();
 
   private readonly feed = document.createElement('div');
   private readonly pendingNotificationTimers: number[] = [];
@@ -31,7 +31,7 @@ export class HUDView implements Disposable {
     this.feed.className = 'hev-feed';
     this.element.append(
       this.damage.element,
-      this.objective.element,
+      this.weaponSelector.element,
       this.crosshair.element,
       this.interaction.element,
       this.healthArmor.element,
@@ -58,6 +58,7 @@ export class HUDView implements Disposable {
     this.crosshair.dispose();
     this.damage.dispose();
     this.weapon.dispose();
+    this.weaponSelector.dispose();
     this.element.remove();
   }
 }

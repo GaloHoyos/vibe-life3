@@ -11,7 +11,7 @@ export class MeleeWeapon extends Weapon {
   protected performFire(context: WeaponFireContext): void {
     const origin = context.origin
       .clone()
-      .addScaledVector(context.direction, 0.35);
+      .addScaledVector(context.direction, 0.55);
     const hit = this.context.raycast.cast(
       origin,
       context.direction,

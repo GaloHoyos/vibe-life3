@@ -24,12 +24,6 @@ export class UISoundSystem {
       }
     });
 
-    eventBus.on("objective.updated", () => {
-      if (this.sounds.hasSound("ui.objective")) {
-        this.sounds.play("ui.objective", { bus: "ui" });
-      }
-    });
-
     eventBus.on("player.damaged", () => {
       if (this.sounds.hasSound("ui.damage")) {
         this.sounds.play("ui.damage", { bus: "ui" });

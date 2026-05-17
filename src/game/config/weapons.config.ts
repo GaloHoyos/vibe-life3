@@ -1,5 +1,25 @@
 import { Euler, Vector3 } from "three";
-import type { WeaponDefinition, WeaponId } from "../gameplay/weapons/WeaponDefinition";
+import type {
+  WeaponCategory,
+  WeaponDefinition,
+  WeaponId,
+} from "../gameplay/weapons/WeaponDefinition";
+
+/**
+ * Mapa categoría → número de slot HL-style. Varias armas con la misma
+ * categoría comparten slot (la tecla del slot cicla entre ellas en
+ * `WeaponInventory.equipSlot`).
+ */
+export const SlotByCategory: Record<WeaponCategory, number> = {
+  melee: 1,
+  special: 1,
+  sidearm: 2,
+  automatic: 3,
+  heavy: 4,
+};
+
+/** Cuántos slots hay en total. Usado por `WeaponController` para iterar las teclas. */
+export const WEAPON_SLOT_COUNT = 4;
 
 /**
  * Configuración data-driven de todas las armas del juego.
@@ -7,6 +27,10 @@ import type { WeaponDefinition, WeaponId } from "../gameplay/weapons/WeaponDefin
  * Agregar un arma nueva = añadir una entrada acá + (si su comportamiento no
  * encaja en hitscan/melee/special) crear una subclase de `Weapon`.
  * El factory en `WeaponFactory.createWeapon` la instancia según `type`.
+ *
+ * El orden de declaración define el orden de cycling dentro de un slot —
+ * `smg` antes que `ar3` ⇒ presionar `3` con ambas equipadas alterna en ese
+ * orden.
  */
 export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
   crowbar: {
@@ -14,7 +38,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     displayName: "Crowbar",
     modelId: "crowbar",
     pickupModelId: "crowbar",
-    slot: 1,
+    category: "melee",
     type: "melee",
     damage: 25,
     fireRate: 2.2,
@@ -22,7 +46,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     reserveAmmoMax: 0,
     ammoPerPickup: 0,
     spread: 0,
-    range: 1.6,
+    range: 1.8,
     impulse: 5,
     reloadTime: 0,
     recoil: { vertical: 0.05, horizontal: 0.02, recovery: 10 },
@@ -47,7 +71,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     displayName: "9mm Pistol",
     modelId: "pistol",
     pickupModelId: "pistol",
-    slot: 2,
+    category: "sidearm",
     type: "hitscan",
     damage: 18,
     fireRate: 4,
@@ -80,7 +104,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     displayName: "SMG",
     modelId: "smg",
     pickupModelId: "smg",
-    slot: 3,
+    category: "automatic",
     type: "hitscan",
     damage: 9,
     fireRate: 12,
@@ -108,7 +132,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     displayName: "AR3",
     modelId: "ar3",
     pickupModelId: "ar3",
-    slot: 4,
+    category: "automatic",
     type: "hitscan",
     damage: 14,
     fireRate: 8,
@@ -141,7 +165,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     displayName: "Gravity Gun",
     modelId: "gravityGun",
     pickupModelId: "gravityGun",
-    slot: 5,
+    category: "special",
     type: "special",
     damage: 0,
     fireRate: 1.5,
@@ -171,12 +195,29 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
   },
 };
 
+/**
+ * Orden canónico de las armas. Define el orden de cycling dentro de un slot
+ * y es el orden de declaración del `WeaponDefinitions`. Cambiar el orden acá
+ * cambia cómo cicla cada slot.
+ */
+export const WEAPON_ORDER: readonly WeaponId[] = Object.keys(
+  WeaponDefinitions,
+) as WeaponId[];
+
 export function getWeaponDefinition(id: WeaponId): WeaponDefinition {
   return WeaponDefinitions[id];
 }
 
 export function getAllWeaponDefinitions(): WeaponDefinition[] {
-  return Object.values(WeaponDefinitions).sort((a, b) => a.slot - b.slot);
+  return WEAPON_ORDER.map((id) => WeaponDefinitions[id]);
+}
+
+export function getSlotForCategory(category: WeaponCategory): number {
+  return SlotByCategory[category];
+}
+
+export function getSlotForWeapon(id: WeaponId): number {
+  return SlotByCategory[WeaponDefinitions[id].category];
 }
 
 /** Límites globales del sistema de efectos de armas. */
