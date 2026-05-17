@@ -1,10 +1,22 @@
 import type { Vector3 } from "three";
 import type { CharacterId } from "../engine/characters/CharacterDefinition";
 import type { EventBus } from "../engine/EventBus";
+import type { WeaponId, WeaponType } from "./gameplay/weapons/WeaponDefinition";
+
+/** Snapshot del estado del selector que se publica al HUD. */
+export interface WeaponSelectorState {
+  /** Por slot, las armas que el jugador tiene equipadas, en orden canónico. */
+  slots: Array<{ slot: number; weapons: WeaponId[] }>;
+  /** Slot actualmente abierto. */
+  activeSlot: number;
+  /** Arma tentativamente seleccionada (la que se equipará al confirmar). */
+  tentativeId: WeaponId;
+}
 
 export interface GameEventMap {
   "weapon.fired": {
     weaponName: string;
+    weaponType: WeaponType;
     ammo: number;
     origin: Vector3;
     direction: Vector3;
@@ -41,6 +53,11 @@ export interface GameEventMap {
     weaponName: string;
     ammo: number;
     reserve: number;
+  };
+  "weapon.selector.opened": WeaponSelectorState;
+  "weapon.selector.cycled": WeaponSelectorState;
+  "weapon.selector.closed": {
+    committed: boolean;
   };
   "npc.damaged": {
     id: string;
@@ -110,9 +127,6 @@ export interface GameEventMap {
     speaker?: string;
     text: string;
     duration: number;
-  };
-  "objective.updated": {
-    text: string;
   };
   "debug.toggle": {
     enabled: boolean;

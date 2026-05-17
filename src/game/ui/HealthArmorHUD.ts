@@ -1,57 +1,61 @@
+import { ArmorIcon, HealthIcon } from "./HudIcons";
+
 export interface HUDValue {
   current: number;
   max: number;
 }
 
+/**
+ * Vitals HUD HL2-style: dos bloques (salud + traje) abajo a la izquierda.
+ * Cada bloque = icon arriba + label en caps abajo + número grande a la
+ * derecha. Sin barras de progreso, sin panel box; el diseño descansa en
+ * los números grandes y el icon plano amarillo.
+ */
 export class HealthArmorHUD {
-  readonly element = document.createElement('section');
+  readonly element = document.createElement("section");
 
-  private readonly healthValue = document.createElement('strong');
-  private healthBar = document.createElement('span');
-  private readonly armorValue = document.createElement('strong');
-  private armorBar = document.createElement('span');
-  private armorRow = document.createElement('div');
+  private readonly healthValue: HTMLSpanElement;
+  private readonly armorValue: HTMLSpanElement;
+  private readonly armorBlock: HTMLDivElement;
 
   constructor() {
-    this.element.className = 'hev-panel hev-vitals';
+    this.element.className = "hl-vitals";
     this.element.innerHTML = `
-      <div class="hev-panel__label">AUX POWER</div>
-      <div class="hev-readout">
-        <span class="hev-readout__tag">HEALTH</span>
+      <div class="hl-vital hl-vital--health">
+        <div class="hl-vital__pictogram">
+          <div class="hl-vital__icon">${HealthIcon}</div>
+          <div class="hl-vital__label">SALUD</div>
+        </div>
+        <div class="hl-vital__value">100</div>
       </div>
-      <div class="hev-meter"><span></span></div>
-      <div class="hev-readout hev-readout--armor">
-        <span class="hev-readout__tag">ARMOR</span>
+      <div class="hl-vital hl-vital--armor">
+        <div class="hl-vital__pictogram">
+          <div class="hl-vital__icon">${ArmorIcon}</div>
+          <div class="hl-vital__label">TRAJE</div>
+        </div>
+        <div class="hl-vital__value">--</div>
       </div>
-      <div class="hev-meter hev-meter--armor"><span></span></div>
     `;
 
-    const readouts = this.element.querySelectorAll('.hev-readout');
-    const meters = this.element.querySelectorAll('.hev-meter span');
-    readouts[0].append(this.healthValue);
-    readouts[1].append(this.armorValue);
-    this.healthBar = meters[0] as HTMLSpanElement;
-    this.armorBar = meters[1] as HTMLSpanElement;
-    this.armorRow = readouts[1] as HTMLDivElement;
+    const blocks = this.element.querySelectorAll<HTMLDivElement>(".hl-vital");
+    const values = this.element.querySelectorAll<HTMLSpanElement>(
+      ".hl-vital__value",
+    );
+    this.healthValue = values[0];
+    this.armorValue = values[1];
+    this.armorBlock = blocks[1];
   }
 
   setHealth(value: HUDValue): void {
     this.healthValue.textContent = `${Math.ceil(value.current)}`;
-    this.healthBar.style.width = `${getPercent(value)}%`;
-    this.element.classList.toggle('is-critical', value.current / value.max <= 0.25);
+    this.element.classList.toggle(
+      "is-critical",
+      value.max > 0 && value.current / value.max <= 0.25,
+    );
   }
 
   setArmor(value: HUDValue, enabled: boolean): void {
-    this.armorValue.textContent = enabled ? `${Math.ceil(value.current)}` : '--';
-    this.armorBar.style.width = enabled ? `${getPercent(value)}%` : '0%';
-    this.armorRow.classList.toggle('is-disabled', !enabled);
+    this.armorValue.textContent = enabled ? `${Math.ceil(value.current)}` : "--";
+    this.armorBlock.classList.toggle("is-disabled", !enabled);
   }
-}
-
-function getPercent(value: HUDValue): number {
-  if (value.max <= 0) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(100, (value.current / value.max) * 100));
 }

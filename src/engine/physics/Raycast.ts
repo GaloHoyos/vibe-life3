@@ -22,6 +22,7 @@ export class Raycast {
     origin: Vector3,
     direction: Vector3,
     maxDistance: number,
+    excludeBody?: RAPIER.RigidBody,
   ): RaycastHit | null {
     const normalizedDirection = direction.clone().normalize();
     const ray = new RAPIER.Ray(
@@ -32,7 +33,15 @@ export class Raycast {
         z: normalizedDirection.z,
       },
     );
-    const hit = this.physics.world.castRayAndGetNormal(ray, maxDistance, true);
+    const hit = this.physics.world.castRayAndGetNormal(
+      ray,
+      maxDistance,
+      true,
+      undefined,
+      undefined,
+      undefined,
+      excludeBody,
+    );
 
     if (!hit) {
       return null;

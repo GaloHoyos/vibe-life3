@@ -1,9 +1,9 @@
 /**
  * Todos los strings visibles al jugador en un solo lugar.
  *
- * El código emite `subtitle.show` / `dialogue.show` / `objective.updated`
- * usando estas estructuras en vez de literales inline. Si en algún
- * momento agregamos i18n, este archivo es el único punto que cambia.
+ * El código emite `subtitle.show` / `dialogue.show` usando estas
+ * estructuras en vez de literales inline. Si en algún momento agregamos
+ * i18n, este archivo es el único punto que cambia.
  *
  * Convención: los textos están en español (idioma del juego). Los
  * identificadores se mantienen en inglés siguiendo la convención del
@@ -37,11 +37,6 @@ export const Dialogue = {
     text: "Puerta de laboratorio cerrada.",
     duration: 2.2,
   },
-  gravityGunPending: {
-    speaker: Speakers.hev,
-    text: "Gravity Gun functionality pending.",
-    duration: 1.6,
-  },
   npcKilled: {
     speaker: Speakers.system,
     text: "Entidad hostil neutralizada.",
@@ -53,10 +48,6 @@ export const Dialogue = {
     duration: 2.5,
   }),
 } satisfies Record<string, SubtitleLine | ((...args: never[]) => SubtitleLine)>;
-
-export const Objectives = {
-  exploreFacility: "Explorar la instalacion de pruebas",
-} as const;
 
 export const MenuStrings = {
   ready: "Sistema activo. Preparado para combate.",

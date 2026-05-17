@@ -41,9 +41,10 @@ export class WeaponEffects {
     eventBus: GameEventBus,
   ) {
     this.unsubscribers.push(
-      eventBus.on("weapon.fired", (payload) =>
-        this.createTracer(payload.origin, payload.direction, payload.range),
-      ),
+      eventBus.on("weapon.fired", (payload) => {
+        if (payload.weaponType !== "hitscan") return;
+        this.createTracer(payload.origin, payload.direction, payload.range);
+      }),
       eventBus.on("weapon.hit", (payload) =>
         this.createDecal(payload.point, payload.normal, payload.surfaceKind),
       ),

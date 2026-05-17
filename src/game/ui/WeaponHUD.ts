@@ -1,4 +1,4 @@
-import type { Disposable } from '../../shared/types/lifecycle';
+import type { Disposable } from "../../shared/types/lifecycle";
 
 export interface WeaponHUDState {
   name: string;
@@ -6,44 +6,52 @@ export interface WeaponHUDState {
   reserve: number;
 }
 
+/**
+ * Ammo HUD HL2-style: label "MUNICIÓN" arriba, número grande del magazine
+ * + número chico de la reserva a la derecha, abajo a la derecha de la
+ * pantalla. El nombre del arma no se muestra (HL2 no lo hace; el selector
+ * superior se encarga cuando hace falta).
+ */
 export class WeaponHUD implements Disposable {
-  readonly element = document.createElement('section');
+  readonly element = document.createElement("section");
 
-  private readonly weaponName = document.createElement('span');
-  private readonly ammoValue = document.createElement('strong');
-  private readonly reserveValue = document.createElement('span');
+  private readonly current = document.createElement("span");
+  private readonly reserve = document.createElement("span");
   private fireTimer = 0;
 
   constructor() {
-    this.element.className = 'hev-panel hev-weapon';
+    this.element.className = "hl-ammo";
     this.element.innerHTML = `
-      <div class="hev-panel__label">AMMUNITION</div>
-      <div class="hev-weapon__name"></div>
-      <div class="hev-ammo">
-        <span class="hev-ammo__current"></span>
-        <span class="hev-ammo__divider">/</span>
-        <span class="hev-ammo__reserve"></span>
+      <div class="hl-ammo__label">MUNICIÓN</div>
+      <div class="hl-ammo__row">
+        <span class="hl-ammo__current"></span>
+        <span class="hl-ammo__reserve"></span>
       </div>
     `;
-
-    this.element.querySelector('.hev-weapon__name')?.append(this.weaponName);
-    this.element.querySelector('.hev-ammo__current')?.append(this.ammoValue);
-    this.element.querySelector('.hev-ammo__reserve')?.append(this.reserveValue);
+    this.element
+      .querySelector(".hl-ammo__current")
+      ?.appendChild(this.current);
+    this.element
+      .querySelector(".hl-ammo__reserve")
+      ?.appendChild(this.reserve);
   }
 
   setWeapon(state: WeaponHUDState): void {
-    this.weaponName.textContent = state.name.toUpperCase();
-    this.ammoValue.textContent = `${state.ammo}`;
-    this.reserveValue.textContent = `${state.reserve}`;
-    this.element.classList.toggle('is-low', state.ammo <= 5);
+    this.current.textContent = `${state.ammo}`;
+    this.reserve.textContent = `${state.reserve}`;
+    this.element.classList.toggle("is-low", state.ammo > 0 && state.ammo <= 5);
+    this.element.classList.toggle("is-empty", state.ammo === 0);
   }
 
   pulseFire(): void {
-    this.element.classList.remove('is-firing');
+    this.element.classList.remove("is-firing");
     void this.element.offsetWidth;
-    this.element.classList.add('is-firing');
+    this.element.classList.add("is-firing");
     window.clearTimeout(this.fireTimer);
-    this.fireTimer = window.setTimeout(() => this.element.classList.remove('is-firing'), 120);
+    this.fireTimer = window.setTimeout(
+      () => this.element.classList.remove("is-firing"),
+      110,
+    );
   }
 
   dispose(): void {

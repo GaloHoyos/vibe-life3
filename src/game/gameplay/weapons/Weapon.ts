@@ -1,4 +1,4 @@
-﻿import { Vector3 } from "three";
+﻿import { Quaternion, Vector3 } from "three";
 import type { GameEventBus } from "../../GameEvents";
 import type { Raycast } from "../../../engine/physics/Raycast";
 import type { WeaponDefinition } from "./WeaponDefinition";
@@ -11,7 +11,27 @@ export interface WeaponContext {
 export interface WeaponFireContext {
   origin: Vector3;
   direction: Vector3;
+  /** Orientación completa de la cámara. Necesario para armas que rotan props (gravity gun). */
+  cameraQuaternion: Quaternion;
   now: number;
+}
+
+export interface WeaponUpdateContext {
+  delta: number;
+  elapsed: number;
+  /** Posición de la cámara (igual al `origin` de un `tryFire`). */
+  origin: Vector3;
+  /** Dirección de mira normalizada. */
+  direction: Vector3;
+  /** Orientación completa de la cámara. */
+  cameraQuaternion: Quaternion;
+}
+
+export interface WeaponAlternateFireContext extends WeaponFireContext {
+  /** True en el frame en que RMB pasó a estar pulsado. */
+  pressed: boolean;
+  /** True mientras RMB esté sostenido. */
+  held: boolean;
 }
 
 export abstract class Weapon {
@@ -107,6 +127,7 @@ export abstract class Weapon {
 
     this.context.eventBus.emit("weapon.fired", {
       weaponName: this.name,
+      weaponType: this.definition.type,
       ammo: this.getAmmo(),
       origin: fireContext.origin,
       direction: fireContext.direction,
@@ -150,6 +171,25 @@ export abstract class Weapon {
       reserve: this.getReserveAmmo(),
     });
   }
+
+  /**
+   * Hook por-frame para armas con estado continuo (ej. gravity gun
+   * posicionando el prop holdeado). Default no-op.
+   */
+  update(_delta: number, _context: WeaponUpdateContext): void {}
+
+  /**
+   * Llamado cuando RMB cambia de estado. Default no-op. Sirve para grab/drop,
+   * ADS, etc. Las armas que no necesitan acción secundaria lo ignoran.
+   */
+  tryAlternateFire(_context: WeaponAlternateFireContext): void {}
+
+  /**
+   * Llamado cuando esta arma deja de ser la activa (switch o pickup). Las
+   * armas con estado externo (props holdeados, charge, etc.) deben liberar
+   * recursos acá.
+   */
+  onUnequip(): void {}
 
   protected abstract performFire(context: WeaponFireContext): void;
 }

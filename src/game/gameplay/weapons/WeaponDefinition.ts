@@ -5,6 +5,19 @@ export type WeaponId = "crowbar" | "pistol" | "smg" | "ar3" | "gravityGun";
 export type WeaponType = "melee" | "hitscan" | "special";
 export type WeaponFireMode = "semi" | "auto";
 
+/**
+ * Categoría HL-style. Cada categoría se mapea a un número de slot (1-5)
+ * en `weapons.config`. Varias armas pueden compartir slot — la tecla
+ * cicla entre ellas. Ej.: `smg` y `ar3` viven ambas en `automatic`,
+ * presionar `3` alterna entre ellas.
+ */
+export type WeaponCategory =
+  | "melee"
+  | "sidearm"
+  | "automatic"
+  | "heavy"
+  | "special";
+
 export interface RecoilDefinition {
   vertical: number;
   horizontal: number;
@@ -23,7 +36,7 @@ export interface WeaponDefinition {
   displayName: string;
   modelId: ModelAssetId;
   pickupModelId: ModelAssetId;
-  slot: number;
+  category: WeaponCategory;
   type: WeaponType;
   damage: number;
   fireRate: number;
