@@ -102,6 +102,11 @@ export interface GameEventMap {
     current: number;
     max: number;
   };
+  "player.stamina.changed": {
+    current: number;
+    max: number;
+    depleted: boolean;
+  };
   "player.damaged": {
     amount: number;
     direction?: Vector3;

@@ -1,9 +1,9 @@
-import { ControlsMenu } from "./ControlsMenu";
 import { CreditsMenu } from "./CreditsMenu";
 import { NewGameMenu } from "./NewGameMenu";
 import { OptionsMenu } from "./OptionsMenu";
 import type { GameMenuState, MenuChapter } from "./MainMenuState";
 import type { AudioBusName } from "../../../engine/audio/AudioSystem";
+import type { Controls } from "../../gameplay/Controls";
 
 export interface MainMenuViewCallbacks {
   onStartChapter: (chapterId: string) => void;
@@ -14,6 +14,7 @@ export interface MainMenuViewCallbacks {
   onToggleDebug: (enabled: boolean) => void;
   onVolumeChange: (bus: AudioBusName, value: number) => void;
   onGetVolume: (bus: AudioBusName) => number;
+  controls: Controls;
 }
 
 export class MainMenuView {
@@ -26,7 +27,6 @@ export class MainMenuView {
   private readonly loadingMessage: HTMLParagraphElement;
   private readonly optionsMenu: OptionsMenu;
   private readonly newGameMenu: NewGameMenu;
-  private readonly controlsMenu: ControlsMenu;
   private readonly creditsMenu: CreditsMenu;
   private readonly loadPanel = document.createElement("section");
 
@@ -73,10 +73,6 @@ export class MainMenuView {
           <span class="hl2-button__marker"></span>
           <span class="hl2-button__label">OPCIONES</span>
         </button>
-        <button class="hl2-button" data-state="controls" type="button">
-          <span class="hl2-button__marker"></span>
-          <span class="hl2-button__label">CONTROLES</span>
-        </button>
         <button class="hl2-button" data-state="credits" type="button">
           <span class="hl2-button__marker"></span>
           <span class="hl2-button__label">CREDITOS</span>
@@ -99,10 +95,6 @@ export class MainMenuView {
         <button class="hl2-button" data-state="options" type="button">
           <span class="hl2-button__marker"></span>
           <span class="hl2-button__label">OPCIONES</span>
-        </button>
-        <button class="hl2-button" data-state="controls" type="button">
-          <span class="hl2-button__marker"></span>
-          <span class="hl2-button__label">CONTROLES</span>
         </button>
         <button class="hl2-button" data-action="exitToMain" type="button">
           <span class="hl2-button__marker"></span>
@@ -135,8 +127,8 @@ export class MainMenuView {
       onToggleDebug: callbacks.onToggleDebug,
       onVolumeChange: callbacks.onVolumeChange,
       getVolume: callbacks.onGetVolume,
+      controls: callbacks.controls,
     });
-    this.controlsMenu = new ControlsMenu(callbacks.onBack);
     this.creditsMenu = new CreditsMenu(callbacks.onBack);
 
     this.loadPanel.className = "hl2-panel hl2-panel--content";
@@ -191,7 +183,6 @@ export class MainMenuView {
     const isSubMenu =
       state === "newGameMenu" ||
       state === "options" ||
-      state === "controls" ||
       state === "credits" ||
       state === "loadGame";
 
@@ -205,13 +196,15 @@ export class MainMenuView {
       this.contentPanel.append(this.newGameMenu.element);
     } else if (state === "options") {
       this.contentPanel.append(this.optionsMenu.element);
-    } else if (state === "controls") {
-      this.contentPanel.append(this.controlsMenu.element);
     } else if (state === "credits") {
       this.contentPanel.append(this.creditsMenu.element);
     } else if (state === "loadGame") {
       this.contentPanel.append(this.loadPanel);
     }
+  }
+
+  dispose(): void {
+    this.optionsMenu.dispose();
   }
 
   setVisible(visible: boolean): void {

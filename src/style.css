@@ -150,6 +150,20 @@ body {
   animation: hl-critical 0.8s ease-in-out infinite alternate;
 }
 
+.hl-vital--aux.is-low .hl-vital__value,
+.hl-vital--aux.is-low .hl-vital__icon {
+  color: var(--hl-amber);
+  filter: drop-shadow(var(--hl-glow-soft));
+  animation: hl-critical 1.2s ease-in-out infinite alternate;
+}
+
+.hl-vital--aux.is-depleted .hl-vital__value,
+.hl-vital--aux.is-depleted .hl-vital__icon {
+  color: var(--hl-red);
+  text-shadow: 0 0 8px rgb(255 62 39 / 0.6);
+  animation: hl-critical 0.55s ease-in-out infinite alternate;
+}
+
 @keyframes hl-critical {
   from {
     opacity: 0.75;

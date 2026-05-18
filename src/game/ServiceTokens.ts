@@ -4,6 +4,7 @@ import type { BackgroundAmbienceSystem } from "../engine/audio/BackgroundAmbienc
 import type { FootstepSoundSystem } from "../engine/audio/FootstepSoundSystem";
 import type { MusicManager } from "../engine/audio/MusicManager";
 import type { CharacterFactory } from "./characters/CharacterFactory";
+import type { Controls } from "./gameplay/Controls";
 import type { DialogueAudioSystem } from "./audio/DialogueAudioSystem";
 import type { EnemySoundSystem } from "./audio/EnemySoundSystem";
 import type { UISoundSystem } from "./audio/UISoundSystem";
@@ -26,6 +27,7 @@ import type { MainMenu } from "./ui/menu/MainMenu";
  */
 export const GameTokens = {
   EventBus: new ServiceToken<EventBus<GameEventMap>>("EventBus"),
+  Controls: new ServiceToken<Controls>("Controls"),
   Characters: new ServiceToken<CharacterFactory>("CharacterFactory"),
   Subtitles: new ServiceToken<Subtitles>("Subtitles"),
   Dialogue: new ServiceToken<DialogueSystem>("DialogueSystem"),

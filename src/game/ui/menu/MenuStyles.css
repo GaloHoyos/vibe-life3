@@ -435,6 +435,89 @@
   grid-template-columns: 1fr auto;
 }
 
+.hl2-bindings {
+  display: grid;
+  gap: 4px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.hl2-binding {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255, 138, 26, 0.08);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--hl2-text);
+}
+
+.hl2-binding:last-child {
+  border-bottom: 0;
+}
+
+.hl2-binding__label {
+  color: var(--hl2-text);
+}
+
+.hl2-binding__key {
+  min-width: 130px;
+  padding: 6px 12px;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hl2-yellow);
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--hl2-line);
+  border-bottom-width: 2px;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.hl2-binding__key:hover:not(:disabled),
+.hl2-binding__key:focus-visible:not(:disabled) {
+  border-color: var(--hl2-orange);
+  color: var(--hl2-orange);
+  background: rgba(255, 138, 26, 0.12);
+  outline: none;
+}
+
+.hl2-binding__key.is-listening {
+  border-color: var(--hl2-orange);
+  background: rgba(255, 138, 26, 0.22);
+  color: var(--hl2-orange);
+  animation: hl2-binding-pulse 0.9s ease-in-out infinite;
+}
+
+.hl2-binding__key.is-locked {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@keyframes hl2-binding-pulse {
+  0%, 100% {
+    background: rgba(255, 138, 26, 0.18);
+  }
+  50% {
+    background: rgba(255, 138, 26, 0.4);
+  }
+}
+
+.hl2-binding-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.hl2-binding-actions .hl2-button {
+  padding: 8px 14px;
+}
+
 .hl2-keymap {
   width: 100%;
   border-collapse: collapse;

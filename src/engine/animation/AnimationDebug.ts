@@ -1,5 +1,5 @@
-import type { BoneMapper } from './BoneMapper';
-import type { ProceduralAnimationState } from './ProceduralCharacterAnimator';
+import type { BoneMapper } from "./BoneMapper";
+import type { ProceduralAnimationState } from "./ProceduralCharacterAnimator";
 
 export interface AnimationDebugSnapshot {
   state: ProceduralAnimationState;
@@ -25,8 +25,8 @@ export class AnimationDebug {
       return;
     }
 
-    console.info('[AnimationDebug] Bones found:', mapper.getFoundNames());
-    console.info('[AnimationDebug] Bones missing:', mapper.getMissingNames());
+    console.info("[AnimationDebug] Bones found:", mapper.getFoundNames());
+    console.info("[AnimationDebug] Bones missing:", mapper.getMissingNames());
   }
 
   snapshot(snapshot: AnimationDebugSnapshot): void {
@@ -34,6 +34,6 @@ export class AnimationDebug {
       return;
     }
 
-    console.info('[AnimationDebug] Snapshot:', snapshot);
+    console.info("[AnimationDebug] Snapshot:", snapshot);
   }
 }

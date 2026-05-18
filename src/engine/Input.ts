@@ -3,6 +3,15 @@ export interface MouseDelta {
   y: number;
 }
 
+interface KeyboardLockAPI {
+  lock(keyCodes?: string[]): Promise<void>;
+  unlock(): void;
+}
+
+interface NavigatorWithKeyboard extends Navigator {
+  keyboard?: KeyboardLockAPI;
+}
+
 /**
  * Encapsula entradas de teclado/mouse/wheel y pointer lock.
  *
@@ -44,6 +53,24 @@ export class Input {
 
   isPointerLocked(): boolean {
     return document.pointerLockElement === this.target;
+  }
+
+  /**
+   * Captura atajos del navegador (Ctrl+W, Ctrl+T, F11, Alt+Tab según OS).
+   * Solo es efectivo dentro de fullscreen — fuera, navigator.keyboard.lock()
+   * acepta la llamada pero el navegador igual procesa los shortcuts.
+   * Firefox no implementa la API: la llamada se silencia.
+   */
+  lockKeyboard(): void {
+    const keyboard = (navigator as NavigatorWithKeyboard).keyboard;
+    if (!keyboard) return;
+    void keyboard.lock();
+  }
+
+  unlockKeyboard(): void {
+    const keyboard = (navigator as NavigatorWithKeyboard).keyboard;
+    if (!keyboard) return;
+    keyboard.unlock();
   }
 
   isKeyDown(code: string): boolean {
