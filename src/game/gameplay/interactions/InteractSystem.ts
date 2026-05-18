@@ -1,6 +1,6 @@
 ﻿import { Object3D, Raycaster, Vector3 } from 'three';
 import type { GameEventBus } from "../../GameEvents";
-import type { Input } from '../../../engine/Input';
+import type { Controls } from "../Controls";
 import type { Interactable } from './Interactable';
 
 export class InteractSystem {
@@ -14,7 +14,7 @@ export class InteractSystem {
     this.interactables.push(interactable);
   }
 
-  update(cameraPosition: Vector3, cameraDirection: Vector3, input: Input): void {
+  update(cameraPosition: Vector3, cameraDirection: Vector3, controls: Controls): void {
     this.raycaster.set(cameraPosition, cameraDirection);
     this.raycaster.far = 4;
     const objects = this.interactables.map((interactable) => interactable.object);
@@ -43,7 +43,7 @@ export class InteractSystem {
       }
     }
 
-    if (this.current && input.wasKeyPressed('KeyE')) {
+    if (this.current && controls.wasPressed("interact")) {
       this.current.interact();
     }
   }

@@ -7,6 +7,8 @@ import type { WeaponHUDState } from "./WeaponHUD";
 interface HUDStateShape {
   health: HUDValue;
   armor: HUDValue;
+  aux: HUDValue;
+  auxDepleted: boolean;
   armorEnabled: boolean;
   weapon: WeaponHUDState;
   interactionLabel?: string;
@@ -15,6 +17,8 @@ interface HUDStateShape {
 const DefaultHUDState = (): HUDStateShape => ({
   health: { current: 100, max: 100 },
   armor: { current: 0, max: 100 },
+  aux: { current: 100, max: 100 },
+  auxDepleted: false,
   armorEnabled: false,
   weapon: { name: "UNARMED", ammo: 0, reserve: 0 },
 });
@@ -45,6 +49,9 @@ export class HUD implements Disposable {
       ),
       eventBus.on("player.armor.changed", ({ current, max }) =>
         this.setArmor(current, max),
+      ),
+      eventBus.on("player.stamina.changed", ({ current, max, depleted }) =>
+        this.setAux(current, max, depleted),
       ),
       eventBus.on("player.damaged", ({ amount }) =>
         this.view.damage.flash(amount),
@@ -106,6 +113,12 @@ export class HUD implements Disposable {
     this.view.healthArmor.setArmor(this.state.armor, true);
   }
 
+  setAux(current: number, max: number, depleted: boolean): void {
+    this.state.aux = { current, max };
+    this.state.auxDepleted = depleted;
+    this.view.healthArmor.setAux(this.state.aux, depleted);
+  }
+
   setAmmo(current: number, reserve: number): void {
     this.state.weapon = { ...this.state.weapon, ammo: current, reserve };
     this.view.weapon.setWeapon(this.state.weapon);
@@ -134,6 +147,7 @@ export class HUD implements Disposable {
   private render(): void {
     this.view.healthArmor.setHealth(this.state.health);
     this.view.healthArmor.setArmor(this.state.armor, this.state.armorEnabled);
+    this.view.healthArmor.setAux(this.state.aux, this.state.auxDepleted);
     this.view.weapon.setWeapon(this.state.weapon);
   }
 }

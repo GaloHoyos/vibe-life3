@@ -2,6 +2,7 @@ import type { Disposable } from "../../../shared/types/lifecycle";
 import { MainMenuView } from "./MainMenuView";
 import { buildChapters, type GameMenuState } from "./MainMenuState";
 import type { AudioBusName } from "../../../engine/audio/AudioSystem";
+import type { Controls } from "../../gameplay/Controls";
 
 export interface MainMenuCallbacks {
   onStartChapter: (chapterId: string) => void;
@@ -10,6 +11,7 @@ export interface MainMenuCallbacks {
   onToggleDebug: (enabled: boolean) => void;
   onVolumeChange: (bus: AudioBusName, value: number) => void;
   onGetVolume: (bus: AudioBusName) => number;
+  controls: Controls;
 }
 
 /**
@@ -39,6 +41,7 @@ export class MainMenu implements Disposable {
       onToggleDebug: callbacks.onToggleDebug,
       onVolumeChange: callbacks.onVolumeChange,
       onGetVolume: callbacks.onGetVolume,
+      controls: callbacks.controls,
     });
     this.element = this.view.element as HTMLDivElement;
     container.append(this.element);
@@ -87,6 +90,7 @@ export class MainMenu implements Disposable {
   }
 
   dispose(): void {
+    this.view.dispose();
     this.element.remove();
   }
 }

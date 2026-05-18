@@ -15,6 +15,7 @@ import { UISoundSystem } from "./audio/UISoundSystem";
 import { WeaponSoundSystem } from "./audio/WeaponSoundSystem";
 import type { GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
+import { Controls } from "./gameplay/Controls";
 import { Player } from "./gameplay/Player";
 import { WeaponEffects } from "./gameplay/weapons/WeaponEffects";
 import { InteractSystem, type SlidingDoor } from "./gameplay/interactions";
@@ -158,7 +159,9 @@ export class Game {
     const scene = s.resolve(EngineTokens.Scene);
     const assets = s.resolve(EngineTokens.Assets);
     const physics = s.resolve(EngineTokens.Physics);
+    const input = s.resolve(EngineTokens.Input);
 
+    s.register(GameTokens.Controls, new Controls(input));
     s.register(
       GameTokens.Characters,
       new CharacterFactory(assets, physics, eventBus),
@@ -207,6 +210,7 @@ export class Game {
     const s = this.engine.services;
     const eventBus = s.resolve(GameTokens.EventBus);
     const audio = s.resolve(EngineTokens.Audio);
+    const controls = s.resolve(GameTokens.Controls);
 
     s.register(GameTokens.HUD, new HUD(this.root, eventBus));
     const debugOverlay = s.register(
@@ -225,6 +229,7 @@ export class Game {
         onToggleDebug: (enabled) => debugOverlay.setEnabled(enabled),
         onVolumeChange: (bus, value) => audio.setVolume(bus, value),
         onGetVolume: (bus) => audio.getVolume(bus),
+        controls,
       }),
     );
   }
@@ -236,9 +241,10 @@ export class Game {
   private update(time: Time): void {
     const s = this.engine.services;
     const input = s.resolve(EngineTokens.Input);
+    const controls = s.resolve(GameTokens.Controls);
     const debugOverlay = s.resolve(GameTokens.DebugOverlay);
 
-    if (input.wasKeyPressed("F3")) {
+    if (controls.wasPressed("toggleDebug")) {
       debugOverlay.toggle();
     }
 
@@ -251,7 +257,7 @@ export class Game {
       });
     }
 
-    if (input.wasKeyPressed("Escape") && this.gameState === "playing") {
+    if (controls.wasPressed("pause") && this.gameState === "playing") {
       this.setGameState("paused");
     }
 
@@ -272,6 +278,7 @@ export class Game {
     const player = this.player!;
     const s = this.engine.services;
     const input = s.resolve(EngineTokens.Input);
+    const controls = s.resolve(GameTokens.Controls);
     const camera = s.resolve(EngineTokens.Camera);
     const physics = s.resolve(EngineTokens.Physics);
     const gizmos = s.resolve(EngineTokens.Gizmos);
@@ -284,10 +291,10 @@ export class Game {
 
     if (input.isPointerLocked()) {
       camera.updateLook(input);
-      player.update(time.delta, input, camera, time.elapsed);
+      player.update(time.delta, input, controls, camera, time.elapsed);
     }
 
-    footsteps.update(time.delta, player.getMoveIntensity(input));
+    footsteps.update(time.delta, player.getMoveIntensity());
 
     const playerPosition = player.getPosition();
     this.weaponPickups.forEach((pickup) =>
@@ -333,7 +340,7 @@ export class Game {
     interactSystem.update(
       camera.camera.position,
       camera.getForwardDirection(),
-      input,
+      controls,
     );
     triggerSystem.update(playerPosition);
     subtitles.update(time.delta);
@@ -372,7 +379,7 @@ export class Game {
   private readonly handleCanvasClick = (): void => {
     this.engine.services.resolve(EngineTokens.Audio).unlock();
     if (this.gameState === "playing") {
-      this.engine.services.resolve(EngineTokens.Input).requestPointerLock();
+      this.enterCapture();
     }
   };
 
@@ -381,7 +388,24 @@ export class Game {
     if (!input.isPointerLocked() && this.gameState === "playing") {
       this.setGameState("paused");
     }
+    if (!input.isPointerLocked()) {
+      input.unlockKeyboard();
+    }
   };
+
+  /**
+   * Fullscreen + pointer lock + keyboard lock. El keyboard lock requiere
+   * fullscreen para capturar Ctrl+W, Ctrl+T, F11, etc. — sin él, esos
+   * atajos siguen yendo al navegador y cierran/cambian la pestaña.
+   */
+  private enterCapture(): void {
+    const input = this.engine.services.resolve(EngineTokens.Input);
+    if (!document.fullscreenElement) {
+      void document.documentElement.requestFullscreen().catch(() => undefined);
+    }
+    input.requestPointerLock();
+    input.lockKeyboard();
+  }
 
   private setGameState(state: GameMenuState): void {
     this.gameState = state;
@@ -395,7 +419,9 @@ export class Game {
 
     if (state === "playing") {
       mainMenu.setStatus(MenuStrings.ready);
-      input.requestPointerLock();
+      this.enterCapture();
+    } else {
+      input.unlockKeyboard();
     }
   }
 

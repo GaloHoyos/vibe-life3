@@ -5,6 +5,8 @@ import type { CameraSystem } from "../../../engine/render/CameraSystem";
 import type { Raycast } from "../../../engine/physics/Raycast";
 import type { Scene } from "three";
 import { WEAPON_SLOT_COUNT } from "../../config/weapons.config";
+import type { Controls } from "../Controls";
+import type { GameAction } from "../../config/controls.config";
 import { Recoil } from "./Recoil";
 import type { Weapon } from "./Weapon";
 import { WeaponInventory } from "./WeaponInventory";
@@ -55,6 +57,7 @@ export class WeaponController {
   update(
     delta: number,
     input: Input,
+    controls: Controls,
     cameraSystem: CameraSystem,
     elapsed: number,
     speed: number,
@@ -66,7 +69,7 @@ export class WeaponController {
       this.commitSelector();
     }
 
-    this.handleSelectionInput(input, elapsed);
+    this.handleSelectionInput(input, controls, elapsed);
 
     if (this.suppressFireUntilRelease && !input.isMouseDown(0)) {
       this.suppressFireUntilRelease = false;
@@ -103,7 +106,7 @@ export class WeaponController {
     if (
       activeWeapon &&
       !this.selector &&
-      input.wasKeyPressed("KeyR")
+      controls.wasPressed("reload")
     ) {
       if (activeWeapon.tryReload(elapsed)) {
         this.viewModel.reload();
@@ -189,9 +192,14 @@ export class WeaponController {
     return next;
   }
 
-  private handleSelectionInput(input: Input, elapsed: number): void {
+  private handleSelectionInput(
+    input: Input,
+    controls: Controls,
+    elapsed: number,
+  ): void {
     for (let slot = 1; slot <= WEAPON_SLOT_COUNT; slot += 1) {
-      if (input.wasKeyPressed(`Digit${slot}`)) {
+      const action = `weaponSlot${slot}` as GameAction;
+      if (controls.wasPressed(action)) {
         this.openOrCycleSelector(slot, elapsed);
         return;
       }
