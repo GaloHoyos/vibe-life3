@@ -6,19 +6,28 @@ import { tupleToVector3 } from '../../shared/math/VectorTuple';
 import type { GameEventBus } from "../GameEvents";
 import { DoorButton, InteractSystem, SlidingDoor } from '../gameplay/interactions';
 import { WeaponPickup } from '../gameplay/weapons/WeaponPickup';
-import { NPC } from '../npc/NPC';
+import { CombatSquadCoordinator } from '../npc/CombatSquadCoordinator';
+import type { INpc } from '../npc/INpc';
 import type { PhysicsWorld } from '../../engine/physics/PhysicsWorld';
+import { Raycast } from '../../engine/physics/Raycast';
+import { SpawnValidator } from '../../engine/physics/SpawnValidator';
 import { createBoxMesh } from '../../engine/render/PrimitiveFactory';
 import { createTerrainMesh } from '../../engine/render/TerrainMesh';
 import type { MaterialKey } from '../../engine/render/Materials';
 import { generateHeightField } from '../../shared/math/HeightField';
+import type { NavGraph } from '../../engine/ai/NavGraph';
+import { CoverSystem } from './CoverSystem';
 import type { LevelDefinition } from './LevelDefinition';
+import { NavGraphBuilder } from './NavGraphBuilder';
 import type { TriggerSystem } from './TriggerSystem';
 
 export interface LoadedLevel {
-  npcs: NPC[];
+  npcs: INpc[];
   doors: SlidingDoor[];
   weaponPickups: WeaponPickup[];
+  coverSystem: CoverSystem;
+  navGraph: NavGraph;
+  squad: CombatSquadCoordinator;
 }
 
 /**
@@ -38,9 +47,12 @@ export class LevelLoader {
   ) {}
 
   async load(level: LevelDefinition): Promise<LoadedLevel> {
-    const npcs: NPC[] = [];
+    const npcs: INpc[] = [];
     const doors: SlidingDoor[] = [];
     const weaponPickups: WeaponPickup[] = [];
+    const sharedRaycast = new Raycast(this.physics);
+    const coverSystem = new CoverSystem(sharedRaycast);
+    coverSystem.load(level.coverPoints ?? []);
 
     if (level.terrain) {
       const terrain = level.terrain;
@@ -120,11 +132,23 @@ export class LevelLoader {
       );
     });
 
+    const spawnValidator = new SpawnValidator(new Raycast(this.physics));
     for (const definition of level.npcs) {
+      const requested = tupleToVector3(definition.position);
+      const validation = spawnValidator.validate(requested);
+      if (!validation.valid) {
+        console.warn(
+          `[LevelLoader] NPC '${definition.id}' spawn invalid at ${requested.toArray().join(',')} — usando posición pedida igual`,
+        );
+      } else if (validation.relocated) {
+        console.info(
+          `[LevelLoader] NPC '${definition.id}' relocated de ${requested.toArray().join(',')} → ${validation.position.toArray().join(',')}`,
+        );
+      }
       const npc = await this.characters.createNPC(
         definition.characterId,
         definition.id,
-        tupleToVector3(definition.position),
+        validation.position,
       );
       this.scene.add(npc.mesh);
       npcs.push(npc);
@@ -144,7 +168,14 @@ export class LevelLoader {
       this.triggerSystem.addTrigger(definition);
     });
 
-    return { npcs, doors, weaponPickups };
+    const navGraph = new NavGraphBuilder().build(level, sharedRaycast);
+    console.info(
+      `[LevelLoader] NavGraph: ${navGraph.nodeCount()} nodos generados`,
+    );
+
+    const squad = new CombatSquadCoordinator();
+
+    return { npcs, doors, weaponPickups, coverSystem, navGraph, squad };
   }
 }
 

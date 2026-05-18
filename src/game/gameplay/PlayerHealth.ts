@@ -9,6 +9,7 @@ export class PlayerHealth {
   private armorCurrent: number;
   private armorMax: number;
   private dead = false;
+  private godMode = false;
 
   constructor(
     private readonly eventBus: GameEventBus,
@@ -47,8 +48,28 @@ export class PlayerHealth {
     return !this.dead && this.health.isAlive();
   }
 
+  toggleGodMode(): boolean {
+    this.godMode = !this.godMode;
+    if (this.godMode) {
+      this.health.reset();
+      this.dead = false;
+      this.armorCurrent = this.armorMax;
+      this.emitHealthChanged();
+      this.emitArmorChanged();
+    }
+    return this.godMode;
+  }
+
+  isGodMode(): boolean {
+    return this.godMode;
+  }
+
   takeDamage(amount: number, _source?: string, hitDirection?: Vector3): number {
     if (this.dead || amount <= 0) {
+      return this.health.current;
+    }
+    if (this.godMode) {
+      this.eventBus.emit("player.damaged", { amount: 0, direction: hitDirection });
       return this.health.current;
     }
 

@@ -5,9 +5,19 @@ import type {
   WalkStyle,
 } from "../animation/ProceduralWalk";
 import type { RagdollConfig } from "../animation/RagdollDefinition";
+import type { Faction } from "../ai/Faction";
+import type { PerceptionConfig } from "../ai/Perception";
 
 export type CharacterType = "humanoid" | "creature" | "robot" | "prop";
 export type CharacterId = string;
+
+/**
+ * Discrimina qué subclase de NPC instanciar.
+ * - `zombieMelee`  — NPC base (NPC.ts), AI simple melee.
+ * - `combineRanged` — Combine con armas, cover, perception táctica.
+ * - `alyxAlly`     — aliado del player, follow + combate ranged.
+ */
+export type NpcBehaviorKind = "zombieMelee" | "combineRanged" | "alyxAlly";
 
 export interface CharacterMovementConfig {
   maxSpeed: number;
@@ -92,6 +102,25 @@ export interface CharacterAIConfig {
 
 export type CharacterAttackType = "melee" | "ranged";
 
+export interface CharacterRangedAttackConfig {
+  /** Id del weapon en la tabla de weapons del juego. La capa game lo resuelve. */
+  weaponId: string;
+  /** Cantidad de disparos por ráfaga. HL2 combine ~3-5. */
+  burstSize: number;
+  /** Pausa (s) entre ráfagas. */
+  pauseBetweenBursts: number;
+  /** Error angular máximo al primer disparo (cuando aún no asentó la mira). */
+  aimError: number;
+  /** Error angular mínimo después de asentar la mira por `aimSettleDuration` segundos. */
+  aimErrorSettled: number;
+  /** Cuánto tarda (s) la mira en asentarse del max al min. */
+  aimSettleDuration: number;
+  /** Tiempo (s) que mira al target antes de empezar a disparar (telegraph). */
+  aimTime: number;
+  /** Reaction time al detectar primero. */
+  reactionTime: number;
+}
+
 export interface CharacterAttackConfig {
   enabled: boolean;
   type: CharacterAttackType;
@@ -103,6 +132,8 @@ export interface CharacterAttackConfig {
   knockback: number;
   requireLineOfSight: boolean;
   facingDotThreshold: number;
+  /** Sólo presente para `type: 'ranged'`. */
+  ranged?: CharacterRangedAttackConfig;
 }
 
 export interface CharacterStumbleConfig {
@@ -117,6 +148,10 @@ export interface CharacterDefinition {
   id: CharacterId;
   modelId?: ModelAssetId;
   type: CharacterType;
+  /** Bando lógico — controla quién ataca a quién. */
+  faction: Faction;
+  /** Qué clase de NPC instancia el factory. */
+  behaviorKind: NpcBehaviorKind;
   height: number;
   radius: number;
   mass: number;
@@ -129,6 +164,8 @@ export interface CharacterDefinition {
   ragdoll: CharacterRagdollConfig;
   collider: CharacterColliderConfig;
   ai: CharacterAIConfig;
+  /** Visión + LOS + memoria. Sólo usado por `combineRanged` y `alyxAlly`. */
+  perception: PerceptionConfig;
   attack: CharacterAttackConfig;
   stumble: CharacterStumbleConfig;
   debug: boolean;

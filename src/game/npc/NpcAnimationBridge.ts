@@ -28,9 +28,16 @@ export class NpcAnimationBridge {
   private readonly hitReaction: HitReactionAnimator;
   private readonly previousVelocity = new Vector3();
   private readonly acceleration = new Vector3();
+  private readonly visualRoot: Object3D;
+  private readonly baseVisualY: number;
+  private readonly baseVisualX: number;
   private lastYaw = 0;
   private proceduralEnabled = true;
   private hitReactionEnabled = true;
+  private targetCrouch = 0;
+  private currentCrouch = 0;
+  private targetLeanSide = 0;
+  private currentLeanSide = 0;
 
   constructor(
     id: string,
@@ -39,6 +46,9 @@ export class NpcAnimationBridge {
     physics: PhysicsWorld,
     owner: Damageable,
   ) {
+    this.visualRoot = visualRoot;
+    this.baseVisualY = visualRoot.position.y;
+    this.baseVisualX = visualRoot.position.x;
     this.animator = new ProceduralCharacterAnimator({
       id,
       root: visualRoot,
@@ -93,6 +103,29 @@ export class NpcAnimationBridge {
         deltaTime: 1 / 60,
       });
     }
+
+    this.applyCrouchAndLean();
+  }
+
+  /**
+   * Crouch (0..1) baja el visual ~0.55m, simula que el NPC se agacha detrás
+   * de la cobertura. Lean (-1..1) lo desplaza lateralmente para "asomarse"
+   * por un lado. Ambas transiciones se interpolan en `applyCrouchAndLean`.
+   */
+  setCrouch(amount: number): void {
+    this.targetCrouch = Math.max(0, Math.min(1, amount));
+  }
+
+  setLeanSide(amount: number): void {
+    this.targetLeanSide = Math.max(-1, Math.min(1, amount));
+  }
+
+  private applyCrouchAndLean(): void {
+    const lerp = 0.18;
+    this.currentCrouch += (this.targetCrouch - this.currentCrouch) * lerp;
+    this.currentLeanSide += (this.targetLeanSide - this.currentLeanSide) * lerp;
+    this.visualRoot.position.y = this.baseVisualY - this.currentCrouch * 0.55;
+    this.visualRoot.position.x = this.baseVisualX + this.currentLeanSide * 0.35;
   }
 
   /**

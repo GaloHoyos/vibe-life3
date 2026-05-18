@@ -5,6 +5,7 @@ import type { MaterialKey } from '../../engine/render/Materials';
 import type { SkyboxId } from '../../engine/render/Skybox';
 import type { SunOptions } from '../../engine/render/LightingSystem';
 import type { HeightSource } from '../../shared/math/HeightField';
+import type { CoverPointDefinition } from './CoverSystem';
 
 export interface StaticBoxDefinition {
   id: string;
@@ -104,4 +105,6 @@ export interface LevelDefinition {
   npcs: NPCDefinition[];
   weaponPickups: WeaponPickupDefinition[];
   triggers: TriggerDefinition[];
+  /** Cover points hand-placed para que los NPCs tácticos los usen. */
+  coverPoints?: CoverPointDefinition[];
 }
