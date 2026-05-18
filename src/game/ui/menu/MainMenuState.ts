@@ -5,7 +5,6 @@ export type GameMenuState =
   | "newGameMenu"
   | "loadGame"
   | "options"
-  | "controls"
   | "credits"
   | "playing"
   | "paused"

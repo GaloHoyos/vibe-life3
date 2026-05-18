@@ -1,18 +1,24 @@
-﻿import { Scene, Vector3 } from "three";
+import { Scene, Vector3 } from "three";
 import type { AssetManager } from "../../engine/assets/AssetManager";
 import type { GameEventBus } from "../GameEvents";
 import type { Input } from "../../engine/Input";
 import type { CameraSystem } from "../../engine/render/CameraSystem";
 import type { PhysicsWorld } from "../../engine/physics/PhysicsWorld";
 import type { Raycast } from "../../engine/physics/Raycast";
-import { CharacterController } from "../../engine/physics/CharacterController";
+import {
+  CharacterController,
+  type MovementInput,
+} from "../../engine/physics/CharacterController";
 import type { Damageable } from "../../shared/types/lifecycle";
 import { PlayerConfig } from "../config/gameplay.config";
+import type { Controls } from "./Controls";
 import { PlayerHealth } from "./PlayerHealth";
+import { Stamina } from "./Stamina";
 import { WeaponController } from "./weapons/WeaponController";
 
 export class Player implements Damageable {
   readonly health: PlayerHealth;
+  readonly stamina: Stamina;
   readonly controller: CharacterController;
   readonly weapons: WeaponController;
 
@@ -29,13 +35,24 @@ export class Player implements Damageable {
       PlayerConfig.vitals.maxHealth,
       PlayerConfig.vitals.armorMax,
     );
+    this.stamina = new Stamina(eventBus);
     this.controller = new CharacterController(physics, {
       position: startPosition,
       radius: PlayerConfig.collider.radius,
-      halfHeight: PlayerConfig.collider.halfHeight,
-      speed: PlayerConfig.movement.speed,
+      standingHalfHeight: PlayerConfig.collider.standingHalfHeight,
+      crouchHalfHeight: PlayerConfig.collider.crouchHalfHeight,
+      standingEyeHeight: PlayerConfig.collider.standingEyeHeight,
+      crouchEyeHeight: PlayerConfig.collider.crouchEyeHeight,
+      walkSpeed: PlayerConfig.movement.walkSpeed,
+      sprintSpeed: PlayerConfig.movement.sprintSpeed,
+      crouchSpeed: PlayerConfig.movement.crouchSpeed,
       jumpSpeed: PlayerConfig.movement.jumpSpeed,
-      eyeHeight: PlayerConfig.collider.eyeHeight,
+      groundAccelerate: PlayerConfig.movement.groundAccelerate,
+      airAccelerate: PlayerConfig.movement.airAccelerate,
+      maxAirWishSpeed: PlayerConfig.movement.maxAirWishSpeed,
+      friction: PlayerConfig.movement.friction,
+      stopSpeed: PlayerConfig.movement.stopSpeed,
+      crouchTransitionTime: PlayerConfig.movement.crouchTransitionTime,
     });
     physics.registerCollider(this.controller.collider, {
       id: "player",
@@ -48,6 +65,7 @@ export class Player implements Damageable {
   update(
     delta: number,
     input: Input,
+    controls: Controls,
     cameraSystem: CameraSystem,
     elapsed: number,
   ): void {
@@ -55,14 +73,20 @@ export class Player implements Damageable {
       return;
     }
 
-    this.controller.update(delta, input, cameraSystem);
+    this.controller.update(
+      delta,
+      readMovement(controls, this.stamina),
+      cameraSystem,
+    );
     this.weapons.update(
       delta,
       input,
+      controls,
       cameraSystem,
       elapsed,
-      this.getInputSpeed(input),
+      this.controller.getMoveIntensity(),
     );
+    this.stamina.tick(delta, this.controller.isSprinting());
   }
 
   getPosition(): Vector3 {
@@ -73,8 +97,8 @@ export class Player implements Damageable {
     return this.controller.getEyePosition();
   }
 
-  getMoveIntensity(input: Input): number {
-    return this.getInputSpeed(input);
+  getMoveIntensity(): number {
+    return this.controller.getMoveIntensity();
   }
 
   dispose(): void {
@@ -92,13 +116,16 @@ export class Player implements Damageable {
   isAlive(): boolean {
     return this.health.isAlive();
   }
+}
 
-  private getInputSpeed(input: Input): number {
-    return Number(
-      input.isKeyDown("KeyW") ||
-        input.isKeyDown("KeyA") ||
-        input.isKeyDown("KeyS") ||
-        input.isKeyDown("KeyD"),
-    );
-  }
+function readMovement(controls: Controls, stamina: Stamina): MovementInput {
+  return {
+    forward: controls.isDown("moveForward"),
+    back: controls.isDown("moveBack"),
+    left: controls.isDown("moveLeft"),
+    right: controls.isDown("moveRight"),
+    jumpPressed: controls.wasPressed("jump"),
+    sprintDown: controls.isDown("sprint") && !stamina.isDepleted(),
+    crouchDown: controls.isDown("crouch"),
+  };
 }
