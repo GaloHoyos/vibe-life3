@@ -1,6 +1,6 @@
-﻿import type { Disposable } from '../../shared/types/lifecycle';
-import type { GameEventBus } from "../GameEvents";
-import type { Subtitles } from '../ui/Subtitles';
+﻿import type { Disposable } from '@shared/types/lifecycle';
+import type { GameEventBus } from "@game/GameEvents";
+import type { Subtitles } from '@game/ui/subtitles/Subtitles';
 
 /**
  * Bridge entre los eventos de diálogo (`dialogue.show` / `subtitle.show`)

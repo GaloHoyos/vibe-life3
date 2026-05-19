@@ -1,6 +1,6 @@
-import type { Input } from "../../engine/Input";
-import type { Controls } from "../gameplay/Controls";
-import { AimDebugPanel } from "../ui/AimDebugPanel";
+﻿import type { Input } from "@engine/input/Input";
+import type { Controls } from "@game/gameplay/player/Controls";
+import { AimDebugPanel } from "@game/ui/overlay/AimDebugPanel";
 
 /**
  * Sistema de debug para NPCs: orquesta el panel de tuning (aim pose, rest
@@ -35,8 +35,8 @@ export class NpcDebugSystem {
   }
 
   /**
-   * `true` mientras el usuario soltó el cursor con F9 (no con Escape o
-   * pérdida normal del foco). `Game` lo lee para skipear el auto-pause
+   * `true` mientras el usuario soltÃ³ el cursor con F9 (no con Escape o
+   * pÃ©rdida normal del foco). `Game` lo lee para skipear el auto-pause
    * que dispara `pointerlockchange`.
    */
   isDebugMouseRelease(): boolean {

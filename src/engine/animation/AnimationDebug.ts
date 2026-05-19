@@ -1,5 +1,5 @@
-import type { BoneMapper } from "./BoneMapper";
-import type { ProceduralAnimationState } from "./ProceduralCharacterAnimator";
+﻿import type { BoneMapper } from "@engine/animation/pose/BoneMapper";
+import type { ProceduralAnimationState } from "@engine/animation/procedural/ProceduralCharacterAnimator";
 
 export interface AnimationDebugSnapshot {
   state: ProceduralAnimationState;

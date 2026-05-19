@@ -1,6 +1,6 @@
-import { Vector3 } from "three";
-import { applyBoneRotationOffset } from "../BoneRotation";
-import type { AnimationInput } from "../AnimationInput";
+﻿import { Vector3 } from "three";
+import { applyBoneRotationOffset } from "@engine/animation/pose/BoneRotation";
+import type { AnimationInput } from "@engine/animation/AnimationInput";
 import type { AnimationLayer, AnimationLayerContext } from "./AnimationLayer";
 
 const HIT_DURATION = 0.22;

@@ -1,21 +1,21 @@
-import type { Object3D, Vector3 } from "three";
-import type { ModelAssetId } from "../assets/AssetManifest";
+﻿import type { Object3D, Vector3 } from "three";
+import type { ModelAssetId } from "@engine/assets/AssetManifest";
 import type {
   ProceduralWalkConfig,
   WalkStyle,
-} from "../animation/ProceduralWalk";
-import type { RagdollConfig } from "../animation/RagdollDefinition";
-import type { Faction } from "../ai/Faction";
-import type { PerceptionConfig } from "../ai/Perception";
+} from "@engine/animation/procedural/ProceduralWalk";
+import type { RagdollConfig } from "@engine/animation/ragdoll/RagdollDefinition";
+import type { Faction } from "@engine/ai/Faction";
+import type { PerceptionConfig } from "@engine/ai/Perception";
 
 export type CharacterType = "humanoid" | "creature" | "robot" | "prop";
 export type CharacterId = string;
 
 /**
- * Discrimina qué subclase de NPC instanciar.
- * - `zombieMelee`  — NPC base (NPC.ts), AI simple melee.
- * - `combineRanged` — Combine con armas, cover, perception táctica.
- * - `alyxAlly`     — aliado del player, follow + combate ranged.
+ * Discrimina qué clase de NPC instanciar.
+ * - `zombieMelee`   — `ZombieNpc`, AI simple melee.
+ * - `combineRanged` — `CombineNpc`, armas, cover y perception táctica.
+ * - `alyxAlly`      — `AlyxNpc`, aliado del player, follow + combate ranged.
  */
 export type NpcBehaviorKind = "zombieMelee" | "combineRanged" | "alyxAlly";
 
@@ -105,15 +105,15 @@ export type CharacterAttackType = "melee" | "ranged";
 export interface CharacterRangedAttackConfig {
   /** Id del weapon en la tabla de weapons del juego. La capa game lo resuelve. */
   weaponId: string;
-  /** Cantidad de disparos por ráfaga. HL2 combine ~3-5. */
+  /** Cantidad de disparos por rÃ¡faga. HL2 combine ~3-5. */
   burstSize: number;
-  /** Pausa (s) entre ráfagas. */
+  /** Pausa (s) entre rÃ¡fagas. */
   pauseBetweenBursts: number;
-  /** Error angular máximo al primer disparo (cuando aún no asentó la mira). */
+  /** Error angular mÃ¡ximo al primer disparo (cuando aÃºn no asentÃ³ la mira). */
   aimError: number;
-  /** Error angular mínimo después de asentar la mira por `aimSettleDuration` segundos. */
+  /** Error angular mÃ­nimo despuÃ©s de asentar la mira por `aimSettleDuration` segundos. */
   aimErrorSettled: number;
-  /** Cuánto tarda (s) la mira en asentarse del max al min. */
+  /** CuÃ¡nto tarda (s) la mira en asentarse del max al min. */
   aimSettleDuration: number;
   /** Tiempo (s) que mira al target antes de empezar a disparar (telegraph). */
   aimTime: number;
@@ -132,7 +132,7 @@ export interface CharacterAttackConfig {
   knockback: number;
   requireLineOfSight: boolean;
   facingDotThreshold: number;
-  /** Sólo presente para `type: 'ranged'`. */
+  /** SÃ³lo presente para `type: 'ranged'`. */
   ranged?: CharacterRangedAttackConfig;
 }
 
@@ -148,9 +148,9 @@ export interface CharacterDefinition {
   id: CharacterId;
   modelId?: ModelAssetId;
   type: CharacterType;
-  /** Bando lógico — controla quién ataca a quién. */
+  /** Bando lÃ³gico â€” controla quiÃ©n ataca a quiÃ©n. */
   faction: Faction;
-  /** Qué clase de NPC instancia el factory. */
+  /** QuÃ© clase de NPC instancia el factory. */
   behaviorKind: NpcBehaviorKind;
   height: number;
   radius: number;
@@ -164,7 +164,7 @@ export interface CharacterDefinition {
   ragdoll: CharacterRagdollConfig;
   collider: CharacterColliderConfig;
   ai: CharacterAIConfig;
-  /** Visión + LOS + memoria. Sólo usado por `combineRanged` y `alyxAlly`. */
+  /** VisiÃ³n + LOS + memoria. SÃ³lo usado por `combineRanged` y `alyxAlly`. */
   perception: PerceptionConfig;
   attack: CharacterAttackConfig;
   stumble: CharacterStumbleConfig;

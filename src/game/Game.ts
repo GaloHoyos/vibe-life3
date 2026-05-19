@@ -1,57 +1,57 @@
-import { Vector3 } from "three";
-import { BackgroundAmbienceSystem } from "../engine/audio/BackgroundAmbienceSystem";
-import { FootstepSoundSystem } from "../engine/audio/FootstepSoundSystem";
-import { MusicManager } from "../engine/audio/MusicManager";
-import type { Engine } from "../engine/Engine";
-import { EventBus } from "../engine/EventBus";
-import { EngineTokens } from "../engine/ServiceTokens";
-import type { Time } from "../engine/Time";
-import { CharacterFactory } from "./characters/CharacterFactory";
-import { FootstepsConfig } from "./config/audio.config";
-import { Dialogue, MenuStrings } from "./config/strings";
-import { DialogueAudioSystem } from "./audio/DialogueAudioSystem";
-import { EnemySoundSystem } from "./audio/EnemySoundSystem";
-import { UISoundSystem } from "./audio/UISoundSystem";
-import { WeaponSoundSystem } from "./audio/WeaponSoundSystem";
+﻿import { Vector3 } from "three";
+import { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
+import { FootstepSoundSystem } from "@engine/audio/systems/FootstepSoundSystem";
+import { MusicManager } from "@engine/audio/core/MusicManager";
+import type { Engine } from "@engine/core/Engine";
+import { EventBus } from "@engine/core/EventBus";
+import { EngineTokens } from "@engine/core/ServiceTokens";
+import type { Time } from "@engine/core/Time";
+import { CharacterFactory } from "@game/characters/CharacterFactory";
+import { FootstepsConfig } from "@game/config/audio.config";
+import { Dialogue, MenuStrings } from "@game/config/strings";
+import { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
+import { EnemySoundSystem } from "@game/audio/EnemySoundSystem";
+import { UISoundSystem } from "@game/audio/UISoundSystem";
+import { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
 import type { GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
-import { NpcDebugSystem } from "./debug/NpcDebugSystem";
-import { Controls } from "./gameplay/Controls";
-import { Player } from "./gameplay/Player";
-import { WeaponEffects } from "./gameplay/weapons/WeaponEffects";
-import { InteractSystem, type SlidingDoor } from "./gameplay/interactions";
-import type { NavGraph } from "../engine/ai/NavGraph";
-import type { CoverSystem } from "./levels/CoverSystem";
-import type { CombatSquadCoordinator } from "./npc/CombatSquadCoordinator";
-import type { LevelDefinition } from "./levels/LevelDefinition";
-import { LevelLoader } from "./levels/LevelLoader";
-import { getLevel, type LevelId } from "./levels/LevelRegistry";
-import { TriggerSystem } from "./levels/TriggerSystem";
-import type { ActorSnapshot, INpc, NpcUpdateContext } from "./npc/INpc";
-import { DialogueSystem } from "./narrative/DialogueSystem";
-import { LevelEvents } from "./narrative/LevelEvents";
-import { WeaponPickup } from "./gameplay/weapons/WeaponPickup";
-import type { WeaponId } from "./gameplay/weapons/WeaponDefinition";
-import { WeaponDefinitions } from "./config/weapons.config";
-import { DebugOverlay } from "./ui/DebugOverlay";
-import { HUD } from "./ui/HUD";
-import { Subtitles } from "./ui/Subtitles";
-import { MainMenu } from "./ui/menu/MainMenu";
-import type { GameMenuState } from "./ui/menu/MainMenuState";
+import { NpcDebugSystem } from "@game/debug/NpcDebugSystem";
+import { Controls } from "@game/gameplay/player/Controls";
+import { Player } from "@game/gameplay/player/Player";
+import { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
+import { InteractSystem, type SlidingDoor } from "@game/gameplay/interactions";
+import type { NavGraph } from "@engine/ai/NavGraph";
+import type { CoverSystem } from "@game/levels/CoverSystem";
+import type { CombatSquadCoordinator } from "@game/npc/combat/CombatSquadCoordinator";
+import type { LevelDefinition } from "@game/levels/LevelDefinition";
+import { LevelLoader } from "@game/levels/LevelLoader";
+import { getLevel, type LevelId } from "@game/levels/LevelRegistry";
+import { TriggerSystem } from "@game/levels/TriggerSystem";
+import type { ActorSnapshot, INpc, NpcUpdateContext } from "@game/npc/core/INpc";
+import { DialogueSystem } from "@game/narrative/DialogueSystem";
+import { LevelEvents } from "@game/narrative/LevelEvents";
+import { WeaponPickup } from "@game/gameplay/weapons/pickup/WeaponPickup";
+import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
+import { WeaponDefinitions } from "@game/config/weapons.config";
+import { DebugOverlay } from "@game/ui/overlay/DebugOverlay";
+import { HUD } from "@game/ui/hud/HUD";
+import { Subtitles } from "@game/ui/subtitles/Subtitles";
+import { MainMenu } from "@game/ui/menu/MainMenu";
+import type { GameMenuState } from "@game/ui/menu/MainMenuState";
 
 /**
  * Bootstrap del contenido del juego.
  *
  * Recibe un `Engine` ya construido, registra todos los servicios
- * específicos del juego (UI, audio reactiva a eventos, gameplay,
- * narrativa) y maneja el bucle principal a través del engine.
+ * especÃ­ficos del juego (UI, audio reactiva a eventos, gameplay,
+ * narrativa) y maneja el bucle principal a travÃ©s del engine.
  *
  * El nivel no se carga en `init()`: solo cuando el usuario elige un mapa
- * desde el menú principal (`startNewGame`). "Salir al menú principal"
- * desde la pausa reinicia la página para garantizar un teardown limpio.
+ * desde el menÃº principal (`startNewGame`). "Salir al menÃº principal"
+ * desde la pausa reinicia la pÃ¡gina para garantizar un teardown limpio.
  */
 export interface GameOptions {
-  /** Opcional: bootear directamente en un nivel concreto sin pasar por el menú. */
+  /** Opcional: bootear directamente en un nivel concreto sin pasar por el menÃº. */
   bootIntoLevel?: LevelId;
 }
 
@@ -199,7 +199,7 @@ export class Game {
     position: Vector3,
   ): Promise<void> {
     if (!(weaponId in WeaponDefinitions)) {
-      console.warn(`[Game] Dropped weapon '${weaponId}' no está en WeaponDefinitions`);
+      console.warn(`[Game] Dropped weapon '${weaponId}' no estÃ¡ en WeaponDefinitions`);
       return;
     }
     const s = this.engine.services;
@@ -285,7 +285,7 @@ export class Game {
     input.endFrame();
   }
 
-  /** Tick completo cuando el juego está activo (no en menú/pausa). */
+  /** Tick completo cuando el juego estÃ¡ activo (no en menÃº/pausa). */
   private tickPlaying(time: Time): void {
     const player = this.player!;
     const s = this.engine.services;
@@ -412,15 +412,12 @@ export class Game {
   };
 
   /**
-   * Fullscreen + pointer lock + keyboard lock. El keyboard lock requiere
-   * fullscreen para capturar Ctrl+W, Ctrl+T, F11, etc. — sin él, esos
-   * atajos siguen yendo al navegador y cierran/cambian la pestaña.
+   * Pointer lock + keyboard lock. El fullscreen es decisión del jugador
+   * desde Opciones → Video; sin él, lockKeyboard() no captura Ctrl+W/F11
+   * pero la API se silencia limpiamente.
    */
   private enterCapture(): void {
     const input = this.engine.services.resolve(EngineTokens.Input);
-    if (!document.fullscreenElement) {
-      void document.documentElement.requestFullscreen().catch(() => undefined);
-    }
     input.requestPointerLock();
     input.lockKeyboard();
   }
@@ -453,7 +450,7 @@ export class Game {
     const level = getLevel(levelId);
     mainMenu.showLoading(MenuStrings.loadingLevel(level.title));
 
-    // Permitir que el navegador pinte la pantalla de carga antes del trabajo síncrono.
+    // Permitir que el navegador pinte la pantalla de carga antes del trabajo sÃ­ncrono.
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => resolve()),
     );
@@ -534,11 +531,11 @@ export class Game {
   }
 
   /**
-   * Salir al menú principal desde la pausa.
+   * Salir al menÃº principal desde la pausa.
    *
-   * Reinicia la página: es la forma más robusta de devolver el motor,
-   * la física y la escena al estado inicial. La página vuelve a bootear
-   * en el menú principal y el usuario puede cargar cualquier mapa otra
+   * Reinicia la pÃ¡gina: es la forma mÃ¡s robusta de devolver el motor,
+   * la fÃ­sica y la escena al estado inicial. La pÃ¡gina vuelve a bootear
+   * en el menÃº principal y el usuario puede cargar cualquier mapa otra
    * vez (incluido el que acaba de salir).
    */
   private exitToMainMenu(): void {
@@ -551,8 +548,8 @@ export class Game {
     music.stopMusic();
     mainMenu.showLoading(MenuStrings.exitingToMainMenu);
 
-    // Pequeña espera para que el overlay de carga llegue a pintarse antes de
-    // que el navegador descarte la página por el reload.
+    // PequeÃ±a espera para que el overlay de carga llegue a pintarse antes de
+    // que el navegador descarte la pÃ¡gina por el reload.
     this.pendingExitTimeoutId = window.setTimeout(() => {
       this.pendingExitTimeoutId = null;
       window.location.reload();

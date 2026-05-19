@@ -1,6 +1,6 @@
-import { Vector3 } from "three";
-import { NavGraph } from "../../engine/ai/NavGraph";
-import type { Raycast } from "../../engine/physics/Raycast";
+﻿import { Vector3 } from "three";
+import { NavGraph } from "@engine/ai/NavGraph";
+import type { Raycast } from "@engine/physics/Raycast";
 import type { LevelDefinition } from "./LevelDefinition";
 
 interface LevelBounds {
@@ -11,15 +11,15 @@ interface LevelBounds {
 }
 
 export interface NavGraphBuildOptions {
-  /** Distancia entre nodos del grid de muestreo. Menor = más denso. */
+  /** Distancia entre nodos del grid de muestreo. Menor = mÃ¡s denso. */
   spacing?: number;
-  /** Distancia máxima permitida para un edge entre dos nodos. */
+  /** Distancia mÃ¡xima permitida para un edge entre dos nodos. */
   maxEdgeDistance?: number;
-  /** Delta vertical máxima entre dos nodos conectables (rechaza escalones altos). */
+  /** Delta vertical mÃ¡xima entre dos nodos conectables (rechaza escalones altos). */
   maxStepHeight?: number;
   /** Altura desde la que se hace el raycast para encontrar suelo. */
   castFromY?: number;
-  /** Profundidad máxima del raycast. */
+  /** Profundidad mÃ¡xima del raycast. */
   castDepth?: number;
   /** Altura del rayo de visibility entre nodos (~rodilla del NPC). */
   losHeight?: number;
@@ -28,7 +28,7 @@ export interface NavGraphBuildOptions {
 const tmpDown = new Vector3(0, -1, 0);
 
 /**
- * Genera un `NavGraph` automáticamente desde la geometría del nivel.
+ * Genera un `NavGraph` automÃ¡ticamente desde la geometrÃ­a del nivel.
  *
  * Algoritmo:
  *  1. Calcula bounds XZ a partir del terreno o de los staticBoxes.
@@ -36,12 +36,12 @@ const tmpDown = new Vector3(0, -1, 0);
  *  3. En cada candidate, raycast hacia abajo desde Y alto. Si el primer hit
  *     es `static`, agrega un nodo en hit.point + offset chico.
  *  4. Conecta cada par de nodos cercanos si:
- *     - distancia ≤ `maxEdgeDistance`
- *     - delta vertical ≤ `maxStepHeight`
- *     - raycast a altura `losHeight` entre ambos no choca con geometría sólida
+ *     - distancia â‰¤ `maxEdgeDistance`
+ *     - delta vertical â‰¤ `maxStepHeight`
+ *     - raycast a altura `losHeight` entre ambos no choca con geometrÃ­a sÃ³lida
  *
- * Los nodos sobre techos quedan automáticamente aislados (sus LOS hacia
- * vecinos de suelo están bloqueados por las paredes) — el `NavGraph` los
+ * Los nodos sobre techos quedan automÃ¡ticamente aislados (sus LOS hacia
+ * vecinos de suelo estÃ¡n bloqueados por las paredes) â€” el `NavGraph` los
  * ignora porque `nearestConnectedNode` salta nodos sin edges.
  */
 export class NavGraphBuilder {

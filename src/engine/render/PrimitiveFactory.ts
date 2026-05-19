@@ -1,7 +1,7 @@
-import { BoxGeometry, Mesh } from 'three';
-import type { VectorTuple } from '../../shared/math/VectorTuple';
-import { tupleToVector3 } from '../../shared/math/VectorTuple';
-import { getMaterial, materialNeedsUv1, type MaterialKey } from './Materials';
+﻿import { BoxGeometry, Mesh } from 'three';
+import type { VectorTuple } from '@shared/math/VectorTuple';
+import { tupleToVector3 } from '@shared/math/VectorTuple';
+import { getMaterial, materialNeedsUv1, type MaterialKey } from '@engine/render/material/Materials';
 
 export interface BoxMeshOptions {
   id: string;

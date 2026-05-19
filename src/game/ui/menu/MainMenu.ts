@@ -1,8 +1,8 @@
-import type { Disposable } from "../../../shared/types/lifecycle";
+﻿import type { Disposable } from "@shared/types/lifecycle";
 import { MainMenuView } from "./MainMenuView";
 import { buildChapters, type GameMenuState } from "./MainMenuState";
-import type { AudioBusName } from "../../../engine/audio/AudioSystem";
-import type { Controls } from "../../gameplay/Controls";
+import type { AudioBusName } from "@engine/audio/core/AudioSystem";
+import type { Controls } from "@game/gameplay/player/Controls";
 
 export interface MainMenuCallbacks {
   onStartChapter: (chapterId: string) => void;
@@ -15,15 +15,15 @@ export interface MainMenuCallbacks {
 }
 
 /**
- * Componente del menú principal y de pausa (patrón Component+View con
+ * Componente del menÃº principal y de pausa (patrÃ³n Component+View con
  * `MainMenuView`). Maneja transiciones entre estados (`mainMenu`,
  * `newGameMenu`, `paused`, `options`, `loading`, etc.) y propaga acciones
- * del usuario vía callbacks (`onStartChapter`, `onResume`, `onExitToMain`).
+ * del usuario vÃ­a callbacks (`onStartChapter`, `onResume`, `onExitToMain`).
  *
- * El flag `pauseFlow` distingue si los submenús (options/controls/etc.)
- * se abrieron desde el menú principal o desde la pausa; el botón "Volver"
- * regresa al contexto correcto y se evita exponer el nav principal —y por
- * tanto el botón "Nueva Partida"— mientras hay un nivel cargado.
+ * El flag `pauseFlow` distingue si los submenÃºs (options/controls/etc.)
+ * se abrieron desde el menÃº principal o desde la pausa; el botÃ³n "Volver"
+ * regresa al contexto correcto y se evita exponer el nav principal â€”y por
+ * tanto el botÃ³n "Nueva Partida"â€” mientras hay un nivel cargado.
  */
 export class MainMenu implements Disposable {
   readonly element: HTMLDivElement;

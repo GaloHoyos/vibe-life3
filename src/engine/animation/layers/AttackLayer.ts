@@ -1,5 +1,5 @@
-import { applyBoneRotationOffset } from "../BoneRotation";
-import type { AnimationInput } from "../AnimationInput";
+﻿import { applyBoneRotationOffset } from "@engine/animation/pose/BoneRotation";
+import type { AnimationInput } from "@engine/animation/AnimationInput";
 import type { AnimationLayer, AnimationLayerContext } from "./AnimationLayer";
 
 const MELEE_DURATION = 0.4;
@@ -9,14 +9,14 @@ const RECOIL_DURATION = 0.13;
 /**
  * Capa de ataque:
  *
- *  - Melee: ciclo windup (brazo atrás) → strike (extensión rápida) →
+ *  - Melee: ciclo windup (brazo atrÃ¡s) â†’ strike (extensiÃ³n rÃ¡pida) â†’
  *    recovery (vuelve a rest). Curva 3-fases, no media-sinoide naive.
  *  - Recoil de disparo: pulse corto sobre torso + brazo derecho cada vez
  *    que `events.shotJustFired` es true. Decay lineal, no acumula.
  *
  * Ambas modalidades co-existen: un mismo frame puede haber recibido un
  * `triggerAttack()` (melee) y un `shotJustFired` (e.g. NPC tira tackle
- * mientras dispara), aunque en la práctica los presets actuales se
+ * mientras dispara), aunque en la prÃ¡ctica los presets actuales se
  * comportan como melee XOR ranged.
  */
 export class AttackLayer implements AnimationLayer {

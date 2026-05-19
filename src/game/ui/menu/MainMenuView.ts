@@ -1,9 +1,9 @@
-import { CreditsMenu } from "./CreditsMenu";
+﻿import { CreditsMenu } from "./CreditsMenu";
 import { NewGameMenu } from "./NewGameMenu";
 import { OptionsMenu } from "./OptionsMenu";
 import type { GameMenuState, MenuChapter } from "./MainMenuState";
-import type { AudioBusName } from "../../../engine/audio/AudioSystem";
-import type { Controls } from "../../gameplay/Controls";
+import type { AudioBusName } from "@engine/audio/core/AudioSystem";
+import type { Controls } from "@game/gameplay/player/Controls";
 
 export interface MainMenuViewCallbacks {
   onStartChapter: (chapterId: string) => void;

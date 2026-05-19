@@ -43,39 +43,36 @@ src/
 
 ### `engine/`
 
-| Carpeta / archivo        | Responsabilidad                                                          |
-| ------------------------ | ------------------------------------------------------------------------ |
-| `Engine.ts`              | Orquestador. Registra servicios en `ServiceContainer`, corre el loop.    |
-| `EventBus.ts`            | Pub/sub genérico `EventBus<TEvents>`. Sin tipos del juego.               |
-| `ServiceContainer.ts`    | DI tipado. Servicios se resuelven por `ServiceToken`.                    |
-| `ServiceTokens.ts`       | `EngineTokens` — tokens canónicos del motor.                             |
-| `GameLoop.ts`, `Time.ts` | RAF, delta time, sub-stepping.                                           |
-| `Input.ts`               | Teclado, mouse, pointer-lock.                                            |
-| `render/`                | `Renderer` (ACES tone mapping), `CameraSystem`, `LightingSystem` (sol direccional + ambient/hemisphere bajos — IBL hace el grueso del fill), `EnvironmentSystem` (HDRI → background + IBL vía PMREM), `TerrainMesh`, `PrimitiveFactory`, `Materials` (defs data-driven, color o PBR), `Textures` (`TextureSets` PBR), `Skybox` (`SkyboxManifest` HDRI). |
-| `physics/`               | `PhysicsWorld` (Rapier: boxes + heightfields), `Raycast`, `KinematicCharacterBase`. |
-| `audio/`                 | `AudioSystem`, `SoundManager`, `PositionalSoundManager`, `MusicManager`, `AudioManifest`. |
-| `animation/`             | Animación procedural, ragdoll (`RagdollSystem`), `HitReactionAnimator`.  |
-| `assets/`                | `AssetManager`, manifests de GLB y audio. Carpetas `textures/`, `hdri/`, `sounds/`. |
-| `ai/StateMachine.ts`     | Máquina de estados genérica reutilizable.                                |
-| `characters/`            | `CharacterDefinition` (tipo de configuración).                           |
-| `debug/Gizmos.ts`        | Helpers visuales para debug.                                             |
+| Carpeta              | Responsabilidad                                                          |
+| -------------------- | ------------------------------------------------------------------------ |
+| `core/`              | `Engine` (orquestador), `GameLoop` + `Time`, `SceneManager`, `ResourceManager`, `ServiceContainer`, `ServiceTokens` (`EngineTokens`), `EventBus<TEvents>` genérico, `System` base. |
+| `input/`             | `Input` (teclado, mouse, pointer-lock) y `KeyBindings`.                  |
+| `render/`            | `Renderer` (ACES tone mapping), `CameraSystem`, `PrimitiveFactory`, `TerrainMesh`. Subcarpetas: `material/` (`Materials` data-driven + `Textures` con `TextureSets` PBR) y `environment/` (`LightingSystem` con sol direccional + ambient/hemisphere bajos, `EnvironmentSystem` HDRI → background + IBL vía PMREM, `Skybox` con `SkyboxManifest`). |
+| `physics/`           | Núcleo (`PhysicsWorld` con Rapier — boxes + heightfields, `Raycast`, `Colliders`) + `character/` (`CharacterController`, `CharacterMotor`, `KinematicCharacterBase`, `SpawnValidator`). |
+| `audio/`             | `core/` (`AudioBus`, `AudioSystem`, `SoundManager`, `PositionalSoundManager`, `MusicManager`), `systems/` (`BackgroundAmbienceSystem`, `FootstepSoundSystem`), `AudioManifest` en raíz. |
+| `animation/`         | `AnimationSystem`, `AnimationInput`, `AnimationDebug`, `HitReactionAnimator` en raíz. Subcarpetas: `layers/` (capas aditivas: locomotion, aim, attack, hit, idle, lookAt, posture, reload, velocityLean), `pose/` (`BoneMapper`, `BoneRotation`, `HumanoidRestPose`, `PoseSnapshot`, `RestPoseTuning`), `procedural/` (`ProceduralCharacterAnimator`, `ProceduralWalk`, `ProceduralBalance`), `ragdoll/` (`RagdollSystem` y los `Ragdoll*`/`Physical*` helpers). |
+| `assets/`            | `AssetManager`, `AssetManifest`. Carpetas `textures/`, `hdri/`, `sounds/`. |
+| `ai/`                | `StateMachine` (genérica reutilizable), `Blackboard`, `Faction`, `NavGraph`, `Perception`. |
+| `characters/`        | `CharacterDefinition` (tipo de configuración).                           |
+| `debug/`             | `Gizmos` — helpers visuales para debug.                                  |
 
 ### `game/`
 
-| Carpeta / archivo   | Responsabilidad                                                             |
-| ------------------- | --------------------------------------------------------------------------- |
-| `Game.ts`           | Bootstrap. Recibe el `Engine`, registra `GameTokens`, drive del loop.       |
-| `GameEvents.ts`     | `GameEventMap` + alias `GameEventBus = EventBus<GameEventMap>`.             |
-| `ServiceTokens.ts`  | `GameTokens` — tokens de servicios específicos del juego.                   |
-| `characters/`       | `CharacterFactory` + `CharacterPresets`.                                    |
-| `npc/`              | `NPC` (FSM AI + FSM balance), `NpcCombat`, `NpcAnimationBridge`.            |
-| `gameplay/`         | `Player`, `Health`, `PlayerHealth`, interactions.                           |
-| `gameplay/weapons/` | `Weapon` base, `HitscanWeapon`, `MeleeWeapon`, `GravityGunWeapon`, etc.     |
-| `levels/`           | `LevelDefinition`, `LevelRegistry`, `LevelLoader`, `TriggerSystem`, `builders/` (ej. `HouseBuilder`). |
-| `narrative/`        | `DialogueSystem`, `ScriptedSequence`, `LevelEvents`.                        |
-| `ui/`               | `HUD`, `MainMenu`, `PauseMenu`, `DebugOverlay`, `Subtitles`, widgets.       |
-| `audio/`            | Sistemas reactivos a eventos: weapon/enemy/dialogue/UI sound.               |
-| `config/`           | `weapons.config.ts`, `audio.config.ts`, `gameplay.config.ts`, `strings.ts`. |
+| Carpeta / archivo            | Responsabilidad                                                             |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| `Game.ts`                    | Bootstrap. Recibe el `Engine`, registra `GameTokens`, drive del loop.       |
+| `GameEvents.ts`              | `GameEventMap` + alias `GameEventBus = EventBus<GameEventMap>`.             |
+| `ServiceTokens.ts`           | `GameTokens` — tokens de servicios específicos del juego.                   |
+| `characters/`                | `CharacterFactory` + `CharacterPresets` (dispatch por `behaviorKind`).      |
+| `npc/`                       | `core/` (`INpc`, `NpcDebugFlags`), `zombie/` (`ZombieNpc`, `ZombieNpcState`), `alyx/` (`AlyxNpc`), `combine/` (`CombineNpc`, `CombineRoleTuning`), `combat/` (`NpcCombat`, `NpcRangedCombat`, `NpcWeaponAttachment`, `WeaponAttachmentTuning`, `CombatSquadCoordinator`), `movement/` (`NpcSteering`, `NpcPathFollower`), `animation/` (`NpcAnimationBridge`), `voice/` (`NpcBarker`). |
+| `gameplay/`                  | `Health` (compartido Player/NPC) en raíz. `player/` (`Player`, `PlayerHealth`, `Stamina`, `Controls`). `interactions/` (`Interactable`, `InteractSystem`, `SlidingDoor`, `DoorButton`). |
+| `gameplay/weapons/`          | `core/` (`Weapon` base, `WeaponDefinition`, `WeaponController`, `WeaponFactory`, `WeaponInventory`), `types/` (`HitscanWeapon`, `MeleeWeapon`, `GravityGunWeapon`), `effects/` (`MuzzleFlash`, `Recoil`, `WeaponEffects`, `WeaponViewModel`), `pickup/` (`WeaponPickup`). |
+| `levels/`                    | `LevelDefinition`, `LevelRegistry`, `LevelLoader`, `TriggerSystem`, `CoverSystem`, `NavGraphBuilder`. Subcarpetas: `maps/` (`DemoLevel`, `SnowFieldLevel`, …), `builders/` (ej. `HouseBuilder`). |
+| `narrative/`                 | `DialogueSystem`, `ScriptedSequence`, `LevelEvents`.                        |
+| `ui/`                        | `hud/` (`HUD`, `HUDView`, `Crosshair`, `DamageIndicator`, `HealthArmorHUD`, `HudIcons`, `WeaponHUD`, `WeaponSelectorView`), `subtitles/` (`Subtitles`, `SubtitlesView`), `overlay/` (`DebugOverlay`, `AimDebugPanel`, `InteractionPrompt`), `menu/` (`MainMenu`, `MainMenuView`, `MainMenuState`, `PauseMenu`, `OptionsMenu`, `NewGameMenu`, `CreditsMenu`, `MenuStyles.css`). |
+| `audio/`                     | Sistemas reactivos a eventos: weapon/enemy/dialogue/UI sound.               |
+| `config/`                    | `weapons.config.ts`, `audio.config.ts`, `gameplay.config.ts`, `controls.config.ts`, `strings.ts`. |
+| `debug/NpcDebugSystem.ts`    | Toggle de overlays y atajos de debug específicos de NPCs.                   |
 
 ### `shared/`
 
@@ -100,7 +97,7 @@ container.register(GameTokens.EventBus, new EventBus<GameEventMap>());
 const camera = container.resolve(EngineTokens.Camera);
 ```
 
-Servicio nuevo → declarar token en `engine/ServiceTokens.ts` o `game/ServiceTokens.ts` según capa.
+Servicio nuevo → declarar token en `engine/core/ServiceTokens.ts` o `game/ServiceTokens.ts` según capa.
 
 ### EventBus tipado
 
@@ -135,25 +132,26 @@ Donde antes había `if (weaponType === "pistol") …`, hoy hay tablas declarativ
 | Audio de armas y enemigos | `game/config/audio.config.ts` |
 | Vitals del Player | `game/config/gameplay.config.ts` |
 | Strings visibles | `game/config/strings.ts` |
-| Niveles | `game/levels/<Level>.ts` + `LevelRegistry.ts` |
-| Sets PBR | `engine/render/Textures.ts` (`TextureSets`) |
-| HDRIs | `engine/render/Skybox.ts` (`SkyboxManifest`) |
-| Materials | `engine/render/Materials.ts` |
+| Niveles | `game/levels/maps/<Level>.ts` + `LevelRegistry.ts` |
+| Sets PBR | `engine/render/material/Textures.ts` (`TextureSets`) |
+| HDRIs | `engine/render/environment/Skybox.ts` (`SkyboxManifest`) |
+| Materials | `engine/render/material/Materials.ts` |
 | Audio clips | `engine/audio/AudioManifest.ts` |
 
 Agregar contenido = editar tabla o registrar entrada. Casi nunca implica clase nueva.
 
 ### Path aliases
 
-Configurados en `tsconfig.json`. Para archivos nuevos preferir el alias.
+Configurados en `tsconfig.json` y replicados en `vite.config.ts`. Tras la reestructuración casi todos los imports usan alias; los `./` relativos quedan solo para vecinos del mismo directorio.
 
 ```ts
-import { Engine } from "@engine/Engine";
+import { Engine } from "@engine/core/Engine";
 import { GameTokens } from "@game/ServiceTokens";
 import { Vec3 } from "@shared/math/Vec3";
+import { SubtitlesView } from "./SubtitlesView"; // mismo directorio → relativo
 ```
 
-Conviven con rutas relativas existentes.
+Regla práctica: si el import cruza directorios (`..`), usar alias. Si es vecino (`./`), relativo.
 
 ---
 
@@ -162,14 +160,16 @@ Conviven con rutas relativas existentes.
 ### Agregar un arma
 
 1. Entrada en `game/config/weapons.config.ts` con todos los campos de `WeaponDefinition`.
-2. Si el comportamiento no encaja en `hitscan` / `melee` / `special`, subclase de `Weapon` en `game/gameplay/weapons/` y mapearla en `WeaponFactory.createWeapon()`.
+2. Si el comportamiento no encaja en `hitscan` / `melee` / `special`:
+   - Subclase de `Weapon` (de `game/gameplay/weapons/core/Weapon.ts`) en `game/gameplay/weapons/types/`.
+   - Mapearla en `WeaponFactory.createWeapon()` (`game/gameplay/weapons/core/WeaponFactory.ts`).
 3. Clips en `engine/audio/AudioManifest.ts`, mapeados en `WeaponAudio` (`audio.config.ts`).
 4. Drop del GLB en `src/models/weapons/`.
 5. Entrada en `LevelDefinition.weaponPickups` del nivel.
 
 ### Agregar un nivel
 
-1. Crear `src/game/levels/MyLevel.ts` exportando un `LevelDefinition`.
+1. Crear `src/game/levels/maps/MyLevel.ts` exportando un `LevelDefinition`.
 2. Sumar el id al type `LevelId` y la entrada al mapa en `LevelRegistry`.
 3. Audio (`ambiences`, `footstepSounds`, `music`) se resuelve solo vía `LevelLoader`.
 4. (Opcional) `skybox: SkyboxId` — HDRI propio. Si se omite usa `'default'`. `background: number` queda como fallback.
@@ -189,14 +189,15 @@ Heightfield 2.5D (no cuevas/overhangs). Mesh visual y collider físico se genera
 4. `LevelLoader` crea automáticamente el mesh (`createTerrainMesh`) y el collider (`PhysicsWorld.createHeightfield`, internamente trimesh).
 5. Spawnear player/pickups unos metros arriba — la gravedad los asienta.
 
-Ejemplo: `src/game/levels/SnowFieldLevel.ts`.
+Ejemplo: `src/game/levels/maps/SnowFieldLevel.ts`.
 
 ### Agregar un NPC
 
 1. Preset en `game/characters/CharacterPresets.ts` (extiende `CharacterDefinition`).
 2. Entrada en `EnemyAudio` (`audio.config.ts`) por `CharacterId`.
 3. `NPCDefinition` en `LevelDefinition.npcs`.
-4. La AI (`NPC.ts`) compone dos `StateMachine` (AI + balance) + `NpcCombat` + `NpcAnimationBridge`. Subclasear solo si cambia el combate.
+4. **Si comparte un comportamiento existente** (`zombieMelee`, `combineRanged`, `alyxAlly`): solo el preset alcanza. `CharacterFactory` lo dispatchea a la clase correspondiente (`ZombieNpc`, `CombineNpc`, `AlyxNpc`).
+5. **Si necesita un NPC nuevo de "familia"** (ej. headcrab, antlion, otro ally): crear subcarpeta propia en `game/npc/<nombre>/` con la clase principal (siguiendo el patrón de `zombie/ZombieNpc.ts`, `combine/CombineNpc.ts`, `alyx/AlyxNpc.ts`), añadir `behaviorKind` y dispatch en `CharacterFactory`. La AI compone `StateMachine`s (AI + balance) + `NpcCombat` o `NpcRangedCombat` + `NpcAnimationBridge`.
 
 ### Agregar un evento del juego
 
@@ -213,7 +214,7 @@ Ejemplo: `src/game/levels/SnowFieldLevel.ts`.
 ### Agregar un servicio
 
 1. Decidir capa: **engine** si es genérico, **game** si conoce reglas del juego.
-2. Token en `engine/ServiceTokens.ts` o `game/ServiceTokens.ts`.
+2. Token en `engine/core/ServiceTokens.ts` o `game/ServiceTokens.ts`.
 3. Registrar en `Engine.registerServices()` o `Game.registerServices()`.
 4. Consumir vía `container.resolve(Token)`.
 
@@ -233,14 +234,14 @@ Materials data-driven: cada `MaterialKey` apunta a una def de color sólido o un
    - `architecture/` — construcción (brick, roof, concrete, wood). Tiling bajo (2-8).
    - `props/` — objetos sueltos. Tiling mínimo (1-2).
 3. Renombrar archivos a nombres estándar: `albedo.jpg`, `normal.jpg`, `roughness.jpg`, `ao.jpg`. Solo `albedo` es obligatorio.
-4. Registrar el set en `TextureSets` de `engine/render/Textures.ts`:
+4. Registrar el set en `TextureSets` de `engine/render/material/Textures.ts`:
    ```ts
    miMaterial: {
      maps: { albedo: 'environment/mi_material/albedo.jpg', normal: '…', /* … */ },
      tiling: 8,
    },
    ```
-5. Cablear a un `MaterialKey` en `engine/render/Materials.ts`:
+5. Cablear a un `MaterialKey` en `engine/render/material/Materials.ts`:
    ```ts
    wall: { textureSet: 'miMaterial' },
    ```
@@ -252,7 +253,7 @@ Materials data-driven: cada `MaterialKey` apunta a una def de color sólido o un
 
 1. Bajar HDRI **2K** `.hdr` de [Poly Haven HDRIs](https://polyhaven.com/hdris) (no EXR, no 4K).
 2. Drop en `src/engine/assets/hdri/<nombre>.hdr`.
-3. Registrar en `SkyboxManifest` de `engine/render/Skybox.ts`:
+3. Registrar en `SkyboxManifest` de `engine/render/environment/Skybox.ts`:
    ```ts
    miCielo: { file: 'mi_cielo.hdr' },
    ```

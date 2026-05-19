@@ -1,5 +1,5 @@
-import { Engine } from "./engine/Engine";
-import { Game } from "./game/Game";
+﻿import { Engine } from "@engine/core/Engine";
+import { Game } from "@game/Game";
 import "./style.css";
 import "./game/ui/menu/MenuStyles.css";
 

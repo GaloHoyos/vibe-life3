@@ -1,6 +1,6 @@
 ﻿import { Object3D, Raycaster, Vector3 } from 'three';
-import type { GameEventBus } from "../../GameEvents";
-import type { Controls } from "../Controls";
+import type { GameEventBus } from "@game/GameEvents";
+import type { Controls } from "@game/gameplay/player/Controls";
 import type { Interactable } from './Interactable';
 
 export class InteractSystem {

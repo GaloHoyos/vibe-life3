@@ -1,4 +1,4 @@
-import type { BindingMap } from "../../engine/KeyBindings";
+﻿import type { BindingMap } from "@engine/input/KeyBindings";
 
 export type GameAction =
   | "moveForward"
@@ -86,7 +86,7 @@ export const ActionOrder: readonly GameAction[] = [
 /**
  * Pausa usa `Escape`, que el navegador reserva como salida de pointer lock
  * y de fullscreen. Aunque cambiemos el binding, el navegador igual va a
- * procesar Escape — exponer el rebind sería engañoso.
+ * procesar Escape â€” exponer el rebind serÃ­a engaÃ±oso.
  */
 export const NonRebindableActions: ReadonlySet<GameAction> = new Set([
   "pause",

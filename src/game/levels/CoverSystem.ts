@@ -1,13 +1,13 @@
-import { Vector3 } from "three";
-import type { Raycast } from "../../engine/physics/Raycast";
-import type { VectorTuple } from "../../shared/math/VectorTuple";
+﻿import { Vector3 } from "three";
+import type { Raycast } from "@engine/physics/Raycast";
+import type { VectorTuple } from "@shared/math/VectorTuple";
 
 export interface CoverPointDefinition {
   id: string;
-  /** Posición world donde el NPC se para para cubrirse. */
+  /** PosiciÃ³n world donde el NPC se para para cubrirse. */
   position: VectorTuple;
-  /** Dirección (normalizada) hacia donde el cover protege. Si el threat
-   *  está en esta dirección, el obstáculo bloquea la LOS. */
+  /** DirecciÃ³n (normalizada) hacia donde el cover protege. Si el threat
+   *  estÃ¡ en esta direcciÃ³n, el obstÃ¡culo bloquea la LOS. */
   normal: VectorTuple;
 }
 
@@ -16,7 +16,7 @@ interface CoverPointRuntime {
   position: Vector3;
   normal: Vector3;
   occupiedBy: string | null;
-  /** Cache del último score evaluado, para que la UI/debug pueda verlo. */
+  /** Cache del Ãºltimo score evaluado, para que la UI/debug pueda verlo. */
   lastScore: number;
 }
 
@@ -29,16 +29,16 @@ const tmpDir = new Vector3();
  * Repositorio de cover points del nivel actual.
  *
  * Hand-placed por ahora: el `LevelDefinition` aporta una lista de
- * `CoverPointDefinition`. En S2 sumaremos auto-generación desde
+ * `CoverPointDefinition`. En S2 sumaremos auto-generaciÃ³n desde
  * `StaticBoxDefinition`. La API que consumen los NPCs es la misma:
  * `findBestCover(npcPosition, threatPosition, excludeOccupied?)`.
  *
  * Scoring por cover (mayor = mejor):
  *  - +30 si bloquea LOS del threat al cover position
  *  - +(1 / distanceToNpc) escalado
- *  - -50 si está ocupado por otro NPC
- *  - -20 si el threat está más cerca del cover que el NPC (cover "delante" del threat)
- *  - +10 si el normal del cover apunta lejos del threat (buena orientación)
+ *  - -50 si estÃ¡ ocupado por otro NPC
+ *  - -20 si el threat estÃ¡ mÃ¡s cerca del cover que el NPC (cover "delante" del threat)
+ *  - +10 si el normal del cover apunta lejos del threat (buena orientaciÃ³n)
  */
 export class CoverSystem {
   private readonly points = new Map<string, CoverPointRuntime>();
@@ -95,7 +95,7 @@ export class CoverSystem {
 
   /**
    * Busca el mejor cover para el NPC dado el threat. Retorna `null` si
-   * ningún cover tiene score positivo (todos peor que estar expuesto).
+   * ningÃºn cover tiene score positivo (todos peor que estar expuesto).
    */
   findBestCover(
     npcId: string,
@@ -121,7 +121,7 @@ export class CoverSystem {
     return { id: bestId, position: this.points.get(bestId)!.position.clone() };
   }
 
-  /** Devuelve true si el cover actual todavía protege al NPC del threat. */
+  /** Devuelve true si el cover actual todavÃ­a protege al NPC del threat. */
   isStillValid(
     coverId: string,
     npcId: string,

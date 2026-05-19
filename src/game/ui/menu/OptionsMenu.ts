@@ -1,13 +1,13 @@
-import type { AudioBusName } from "../../../engine/audio/AudioSystem";
-import type { Disposable } from "../../../shared/types/lifecycle";
+﻿import type { AudioBusName } from "@engine/audio/core/AudioSystem";
+import type { Disposable } from "@shared/types/lifecycle";
 import {
   ActionLabels,
   ActionOrder,
   NonRebindableActions,
   type GameAction,
-} from "../../config/controls.config";
-import { MenuStrings } from "../../config/strings";
-import type { Controls } from "../../gameplay/Controls";
+} from "@game/config/controls.config";
+import { MenuStrings } from "@game/config/strings";
+import type { Controls } from "@game/gameplay/player/Controls";
 
 export interface OptionsMenuCallbacks {
   onBack: () => void;
@@ -255,7 +255,7 @@ export class OptionsMenu implements Disposable {
       capture: true,
       signal: rebindAbort.signal,
     });
-    // Si el menú entero se cierra mientras hay un rebind activo, abortamos también.
+    // Si el menÃº entero se cierra mientras hay un rebind activo, abortamos tambiÃ©n.
     this.listenerAbort.signal.addEventListener("abort", cleanup, {
       once: true,
       signal: rebindAbort.signal,
@@ -405,11 +405,11 @@ const KEY_CODE_LABELS: Record<string, string> = {
   Enter: "Enter",
   Tab: "Tab",
   Backspace: "Borrar",
-  CapsLock: "Bloq. Mayús.",
-  ArrowUp: "↑",
-  ArrowDown: "↓",
-  ArrowLeft: "←",
-  ArrowRight: "→",
+  CapsLock: "Bloq. MayÃºs.",
+  ArrowUp: "â†‘",
+  ArrowDown: "â†“",
+  ArrowLeft: "â†",
+  ArrowRight: "â†’",
   Minus: "-",
   Equal: "=",
   BracketLeft: "[",

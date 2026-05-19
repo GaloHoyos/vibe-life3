@@ -1,20 +1,20 @@
 ﻿import { Bone, BoxGeometry, Group, Mesh, MeshStandardMaterial, Object3D, SphereGeometry, Vector3 } from 'three';
-import type { AssetManager } from '../../engine/assets/AssetManager';
-import { AlyxNpc } from '../npc/AlyxNpc';
-import { CombineNpc } from '../npc/CombineNpc';
-import type { INpc } from '../npc/INpc';
-import { NPC } from '../npc/NPC';
-import { attachWeaponToHand } from '../npc/NpcWeaponAttachment';
-import type { ModelAssetId } from '../../engine/assets/AssetManifest';
-import type { GameEventBus } from "../GameEvents";
-import type { PhysicsWorld } from '../../engine/physics/PhysicsWorld';
-import { getMaterial } from '../../engine/render/Materials';
+import type { AssetManager } from '@engine/assets/AssetManager';
+import { AlyxNpc } from '@game/npc/alyx/AlyxNpc';
+import { CombineNpc } from '@game/npc/combine/CombineNpc';
+import type { INpc } from '@game/npc/core/INpc';
+import { ZombieNpc } from '@game/npc/zombie/ZombieNpc';
+import { attachWeaponToHand } from '@game/npc/combat/NpcWeaponAttachment';
+import type { ModelAssetId } from '@engine/assets/AssetManifest';
+import type { GameEventBus } from "@game/GameEvents";
+import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
+import { getMaterial } from '@engine/render/material/Materials';
 import { CharacterPresets } from './CharacterPresets';
-import type { CharacterId } from '../../engine/characters/CharacterDefinition';
+import type { CharacterId } from '@engine/characters/CharacterDefinition';
 
 /**
  * Instancia NPCs a partir de un `CharacterId`. Dispatch por `behaviorKind`:
- *  - `zombieMelee`   → `NPC` (legacy zombie class)
+ *  - `zombieMelee`   → `ZombieNpc`
  *  - `combineRanged` → `CombineNpc`
  *  - `alyxAlly`      → `AlyxNpc`
  *
@@ -38,7 +38,7 @@ export class CharacterFactory {
     visualRoot.position.copy(definition.visualOffset);
 
     const rangedWeaponId = definition.attack.ranged?.weaponId;
-    let weaponAttachment: import('../npc/NpcWeaponAttachment').WeaponAttachmentHandle | null = null;
+    let weaponAttachment: import('@game/npc/combat/NpcWeaponAttachment').WeaponAttachmentHandle | null = null;
     if (rangedWeaponId) {
       try {
         const weapon = await this.assets.instantiateModel(
@@ -74,7 +74,7 @@ export class CharacterFactory {
         return new AlyxNpc({ ...shared, weaponAttachment });
       case "zombieMelee":
       default:
-        return new NPC({ ...shared, hasSkeleton: model?.hasSkeleton ?? false });
+        return new ZombieNpc({ ...shared, hasSkeleton: model?.hasSkeleton ?? false });
     }
   }
 }

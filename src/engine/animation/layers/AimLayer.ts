@@ -1,5 +1,5 @@
-import { MathUtils } from "three";
-import { applyBoneRotationOffset } from "../BoneRotation";
+﻿import { MathUtils } from "three";
+import { applyBoneRotationOffset } from "@engine/animation/pose/BoneRotation";
 import type { AnimationLayer, AnimationLayerContext } from "./AnimationLayer";
 import { AimTuning, type AimPoseTuning } from "./AimTuning";
 

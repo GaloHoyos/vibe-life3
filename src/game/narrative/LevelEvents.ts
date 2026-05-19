@@ -1,5 +1,5 @@
-import { Dialogue } from "../config/strings";
-import type { GameEventBus } from "../GameEvents";
+﻿import { Dialogue } from "@game/config/strings";
+import type { GameEventBus } from "@game/GameEvents";
 
 export class LevelEvents {
   constructor(private readonly eventBus: GameEventBus) {}

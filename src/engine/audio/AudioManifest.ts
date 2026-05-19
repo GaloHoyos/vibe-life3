@@ -1,4 +1,4 @@
-import type { AudioBusName } from "./AudioSystem";
+﻿import type { AudioBusName } from "@engine/audio/core/AudioSystem";
 
 export type AudioCategory =
   | "background"

@@ -1,23 +1,23 @@
-import { MathUtils } from "three";
+﻿import { MathUtils } from "three";
 import type {
   ArmsMode,
   CharacterAnimationConfig,
   HumanoidBoneAxesConfig,
-} from "../../characters/CharacterDefinition";
+} from "@engine/characters/CharacterDefinition";
 import {
   DefaultWalkConfig,
   DefaultWalkOptions,
   type ProceduralWalkConfig,
   type WalkStyle,
-} from "../ProceduralWalk";
-import { applyBoneRotationOffset } from "../BoneRotation";
+} from "@engine/animation/procedural/ProceduralWalk";
+import { applyBoneRotationOffset } from "@engine/animation/pose/BoneRotation";
 import type { AnimationLayer, AnimationLayerContext } from "./AnimationLayer";
 
 const IDLE_SPEED_THRESHOLD = 0.15;
 const RUN_SPEED_THRESHOLD = 4.7;
 
 /**
- * Locomoción direccional: rinde walk/run/strafe/backward leyendo
+ * LocomociÃ³n direccional: rinde walk/run/strafe/backward leyendo
  * `localVelocity` (frame del personaje, +Z=forward, +X=right).
  *
  * Mantiene una fase persistente: el ciclo de paso avanza con `deltaTime *
@@ -26,15 +26,15 @@ const RUN_SPEED_THRESHOLD = 4.7;
  *
  * Componentes (todos aditivos a la rest-pose):
  *  - Forward/back: swing de muslos sobre `legSwingAxis`, signado por
- *    `fwdSign` (-1 cuando camina hacia atrás → invierte la fase visual).
+ *    `fwdSign` (-1 cuando camina hacia atrÃ¡s â†’ invierte la fase visual).
  *  - Strafe: hip sway lateral amplificado + ligera apertura del muslo
- *    sobre eje Z, según `strSign`.
+ *    sobre eje Z, segÃºn `strSign`.
  *  - Knee bend & step lift: levanta el pie en el medio ciclo.
  *  - Arm swing contralateral: opuesto a la pierna. Si `armsMode='weaponAim'`
  *    queda casi nulo (el `AimLayer` toma control de los brazos en F4).
- *  - Torso lean: hacia adelante en avance, hacia atrás en reverso, neutral
+ *  - Torso lean: hacia adelante en avance, hacia atrÃ¡s en reverso, neutral
  *    en strafe puro.
- *  - Bob: oscilación vertical de las caderas en cada paso.
+ *  - Bob: oscilaciÃ³n vertical de las caderas en cada paso.
  */
 export class LocomotionLayer implements AnimationLayer {
   private readonly config: ProceduralWalkConfig;

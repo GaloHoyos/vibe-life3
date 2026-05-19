@@ -1,14 +1,14 @@
-import { Vector3 } from "three";
-import type { Raycast } from "../physics/Raycast";
+﻿import { Vector3 } from "three";
+import type { Raycast } from "@engine/physics/Raycast";
 
 export interface PerceptionConfig {
-  /** Distancia máxima de visión, en metros. */
+  /** Distancia mÃ¡xima de visiÃ³n, en metros. */
   viewDistance: number;
-  /** Ángulo total del cono de visión (radianes). Default ~120°. */
+  /** Ãngulo total del cono de visiÃ³n (radianes). Default ~120Â°. */
   viewConeRadians: number;
-  /** Radio de audición — alertas que vengan de adentro despiertan al NPC. */
+  /** Radio de audiciÃ³n â€” alertas que vengan de adentro despiertan al NPC. */
   hearingRadius: number;
-  /** Cuánto tiempo (s) mantiene memoria de la última posición vista del target. */
+  /** CuÃ¡nto tiempo (s) mantiene memoria de la Ãºltima posiciÃ³n vista del target. */
   memoryDuration: number;
   /** Offset del raycast desde la base del NPC (ojos). */
   eyeHeight: number;
@@ -21,25 +21,25 @@ export interface PerceptionTarget {
 }
 
 export interface PerceptionResult {
-  /** El target está visible AHORA (LOS clara + dentro del cono + dentro de rango). */
+  /** El target estÃ¡ visible AHORA (LOS clara + dentro del cono + dentro de rango). */
   visible: boolean;
-  /** El NPC tiene memoria reciente de dónde lo vio por última vez. */
+  /** El NPC tiene memoria reciente de dÃ³nde lo vio por Ãºltima vez. */
   hasMemory: boolean;
-  /** Última posición conocida (válida si `hasMemory` o `visible`). */
+  /** Ãšltima posiciÃ³n conocida (vÃ¡lida si `hasMemory` o `visible`). */
   lastKnownPosition: Vector3 | null;
   /** Edad de la memoria, en segundos. 0 si visible ahora. */
   memoryAge: number;
 }
 
 /**
- * Componente de percepción por NPC.
+ * Componente de percepciÃ³n por NPC.
  *
- * Tracking de un único target principal (el threat actual). En cada
- * `sense()`, evalúa LOS + cono + distancia y refresca la memoria. Si
- * pierde visión, conserva la última posición conocida hasta que el
+ * Tracking de un Ãºnico target principal (el threat actual). En cada
+ * `sense()`, evalÃºa LOS + cono + distancia y refresca la memoria. Si
+ * pierde visiÃ³n, conserva la Ãºltima posiciÃ³n conocida hasta que el
  * `memoryDuration` se cumpla.
  *
- * Independiente del FSM — la AI decide qué hacer con esta información.
+ * Independiente del FSM â€” la AI decide quÃ© hacer con esta informaciÃ³n.
  */
 export class Perception {
   private readonly lastKnown = new Vector3();
@@ -58,7 +58,7 @@ export class Perception {
   ) {}
 
   /**
-   * Evalúa visibilidad del target desde la posición del NPC mirando
+   * EvalÃºa visibilidad del target desde la posiciÃ³n del NPC mirando
    * en `forward`. Actualiza memoria internamente.
    *
    * @param targetId - ID esperado del collider hit (para validar LOS clara).
@@ -116,7 +116,7 @@ export class Perception {
     };
   }
 
-  /** Alerta externa (disparo cercano, otro NPC gritó "ahí está"). */
+  /** Alerta externa (disparo cercano, otro NPC gritÃ³ "ahÃ­ estÃ¡"). */
   notifyAlert(position: Vector3): void {
     this.lastKnown.copy(position);
     this.hasMemory = true;
@@ -124,9 +124,9 @@ export class Perception {
   }
 
   /**
-   * Avanza el envejecimiento de la memoria sin evaluar LOS. Útil cuando el NPC
-   * dejó de tener un target (perdió pickThreat) pero querés seguir respetando
-   * `memoryDuration` para que pueda investigar el último lugar conocido.
+   * Avanza el envejecimiento de la memoria sin evaluar LOS. Ãštil cuando el NPC
+   * dejÃ³ de tener un target (perdiÃ³ pickThreat) pero querÃ©s seguir respetando
+   * `memoryDuration` para que pueda investigar el Ãºltimo lugar conocido.
    */
   tickMemory(delta: number): void {
     this.memoryAge += delta;

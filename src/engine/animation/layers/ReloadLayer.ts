@@ -1,5 +1,5 @@
-import { applyBoneRotationOffset } from "../BoneRotation";
-import type { AnimationInput } from "../AnimationInput";
+﻿import { applyBoneRotationOffset } from "@engine/animation/pose/BoneRotation";
+import type { AnimationInput } from "@engine/animation/AnimationInput";
 import type { AnimationLayer, AnimationLayerContext } from "./AnimationLayer";
 
 /**
@@ -8,10 +8,10 @@ import type { AnimationLayer, AnimationLayerContext } from "./AnimationLayer";
  * 0 mientras `activity === 'reloading'`, para que las dos capas no
  * peleen por la pose.
  *
- * twoHanded (rifle/smg/ar3): drop → grab → slap → rack.
+ * twoHanded (rifle/smg/ar3): drop â†’ grab â†’ slap â†’ rack.
  * oneHanded (pistol): swap del cargador del lado contrario.
  *
- * Cada fase es un "bump" centrado en un t∈[0,1] con ancho propio. La suma
+ * Cada fase es un "bump" centrado en un tâˆˆ[0,1] con ancho propio. La suma
  * de bumps esculpe la pose visual.
  */
 export class ReloadLayer implements AnimationLayer {

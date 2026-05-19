@@ -1,15 +1,15 @@
-import type { Vector3 } from "three";
-import type { CharacterId } from "../engine/characters/CharacterDefinition";
-import type { EventBus } from "../engine/EventBus";
-import type { WeaponId, WeaponType } from "./gameplay/weapons/WeaponDefinition";
+﻿import type { Vector3 } from "three";
+import type { CharacterId } from "@engine/characters/CharacterDefinition";
+import type { EventBus } from "@engine/core/EventBus";
+import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
 
 /** Snapshot del estado del selector que se publica al HUD. */
 export interface WeaponSelectorState {
-  /** Por slot, las armas que el jugador tiene equipadas, en orden canónico. */
+  /** Por slot, las armas que el jugador tiene equipadas, en orden canÃ³nico. */
   slots: Array<{ slot: number; weapons: WeaponId[] }>;
   /** Slot actualmente abierto. */
   activeSlot: number;
-  /** Arma tentativamente seleccionada (la que se equipará al confirmar). */
+  /** Arma tentativamente seleccionada (la que se equiparÃ¡ al confirmar). */
   tentativeId: WeaponId;
 }
 
@@ -70,8 +70,8 @@ export interface GameEventMap {
     characterId: CharacterId;
   };
   /**
-   * Un NPC vio un threat — broadcast a la facción para que aliados cercanos
-   * reciban la LKP. Sólo NPCs hostiles a `threatFaction` deberían reaccionar.
+   * Un NPC vio un threat â€” broadcast a la facciÃ³n para que aliados cercanos
+   * reciban la LKP. SÃ³lo NPCs hostiles a `threatFaction` deberÃ­an reaccionar.
    */
   "npc.threat.spotted": {
     spotterId: string;
@@ -93,7 +93,7 @@ export interface GameEventMap {
     id: string;
     characterId: CharacterId;
   };
-  /** El NPC dropea su arma en la posición indicada (típicamente al morir). */
+  /** El NPC dropea su arma en la posiciÃ³n indicada (tÃ­picamente al morir). */
   "npc.weapon.dropped": {
     npcId: string;
     weaponId: string;

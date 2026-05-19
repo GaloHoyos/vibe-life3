@@ -1,10 +1,10 @@
-import type { VectorTuple } from '../../shared/math/VectorTuple';
-import type { CharacterId } from '../../engine/characters/CharacterDefinition';
-import type { WeaponId } from '../gameplay/weapons/WeaponDefinition';
-import type { MaterialKey } from '../../engine/render/Materials';
-import type { SkyboxId } from '../../engine/render/Skybox';
-import type { SunOptions } from '../../engine/render/LightingSystem';
-import type { HeightSource } from '../../shared/math/HeightField';
+﻿import type { VectorTuple } from '@shared/math/VectorTuple';
+import type { CharacterId } from '@engine/characters/CharacterDefinition';
+import type { WeaponId } from '@game/gameplay/weapons/core/WeaponDefinition';
+import type { MaterialKey } from '@engine/render/material/Materials';
+import type { SkyboxId } from '@engine/render/environment/Skybox';
+import type { SunOptions } from '@engine/render/environment/LightingSystem';
+import type { HeightSource } from '@shared/math/HeightField';
 import type { CoverPointDefinition } from './CoverSystem';
 
 export interface StaticBoxDefinition {
@@ -65,9 +65,9 @@ export interface TerrainDefinition {
   id: string;
   /** Centro del terreno en world space. */
   position: VectorTuple;
-  /** Tamaño total en metros [ancho X, profundidad Z]. */
+  /** TamaÃ±o total en metros [ancho X, profundidad Z]. */
   size: [number, number];
-  /** Cantidad de muestras a lo largo de X. Más alto = más detalle / más costo. */
+  /** Cantidad de muestras a lo largo de X. MÃ¡s alto = mÃ¡s detalle / mÃ¡s costo. */
   widthSamples: number;
   /** Cantidad de muestras a lo largo de Z. */
   depthSamples: number;
@@ -80,24 +80,24 @@ export interface LevelAudioDefinition {
   ambiences: string[];
   /** Pool de pasos que el jugador y los NPCs randomizan al caminar. */
   footstepSounds: string[];
-  /** Id opcional de la música del nivel. */
+  /** Id opcional de la mÃºsica del nivel. */
   music?: string;
 }
 
 export interface LevelDefinition {
   id: string;
   title: string;
-  /** Texto corto que se muestra en el selector de mapas del menú. */
+  /** Texto corto que se muestra en el selector de mapas del menÃº. */
   description?: string;
   /** Color de fondo de fallback (cuando no hay skybox o el HDRI falla). */
   background: number;
   /** HDRI a usar como cielo + IBL. Si se omite, usa `'default'`. */
   skybox?: SkyboxId;
-  /** Configuración del sol (luz direccional principal). Si se omite, usa los defaults. */
+  /** ConfiguraciÃ³n del sol (luz direccional principal). Si se omite, usa los defaults. */
   sun?: SunOptions;
   playerStart: VectorTuple;
   audio: LevelAudioDefinition;
-  /** Terreno opcional. Cuando está definido, agrega un heightfield (mesh + collider). */
+  /** Terreno opcional. Cuando estÃ¡ definido, agrega un heightfield (mesh + collider). */
   terrain?: TerrainDefinition;
   staticBoxes: StaticBoxDefinition[];
   dynamicBoxes: DynamicBoxDefinition[];
@@ -105,6 +105,6 @@ export interface LevelDefinition {
   npcs: NPCDefinition[];
   weaponPickups: WeaponPickupDefinition[];
   triggers: TriggerDefinition[];
-  /** Cover points hand-placed para que los NPCs tácticos los usen. */
+  /** Cover points hand-placed para que los NPCs tÃ¡cticos los usen. */
   coverPoints?: CoverPointDefinition[];
 }

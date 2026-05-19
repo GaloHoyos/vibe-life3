@@ -1,7 +1,7 @@
-import RAPIER from '@dimforge/rapier3d-compat';
+﻿import RAPIER from '@dimforge/rapier3d-compat';
 import type { Object3D, Vector3 } from 'three';
-import type { Damageable } from '../../shared/types/lifecycle';
-import type { HeightField } from '../../shared/math/HeightField';
+import type { Damageable } from '@shared/types/lifecycle';
+import type { HeightField } from '@shared/math/HeightField';
 import { createBoxCollider } from './Colliders';
 
 export interface PhysicsMetadata {
@@ -31,19 +31,19 @@ export interface PhysicsHeightfieldOptions {
   id: string;
   /** Centro del heightfield en world space. */
   position: Vector3;
-  /** Tamaño total en metros [ancho X, profundidad Z]. La escala Y siempre es 1 porque las alturas ya están en metros. */
+  /** TamaÃ±o total en metros [ancho X, profundidad Z]. La escala Y siempre es 1 porque las alturas ya estÃ¡n en metros. */
   size: [number, number];
   metadata?: Partial<PhysicsMetadata>;
 }
 
 /**
- * Wrapper de Rapier3D-compat. Expone helpers para crear cuerpos estáticos /
- * dinámicos / kinemáticos, mantiene un mapa de metadata por collider (id,
- * kind, body part) y sincroniza mallas Three.js de cuerpos dinámicos en
+ * Wrapper de Rapier3D-compat. Expone helpers para crear cuerpos estÃ¡ticos /
+ * dinÃ¡micos / kinemÃ¡ticos, mantiene un mapa de metadata por collider (id,
+ * kind, body part) y sincroniza mallas Three.js de cuerpos dinÃ¡micos en
  * cada `step()`.
  *
  * `init()` es async porque Rapier carga su WASM al arrancar; el motor lo
- * llama una sola vez antes de cualquier creación de cuerpos.
+ * llama una sola vez antes de cualquier creaciÃ³n de cuerpos.
  */
 export class PhysicsWorld {
   world!: RAPIER.World;

@@ -1,4 +1,4 @@
-import { getAllLevels } from "../../levels/LevelRegistry";
+﻿import { getAllLevels } from "@game/levels/LevelRegistry";
 
 export type GameMenuState =
   | "mainMenu"
@@ -16,7 +16,7 @@ export interface MenuChapter {
   description: string;
 }
 
-/** Construye la lista de capítulos seleccionables a partir del `LevelRegistry`. */
+/** Construye la lista de capÃ­tulos seleccionables a partir del `LevelRegistry`. */
 export function buildChapters(): MenuChapter[] {
   return getAllLevels().map((level, index) => ({
     id: level.id,

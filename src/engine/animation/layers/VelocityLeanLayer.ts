@@ -1,10 +1,10 @@
-import { ProceduralBalance } from "../ProceduralBalance";
+﻿import { ProceduralBalance } from "@engine/animation/procedural/ProceduralBalance";
 import type { AnimationLayer, AnimationLayerContext } from "./AnimationLayer";
 
 /**
- * Lean inercial: el root se inclina ligeramente en dirección de la
- * `desiredDirection` cuando el personaje corre. No es una rotación de
- * bones — modifica `root.rotation` directamente.
+ * Lean inercial: el root se inclina ligeramente en direcciÃ³n de la
+ * `desiredDirection` cuando el personaje corre. No es una rotaciÃ³n de
+ * bones â€” modifica `root.rotation` directamente.
  */
 export class VelocityLeanLayer implements AnimationLayer {
   private readonly balance = new ProceduralBalance();

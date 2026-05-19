@@ -1,10 +1,10 @@
-import type { AnimationInput } from "./AnimationInput";
-import type { ProceduralCharacterAnimator } from "./ProceduralCharacterAnimator";
+﻿import type { AnimationInput } from "./AnimationInput";
+import type { ProceduralCharacterAnimator } from "@engine/animation/procedural/ProceduralCharacterAnimator";
 
 /**
- * Container plano de animators. Actualmente no se usa en runtime — los NPC
+ * Container plano de animators. Actualmente no se usa en runtime â€” los NPC
  * llaman directo a su `ProceduralCharacterAnimator` via `NpcAnimationBridge`.
- * Se conserva para casos batch (cinemáticas, lod, escenas pre-render).
+ * Se conserva para casos batch (cinemÃ¡ticas, lod, escenas pre-render).
  */
 export class AnimationSystem {
   private readonly animators = new Set<ProceduralCharacterAnimator>();

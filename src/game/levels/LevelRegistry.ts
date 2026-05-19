@@ -1,5 +1,5 @@
-import { DemoLevel } from "./DemoLevel";
-import { SnowFieldLevel } from "./SnowFieldLevel";
+﻿import { DemoLevel } from "@game/levels/maps/DemoLevel";
+import { SnowFieldLevel } from "@game/levels/maps/SnowFieldLevel";
 import type { LevelDefinition } from "./LevelDefinition";
 
 export type LevelId = "demo" | "snow-field";
@@ -25,7 +25,7 @@ export function getLevel(id: LevelId): LevelDefinition {
   return level;
 }
 
-/** Lista todos los niveles registrados. La utiliza el menú para construir el selector de mapas. */
+/** Lista todos los niveles registrados. La utiliza el menÃº para construir el selector de mapas. */
 export function getAllLevels(): LevelDefinition[] {
   return Object.values(LevelRegistry);
 }

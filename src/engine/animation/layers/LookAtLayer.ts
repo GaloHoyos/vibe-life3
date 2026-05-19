@@ -1,15 +1,15 @@
-import { MathUtils } from "three";
-import type { CharacterAnimationConfig } from "../../characters/CharacterDefinition";
-import { applyBoneRotationOffset } from "../BoneRotation";
-import { DefaultWalkConfig } from "../ProceduralWalk";
+﻿import { MathUtils } from "three";
+import type { CharacterAnimationConfig } from "@engine/characters/CharacterDefinition";
+import { applyBoneRotationOffset } from "@engine/animation/pose/BoneRotation";
+import { DefaultWalkConfig } from "@engine/animation/procedural/ProceduralWalk";
 import type { AnimationLayer, AnimationLayerContext } from "./AnimationLayer";
 
 /**
  * Aplica yaw + pitch a head/neck/chest siguiendo `lookDirection`. Si
- * `lookDirection` no está definido o el NPC está muerto, no hace nada.
+ * `lookDirection` no estÃ¡ definido o el NPC estÃ¡ muerto, no hace nada.
  *
- * Los límites de yaw/pitch vienen de la `CharacterAnimationConfig` para que
- * presets como combine puedan girar más la cabeza que un zombie.
+ * Los lÃ­mites de yaw/pitch vienen de la `CharacterAnimationConfig` para que
+ * presets como combine puedan girar mÃ¡s la cabeza que un zombie.
  */
 export class LookAtLayer implements AnimationLayer {
   private readonly maxYaw: number;

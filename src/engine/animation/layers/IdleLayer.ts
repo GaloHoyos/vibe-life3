@@ -1,10 +1,10 @@
-import { ProceduralBalance } from "../ProceduralBalance";
+﻿import { ProceduralBalance } from "@engine/animation/procedural/ProceduralBalance";
 import type { AnimationLayer, AnimationLayerContext } from "./AnimationLayer";
 
 const IDLE_SPEED_THRESHOLD = 0.15;
 
 /**
- * Respiración + sway leve cuando el personaje está parado. Lee del mismo
+ * RespiraciÃ³n + sway leve cuando el personaje estÃ¡ parado. Lee del mismo
  * `ProceduralBalance` legacy para mantener paridad visual en F1.
  */
 export class IdleLayer implements AnimationLayer {

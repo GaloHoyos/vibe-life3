@@ -1,12 +1,12 @@
-/**
- * Tablas declarativas que mapean *qué* evento del juego dispara *qué*
- * sonido del catálogo. Los sistemas reactivos (`WeaponSoundSystem`,
+﻿/**
+ * Tablas declarativas que mapean *quÃ©* evento del juego dispara *quÃ©*
+ * sonido del catÃ¡logo. Los sistemas reactivos (`WeaponSoundSystem`,
  * `EnemySoundSystem`, etc.) consultan estas tablas; agregar un sonido
  * nuevo se reduce a registrar el clip en `AudioClipCatalog` y una
- * entrada acá — sin tocar la clase del sistema.
+ * entrada acÃ¡ â€” sin tocar la clase del sistema.
  */
 
-import type { CharacterId } from "../../engine/characters/CharacterDefinition";
+import type { CharacterId } from "@engine/characters/CharacterDefinition";
 
 export type WeaponSoundEvent = "shot" | "reload" | "empty";
 

@@ -1,9 +1,9 @@
-import type {
+﻿import type {
   CharacterAnimationConfig,
   HumanoidBoneAxesConfig,
-} from "../../characters/CharacterDefinition";
-import { DefaultWalkOptions } from "../ProceduralWalk";
-import { applyBoneRotationOffset } from "../BoneRotation";
+} from "@engine/characters/CharacterDefinition";
+import { DefaultWalkOptions } from "@engine/animation/procedural/ProceduralWalk";
+import { applyBoneRotationOffset } from "@engine/animation/pose/BoneRotation";
 import type { AnimationLayer, AnimationLayerContext } from "./AnimationLayer";
 
 const CROUCH_HIP_DROP = 0.35;
@@ -17,11 +17,11 @@ const LEAN_CHEST = 0.15;
 const LEAN_HEAD_COUNTER = 0.1;
 
 /**
- * Crouch + lean por flexión real de bones (no translate del visualRoot).
+ * Crouch + lean por flexiÃ³n real de bones (no translate del visualRoot).
  *
  *  - Crouch (0..1) baja `hips` y dobla muslos/shins/spine simulando squat.
- *    El collider físico no cambia: ése sigue siendo full-height (lo decide
- *    el motor). Acá sólo se ve la silueta de cuclillas.
+ *    El collider fÃ­sico no cambia: Ã©se sigue siendo full-height (lo decide
+ *    el motor). AcÃ¡ sÃ³lo se ve la silueta de cuclillas.
  *  - Lean (-1..1) rota spine + chest sobre el eje "forward" del cuerpo
  *    (axis Z local). La cabeza counter-rota un poco para no quedar
  *    bizarramente inclinada.

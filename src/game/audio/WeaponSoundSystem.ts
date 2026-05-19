@@ -1,6 +1,6 @@
-import type { GameEventBus } from "../GameEvents";
-import type { SoundManager } from "../../engine/audio/SoundManager";
-import { WeaponAudio } from "../config/audio.config";
+﻿import type { GameEventBus } from "@game/GameEvents";
+import type { SoundManager } from "@engine/audio/core/SoundManager";
+import { WeaponAudio } from "@game/config/audio.config";
 
 /**
  * Reproduce sonidos de arma reaccionando a eventos del bus.

@@ -1,13 +1,13 @@
-import { Euler, Vector3 } from "three";
+﻿import { Euler, Vector3 } from "three";
 import type {
   WeaponCategory,
   WeaponDefinition,
   WeaponId,
-} from "../gameplay/weapons/WeaponDefinition";
+} from "@game/gameplay/weapons/core/WeaponDefinition";
 
 /**
- * Mapa categoría → número de slot HL-style. Varias armas con la misma
- * categoría comparten slot (la tecla del slot cicla entre ellas en
+ * Mapa categorÃ­a â†’ nÃºmero de slot HL-style. Varias armas con la misma
+ * categorÃ­a comparten slot (la tecla del slot cicla entre ellas en
  * `WeaponInventory.equipSlot`).
  */
 export const SlotByCategory: Record<WeaponCategory, number> = {
@@ -18,18 +18,18 @@ export const SlotByCategory: Record<WeaponCategory, number> = {
   heavy: 4,
 };
 
-/** Cuántos slots hay en total. Usado por `WeaponController` para iterar las teclas. */
+/** CuÃ¡ntos slots hay en total. Usado por `WeaponController` para iterar las teclas. */
 export const WEAPON_SLOT_COUNT = 4;
 
 /**
- * Configuración data-driven de todas las armas del juego.
+ * ConfiguraciÃ³n data-driven de todas las armas del juego.
  *
- * Agregar un arma nueva = añadir una entrada acá + (si su comportamiento no
+ * Agregar un arma nueva = aÃ±adir una entrada acÃ¡ + (si su comportamiento no
  * encaja en hitscan/melee/special) crear una subclase de `Weapon`.
- * El factory en `WeaponFactory.createWeapon` la instancia según `type`.
+ * El factory en `WeaponFactory.createWeapon` la instancia segÃºn `type`.
  *
- * El orden de declaración define el orden de cycling dentro de un slot —
- * `smg` antes que `ar3` ⇒ presionar `3` con ambas equipadas alterna en ese
+ * El orden de declaraciÃ³n define el orden de cycling dentro de un slot â€”
+ * `smg` antes que `ar3` â‡’ presionar `3` con ambas equipadas alterna en ese
  * orden.
  */
 export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
@@ -201,9 +201,9 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
 };
 
 /**
- * Orden canónico de las armas. Define el orden de cycling dentro de un slot
- * y es el orden de declaración del `WeaponDefinitions`. Cambiar el orden acá
- * cambia cómo cicla cada slot.
+ * Orden canÃ³nico de las armas. Define el orden de cycling dentro de un slot
+ * y es el orden de declaraciÃ³n del `WeaponDefinitions`. Cambiar el orden acÃ¡
+ * cambia cÃ³mo cicla cada slot.
  */
 export const WEAPON_ORDER: readonly WeaponId[] = Object.keys(
   WeaponDefinitions,
@@ -225,14 +225,14 @@ export function getSlotForWeapon(id: WeaponId): number {
   return SlotByCategory[WeaponDefinitions[id].category];
 }
 
-/** Límites globales del sistema de efectos de armas. */
+/** LÃ­mites globales del sistema de efectos de armas. */
 export const WeaponEffectsConfig = {
-  /** Máximo de tracers (líneas de disparo) en escena simultáneos. */
+  /** MÃ¡ximo de tracers (lÃ­neas de disparo) en escena simultÃ¡neos. */
   maxTracers: 24,
-  /** Máximo de decals (marcas de impacto) en escena simultáneos. */
+  /** MÃ¡ximo de decals (marcas de impacto) en escena simultÃ¡neos. */
   maxDecals: 48,
-  /** Duración (s) del tracer antes de desvanecerse. */
+  /** DuraciÃ³n (s) del tracer antes de desvanecerse. */
   tracerDuration: 0.06,
-  /** Duración (s) del decal antes de desvanecerse. */
+  /** DuraciÃ³n (s) del decal antes de desvanecerse. */
   decalDuration: 16,
 } as const;

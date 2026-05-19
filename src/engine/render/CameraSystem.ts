@@ -1,10 +1,10 @@
-import { Euler, PerspectiveCamera, Vector3 } from 'three';
-import type { Input } from '../Input';
+﻿import { Euler, PerspectiveCamera, Vector3 } from 'three';
+import type { Input } from '@engine/input/Input';
 
 /**
- * Cámara FPS: maneja yaw/pitch del mouse, expone direcciones planares
+ * CÃ¡mara FPS: maneja yaw/pitch del mouse, expone direcciones planares
  * para movimiento (`getPlanarForward`/`getPlanarRight`) y se sincroniza
- * con la posición del jugador (`syncToPosition`).
+ * con la posiciÃ³n del jugador (`syncToPosition`).
  */
 export class CameraSystem {
   readonly camera: PerspectiveCamera;

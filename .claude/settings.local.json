@@ -46,7 +46,10 @@
       "PowerShell(\\(Get-Content CLAUDE.md | Measure-Object -Line\\).Lines, \\(Get-Content TESTING.md | Measure-Object -Line\\).Lines -join ' / ')",
       "PowerShell(\\(Get-Content 'src/style.css' | Measure-Object -Line\\).Lines)",
       "Read(//home/crucijucegos/Documents/CRM/crm-backend/.claude/**)",
-      "PowerShell(npx tsc --noEmit; \"exit=$LASTEXITCODE\")"
+      "PowerShell(npx tsc --noEmit; \"exit=$LASTEXITCODE\")",
+      "PowerShell(Get-ChildItem -Recurse src -File | Where-Object { $_.Extension -in @\\('.ts', '.html', '.css'\\) } | Group-Object Directory | ForEach-Object { Write-Output \"\"; Write-Output \"=== $\\($_.Name\\) ===\"; $_.Group | ForEach-Object { Write-Output $_.Name } })",
+      "PowerShell(& '.\\\\scripts\\\\rewrite-imports.ps1')",
+      "PowerShell(npm ls *)"
     ],
     "deny": [
       "PowerShell(git push --force *)",

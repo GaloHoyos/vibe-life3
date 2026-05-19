@@ -1,7 +1,7 @@
 ﻿import type { Object3D } from 'three';
-import { InteractionsConfig } from '../../config/gameplay.config';
-import { Dialogue } from '../../config/strings';
-import type { GameEventBus } from "../../GameEvents";
+import { InteractionsConfig } from '@game/config/gameplay.config';
+import { Dialogue } from '@game/config/strings';
+import type { GameEventBus } from "@game/GameEvents";
 import type { Interactable } from './Interactable';
 import type { SlidingDoor } from './SlidingDoor';
 

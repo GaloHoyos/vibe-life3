@@ -1,5 +1,5 @@
-import type { MaterialKey } from '../../../engine/render/Materials';
-import type { StaticBoxDefinition } from '../LevelDefinition';
+﻿import type { MaterialKey } from '@engine/render/material/Materials';
+import type { StaticBoxDefinition } from '@game/levels/LevelDefinition';
 
 export type HouseSide = 'north' | 'south' | 'east' | 'west';
 
@@ -19,7 +19,7 @@ export interface HouseSpec {
   wallThickness?: number;
   /** Abertura de puerta (gap a piso completo) centrado en el lado indicado. */
   door?: { side: HouseSide; width: number };
-  /** Lado que queda totalmente abierto (galpón / lean-to). */
+  /** Lado que queda totalmente abierto (galpÃ³n / lean-to). */
   removeWall?: HouseSide;
   /** Por default `true`. Pasa `false` para edificios sin techo. */
   roof?: boolean;
@@ -32,7 +32,7 @@ export interface HouseSpec {
  * N/S abarcan el ancho exterior completo; las E/W van insertadas entre ellas
  * para evitar overlap en las esquinas. El techo es opcional y agrega un alero
  * de 0.2 m. Retorna la lista de `StaticBoxDefinition` que el `LevelLoader`
- * materializa como cualquier otra caja estática del nivel.
+ * materializa como cualquier otra caja estÃ¡tica del nivel.
  */
 export function buildHouse(spec: HouseSpec): StaticBoxDefinition[] {
   const wallT = spec.wallThickness ?? 0.4;
