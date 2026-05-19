@@ -1,4 +1,6 @@
 import { Object3D, Vector3 } from 'three';
+
+const ZERO_VECTOR = new Vector3();
 import type { Damageable } from '../../shared/types/lifecycle';
 import type { PhysicsWorld } from '../physics/PhysicsWorld';
 import { BoneMapper } from './BoneMapper';
@@ -93,7 +95,7 @@ export class RagdollSystem {
     const controller = this.ensureBuilt();
     controller.setPassive();
     controller.clampDeathVelocity(currentVelocity);
-    controller.applyImpulse(hitDirection ?? new Vector3(), this.options.config?.impulseScale ?? 0.35, hitPartName);
+    controller.applyImpulse(hitDirection ?? ZERO_VECTOR, this.options.config?.impulseScale ?? 0.35, hitPartName);
     return controller;
   }
 

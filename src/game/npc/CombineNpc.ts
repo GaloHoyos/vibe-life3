@@ -35,6 +35,16 @@ import { NpcPathFollower } from "./NpcPathFollower";
 import { NpcRangedCombat } from "./NpcRangedCombat";
 import { NpcSteering } from "./NpcSteering";
 import type { WeaponAttachmentHandle } from "./NpcWeaponAttachment";
+import {
+  COMBINE_ROLE_TUNING,
+  COVER_HIDE_BETWEEN_PEEKS_MIN,
+  COVER_HIDE_BETWEEN_PEEKS_VAR,
+  COVER_HIDE_DURATION_MIN,
+  COVER_HIDE_DURATION_VAR,
+  COVER_LEAVE_HEALTH_THRESHOLD,
+  COVER_LEAVE_PROBABILITY,
+  COVER_PEEK_DURATION,
+} from "./CombineRoleTuning";
 
 type CombineState =
   | "idle"
@@ -96,10 +106,15 @@ export class CombineNpc implements Damageable, INpc {
   private readonly desiredTarget = new Vector3();
   private readonly aimTarget = new Vector3();
   private readonly lastHitDirection = new Vector3(0, 0, 1);
+  private readonly tmpToThreat = new Vector3();
+  private readonly tmpLateral = new Vector3();
+  private readonly tmpEye = new Vector3();
+  private readonly tmpForward = new Vector3(0, 0, 1);
   private lastMotorSnapshot: CharacterMotorSnapshot | null = null;
   private currentThreat: ActorSnapshot | null = null;
   private wantsMove = false;
   private deadHandled = false;
+  private disposed = false;
   private alertReactionTimer = 0;
   private currentElapsed = 0;
   private currentCtx: NpcUpdateContext | null = null;
@@ -368,18 +383,11 @@ export class CombineNpc implements Damageable, INpc {
   die(hitDirection?: Vector3, hitPartName?: string): void {
     if (this.deadHandled) return;
     this.deadHandled = true;
-    this.releaseCover();
-    if (this.currentCtx) {
-      this.currentCtx.squad.unregister(this.id);
-    }
-    for (const unsub of this.unsubscribers) unsub();
-    this.unsubscribers.length = 0;
 
     const rangedWeaponId = this.definition.attack.ranged?.weaponId;
     if (this.weaponAttachment && rangedWeaponId) {
       const dropPos = new Vector3();
       this.weaponAttachment.getWorldPosition(dropPos);
-      this.weaponAttachment.detach();
       this.eventBus.emit("npc.weapon.dropped", {
         npcId: this.id,
         weaponId: rangedWeaponId,
@@ -387,7 +395,6 @@ export class CombineNpc implements Damageable, INpc {
       });
     }
     this.fsm.setState("dead");
-    this.motor.disable();
     this.animation.notifyDeath(
       hitDirection,
       this.motor.getVelocity(),
@@ -398,10 +405,23 @@ export class CombineNpc implements Damageable, INpc {
       characterId: this.definition.id,
     });
     this.eventBus.emit("dialogue.show", Dialogue.npcKilled);
+    this.dispose();
   }
 
   isAlive(): boolean {
     return this.health.isAlive();
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    for (const unsub of this.unsubscribers) unsub();
+    this.unsubscribers.length = 0;
+    this.releaseCover();
+    this.currentCtx?.squad.unregister(this.id);
+    this.weaponAttachment?.detach();
+    this.motor.disable();
+    this.animation.disable();
   }
 
   getState(): string {
@@ -474,15 +494,10 @@ export class CombineNpc implements Damageable, INpc {
           this.currentElapsed - this.blackboard.lastDamageTime < 1.2;
 
         const role = this.currentRole;
-        const coverHealthThreshold =
-          role === "charger" ? 0.3 :
-          role === "suppressor" ? 0.85 :
-          role === "flanker" ? 0.45 :
-          0.7;
+        const tuning = COMBINE_ROLE_TUNING[role];
         const wantsCover =
-          role !== "charger" &&
-          role !== "flanker" &&
-          (healthRatio < coverHealthThreshold ||
+          !tuning.preferOpenCombat &&
+          (healthRatio < tuning.coverHealthThreshold ||
             this.blackboard.suppressionLevel > 0.8 ||
             recentlyHit ||
             !this.perception.isVisibleNow());
@@ -494,17 +509,15 @@ export class CombineNpc implements Damageable, INpc {
         if (role === "flanker") {
           const distToThreat = this.mesh.position.distanceTo(threat.position);
           if (distToThreat > 4) {
-            const toThreat = threat.position
-              .clone()
+            this.tmpToThreat
+              .copy(threat.position)
               .sub(this.mesh.position)
               .setY(0)
               .normalize();
-            const lateral = new Vector3(-toThreat.z, 0, toThreat.x).multiplyScalar(
-              this.flankSide * 9,
-            );
-            this.desiredTarget
-              .copy(threat.position)
-              .add(lateral);
+            this.tmpLateral
+              .set(-this.tmpToThreat.z, 0, this.tmpToThreat.x)
+              .multiplyScalar(this.flankSide * 9);
+            this.desiredTarget.copy(threat.position).add(this.tmpLateral);
             this.wantsMove = true;
           } else {
             this.wantsMove = false;
@@ -521,9 +534,8 @@ export class CombineNpc implements Damageable, INpc {
 
         const distance = this.mesh.position.distanceTo(threat.position);
         const idealRange = this.definition.attack.range;
-        const chargeFactor = role === "charger" ? 0.45 : 0.9;
 
-        if (distance > idealRange * chargeFactor) {
+        if (distance > idealRange * tuning.chargeFactor) {
           this.desiredTarget.copy(threat.position);
           this.wantsMove = true;
         } else if (distance < idealRange * 0.35) {
@@ -532,15 +544,15 @@ export class CombineNpc implements Damageable, INpc {
             this.strafeDirection = -this.strafeDirection as 1 | -1;
             this.strafeTimer = 0.9 + Math.random() * 0.7;
           }
-          const toThreat = threat.position
-            .clone()
+          this.tmpToThreat
+            .copy(threat.position)
             .sub(this.mesh.position)
             .setY(0)
             .normalize();
-          const right = new Vector3(-toThreat.z, 0, toThreat.x).multiplyScalar(
-            this.strafeDirection * 2.5,
-          );
-          this.desiredTarget.copy(this.mesh.position).add(right);
+          this.tmpLateral
+            .set(-this.tmpToThreat.z, 0, this.tmpToThreat.x)
+            .multiplyScalar(this.strafeDirection * 2.5);
+          this.desiredTarget.copy(this.mesh.position).add(this.tmpLateral);
           this.wantsMove = true;
         } else {
           this.strafeTimer -= delta;
@@ -549,15 +561,15 @@ export class CombineNpc implements Damageable, INpc {
             this.strafeTimer = 1.4 + Math.random() * 1.0;
           }
           if (Math.random() < 0.5) {
-            const toThreat = threat.position
-              .clone()
+            this.tmpToThreat
+              .copy(threat.position)
               .sub(this.mesh.position)
               .setY(0)
               .normalize();
-            const right = new Vector3(-toThreat.z, 0, toThreat.x).multiplyScalar(
-              this.strafeDirection * 1.5,
-            );
-            this.desiredTarget.copy(this.mesh.position).add(right);
+            this.tmpLateral
+              .set(-this.tmpToThreat.z, 0, this.tmpToThreat.x)
+              .multiplyScalar(this.strafeDirection * 1.5);
+            this.desiredTarget.copy(this.mesh.position).add(this.tmpLateral);
             this.wantsMove = true;
           } else {
             this.wantsMove = false;
@@ -618,7 +630,8 @@ export class CombineNpc implements Damageable, INpc {
       enter: () => {
         this.wantsMove = false;
         this.coverPhase = "hide";
-        this.coverPhaseTimer = 0.8 + Math.random() * 0.6;
+        this.coverPhaseTimer =
+          COVER_HIDE_DURATION_MIN + Math.random() * COVER_HIDE_DURATION_VAR;
         this.animation.setCrouch(1);
         this.animation.setLeanSide(0);
       },
@@ -661,7 +674,7 @@ export class CombineNpc implements Damageable, INpc {
         if (this.coverPhaseTimer <= 0) {
           if (this.coverPhase === "hide") {
             this.coverPhase = "peek";
-            this.coverPhaseTimer = 1.0;
+            this.coverPhaseTimer = COVER_PEEK_DURATION;
             this.peekLeanSide = Math.random() < 0.5 ? 1 : -1;
             this.animation.setCrouch(0);
             this.animation.setLeanSide(this.peekLeanSide);
@@ -674,7 +687,9 @@ export class CombineNpc implements Damageable, INpc {
             }
           } else {
             this.coverPhase = "hide";
-            this.coverPhaseTimer = 1.0 + Math.random() * 0.6;
+            this.coverPhaseTimer =
+              COVER_HIDE_BETWEEN_PEEKS_MIN +
+              Math.random() * COVER_HIDE_BETWEEN_PEEKS_VAR;
             this.combat.abortBurst();
             this.animation.setCrouch(1);
             this.animation.setLeanSide(0);
@@ -682,10 +697,11 @@ export class CombineNpc implements Damageable, INpc {
         }
 
         const healthRatio = this.health.current / this.definition.health.maxHealth;
-        const role = this.currentRole;
+        const coverTuning = COMBINE_ROLE_TUNING[this.currentRole];
         const wantsLeaveCover =
-          (role === "charger" || role === "flanker") ||
-          (healthRatio > 0.85 && Math.random() < 0.004);
+          coverTuning.preferOpenCombat ||
+          (healthRatio > COVER_LEAVE_HEALTH_THRESHOLD &&
+            Math.random() < COVER_LEAVE_PROBABILITY);
         if (wantsLeaveCover && this.coverPhase === "hide") {
           this.releaseCover();
           this.animation.setCrouch(0);
@@ -723,16 +739,16 @@ export class CombineNpc implements Damageable, INpc {
           this.scanTimer += delta;
           const sweep = Math.sin(this.scanTimer * 1.4) * 1.1;
           const lkp = this.perception.getLastKnown() ?? this.desiredTarget;
-          const forward = lkp
-            .clone()
+          this.tmpToThreat
+            .copy(lkp)
             .sub(this.mesh.position)
             .setY(0)
             .normalize();
-          const right = new Vector3(-forward.z, 0, forward.x);
+          this.tmpLateral.set(-this.tmpToThreat.z, 0, this.tmpToThreat.x);
           this.aimTarget
             .copy(this.mesh.position)
-            .addScaledVector(forward, 5)
-            .addScaledVector(right, sweep * 4);
+            .addScaledVector(this.tmpToThreat, 5)
+            .addScaledVector(this.tmpLateral, sweep * 4);
           if (this.scanTimer > 4.5 || !this.perception.hasRecentMemory()) {
             fsm.setState("idle");
           }
@@ -870,20 +886,18 @@ export class CombineNpc implements Damageable, INpc {
   }
 
   private eyePosition(): Vector3 {
-    const eye = this.mesh.position.clone();
-    eye.y += this.definition.perception.eyeHeight;
-    return eye;
+    this.tmpEye.copy(this.mesh.position);
+    this.tmpEye.y += this.definition.perception.eyeHeight;
+    return this.tmpEye;
   }
 
   private getForwardDirection(): Vector3 {
     if (this.lastMotorSnapshot) {
-      return this.lastMotorSnapshot.forward.clone().normalize();
+      return this.tmpForward.copy(this.lastMotorSnapshot.forward).normalize();
     }
-    return new Vector3(
-      Math.sin(this.mesh.rotation.y),
-      0,
-      Math.cos(this.mesh.rotation.y),
-    ).normalize();
+    return this.tmpForward
+      .set(Math.sin(this.mesh.rotation.y), 0, Math.cos(this.mesh.rotation.y))
+      .normalize();
   }
 
 }

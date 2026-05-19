@@ -42,6 +42,9 @@ export interface CharacterControllerOptions {
 
 type MoveState = "walk" | "sprint" | "crouch";
 
+const TMP_MOVE_INPUT = new Vector3();
+const TMP_STAND_UP = { x: 0, y: 1, z: 0 } as const;
+
 /**
  * Character controller del jugador estilo Half-Life 2.
  *
@@ -56,6 +59,10 @@ export class CharacterController extends KinematicCharacterBase {
   private wantsCrouch = false;
   private wantsSprint = false;
   private moveState: MoveState = "walk";
+  private readonly tmpEye = new Vector3();
+  private readonly tmpWishDir = new Vector3();
+  private readonly tmpImpulse = new Vector3();
+  private readonly tmpRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, TMP_STAND_UP);
 
   constructor(
     physics: PhysicsWorld,
@@ -107,7 +114,8 @@ export class CharacterController extends KinematicCharacterBase {
       this.options.crouchEyeHeight,
       this.crouchProgress,
     );
-    return this.getPosition().add(new Vector3(0, eyeOffset, 0));
+    const p = this.body.translation();
+    return this.tmpEye.set(p.x, p.y + eyeOffset, p.z);
   }
 
   applyImpulse(direction: Vector3, strength: number): void {
@@ -115,10 +123,10 @@ export class CharacterController extends KinematicCharacterBase {
       return;
     }
 
-    const impulse = direction.clone().normalize().multiplyScalar(strength);
-    this.velocity.x += impulse.x;
-    this.velocity.y += Math.max(0, impulse.y * 0.6);
-    this.velocity.z += impulse.z;
+    this.tmpImpulse.copy(direction).normalize().multiplyScalar(strength);
+    this.velocity.x += this.tmpImpulse.x;
+    this.velocity.y += Math.max(0, this.tmpImpulse.y * 0.6);
+    this.velocity.z += this.tmpImpulse.z;
   }
 
   /** Intensidad horizontal normalizada por `walkSpeed` (sprint ≈ 1.5, crouch ≈ 0.4). */
@@ -139,15 +147,16 @@ export class CharacterController extends KinematicCharacterBase {
     const moveInput = readMoveInput(move);
     const forward = cameraSystem.getPlanarForward();
     const right = cameraSystem.getPlanarRight();
-    const wishDir = new Vector3()
+    this.tmpWishDir
+      .set(0, 0, 0)
       .addScaledVector(forward, moveInput.z)
       .addScaledVector(right, moveInput.x);
 
-    if (wishDir.lengthSq() > 1) {
-      wishDir.normalize();
+    if (this.tmpWishDir.lengthSq() > 1) {
+      this.tmpWishDir.normalize();
     }
 
-    return wishDir;
+    return this.tmpWishDir;
   }
 
   private computeMoveState(wantsMove: boolean): MoveState {
@@ -277,12 +286,11 @@ export class CharacterController extends KinematicCharacterBase {
     ];
 
     for (const [dx, dz] of probes) {
-      const ray = new RAPIER.Ray(
-        { x: t.x + dx, y: headY, z: t.z + dz },
-        { x: 0, y: 1, z: 0 },
-      );
+      this.tmpRay.origin.x = t.x + dx;
+      this.tmpRay.origin.y = headY;
+      this.tmpRay.origin.z = t.z + dz;
       const hit = this.physics.world.castRay(
-        ray,
+        this.tmpRay,
         clearance + 0.05,
         true,
         RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
@@ -301,12 +309,12 @@ export class CharacterController extends KinematicCharacterBase {
 }
 
 function readMoveInput(move: MovementInput): Vector3 {
-  const out = new Vector3();
-  if (move.forward) out.z += 1;
-  if (move.back) out.z -= 1;
-  if (move.left) out.x -= 1;
-  if (move.right) out.x += 1;
-  return out;
+  TMP_MOVE_INPUT.set(0, 0, 0);
+  if (move.forward) TMP_MOVE_INPUT.z += 1;
+  if (move.back) TMP_MOVE_INPUT.z -= 1;
+  if (move.left) TMP_MOVE_INPUT.x -= 1;
+  if (move.right) TMP_MOVE_INPUT.x += 1;
+  return TMP_MOVE_INPUT;
 }
 
 function lerp(a: number, b: number, t: number): number {

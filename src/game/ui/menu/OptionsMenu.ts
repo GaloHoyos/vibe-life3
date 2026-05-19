@@ -6,6 +6,7 @@ import {
   NonRebindableActions,
   type GameAction,
 } from "../../config/controls.config";
+import { MenuStrings } from "../../config/strings";
 import type { Controls } from "../../gameplay/Controls";
 
 export interface OptionsMenuCallbacks {
@@ -35,6 +36,7 @@ export class OptionsMenu implements Disposable {
   private readonly debugToggle: HTMLInputElement;
   private readonly bindingLabels = new Map<GameAction, HTMLElement>();
   private readonly bindingButtons = new Map<GameAction, HTMLButtonElement>();
+  private readonly listenerAbort = new AbortController();
   private cancelActiveRebind: (() => void) | null = null;
   private bindingChangeDisposer: (() => void) | null = null;
 
@@ -77,7 +79,7 @@ export class OptionsMenu implements Disposable {
           <span>Pantalla completa</span>
           <button class="hl2-button" type="button" data-action="fullscreen">
             <span class="hl2-button__marker"></span>
-            <span class="hl2-button__label">ACTIVAR</span>
+            <span class="hl2-button__label">${MenuStrings.fullscreenEnter}</span>
           </button>
         </div>
       </div>
@@ -125,6 +127,7 @@ export class OptionsMenu implements Disposable {
     this.cancelActiveRebind?.();
     this.bindingChangeDisposer?.();
     this.bindingChangeDisposer = null;
+    this.listenerAbort.abort();
   }
 
   private appendControlsPanel(controls: Controls): void {
@@ -157,9 +160,13 @@ export class OptionsMenu implements Disposable {
         button.classList.add("is-locked");
         button.title = "Reservada por el navegador";
       } else {
-        button.addEventListener("click", () => {
-          this.beginRebind(controls, action);
-        });
+        button.addEventListener(
+          "click",
+          () => {
+            this.beginRebind(controls, action);
+          },
+          { signal: this.listenerAbort.signal },
+        );
       }
 
       row.append(labelEl, button);
@@ -182,10 +189,14 @@ export class OptionsMenu implements Disposable {
     resetLabel.className = "hl2-button__label";
     resetLabel.textContent = "RESTAURAR PREDETERMINADOS";
     resetButton.append(resetMarker, resetLabel);
-    resetButton.addEventListener("click", () => {
-      this.cancelActiveRebind?.();
-      controls.resetToDefaults();
-    });
+    resetButton.addEventListener(
+      "click",
+      () => {
+        this.cancelActiveRebind?.();
+        controls.resetToDefaults();
+      },
+      { signal: this.listenerAbort.signal },
+    );
     footer.append(resetButton);
     panel.append(footer);
 
@@ -209,6 +220,14 @@ export class OptionsMenu implements Disposable {
     button.classList.add("is-listening");
     label.textContent = "PULSA UNA TECLA...";
 
+    const rebindAbort = new AbortController();
+    const cleanup = (): void => {
+      if (rebindAbort.signal.aborted) return;
+      rebindAbort.abort();
+      button.classList.remove("is-listening");
+      this.cancelActiveRebind = null;
+    };
+
     const onKeyDown = (event: KeyboardEvent): void => {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -228,15 +247,19 @@ export class OptionsMenu implements Disposable {
       label.textContent = formatBindings(controls.getCodes(action));
     };
 
-    const cleanup = (): void => {
-      window.removeEventListener("keydown", onKeyDown, true);
-      window.removeEventListener("mousedown", onMouseDown, true);
-      button.classList.remove("is-listening");
-      this.cancelActiveRebind = null;
-    };
-
-    window.addEventListener("keydown", onKeyDown, true);
-    window.addEventListener("mousedown", onMouseDown, true);
+    window.addEventListener("keydown", onKeyDown, {
+      capture: true,
+      signal: rebindAbort.signal,
+    });
+    window.addEventListener("mousedown", onMouseDown, {
+      capture: true,
+      signal: rebindAbort.signal,
+    });
+    // Si el menú entero se cierra mientras hay un rebind activo, abortamos también.
+    this.listenerAbort.signal.addEventListener("abort", cleanup, {
+      once: true,
+      signal: rebindAbort.signal,
+    });
     this.cancelActiveRebind = cleanup;
   }
 
@@ -244,15 +267,19 @@ export class OptionsMenu implements Disposable {
     const tabs = this.element.querySelectorAll<HTMLButtonElement>(".hl2-tab");
     const panels = this.element.querySelectorAll<HTMLElement>("[data-panel]");
     tabs.forEach((tab) => {
-      tab.addEventListener("click", () => {
-        const target = tab.dataset.tab;
-        if (!target) return;
-        this.cancelActiveRebind?.();
-        tabs.forEach((t) => t.classList.toggle("is-active", t === tab));
-        panels.forEach((panel) => {
-          panel.classList.toggle("is-hidden", panel.dataset.panel !== target);
-        });
-      });
+      tab.addEventListener(
+        "click",
+        () => {
+          const target = tab.dataset.tab;
+          if (!target) return;
+          this.cancelActiveRebind?.();
+          tabs.forEach((t) => t.classList.toggle("is-active", t === tab));
+          panels.forEach((panel) => {
+            panel.classList.toggle("is-hidden", panel.dataset.panel !== target);
+          });
+        },
+        { signal: this.listenerAbort.signal },
+      );
     });
   }
 
@@ -268,11 +295,15 @@ export class OptionsMenu implements Disposable {
       input.value = String(currentValue);
       label.textContent = String(currentValue);
 
-      input.addEventListener("input", () => {
-        const value = Number(input.value);
-        label.textContent = String(value);
-        callbacks.onVolumeChange(bus, value / 100);
-      });
+      input.addEventListener(
+        "input",
+        () => {
+          const value = Number(input.value);
+          label.textContent = String(value);
+          callbacks.onVolumeChange(bus, value / 100);
+        },
+        { signal: this.listenerAbort.signal },
+      );
     });
   }
 
@@ -284,9 +315,13 @@ export class OptionsMenu implements Disposable {
     const label = this.element.querySelector(
       '.hl2-option__value[data-value="sensitivity"]',
     ) as HTMLElement;
-    slider.addEventListener("input", () => {
-      label.textContent = slider.value;
-    });
+    slider.addEventListener(
+      "input",
+      () => {
+        label.textContent = slider.value;
+      },
+      { signal: this.listenerAbort.signal },
+    );
   }
 
   private wireQuality(): void {
@@ -297,9 +332,13 @@ export class OptionsMenu implements Disposable {
     const label = this.element.querySelector(
       '.hl2-option__value[data-value="quality"]',
     ) as HTMLElement;
-    select.addEventListener("change", () => {
-      label.textContent = select.value;
-    });
+    select.addEventListener(
+      "change",
+      () => {
+        label.textContent = select.value;
+      },
+      { signal: this.listenerAbort.signal },
+    );
   }
 
   private wireFullscreen(): void {
@@ -308,15 +347,19 @@ export class OptionsMenu implements Disposable {
     );
     if (!button) return;
     const label = button.querySelector(".hl2-button__label") as HTMLElement;
-    button.addEventListener("click", () => {
-      if (document.fullscreenElement) {
-        void document.exitFullscreen();
-        label.textContent = "ACTIVAR";
-        return;
-      }
-      void document.documentElement.requestFullscreen();
-      label.textContent = "SALIR";
-    });
+    button.addEventListener(
+      "click",
+      () => {
+        if (document.fullscreenElement) {
+          void document.exitFullscreen();
+          label.textContent = MenuStrings.fullscreenEnter;
+          return;
+        }
+        void document.documentElement.requestFullscreen();
+        label.textContent = MenuStrings.fullscreenExit;
+      },
+      { signal: this.listenerAbort.signal },
+    );
   }
 
   private wireDebug(callbacks: OptionsMenuCallbacks): HTMLInputElement {
@@ -324,9 +367,13 @@ export class OptionsMenu implements Disposable {
       '[data-action="debug"]',
     );
     if (!toggle) throw new Error("debug toggle missing");
-    toggle.addEventListener("change", () => {
-      callbacks.onToggleDebug(toggle.checked);
-    });
+    toggle.addEventListener(
+      "change",
+      () => {
+        callbacks.onToggleDebug(toggle.checked);
+      },
+      { signal: this.listenerAbort.signal },
+    );
     return toggle;
   }
 
@@ -335,10 +382,14 @@ export class OptionsMenu implements Disposable {
       '[data-action="back"]',
     );
     if (!back) return;
-    back.addEventListener("click", () => {
-      this.cancelActiveRebind?.();
-      callbacks.onBack();
-    });
+    back.addEventListener(
+      "click",
+      () => {
+        this.cancelActiveRebind?.();
+        callbacks.onBack();
+      },
+      { signal: this.listenerAbort.signal },
+    );
   }
 }
 

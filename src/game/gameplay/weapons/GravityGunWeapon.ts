@@ -63,6 +63,10 @@ interface HeldProp {
 export class GravityGunWeapon extends Weapon {
   private held: HeldProp | null = null;
   private readonly launched: LaunchedProp[] = [];
+  private readonly tmpDirection = new Vector3();
+  private readonly tmpOrigin = new Vector3();
+  private readonly tmpHoldTarget = new Vector3();
+  private readonly tmpHoldRotation = new Quaternion();
 
   protected performFire(context: WeaponFireContext): void {
     if (this.held) {
@@ -83,22 +87,22 @@ export class GravityGunWeapon extends Weapon {
 
   override update(_delta: number, context: WeaponUpdateContext): void {
     if (this.held) {
-      const target = context.origin
-        .clone()
+      this.tmpHoldTarget
+        .copy(context.origin)
         .addScaledVector(context.direction, CONFIG.holdDistance);
       this.held.body.setNextKinematicTranslation({
-        x: target.x,
-        y: target.y,
-        z: target.z,
+        x: this.tmpHoldTarget.x,
+        y: this.tmpHoldTarget.y,
+        z: this.tmpHoldTarget.z,
       });
-      const rotation = context.cameraQuaternion
-        .clone()
+      this.tmpHoldRotation
+        .copy(context.cameraQuaternion)
         .multiply(this.held.rotationOffset);
       this.held.body.setNextKinematicRotation({
-        x: rotation.x,
-        y: rotation.y,
-        z: rotation.z,
-        w: rotation.w,
+        x: this.tmpHoldRotation.x,
+        y: this.tmpHoldRotation.y,
+        z: this.tmpHoldRotation.z,
+        w: this.tmpHoldRotation.w,
       });
     }
 
@@ -116,13 +120,13 @@ export class GravityGunWeapon extends Weapon {
         continue;
       }
 
-      const direction = new Vector3(v.x / speed, v.y / speed, v.z / speed);
+      this.tmpDirection.set(v.x / speed, v.y / speed, v.z / speed);
       const pos = prop.body.translation();
-      const origin = new Vector3(pos.x, pos.y, pos.z);
+      this.tmpOrigin.set(pos.x, pos.y, pos.z);
       const castDistance = Math.max(0.6, speed * context.delta * 2);
       const hit = this.context.raycast.cast(
-        origin,
-        direction,
+        this.tmpOrigin,
+        this.tmpDirection,
         castDistance,
         prop.body,
       );
@@ -139,7 +143,7 @@ export class GravityGunWeapon extends Weapon {
         Math.min(CONFIG.damageMax, Math.max(CONFIG.damageMin, raw)) * bodyPartMul;
       hit.metadata.damageable?.applyDamage(
         damage,
-        direction.clone(),
+        this.tmpDirection.clone(),
         hit.metadata.bodyPart?.name,
       );
       this.context.eventBus.emit("weapon.hit", {

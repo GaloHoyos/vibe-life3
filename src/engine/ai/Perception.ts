@@ -43,6 +43,11 @@ export interface PerceptionResult {
  */
 export class Perception {
   private readonly lastKnown = new Vector3();
+  private readonly tmpFromEyes = new Vector3();
+  private readonly tmpToTarget = new Vector3();
+  private readonly tmpDirection = new Vector3();
+  private readonly tmpDirHoriz = new Vector3();
+  private readonly tmpFwdHoriz = new Vector3();
   private hasMemory = false;
   private memoryAge = 0;
   private visibleNow = false;
@@ -66,20 +71,28 @@ export class Perception {
   ): PerceptionResult {
     this.memoryAge += delta;
 
-    const fromEyes = npcPosition.clone();
-    fromEyes.y += this.config.eyeHeight;
-    const toTarget = target.position.clone().sub(fromEyes);
-    const distance = toTarget.length();
+    this.tmpFromEyes.copy(npcPosition);
+    this.tmpFromEyes.y += this.config.eyeHeight;
+    this.tmpToTarget.copy(target.position).sub(this.tmpFromEyes);
+    const distance = this.tmpToTarget.length();
 
     let visible = false;
     if (distance <= this.config.viewDistance && distance > 0.05) {
-      const direction = toTarget.clone().divideScalar(distance);
-      const facingDot = direction.clone().setY(0).normalize().dot(
-        npcForward.clone().setY(0).normalize(),
-      );
+      this.tmpDirection.copy(this.tmpToTarget).divideScalar(distance);
+      this.tmpDirHoriz.copy(this.tmpDirection);
+      this.tmpDirHoriz.y = 0;
+      this.tmpDirHoriz.normalize();
+      this.tmpFwdHoriz.copy(npcForward);
+      this.tmpFwdHoriz.y = 0;
+      this.tmpFwdHoriz.normalize();
+      const facingDot = this.tmpDirHoriz.dot(this.tmpFwdHoriz);
       const minCosCone = Math.cos(this.config.viewConeRadians / 2);
       if (facingDot >= minCosCone) {
-        const hit = this.raycast.cast(fromEyes, direction, distance + 0.3);
+        const hit = this.raycast.cast(
+          this.tmpFromEyes,
+          this.tmpDirection,
+          distance + 0.3,
+        );
         if (hit && hit.metadata?.id === target.id) {
           visible = true;
         }

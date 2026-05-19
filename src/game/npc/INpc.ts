@@ -51,4 +51,9 @@ export interface INpc {
   applyDamage(amount: number, hitDirection?: Vector3, hitPartName?: string): void;
   isAlive(): boolean;
   getState(): string;
+  /**
+   * Libera listeners del bus, releases de cover/squad y desactiva motor/animator.
+   * Debe ser idempotente — `die()` y el teardown de nivel lo invocan ambos.
+   */
+  dispose(): void;
 }

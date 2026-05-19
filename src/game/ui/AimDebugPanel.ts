@@ -98,6 +98,7 @@ export class AimDebugPanel {
   private readonly aimContainer: HTMLDivElement;
   private readonly restContainer: HTMLDivElement;
   private readonly weaponContainer: HTMLDivElement;
+  private readonly listenerAbort = new AbortController();
   private currentAimPose: AimPoseKey = "twoHanded";
   private currentRestChar: RestPoseTuningKey = "combine";
   private currentWeapon: WeaponAttachmentKey = "ar3";
@@ -241,7 +242,9 @@ export class AimDebugPanel {
       o.textContent = opt;
       sel.appendChild(o);
     }
-    sel.addEventListener("change", () => onChange(sel.value));
+    sel.addEventListener("change", () => onChange(sel.value), {
+      signal: this.listenerAbort.signal,
+    });
     return sel;
   }
 
@@ -257,13 +260,17 @@ export class AimDebugPanel {
     btn.textContent = "Copiar config";
     btn.style.cssText =
       "width: 100%; margin-top: 6px; background: #2a4a2a; color: #e8e8ee; border: 1px solid #3a6a3a; padding: 5px; cursor: pointer; font: inherit";
-    btn.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(getText());
-      } catch {
-        // clipboard puede fallar sin gesture
-      }
-    });
+    btn.addEventListener(
+      "click",
+      async () => {
+        try {
+          await navigator.clipboard.writeText(getText());
+        } catch {
+          // clipboard puede fallar sin gesture
+        }
+      },
+      { signal: this.listenerAbort.signal },
+    );
     return btn;
   }
 
@@ -308,9 +315,13 @@ export class AimDebugPanel {
     checkbox.type = "checkbox";
     checkbox.checked = getValue();
     checkbox.style.cssText = "margin: 0";
-    checkbox.addEventListener("change", () => {
-      setValue(checkbox.checked);
-    });
+    checkbox.addEventListener(
+      "change",
+      () => {
+        setValue(checkbox.checked);
+      },
+      { signal: this.listenerAbort.signal },
+    );
 
     const label = document.createElement("span");
     label.textContent = text;
@@ -342,9 +353,13 @@ export class AimDebugPanel {
       select.appendChild(o);
     }
     select.value = NpcDebugFlags.forceAimPose;
-    select.addEventListener("change", () => {
-      NpcDebugFlags.forceAimPose = select.value as ForcedAimPose;
-    });
+    select.addEventListener(
+      "change",
+      () => {
+        NpcDebugFlags.forceAimPose = select.value as ForcedAimPose;
+      },
+      { signal: this.listenerAbort.signal },
+    );
     wrap.appendChild(select);
 
     return wrap;
@@ -396,11 +411,15 @@ export class AimDebugPanel {
     input.max = String(def.max);
     input.step = "0.01";
     input.style.cssText = "width: 100%; margin: 0";
-    input.addEventListener("input", () => {
-      const v = parseFloat(input.value);
-      valueLabel.textContent = v.toFixed(2);
-      onChange(v);
-    });
+    input.addEventListener(
+      "input",
+      () => {
+        const v = parseFloat(input.value);
+        valueLabel.textContent = v.toFixed(2);
+        onChange(v);
+      },
+      { signal: this.listenerAbort.signal },
+    );
     row.appendChild(input);
     container.appendChild(row);
 
@@ -471,6 +490,7 @@ export class AimDebugPanel {
   }
 
   dispose(): void {
+    this.listenerAbort.abort();
     this.root.remove();
   }
 }

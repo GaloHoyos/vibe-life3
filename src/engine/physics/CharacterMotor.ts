@@ -42,11 +42,15 @@ export interface CharacterMotorSnapshot {
  * desaceleración suave. Hereda el manejo de cápsula / step / snap-to-ground
  * de `KinematicCharacterBase`.
  */
+const Y_AXIS = new Vector3(0, 1, 0);
+
 export class CharacterMotor extends KinematicCharacterBase {
   private readonly actualVelocity = new Vector3();
   private readonly horizontalVelocity = new Vector3();
   private readonly desiredVelocity = new Vector3();
   private readonly forward = new Vector3(0, 0, 1);
+  private readonly tmpDirection = new Vector3();
+  private readonly tmpRotation = new Quaternion();
   private distanceToTarget = Number.POSITIVE_INFINITY;
   private yaw = 0;
   private targetYaw = 0;
@@ -69,9 +73,12 @@ export class CharacterMotor extends KinematicCharacterBase {
     }
 
     const position = this.getPosition();
-    const directionToTarget = targetPosition
-      ? targetPosition.clone().sub(position)
-      : new Vector3();
+    const directionToTarget = this.tmpDirection;
+    if (targetPosition) {
+      directionToTarget.copy(targetPosition).sub(position);
+    } else {
+      directionToTarget.set(0, 0, 0);
+    }
     directionToTarget.y = 0;
     this.distanceToTarget = directionToTarget.length();
 
@@ -133,7 +140,7 @@ export class CharacterMotor extends KinematicCharacterBase {
       corrected.z * invDelta,
     );
     this.body.setNextKinematicRotation(
-      new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), this.yaw),
+      this.tmpRotation.setFromAxisAngle(Y_AXIS, this.yaw),
     );
   }
 

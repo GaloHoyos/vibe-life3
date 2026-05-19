@@ -78,10 +78,9 @@ export class NavGraph {
     const path = this.aStar(startId, goalId);
     if (!path) return [to.clone()];
 
-    const positions: Vector3[] = [];
-    for (const id of path) {
-      positions.push(this.nodes[id].position.clone());
-    }
+    // Las positions de los nodos viajan por referencia. Los callers (NpcPathFollower,
+    // NpcSteering) solo leen — si en el futuro alguno muta, agregar .clone() acá.
+    const positions: Vector3[] = path.map((id) => this.nodes[id].position);
     positions.push(to.clone());
     return positions;
   }

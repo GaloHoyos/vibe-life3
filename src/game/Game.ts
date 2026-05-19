@@ -8,7 +8,7 @@ import { EngineTokens } from "../engine/ServiceTokens";
 import type { Time } from "../engine/Time";
 import { CharacterFactory } from "./characters/CharacterFactory";
 import { FootstepsConfig } from "./config/audio.config";
-import { MenuStrings } from "./config/strings";
+import { Dialogue, MenuStrings } from "./config/strings";
 import { DialogueAudioSystem } from "./audio/DialogueAudioSystem";
 import { EnemySoundSystem } from "./audio/EnemySoundSystem";
 import { UISoundSystem } from "./audio/UISoundSystem";
@@ -68,6 +68,7 @@ export class Game {
   private coverSystem: CoverSystem | null = null;
   private navGraph: NavGraph | null = null;
   private squad: CombatSquadCoordinator | null = null;
+  private pendingExitTimeoutId: number | null = null;
 
   constructor(private readonly engine: Engine, options: GameOptions = {}) {
     this.root = engine.root;
@@ -112,6 +113,14 @@ export class Game {
   dispose(): void {
     this.engine.stop();
     this.unbindBrowserEvents();
+
+    if (this.pendingExitTimeoutId !== null) {
+      window.clearTimeout(this.pendingExitTimeoutId);
+      this.pendingExitTimeoutId = null;
+    }
+
+    this.npcs.forEach((npc) => npc.dispose());
+    this.npcs = [];
 
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
@@ -255,11 +264,9 @@ export class Game {
 
     if (input.wasKeyPressed("F2") && this.player) {
       const enabled = this.player.health.toggleGodMode();
-      this.engine.services.resolve(GameTokens.EventBus).emit("subtitle.show", {
-        speaker: "Sistema",
-        text: enabled ? "GOD MODE ON" : "GOD MODE OFF",
-        duration: 2,
-      });
+      this.engine.services
+        .resolve(GameTokens.EventBus)
+        .emit("subtitle.show", enabled ? Dialogue.godModeOn : Dialogue.godModeOff);
     }
 
     if (controls.wasPressed("pause") && this.gameState === "playing") {
@@ -503,6 +510,8 @@ export class Game {
       assets,
     );
 
+    this.npcs.forEach((npc) => npc.dispose());
+
     const loaded = await loader.load(level);
     this.npcs = loaded.npcs;
     this.doors = loaded.doors;
@@ -540,11 +549,12 @@ export class Game {
 
     ambience.stop();
     music.stopMusic();
-    mainMenu.showLoading("Volviendo al menu principal...");
+    mainMenu.showLoading(MenuStrings.exitingToMainMenu);
 
     // Pequeña espera para que el overlay de carga llegue a pintarse antes de
     // que el navegador descarte la página por el reload.
-    window.setTimeout(() => {
+    this.pendingExitTimeoutId = window.setTimeout(() => {
+      this.pendingExitTimeoutId = null;
       window.location.reload();
     }, 250);
   }

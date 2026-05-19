@@ -54,6 +54,7 @@ export class NPC implements Damageable, INpc {
   private readonly raycast: Raycast;
   private readonly targetPosition = new Vector3();
   private readonly lastHitDirection = new Vector3(0, 0, 1);
+  private readonly tmpForward = new Vector3(0, 0, 1);
   private readonly aiFsm: StateMachine<NpcAiState>;
   private readonly balanceFsm: StateMachine<NpcBalanceState>;
 
@@ -64,6 +65,7 @@ export class NPC implements Damageable, INpc {
   private fallenTimer = 0;
   private recoverTimer = 0;
   private deadHandled = false;
+  private disposed = false;
 
   constructor(options: NPCOptions) {
     this.id = options.id;
@@ -267,6 +269,13 @@ export class NPC implements Damageable, INpc {
     return this.health.isAlive();
   }
 
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.motor.disable();
+    this.animation.disable();
+  }
+
   getState(): string {
     const ai = this.aiFsm.getState();
     const balance = this.balanceFsm.getState();
@@ -436,12 +445,10 @@ export class NPC implements Damageable, INpc {
 
   private getForwardDirection(): Vector3 {
     if (this.lastMotorSnapshot) {
-      return this.lastMotorSnapshot.forward.clone().normalize();
+      return this.tmpForward.copy(this.lastMotorSnapshot.forward).normalize();
     }
-    return new Vector3(
-      Math.sin(this.mesh.rotation.y),
-      0,
-      Math.cos(this.mesh.rotation.y),
-    ).normalize();
+    return this.tmpForward
+      .set(Math.sin(this.mesh.rotation.y), 0, Math.cos(this.mesh.rotation.y))
+      .normalize();
   }
 }

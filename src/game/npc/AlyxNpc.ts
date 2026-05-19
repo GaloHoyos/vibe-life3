@@ -77,10 +77,15 @@ export class AlyxNpc implements Damageable, INpc {
   private readonly desiredTarget = new Vector3();
   private readonly aimTarget = new Vector3();
   private readonly lastHitDirection = new Vector3(0, 0, 1);
+  private readonly tmpDir = new Vector3();
+  private readonly tmpEye = new Vector3();
+  private readonly tmpForward = new Vector3(0, 0, 1);
+  private readonly tmpNeighbors: { position: Vector3; radius: number }[] = [];
   private lastMotorSnapshot: CharacterMotorSnapshot | null = null;
   private currentThreat: ActorSnapshot | null = null;
   private wantsMove = false;
   private deadHandled = false;
+  private disposed = false;
   private currentElapsed = 0;
   private aimSettleTime = 0;
   private readonly weaponAttachment: WeaponAttachmentHandle | null;
@@ -273,32 +278,40 @@ export class AlyxNpc implements Damageable, INpc {
     if (this.deadHandled) return;
     this.deadHandled = true;
     this.fsm.setState("dead");
-    this.motor.disable();
-    this.animation.notifyDeath(
-      hitDirection,
-      this.motor.getVelocity(),
-      hitPartName,
-    );
+
     const rangedWeaponId = this.definition.attack.ranged?.weaponId;
     if (this.weaponAttachment && rangedWeaponId) {
       const dropPos = new Vector3();
       this.weaponAttachment.getWorldPosition(dropPos);
-      this.weaponAttachment.detach();
       this.eventBus.emit("npc.weapon.dropped", {
         npcId: this.id,
         weaponId: rangedWeaponId,
         position: dropPos,
       });
     }
+    this.animation.notifyDeath(
+      hitDirection,
+      this.motor.getVelocity(),
+      hitPartName,
+    );
     this.eventBus.emit("npc.killed", {
       id: this.id,
       characterId: this.definition.id,
     });
     this.eventBus.emit("dialogue.show", Dialogue.npcKilled);
+    this.dispose();
   }
 
   isAlive(): boolean {
     return this.health.isAlive();
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.weaponAttachment?.detach();
+    this.motor.disable();
+    this.animation.disable();
   }
 
   getState(): string {
@@ -428,24 +441,28 @@ export class AlyxNpc implements Damageable, INpc {
       this.wantsMove = true;
     } else if (state === "follow") {
       if (distanceToPlayer > this.followDistance + 1) {
-        const dir = playerPos.clone().sub(this.mesh.position).setY(0).normalize();
+        this.tmpDir
+          .copy(playerPos)
+          .sub(this.mesh.position)
+          .setY(0)
+          .normalize();
         this.desiredTarget
           .copy(playerPos)
-          .addScaledVector(dir, -this.followDistance);
+          .addScaledVector(this.tmpDir, -this.followDistance);
         this.wantsMove = true;
       } else {
         this.wantsMove = false;
       }
     } else if (state === "combat") {
       if (!this.perception.isVisibleNow() && this.currentThreat) {
-        const toThreat = this.currentThreat.position
-          .clone()
+        this.tmpDir
+          .copy(this.currentThreat.position)
           .sub(this.mesh.position)
           .setY(0)
           .normalize();
         this.desiredTarget
           .copy(this.mesh.position)
-          .addScaledVector(toThreat, 2.0);
+          .addScaledVector(this.tmpDir, 2.0);
         this.wantsMove = true;
       } else {
         this.wantsMove = false;
@@ -486,32 +503,29 @@ export class AlyxNpc implements Damageable, INpc {
         )
       : this.desiredTarget;
 
-    const neighbors: { position: Vector3; radius: number }[] = [
-      { position: playerPos, radius: 0.5 },
-    ];
+    this.tmpNeighbors.length = 0;
+    this.tmpNeighbors.push({ position: playerPos, radius: 0.5 });
     for (const other of ctx.npcs) {
       if (other.isAlive) {
-        neighbors.push({ position: other.position, radius: other.radius });
+        this.tmpNeighbors.push({ position: other.position, radius: other.radius });
       }
     }
-    return this.steering.steer(this.mesh.position, pathTarget, neighbors);
+    return this.steering.steer(this.mesh.position, pathTarget, this.tmpNeighbors);
   }
 
   private eyePosition(): Vector3 {
-    const eye = this.mesh.position.clone();
-    eye.y += this.definition.perception.eyeHeight;
-    return eye;
+    this.tmpEye.copy(this.mesh.position);
+    this.tmpEye.y += this.definition.perception.eyeHeight;
+    return this.tmpEye;
   }
 
   private getForwardDirection(): Vector3 {
     if (this.lastMotorSnapshot) {
-      return this.lastMotorSnapshot.forward.clone().normalize();
+      return this.tmpForward.copy(this.lastMotorSnapshot.forward).normalize();
     }
-    return new Vector3(
-      Math.sin(this.mesh.rotation.y),
-      0,
-      Math.cos(this.mesh.rotation.y),
-    ).normalize();
+    return this.tmpForward
+      .set(Math.sin(this.mesh.rotation.y), 0, Math.cos(this.mesh.rotation.y))
+      .normalize();
   }
 
 }
