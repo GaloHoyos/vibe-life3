@@ -123,6 +123,19 @@ export class Perception {
     this.memoryAge = 0;
   }
 
+  /**
+   * Avanza el envejecimiento de la memoria sin evaluar LOS. Útil cuando el NPC
+   * dejó de tener un target (perdió pickThreat) pero querés seguir respetando
+   * `memoryDuration` para que pueda investigar el último lugar conocido.
+   */
+  tickMemory(delta: number): void {
+    this.memoryAge += delta;
+    if (this.hasMemory && this.memoryAge > this.config.memoryDuration) {
+      this.hasMemory = false;
+    }
+    this.visibleNow = false;
+  }
+
   isVisibleNow(): boolean {
     return this.visibleNow;
   }

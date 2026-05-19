@@ -103,27 +103,32 @@ export class CombatSquadCoordinator {
       .map((m) => ({ ...m, distToThreat: m.position.distanceTo(threatPosition) }))
       .sort((a, b) => a.distToThreat - b.distToThreat);
 
-    let suppressorAssigned = false;
-    let flankerAssigned = false;
-    let chargerAssigned = false;
     const spotter = sorted[0];
 
+    let suppressorId: string | null = null;
     for (const m of sorted) {
-      if (!suppressorAssigned && m.hasLineOfSight && m.inCover) {
-        this.assignments.set(m.id, { role: "suppressor", flankSide: 1 });
-        suppressorAssigned = true;
-        continue;
+      if (m.hasLineOfSight && m.inCover) {
+        suppressorId = m.id;
+        break;
       }
-      if (!suppressorAssigned && m.hasLineOfSight) {
-        this.assignments.set(m.id, { role: "suppressor", flankSide: 1 });
-        suppressorAssigned = true;
-        continue;
+    }
+    if (!suppressorId) {
+      for (const m of sorted) {
+        if (m.hasLineOfSight) {
+          suppressorId = m.id;
+          break;
+        }
       }
-      if (
-        !flankerAssigned &&
-        m.isFlankerCandidate &&
-        m.health01 > 0.4
-      ) {
+    }
+    if (suppressorId) {
+      this.assignments.set(suppressorId, { role: "suppressor", flankSide: 1 });
+    }
+
+    let flankerAssigned = false;
+    let chargerAssigned = false;
+    for (const m of sorted) {
+      if (m.id === suppressorId) continue;
+      if (!flankerAssigned && m.isFlankerCandidate && m.health01 > 0.4) {
         const side = this.pickFlankSide(m, spotter, threatPosition);
         this.assignments.set(m.id, { role: "flanker", flankSide: side });
         flankerAssigned = true;

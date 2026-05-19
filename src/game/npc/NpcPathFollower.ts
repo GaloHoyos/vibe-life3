@@ -41,8 +41,13 @@ export class NpcPathFollower {
     const destinationMoved =
       !Number.isFinite(this.lastRequestedDestination.x) ||
       this.lastRequestedDestination.distanceTo(destination) > this.repathDistance;
+    const neverRequested = this.lastRequestAt === -Infinity;
 
-    if (this.path.length === 0 || elapsedSinceRequest > this.repathInterval || destinationMoved) {
+    if (
+      neverRequested ||
+      elapsedSinceRequest > this.repathInterval ||
+      destinationMoved
+    ) {
       this.path = navGraph.findPath(npcPosition, destination);
       this.waypointIndex = 0;
       this.lastRequestAt = elapsed;

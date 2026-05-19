@@ -136,9 +136,6 @@ export class NPC implements Damageable, INpc {
     if (threat) {
       this.targetPosition.copy(threat.position);
       this.currentPlayer = threat.entity;
-    } else if (!NpcDebugFlags.ignorePlayer) {
-      this.targetPosition.copy(ctx.player.position);
-      this.currentPlayer = ctx.player.entity;
     } else {
       this.targetPosition.copy(this.mesh.position);
       this.currentPlayer = null;
@@ -263,6 +260,7 @@ export class NPC implements Damageable, INpc {
       characterId: this.definition.id,
     });
     this.eventBus.emit("dialogue.show", Dialogue.npcKilled);
+    this.dispose();
   }
 
   isAlive(): boolean {

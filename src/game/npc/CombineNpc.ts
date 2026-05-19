@@ -135,6 +135,11 @@ export class CombineNpc implements Damageable, INpc {
   private scanTimer = 0;
   private scanDirection: 1 | -1 = 1;
   private aimSettleTime = 0;
+  /**
+   * Tiempo (game-elapsed) hasta el cual no se intenta reclamar cover de nuevo.
+   * Se setea cuando `findBestCover` devuelve null para evitar el flap engage↔takeCover.
+   */
+  private coverSearchCooldownUntil = 0;
 
   constructor(options: CombineNpcOptions) {
     this.id = options.id;
@@ -234,7 +239,7 @@ export class CombineNpc implements Damageable, INpc {
         { id: this.currentThreat.id, position: this.currentThreat.position },
       );
     } else {
-      this.perception.clearMemory();
+      this.perception.tickMemory(ctx.delta);
     }
 
     this.blackboard.timeSinceLastSeen += ctx.delta;
@@ -349,7 +354,7 @@ export class CombineNpc implements Damageable, INpc {
         : new Vector3(0, 0.2, 1);
     this.lastHitDirection.copy(dir);
     this.blackboard.lastDamageDirection.copy(dir);
-    this.blackboard.lastDamageTime = performance.now() / 1000;
+    this.blackboard.lastDamageTime = this.currentElapsed;
     this.blackboard.suppressionLevel = Math.min(
       3,
       this.blackboard.suppressionLevel + 0.6,
@@ -467,6 +472,7 @@ export class CombineNpc implements Damageable, INpc {
 
     fsm.addState("engage", {
       enter: () => {
+        this.releaseCover();
         this.wantsMove = false;
         this.strafeDirection = Math.random() < 0.5 ? 1 : -1;
         this.strafeTimer = 0;
@@ -501,7 +507,13 @@ export class CombineNpc implements Damageable, INpc {
             this.blackboard.suppressionLevel > 0.8 ||
             recentlyHit ||
             !this.perception.isVisibleNow());
-        if (wantsCover && this.blackboard.currentCoverId === null) {
+        const coverSearchAllowed =
+          this.currentElapsed >= this.coverSearchCooldownUntil;
+        if (
+          wantsCover &&
+          coverSearchAllowed &&
+          this.blackboard.currentCoverId === null
+        ) {
           fsm.setState("takeCover");
           return;
         }
@@ -595,7 +607,9 @@ export class CombineNpc implements Damageable, INpc {
       },
       update: () => {
         if (!this.combat.isReloading(this.currentElapsed)) {
-          fsm.setState("engage");
+          fsm.setState(
+            this.blackboard.currentCoverId !== null ? "coverFire" : "engage",
+          );
         }
       },
     });
@@ -845,7 +859,7 @@ export class CombineNpc implements Damageable, INpc {
     const threat = this.currentThreat;
 
     if (
-      (fsmState === "takeCover" || fsmState === "engage") &&
+      fsmState === "takeCover" &&
       this.blackboard.currentCoverId === null &&
       threat
     ) {
@@ -858,6 +872,8 @@ export class CombineNpc implements Damageable, INpc {
         ctx.coverSystem.claim(best.id, this.id);
         this.blackboard.currentCoverId = best.id;
         this.desiredTarget.copy(best.position);
+      } else {
+        this.coverSearchCooldownUntil = this.currentElapsed + 2;
       }
     }
 

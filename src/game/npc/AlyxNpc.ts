@@ -181,7 +181,7 @@ export class AlyxNpc implements Damageable, INpc {
         { id: this.currentThreat.id, position: this.currentThreat.position },
       );
     } else {
-      this.perception.clearMemory();
+      this.perception.tickMemory(ctx.delta);
     }
 
     this.blackboard.timeSinceLastSeen += ctx.delta;
@@ -255,7 +255,7 @@ export class AlyxNpc implements Damageable, INpc {
         : new Vector3(0, 0.2, 1);
     this.lastHitDirection.copy(dir);
     this.blackboard.lastDamageDirection.copy(dir);
-    this.blackboard.lastDamageTime = performance.now() / 1000;
+    this.blackboard.lastDamageTime = this.currentElapsed;
 
     const remaining = this.health.applyDamage(amount);
     this.eventBus.emit("npc.damaged", {
@@ -363,7 +363,6 @@ export class AlyxNpc implements Damageable, INpc {
           this.combat.canStartBurst(this.currentElapsed)
         ) {
           this.aimTarget.copy(this.currentThreat.position);
-          this.aimTarget.y += 1.2;
           this.combat.startBurst(this.currentElapsed);
         }
       },

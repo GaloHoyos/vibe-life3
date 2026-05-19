@@ -47,6 +47,12 @@ export class NpcRangedCombat {
   private reserve: number;
   private cooldownUntil = 0;
   private reloadUntil = 0;
+  /**
+   * Balas a transferir de `reserve` a `magazine` cuando termina el reload
+   * timer. 0 cuando no hay reload pendiente. Aplazar el refill evita que
+   * `needsReload()` mienta durante la animación.
+   */
+  private pendingReloadAmount = 0;
   private burstShotsLeft = 0;
   private nextShotAt = 0;
   private readonly weaponId: WeaponId;
@@ -66,6 +72,11 @@ export class NpcRangedCombat {
 
   /** Llamar cada frame para ejecutar disparos pendientes de la ráfaga actual. */
   update(ctx: RangedFireContext): void {
+    if (this.pendingReloadAmount > 0 && ctx.now >= this.reloadUntil) {
+      this.magazine += this.pendingReloadAmount;
+      this.reserve -= this.pendingReloadAmount;
+      this.pendingReloadAmount = 0;
+    }
     if (
       this.burstShotsLeft > 0 &&
       ctx.now >= this.nextShotAt &&
@@ -108,11 +119,19 @@ export class NpcRangedCombat {
   }
 
   needsReload(): boolean {
-    return this.magazine === 0 && this.reserve > 0;
+    return (
+      this.magazine === 0 &&
+      this.reserve > 0 &&
+      this.pendingReloadAmount === 0
+    );
   }
 
   canReload(): boolean {
-    return this.reserve > 0 && this.magazine < this.getWeapon().magazineSize;
+    return (
+      this.reserve > 0 &&
+      this.magazine < this.getWeapon().magazineSize &&
+      this.pendingReloadAmount === 0
+    );
   }
 
   isReloading(now: number): boolean {
@@ -122,15 +141,17 @@ export class NpcRangedCombat {
   /** Inicia recarga. Devuelve duración (s). */
   startReload(now: number): number {
     const weapon = this.getWeapon();
-    if (this.reserve <= 0 || this.magazine >= weapon.magazineSize) {
+    if (
+      this.pendingReloadAmount > 0 ||
+      this.reserve <= 0 ||
+      this.magazine >= weapon.magazineSize
+    ) {
       return 0;
     }
     this.abortBurst();
     this.reloadUntil = now + weapon.reloadTime;
     const needed = weapon.magazineSize - this.magazine;
-    const taken = Math.min(needed, this.reserve);
-    this.magazine += taken;
-    this.reserve -= taken;
+    this.pendingReloadAmount = Math.min(needed, this.reserve);
     return weapon.reloadTime;
   }
 
