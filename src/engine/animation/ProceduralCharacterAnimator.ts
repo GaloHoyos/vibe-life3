@@ -1,68 +1,107 @@
-import { Bone, MathUtils, Object3D, Vector3 } from 'three';
-import type { PhysicsWorld } from '../physics/PhysicsWorld';
-import type { Damageable } from '../../shared/types/lifecycle';
-import type { CharacterAnimationConfig } from '../characters/CharacterDefinition';
-import { AnimationDebug } from './AnimationDebug';
-import { BoneMapper } from './BoneMapper';
-import { applyBoneRotationOffset } from './BoneRotation';
-import { HumanoidRestPose } from './HumanoidRestPose';
-import { PoseSnapshot } from './PoseSnapshot';
-import { ProceduralBalance } from './ProceduralBalance';
-import { DefaultWalkConfig, DefaultWalkOptions, ProceduralWalk, type ProceduralWalkConfig } from './ProceduralWalk';
-import type { RagdollConfig } from './RagdollDefinition';
-import { RagdollSystem } from './RagdollSystem';
+import { Object3D, Vector3 } from "three";
+import type { CharacterAnimationConfig } from "../characters/CharacterDefinition";
+import type { PhysicsWorld } from "../physics/PhysicsWorld";
+import type { Damageable } from "../../shared/types/lifecycle";
+import { AnimationDebug } from "./AnimationDebug";
+import type { AnimationInput } from "./AnimationInput";
+import { BoneMapper } from "./BoneMapper";
+import { HumanoidRestPose } from "./HumanoidRestPose";
+import { AimLayer } from "./layers/AimLayer";
+import type { AnimationLayer, AnimationLayerContext } from "./layers/AnimationLayer";
+import { AttackLayer } from "./layers/AttackLayer";
+import { HitLayer } from "./layers/HitLayer";
+import { IdleLayer } from "./layers/IdleLayer";
+import { LocomotionLayer } from "./layers/LocomotionLayer";
+import { LookAtLayer } from "./layers/LookAtLayer";
+import { PostureLayer } from "./layers/PostureLayer";
+import { ReloadLayer } from "./layers/ReloadLayer";
+import { VelocityLeanLayer } from "./layers/VelocityLeanLayer";
+import { PoseSnapshot } from "./PoseSnapshot";
+import type { RagdollConfig } from "./RagdollDefinition";
+import { RagdollSystem } from "./RagdollSystem";
 
-export type ProceduralAnimationState = 'idle' | 'walk' | 'run' | 'attack' | 'hit' | 'dead';
+/**
+ * Enum heredado, mantenido para debug y para getState(). El nuevo flujo
+ * usa `AnimationInput` (en lugar de un estado discreto); este string es
+ * derivado on-demand a partir del estado interno + velocity.
+ */
+export type ProceduralAnimationState =
+  | "idle"
+  | "walk"
+  | "run"
+  | "attack"
+  | "hit"
+  | "dead";
 
 export interface ProceduralAnimatorOptions {
   id: string;
   root: Object3D;
   physics: PhysicsWorld;
-  walk?: Partial<ProceduralWalkConfig>;
   ragdoll?: Partial<RagdollConfig>;
   animation?: CharacterAnimationConfig;
+  /** Identificador del preset (combine, alyx, zombie). Permite que el
+   *  rest pose se override desde `RestPoseTuning` para tuning visual. */
+  characterId?: string;
   owner?: Damageable;
   debug?: boolean;
 }
 
-export interface ProceduralAnimatorUpdate {
-  velocity: Vector3;
-  desiredDirection: Vector3;
-  isGrounded: boolean;
-  state: ProceduralAnimationState;
-  deltaTime: number;
-  time: number;
-  lookDirection?: Vector3;
-}
+const RUN_SPEED_THRESHOLD = 4.7;
+const WALK_SPEED_THRESHOLD = 0.15;
 
+/**
+ * Orquestador de animación procedural. Cada frame:
+ *
+ *  1. Restaura la pose snapshot (root T-pose del GLB)
+ *  2. Aplica `HumanoidRestPose` (offsets fijos del preset)
+ *  3. Corre los layers en orden, escribiendo offsets aditivos sobre bones/root
+ *  4. Sincroniza los sensores live del ragdoll (hit detection por body part)
+ *
+ * Los `AnimationLayer` son responsables de su propio estado interno
+ * (timers de hit/attack/reload). El animator sólo expone disparadores
+ * (`hit()`, `attack()`, `reload()`) que reenvían al layer correspondiente.
+ */
 export class ProceduralCharacterAnimator {
   readonly mapper: BoneMapper;
 
   private readonly pose: PoseSnapshot;
   private readonly restPose: HumanoidRestPose;
-  private readonly walk: ProceduralWalk;
-  private readonly balance = new ProceduralBalance();
   private readonly ragdoll: RagdollSystem;
   private readonly debug: AnimationDebug;
-  private readonly hitDirection = new Vector3();
-  private currentState: ProceduralAnimationState = 'idle';
-  private hitTimer = 0;
-  private attackTimer = 0;
+
+  private readonly locomotion: LocomotionLayer;
+  private readonly posture: PostureLayer;
+  private readonly idle = new IdleLayer();
+  private readonly aim = new AimLayer();
+  private readonly reload = new ReloadLayer();
+  private readonly attack = new AttackLayer();
+  private readonly hit = new HitLayer();
+  private readonly lookAt: LookAtLayer;
+  private readonly velocityLean = new VelocityLeanLayer();
+  private readonly layers: AnimationLayer[];
+
+  private isDead = false;
 
   constructor(private readonly options: ProceduralAnimatorOptions) {
     this.mapper = new BoneMapper(options.root, { debug: options.debug });
     this.pose = new PoseSnapshot(options.root);
-    this.restPose = new HumanoidRestPose(options.animation);
-    this.walk = new ProceduralWalk({
-      ...DefaultWalkConfig,
-      ...options.walk,
-      style: options.animation?.walkStyle ?? options.walk?.style ?? DefaultWalkConfig.style,
-      maxHeadYaw: options.animation?.maxHeadYaw ?? DefaultWalkConfig.maxHeadYaw,
-      maxHeadPitch: options.animation?.maxHeadPitch ?? DefaultWalkConfig.maxHeadPitch,
-    }, {
-      boneAxes: options.animation?.boneAxes ?? DefaultWalkOptions.boneAxes,
-      armsMode: options.animation?.armsMode ?? DefaultWalkOptions.armsMode,
-    });
+    this.restPose = new HumanoidRestPose(options.animation, options.characterId);
+    this.locomotion = new LocomotionLayer(options.animation);
+    this.posture = new PostureLayer(options.animation);
+    this.lookAt = new LookAtLayer(options.animation);
+
+    this.layers = [
+      this.locomotion,
+      this.idle,
+      this.posture,
+      this.aim,
+      this.reload,
+      this.attack,
+      this.hit,
+      this.lookAt,
+      this.velocityLean,
+    ];
+
     this.ragdoll = new RagdollSystem({
       id: options.id,
       root: options.root,
@@ -71,197 +110,97 @@ export class ProceduralCharacterAnimator {
       config: options.ragdoll,
       owner: options.owner,
     });
-    if ((options.ragdoll?.activeWhileAlive ?? true) && this.mapper.hasSkeleton()) {
+    if (
+      (options.ragdoll?.activeWhileAlive ?? true) &&
+      this.mapper.hasSkeleton()
+    ) {
       this.ragdoll.ensureLiveSensors();
     }
     this.debug = new AnimationDebug(options.debug);
     this.debug.logMapping(this.mapper);
   }
 
-  update(update: ProceduralAnimatorUpdate): void {
-    if (this.currentState === 'dead') {
-      this.ragdoll.update(update.deltaTime);
+  update(input: AnimationInput): void {
+    if (this.isDead) {
+      this.ragdoll.update(input.deltaTime);
       return;
     }
 
-    if (update.state === 'dead') {
+    if (input.isDead) {
       this.die();
-      this.ragdoll.update(update.deltaTime);
+      this.ragdoll.update(input.deltaTime);
       return;
+    }
+
+    for (const layer of this.layers) {
+      layer.update?.(input);
     }
 
     this.pose.restore();
     this.restPose.apply(this.mapper.bones);
-    this.currentState = this.resolveState(update);
-    this.applyState(update);
-    this.applyLookAt(update.lookDirection);
-    this.balance.applyVelocityLean(this.options.root, update.velocity, update.desiredDirection, 1);
+
+    const ctx: AnimationLayerContext = {
+      root: this.options.root,
+      bones: this.mapper.bones,
+      hasSkeleton: this.mapper.hasSkeleton(),
+      input,
+    };
+    for (const layer of this.layers) {
+      layer.apply(ctx);
+    }
+
     this.ragdoll.updateLiveSensors();
   }
 
-  hit(direction?: Vector3): void {
-    this.hitTimer = 0.22;
-    if (direction && direction.lengthSq() > 0.001) {
-      this.hitDirection.copy(direction).normalize();
-    }
+  triggerHit(direction?: Vector3): void {
+    this.hit.trigger(direction);
   }
 
-  attack(): void {
-    this.attackTimer = 0.35;
+  triggerAttack(): void {
+    this.attack.trigger();
+  }
+
+  triggerReload(duration: number): void {
+    this.reload.trigger(duration);
   }
 
   die(hitDirection?: Vector3, hitPartName?: string): void {
-    if (this.currentState === 'dead') {
+    if (this.isDead) {
       return;
     }
-
-    this.currentState = 'dead';
-    this.ragdoll.activate(hitDirection ?? this.hitDirection, undefined, hitPartName);
+    this.isDead = true;
+    this.ragdoll.activate(hitDirection, undefined, hitPartName);
   }
 
-  dieWithVelocity(hitDirection: Vector3 | undefined, currentVelocity: Vector3, hitPartName?: string): void {
-    if (this.currentState === 'dead') {
+  dieWithVelocity(
+    hitDirection: Vector3 | undefined,
+    currentVelocity: Vector3,
+    hitPartName?: string,
+  ): void {
+    if (this.isDead) {
       return;
     }
-
-    this.currentState = 'dead';
-    this.ragdoll.activate(hitDirection ?? this.hitDirection, currentVelocity, hitPartName);
+    this.isDead = true;
+    this.ragdoll.activate(hitDirection, currentVelocity, hitPartName);
   }
 
   isRagdollActive(): boolean {
     return this.ragdoll.isActive();
   }
 
-  getState(): ProceduralAnimationState {
-    return this.currentState;
+  /**
+   * Estado discreto derivado para debug / overlays. La animación real ya no
+   * usa esto — vive en `AnimationInput`. Se mantiene como string descriptivo.
+   */
+  getState(input?: AnimationInput): ProceduralAnimationState {
+    if (this.isDead) return "dead";
+    if (!input) return "idle";
+    const speed = input.locomotion.worldVelocity.length();
+    if (input.activity === "meleeStrike" || input.activity === "meleeWindup") {
+      return "attack";
+    }
+    if (speed > RUN_SPEED_THRESHOLD) return "run";
+    if (speed > WALK_SPEED_THRESHOLD) return "walk";
+    return "idle";
   }
-
-  private resolveState(update: ProceduralAnimatorUpdate): ProceduralAnimationState {
-    if (this.hitTimer > 0) {
-      this.hitTimer = Math.max(0, this.hitTimer - update.deltaTime);
-      return 'hit';
-    }
-
-    if (this.attackTimer > 0) {
-      this.attackTimer = Math.max(0, this.attackTimer - update.deltaTime);
-      return 'attack';
-    }
-
-    if (update.state === 'dead') {
-      return 'dead';
-    }
-
-    if (update.velocity.length() > 4.7) {
-      return 'run';
-    }
-
-    if (update.velocity.length() > 0.15) {
-      return 'walk';
-    }
-
-    return 'idle';
-  }
-
-  private applyState(update: ProceduralAnimatorUpdate): void {
-    if (!this.mapper.hasSkeleton()) {
-      this.applyRootFallback(update);
-      return;
-    }
-
-    if (this.currentState === 'idle') {
-      this.balance.applyIdle(this.options.root, this.mapper.bones, update.time, 1);
-      return;
-    }
-
-    if (this.currentState === 'walk') {
-      const bob = this.walk.apply(this.mapper.bones, update.velocity, update.time, 1, 1);
-      this.applySkeletonBob(bob);
-      return;
-    }
-
-    if (this.currentState === 'run') {
-      const bob = this.walk.apply(this.mapper.bones, update.velocity, update.time, 1.25, 1.35);
-      this.applySkeletonBob(bob);
-      return;
-    }
-
-    if (this.currentState === 'attack') {
-      this.applyAttackPose();
-      return;
-    }
-
-    if (this.currentState === 'hit') {
-      this.applyHitReaction();
-    }
-  }
-
-  private applyAttackPose(): void {
-    const progress = 1 - this.attackTimer / 0.35;
-    const punch = Math.sin(progress * Math.PI);
-
-    rotateX(this.mapper.bones.chest, 0.18 * punch);
-    rotateX(this.mapper.bones.rightUpperArm, -1.15 * punch);
-    rotateX(this.mapper.bones.rightForearm, -0.55 * punch);
-    rotateZ(this.mapper.bones.leftUpperArm, 0.22 * punch);
-  }
-
-  private applyHitReaction(): void {
-    const progress = 1 - this.hitTimer / 0.22;
-    const recoil = Math.sin(progress * Math.PI);
-
-    rotateX(this.mapper.bones.spine, -0.28 * recoil);
-    rotateX(this.mapper.bones.chest, -0.36 * recoil);
-    rotateY(this.mapper.bones.head, this.hitDirection.x * 0.45 * recoil);
-    rotateZ(this.mapper.bones.leftUpperArm, -0.45 * recoil);
-    rotateZ(this.mapper.bones.rightUpperArm, 0.45 * recoil);
-  }
-
-  private applyLookAt(direction?: Vector3): void {
-    if (!direction || direction.lengthSq() <= 0.001 || this.currentState === 'dead') {
-      return;
-    }
-
-    const localDirection = direction.clone().normalize();
-    const maxYaw = this.options.animation?.maxHeadYaw ?? DefaultWalkConfig.maxHeadYaw;
-    const maxPitch = this.options.animation?.maxHeadPitch ?? DefaultWalkConfig.maxHeadPitch;
-    const yaw = MathUtils.clamp(Math.atan2(localDirection.x, localDirection.z), -maxYaw, maxYaw);
-    const pitch = MathUtils.clamp(Math.asin(MathUtils.clamp(localDirection.y, -1, 1)), -maxPitch, maxPitch);
-
-    applyBoneRotationOffset(this.mapper.bones.head, this.options.animation?.boneAxes.headYawAxis ?? 'y', yaw);
-    rotateX(this.mapper.bones.head, -pitch);
-    applyBoneRotationOffset(this.mapper.bones.neck, this.options.animation?.boneAxes.headYawAxis ?? 'y', yaw * 0.35);
-    applyBoneRotationOffset(this.mapper.bones.chest, this.options.animation?.boneAxes.headYawAxis ?? 'y', yaw * 0.18);
-  }
-
-  private applyRootFallback(update: ProceduralAnimatorUpdate): void {
-    const speed = update.velocity.length();
-    const walkAmount = MathUtils.clamp(speed / 4, 0, 1);
-    const bob = Math.sin(update.time * 7 * Math.max(walkAmount, 0.25)) * 0.08 * walkAmount;
-    const sway = Math.sin(update.time * 3.5) * 0.08 * Math.max(walkAmount, 0.25);
-
-    this.options.root.position.y += bob;
-    this.options.root.rotation.z += sway;
-    this.options.root.rotation.x += walkAmount * 0.12;
-  }
-
-  private applySkeletonBob(amount: number): void {
-    if (this.mapper.bones.hips) {
-      this.mapper.bones.hips.position.y += amount;
-      return;
-    }
-
-    this.options.root.position.y += amount;
-  }
-}
-
-function rotateX(bone: Bone | undefined, radians: number): void {
-  applyBoneRotationOffset(bone, 'x', radians);
-}
-
-function rotateY(bone: Bone | undefined, radians: number): void {
-  applyBoneRotationOffset(bone, 'y', radians);
-}
-
-function rotateZ(bone: Bone | undefined, radians: number): void {
-  applyBoneRotationOffset(bone, 'z', radians);
 }

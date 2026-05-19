@@ -56,6 +56,7 @@ export class NpcRangedCombat {
     private readonly rangedConfig: CharacterRangedAttackConfig,
     private readonly raycast: Raycast,
     private readonly eventBus: GameEventBus,
+    private readonly onShot?: () => void,
   ) {
     this.weaponId = this.rangedConfig.weaponId as WeaponId;
     const weapon = this.getWeapon();
@@ -171,6 +172,7 @@ export class NpcRangedCombat {
     );
 
     this.magazine -= 1;
+    this.onShot?.();
     this.eventBus.emit("weapon.fired", {
       weaponName: weapon.displayName,
       weaponType: weapon.type,

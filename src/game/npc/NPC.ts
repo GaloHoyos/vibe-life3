@@ -1,7 +1,6 @@
 import { Group, MathUtils, Object3D, Vector3 } from "three";
 import { isHostileTo, type Faction } from "../../engine/ai/Faction";
 import { StateMachine } from "../../engine/ai/StateMachine";
-import type { ProceduralAnimationState } from "../../engine/animation/ProceduralCharacterAnimator";
 import type { CharacterDefinition } from "../../engine/characters/CharacterDefinition";
 import type { Damageable } from "../../shared/types/lifecycle";
 import { Dialogue } from "../config/strings";
@@ -16,6 +15,7 @@ import { Raycast } from "../../engine/physics/Raycast";
 import type { ActorSnapshot, INpc, NpcUpdateContext } from "./INpc";
 import { NpcAnimationBridge } from "./NpcAnimationBridge";
 import { NpcCombat } from "./NpcCombat";
+import { NpcDebugFlags } from "./NpcDebugFlags";
 import type { NpcAiState, NpcBalanceState } from "./NPCState";
 
 export interface NPCOptions {
@@ -123,7 +123,7 @@ export class NPC implements Damageable, INpc {
 
   update(ctx: NpcUpdateContext): void {
     if (this.deadHandled) {
-      this.animation.updateStandalone(ctx.delta, "dead");
+      this.animation.updateStandalone(ctx.delta, { dead: true });
       return;
     }
 
@@ -134,9 +134,12 @@ export class NPC implements Damageable, INpc {
     if (threat) {
       this.targetPosition.copy(threat.position);
       this.currentPlayer = threat.entity;
-    } else {
+    } else if (!NpcDebugFlags.ignorePlayer) {
       this.targetPosition.copy(ctx.player.position);
       this.currentPlayer = ctx.player.entity;
+    } else {
+      this.targetPosition.copy(this.mesh.position);
+      this.currentPlayer = null;
     }
 
     this.balanceFsm.update(delta);
@@ -162,12 +165,17 @@ export class NPC implements Damageable, INpc {
     const wantsMove = ai === "chase" && balance === "balanced";
     const useTarget =
       ai !== "idle" && balance !== "fallen" && balance !== "recovering";
-    this.motor.update(delta, useTarget ? this.targetPosition : null, wantsMove);
+    const frozen = NpcDebugFlags.freezeMovement;
+    this.motor.update(
+      delta,
+      frozen ? null : useTarget ? this.targetPosition : null,
+      frozen ? false : wantsMove,
+    );
   }
 
   syncFromPhysics(): void {
     if (this.deadHandled) {
-      this.animation.updateStandalone(1 / 60, "dead");
+      this.animation.updateStandalone(1 / 60, { dead: true });
       return;
     }
 
@@ -177,7 +185,6 @@ export class NPC implements Damageable, INpc {
     this.mesh.rotation.set(0, snapshot.yaw, 0);
     this.animation.updateFromMotor({
       snapshot,
-      state: this.getAnimationState(),
       lookTarget: this.targetPosition,
       balanceIsStumbling: this.balanceFsm.getState() === "stumbling",
     });
@@ -399,20 +406,13 @@ export class NPC implements Damageable, INpc {
     }
   }
 
-  private getAnimationState(): ProceduralAnimationState {
-    const ai = this.aiFsm.getState();
-    const balance = this.balanceFsm.getState();
-
-    if (ai === "dead") return "dead";
-    if (ai === "attack") return "attack";
-    if (balance === "stumbling") return "hit";
-    if (ai === "chase") return "walk";
-    return "idle";
-  }
-
   private pickThreat(ctx: NpcUpdateContext): ActorSnapshot | null {
     const candidates: ActorSnapshot[] = [];
-    if (ctx.player.isAlive && isHostileTo(this.faction, ctx.player.faction)) {
+    if (
+      !NpcDebugFlags.ignorePlayer &&
+      ctx.player.isAlive &&
+      isHostileTo(this.faction, ctx.player.faction)
+    ) {
       candidates.push(ctx.player);
     }
     for (const other of ctx.npcs) {

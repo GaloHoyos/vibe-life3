@@ -3,8 +3,12 @@ import { Blackboard, createBlackboard } from "../../engine/ai/Blackboard";
 import { type Faction, isHostileTo } from "../../engine/ai/Faction";
 import { Perception } from "../../engine/ai/Perception";
 import { StateMachine } from "../../engine/ai/StateMachine";
-import type { ProceduralAnimationState } from "../../engine/animation/ProceduralCharacterAnimator";
 import type { CharacterDefinition } from "../../engine/characters/CharacterDefinition";
+import { getWeaponDefinition } from "../config/weapons.config";
+import type {
+  WeaponHandedness,
+  WeaponId,
+} from "../gameplay/weapons/WeaponDefinition";
 import {
   CharacterMotor,
   type CharacterMotorSnapshot,
@@ -16,6 +20,7 @@ import { Dialogue } from "../config/strings";
 import type { GameEventBus } from "../GameEvents";
 import { Health } from "../gameplay/Health";
 import type { ActorSnapshot, INpc, NpcUpdateContext } from "./INpc";
+import { NpcDebugFlags } from "./NpcDebugFlags";
 import { NpcAnimationBridge } from "./NpcAnimationBridge";
 import { NpcPathFollower } from "./NpcPathFollower";
 import { NpcRangedCombat } from "./NpcRangedCombat";
@@ -79,6 +84,7 @@ export class AlyxNpc implements Damageable, INpc {
   private currentElapsed = 0;
   private aimSettleTime = 0;
   private readonly weaponAttachment: WeaponAttachmentHandle | null;
+  private readonly weaponHandedness: WeaponHandedness;
 
   /** Distancia ideal al player en modo follow. */
   private readonly followDistance = 4.0;
@@ -140,7 +146,11 @@ export class AlyxNpc implements Damageable, INpc {
       rangedConfig,
       this.raycast,
       options.eventBus,
+      () => this.animation.notifyShot(),
     );
+    this.weaponHandedness = getWeaponDefinition(
+      rangedConfig.weaponId as WeaponId,
+    ).handedness;
 
     this.weaponAttachment = options.weaponAttachment ?? null;
     this.fsm = this.buildFsm();
@@ -152,7 +162,7 @@ export class AlyxNpc implements Damageable, INpc {
 
   update(ctx: NpcUpdateContext): void {
     if (this.deadHandled) {
-      this.animation.updateStandalone(ctx.delta, "dead");
+      this.animation.updateStandalone(ctx.delta, { dead: true });
       return;
     }
 
@@ -181,6 +191,7 @@ export class AlyxNpc implements Damageable, INpc {
     }
 
     this.fsm.update(ctx.delta);
+    this.updateAimingPose();
 
     if (this.combat.isFiringBurst() && this.currentThreat) {
       this.aimTarget.copy(this.currentThreat.position);
@@ -199,12 +210,17 @@ export class AlyxNpc implements Damageable, INpc {
 
     const adjusted = this.computeSteeredTarget(ctx);
     const targetForMotor = this.wantsMove ? adjusted : null;
-    this.motor.update(ctx.delta, targetForMotor, this.wantsMove);
+    const frozen = NpcDebugFlags.freezeMovement;
+    this.motor.update(
+      ctx.delta,
+      frozen ? null : targetForMotor,
+      frozen ? false : this.wantsMove,
+    );
   }
 
   syncFromPhysics(): void {
     if (this.deadHandled) {
-      this.animation.updateStandalone(1 / 60, "dead");
+      this.animation.updateStandalone(1 / 60, { dead: true });
       return;
     }
     const snapshot = this.motor.syncFromPhysics();
@@ -216,7 +232,6 @@ export class AlyxNpc implements Damageable, INpc {
       : this.desiredTarget;
     this.animation.updateFromMotor({
       snapshot,
-      state: this.getAnimationState(),
       lookTarget,
       balanceIsStumbling: false,
     });
@@ -319,7 +334,14 @@ export class AlyxNpc implements Damageable, INpc {
         }
 
         if (this.combat.needsReload()) {
-          this.combat.startReload(this.currentElapsed);
+          const reloadDuration = this.combat.startReload(this.currentElapsed);
+          if (reloadDuration > 0) {
+            this.animation.notifyReload(reloadDuration);
+            this.animation.setActivity("reloading");
+          }
+        }
+        if (!this.combat.isReloading(this.currentElapsed)) {
+          this.animation.setActivity("none");
         }
 
         if (
@@ -366,6 +388,20 @@ export class AlyxNpc implements Damageable, INpc {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  private updateAimingPose(): void {
+    const threat = this.currentThreat;
+    const state = this.fsm.getState();
+    if (!threat || state !== "combat") {
+      this.animation.setAiming(null);
+      return;
+    }
+    if (this.combat.isReloading(this.currentElapsed)) {
+      this.animation.setAiming(null);
+      return;
+    }
+    this.animation.setAiming(threat.position, this.weaponHandedness);
+  }
 
   private pickThreat(ctx: NpcUpdateContext): ActorSnapshot | null {
     let best: ActorSnapshot | null = null;
@@ -478,11 +514,4 @@ export class AlyxNpc implements Damageable, INpc {
     ).normalize();
   }
 
-  private getAnimationState(): ProceduralAnimationState {
-    const state = this.fsm.getState();
-    if (state === "dead") return "dead";
-    if (this.combat.isFiringBurst()) return "attack";
-    if (this.wantsMove) return "walk";
-    return "idle";
-  }
 }

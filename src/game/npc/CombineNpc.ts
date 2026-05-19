@@ -7,8 +7,12 @@ import {
 } from "../../engine/ai/Faction";
 import { Perception } from "../../engine/ai/Perception";
 import { StateMachine } from "../../engine/ai/StateMachine";
-import type { ProceduralAnimationState } from "../../engine/animation/ProceduralCharacterAnimator";
 import type { CharacterDefinition } from "../../engine/characters/CharacterDefinition";
+import { getWeaponDefinition } from "../config/weapons.config";
+import type {
+  WeaponHandedness,
+  WeaponId,
+} from "../gameplay/weapons/WeaponDefinition";
 import {
   CharacterMotor,
   type CharacterMotorSnapshot,
@@ -24,6 +28,7 @@ import type {
   INpc,
   NpcUpdateContext,
 } from "./INpc";
+import { NpcDebugFlags } from "./NpcDebugFlags";
 import { NpcAnimationBridge } from "./NpcAnimationBridge";
 import { NpcBarker } from "./NpcBarker";
 import { NpcPathFollower } from "./NpcPathFollower";
@@ -81,6 +86,7 @@ export class CombineNpc implements Damageable, INpc {
   private readonly pathFollower = new NpcPathFollower();
   private readonly barker: NpcBarker;
   private readonly weaponAttachment: WeaponAttachmentHandle | null;
+  private readonly weaponHandedness: WeaponHandedness;
   private readonly raycast: Raycast;
   private readonly blackboard: Blackboard;
   private readonly definition: CharacterDefinition;
@@ -170,7 +176,11 @@ export class CombineNpc implements Damageable, INpc {
       rangedConfig,
       this.raycast,
       options.eventBus,
+      () => this.animation.notifyShot(),
     );
+    this.weaponHandedness = getWeaponDefinition(
+      rangedConfig.weaponId as WeaponId,
+    ).handedness;
 
     this.barker = new NpcBarker("Combine", options.eventBus);
     this.weaponAttachment = options.weaponAttachment ?? null;
@@ -194,7 +204,7 @@ export class CombineNpc implements Damageable, INpc {
 
   update(ctx: NpcUpdateContext): void {
     if (this.deadHandled) {
-      this.animation.updateStandalone(ctx.delta, "dead");
+      this.animation.updateStandalone(ctx.delta, { dead: true });
       return;
     }
 
@@ -264,6 +274,8 @@ export class CombineNpc implements Damageable, INpc {
     );
 
     this.fsm.update(ctx.delta);
+    this.updateAimingPose();
+    this.updateAnimationActivity();
 
     if (this.combat.isFiringBurst() && this.currentThreat) {
       this.aimTarget.copy(this.currentThreat.position);
@@ -282,12 +294,17 @@ export class CombineNpc implements Damageable, INpc {
 
     const adjusted = this.computeSteeredTarget(ctx);
     const targetForMotor = this.wantsMove ? adjusted : null;
-    this.motor.update(ctx.delta, targetForMotor, this.wantsMove);
+    const frozen = NpcDebugFlags.freezeMovement;
+    this.motor.update(
+      ctx.delta,
+      frozen ? null : targetForMotor,
+      frozen ? false : this.wantsMove,
+    );
   }
 
   syncFromPhysics(): void {
     if (this.deadHandled) {
-      this.animation.updateStandalone(1 / 60, "dead");
+      this.animation.updateStandalone(1 / 60, { dead: true });
       return;
     }
     const snapshot = this.motor.syncFromPhysics();
@@ -299,7 +316,6 @@ export class CombineNpc implements Damageable, INpc {
       : this.desiredTarget;
     this.animation.updateFromMotor({
       snapshot,
-      state: this.getAnimationState(),
       lookTarget,
       balanceIsStumbling: false,
     });
@@ -561,7 +577,8 @@ export class CombineNpc implements Damageable, INpc {
     fsm.addState("reload", {
       enter: () => {
         this.wantsMove = false;
-        this.combat.startReload(this.currentElapsed);
+        const reloadDuration = this.combat.startReload(this.currentElapsed);
+        this.animation.notifyReload(reloadDuration);
         this.barker.say("reloading", this.currentElapsed);
       },
       update: () => {
@@ -736,6 +753,41 @@ export class CombineNpc implements Damageable, INpc {
   // Helpers
   // ---------------------------------------------------------------------------
 
+  /**
+   * Decide si el NPC está actualmente "apuntando con el arma" (manos
+   * agarrando, body alineado con el threat) y se lo dice al bridge para
+   * que el AimLayer levante los brazos.
+   */
+  private updateAimingPose(): void {
+    const threat = this.currentThreat;
+    const state = this.fsm.getState();
+    if (
+      !threat ||
+      state === "reload" ||
+      state === "idle" ||
+      state === "investigate" ||
+      state === "takeCover" ||
+      state === "dead"
+    ) {
+      this.animation.setAiming(null);
+      return;
+    }
+    if (state === "coverFire" && this.coverPhase === "hide") {
+      this.animation.setAiming(null);
+      return;
+    }
+    this.animation.setAiming(threat.position, this.weaponHandedness);
+  }
+
+  private updateAnimationActivity(): void {
+    const state = this.fsm.getState();
+    if (state === "reload") {
+      this.animation.setActivity("reloading");
+    } else {
+      this.animation.setActivity("none");
+    }
+  }
+
   private releaseCover(): void {
     if (this.blackboard.currentCoverId && this.currentCtx) {
       this.currentCtx.coverSystem.release(this.blackboard.currentCoverId, this.id);
@@ -745,7 +797,11 @@ export class CombineNpc implements Damageable, INpc {
 
   private pickThreat(ctx: NpcUpdateContext): ActorSnapshot | null {
     const candidates: ActorSnapshot[] = [];
-    if (ctx.player.isAlive && isHostileTo(this.faction, ctx.player.faction)) {
+    if (
+      !NpcDebugFlags.ignorePlayer &&
+      ctx.player.isAlive &&
+      isHostileTo(this.faction, ctx.player.faction)
+    ) {
       candidates.push(ctx.player);
     }
     for (const other of ctx.npcs) {
@@ -830,11 +886,4 @@ export class CombineNpc implements Damageable, INpc {
     ).normalize();
   }
 
-  private getAnimationState(): ProceduralAnimationState {
-    const state = this.fsm.getState();
-    if (state === "dead") return "dead";
-    if (this.combat.isFiringBurst()) return "attack";
-    if (this.wantsMove) return "walk";
-    return "idle";
-  }
 }

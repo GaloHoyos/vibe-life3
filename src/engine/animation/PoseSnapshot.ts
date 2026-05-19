@@ -24,6 +24,9 @@ export class PoseSnapshot {
 
   restore(): void {
     this.transforms.forEach((transform, object) => {
+      if (object.userData['skipPoseSnapshot']) {
+        return;
+      }
       if (!(this.preserveRootPosition && object === this.root)) {
         object.position.copy(transform.position);
       }

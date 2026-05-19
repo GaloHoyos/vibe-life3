@@ -4,6 +4,7 @@ import type { BackgroundAmbienceSystem } from "../engine/audio/BackgroundAmbienc
 import type { FootstepSoundSystem } from "../engine/audio/FootstepSoundSystem";
 import type { MusicManager } from "../engine/audio/MusicManager";
 import type { CharacterFactory } from "./characters/CharacterFactory";
+import type { NpcDebugSystem } from "./debug/NpcDebugSystem";
 import type { Controls } from "./gameplay/Controls";
 import type { DialogueAudioSystem } from "./audio/DialogueAudioSystem";
 import type { EnemySoundSystem } from "./audio/EnemySoundSystem";
@@ -37,6 +38,7 @@ export const GameTokens = {
   HUD: new ServiceToken<HUD>("HUD"),
   MainMenu: new ServiceToken<MainMenu>("MainMenu"),
   DebugOverlay: new ServiceToken<DebugOverlay>("DebugOverlay"),
+  NpcDebug: new ServiceToken<NpcDebugSystem>("NpcDebugSystem"),
   BackgroundAmbience: new ServiceToken<BackgroundAmbienceSystem>(
     "BackgroundAmbienceSystem",
   ),

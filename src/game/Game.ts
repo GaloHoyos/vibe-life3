@@ -15,6 +15,7 @@ import { UISoundSystem } from "./audio/UISoundSystem";
 import { WeaponSoundSystem } from "./audio/WeaponSoundSystem";
 import type { GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
+import { NpcDebugSystem } from "./debug/NpcDebugSystem";
 import { Controls } from "./gameplay/Controls";
 import { Player } from "./gameplay/Player";
 import { WeaponEffects } from "./gameplay/weapons/WeaponEffects";
@@ -120,6 +121,7 @@ export class Game {
     s.resolve(GameTokens.Subtitles).dispose();
     s.resolve(GameTokens.MainMenu).dispose();
     s.resolve(GameTokens.DebugOverlay).dispose();
+    s.resolve(GameTokens.NpcDebug).dispose();
     s.resolve(GameTokens.EventBus).clear();
 
     this.engine.dispose();
@@ -161,7 +163,8 @@ export class Game {
     const physics = s.resolve(EngineTokens.Physics);
     const input = s.resolve(EngineTokens.Input);
 
-    s.register(GameTokens.Controls, new Controls(input));
+    const controls = s.register(GameTokens.Controls, new Controls(input));
+    s.register(GameTokens.NpcDebug, new NpcDebugSystem(input, controls));
     s.register(
       GameTokens.Characters,
       new CharacterFactory(assets, physics, eventBus),
@@ -247,6 +250,8 @@ export class Game {
     if (controls.wasPressed("toggleDebug")) {
       debugOverlay.toggle();
     }
+
+    s.resolve(GameTokens.NpcDebug).update();
 
     if (input.wasKeyPressed("F2") && this.player) {
       const enabled = this.player.health.toggleGodMode();
@@ -385,7 +390,13 @@ export class Game {
 
   private readonly handlePointerLockChange = (): void => {
     const input = this.engine.services.resolve(EngineTokens.Input);
-    if (!input.isPointerLocked() && this.gameState === "playing") {
+    const npcDebug = this.engine.services.resolve(GameTokens.NpcDebug);
+    const debugRelease = npcDebug.isDebugMouseRelease();
+    if (
+      !input.isPointerLocked() &&
+      this.gameState === "playing" &&
+      !debugRelease
+    ) {
       this.setGameState("paused");
     }
     if (!input.isPointerLocked()) {
