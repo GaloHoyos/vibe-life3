@@ -3,8 +3,9 @@ import type { GameEventBus, WeaponSelectorState } from "../../GameEvents";
 import type { Input } from "../../../engine/Input";
 import type { CameraSystem } from "../../../engine/render/CameraSystem";
 import type { Raycast } from "../../../engine/physics/Raycast";
-import type { Scene } from "three";
+import { Quaternion, Vector3, type Scene } from "three";
 import { WEAPON_SLOT_COUNT } from "../../config/weapons.config";
+import { HudStrings } from "../../config/strings";
 import type { Controls } from "../Controls";
 import type { GameAction } from "../../config/controls.config";
 import { Recoil } from "./Recoil";
@@ -42,6 +43,9 @@ export class WeaponController {
   private readonly viewModel: WeaponViewModel;
   private selector: SelectorState | null = null;
   private suppressFireUntilRelease = false;
+  private readonly tmpUpdateOrigin = new Vector3();
+  private readonly tmpUpdateDir = new Vector3();
+  private readonly tmpUpdateQuat = new Quaternion();
 
   constructor(
     private readonly eventBus: GameEventBus,
@@ -79,12 +83,17 @@ export class WeaponController {
     this.recoil.update(delta, activeWeapon?.definition.recoil.recovery ?? 10);
 
     if (activeWeapon) {
+      // El context se reusa frame a frame. Las armas deben clonar si necesitan
+      // persistir vectores entre frames (gravity gun no lo hace — vive de leer-y-actuar).
+      this.tmpUpdateOrigin.copy(cameraSystem.camera.position);
+      this.tmpUpdateDir.copy(cameraSystem.getForwardDirection());
+      this.tmpUpdateQuat.copy(cameraSystem.camera.quaternion);
       activeWeapon.update(delta, {
         delta,
         elapsed,
-        origin: cameraSystem.camera.position.clone(),
-        direction: cameraSystem.getForwardDirection(),
-        cameraQuaternion: cameraSystem.camera.quaternion.clone(),
+        origin: this.tmpUpdateOrigin,
+        direction: this.tmpUpdateDir,
+        cameraQuaternion: this.tmpUpdateQuat,
       });
     }
 
@@ -302,7 +311,7 @@ export class WeaponController {
 
   private emitUnarmed(): void {
     this.eventBus.emit("weapon.changed", {
-      weaponName: "UNARMED",
+      weaponName: HudStrings.unarmed,
       ammo: 0,
       reserve: 0,
     });

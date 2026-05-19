@@ -1,6 +1,11 @@
 ﻿import { Bone, BoxGeometry, Group, Mesh, MeshStandardMaterial, Object3D, SphereGeometry, Vector3 } from 'three';
 import type { AssetManager } from '../../engine/assets/AssetManager';
+import { AlyxNpc } from '../npc/AlyxNpc';
+import { CombineNpc } from '../npc/CombineNpc';
+import type { INpc } from '../npc/INpc';
 import { NPC } from '../npc/NPC';
+import { attachWeaponToHand } from '../npc/NpcWeaponAttachment';
+import type { ModelAssetId } from '../../engine/assets/AssetManifest';
 import type { GameEventBus } from "../GameEvents";
 import type { PhysicsWorld } from '../../engine/physics/PhysicsWorld';
 import { getMaterial } from '../../engine/render/Materials';
@@ -8,9 +13,13 @@ import { CharacterPresets } from './CharacterPresets';
 import type { CharacterId } from '../../engine/characters/CharacterDefinition';
 
 /**
- * Instancia NPCs a partir de un `CharacterId` registrado en `CharacterPresets`:
- * carga el modelo (o usa un placeholder humanoid), aplica escala/offset
- * declarados y construye el `NPC` con sus dependencias.
+ * Instancia NPCs a partir de un `CharacterId`. Dispatch por `behaviorKind`:
+ *  - `zombieMelee`   → `NPC` (legacy zombie class)
+ *  - `combineRanged` → `CombineNpc`
+ *  - `alyxAlly`      → `AlyxNpc`
+ *
+ * Carga el modelo del manifest si tiene `modelId`, o cae a un humanoid
+ * placeholder bone-rigged que cumple la interfaz `ProceduralCharacterAnimator`.
  */
 export class CharacterFactory {
   constructor(
@@ -19,7 +28,7 @@ export class CharacterFactory {
     private readonly eventBus: GameEventBus,
   ) {}
 
-  async createNPC(characterId: CharacterId, instanceId: string, position: Vector3): Promise<NPC> {
+  async createNPC(characterId: CharacterId, instanceId: string, position: Vector3): Promise<INpc> {
     const definition = CharacterPresets[characterId] ?? CharacterPresets.placeholderHumanoid;
     const model = definition.modelId ? await this.assets.instantiateModel(definition.modelId) : null;
     const visualRoot = model?.root ?? createPlaceholderHumanoid();
@@ -28,15 +37,45 @@ export class CharacterFactory {
     visualRoot.rotation.y += definition.visualRotationY;
     visualRoot.position.copy(definition.visualOffset);
 
-    return new NPC({
+    const rangedWeaponId = definition.attack.ranged?.weaponId;
+    let weaponAttachment: import('../npc/NpcWeaponAttachment').WeaponAttachmentHandle | null = null;
+    if (rangedWeaponId) {
+      try {
+        const weapon = await this.assets.instantiateModel(
+          rangedWeaponId as ModelAssetId,
+        );
+        weaponAttachment = attachWeaponToHand(
+          visualRoot,
+          weapon?.root ?? null,
+          rangedWeaponId,
+          instanceId,
+        );
+      } catch (error) {
+        console.warn(
+          `[CharacterFactory] No se pudo cargar weapon '${rangedWeaponId}' para NPC '${instanceId}'`,
+          error,
+        );
+      }
+    }
+
+    const shared = {
       id: instanceId,
       definition,
       position,
       visualRoot,
       physics: this.physics,
       eventBus: this.eventBus,
-      hasSkeleton: model?.hasSkeleton ?? false,
-    });
+    };
+
+    switch (definition.behaviorKind) {
+      case "combineRanged":
+        return new CombineNpc({ ...shared, weaponAttachment });
+      case "alyxAlly":
+        return new AlyxNpc({ ...shared, weaponAttachment });
+      case "zombieMelee":
+      default:
+        return new NPC({ ...shared, hasSkeleton: model?.hasSkeleton ?? false });
+    }
   }
 }
 

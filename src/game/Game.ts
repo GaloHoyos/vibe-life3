@@ -8,25 +8,31 @@ import { EngineTokens } from "../engine/ServiceTokens";
 import type { Time } from "../engine/Time";
 import { CharacterFactory } from "./characters/CharacterFactory";
 import { FootstepsConfig } from "./config/audio.config";
-import { MenuStrings } from "./config/strings";
+import { Dialogue, MenuStrings } from "./config/strings";
 import { DialogueAudioSystem } from "./audio/DialogueAudioSystem";
 import { EnemySoundSystem } from "./audio/EnemySoundSystem";
 import { UISoundSystem } from "./audio/UISoundSystem";
 import { WeaponSoundSystem } from "./audio/WeaponSoundSystem";
 import type { GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
+import { NpcDebugSystem } from "./debug/NpcDebugSystem";
 import { Controls } from "./gameplay/Controls";
 import { Player } from "./gameplay/Player";
 import { WeaponEffects } from "./gameplay/weapons/WeaponEffects";
 import { InteractSystem, type SlidingDoor } from "./gameplay/interactions";
+import type { NavGraph } from "../engine/ai/NavGraph";
+import type { CoverSystem } from "./levels/CoverSystem";
+import type { CombatSquadCoordinator } from "./npc/CombatSquadCoordinator";
 import type { LevelDefinition } from "./levels/LevelDefinition";
 import { LevelLoader } from "./levels/LevelLoader";
 import { getLevel, type LevelId } from "./levels/LevelRegistry";
 import { TriggerSystem } from "./levels/TriggerSystem";
-import type { NPC } from "./npc/NPC";
+import type { ActorSnapshot, INpc, NpcUpdateContext } from "./npc/INpc";
 import { DialogueSystem } from "./narrative/DialogueSystem";
 import { LevelEvents } from "./narrative/LevelEvents";
-import type { WeaponPickup } from "./gameplay/weapons/WeaponPickup";
+import { WeaponPickup } from "./gameplay/weapons/WeaponPickup";
+import type { WeaponId } from "./gameplay/weapons/WeaponDefinition";
+import { WeaponDefinitions } from "./config/weapons.config";
 import { DebugOverlay } from "./ui/DebugOverlay";
 import { HUD } from "./ui/HUD";
 import { Subtitles } from "./ui/Subtitles";
@@ -56,9 +62,13 @@ export class Game {
   private gameState: GameMenuState = "mainMenu";
   private currentLevel: LevelDefinition | null = null;
   private player: Player | null = null;
-  private npcs: NPC[] = [];
+  private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
+  private coverSystem: CoverSystem | null = null;
+  private navGraph: NavGraph | null = null;
+  private squad: CombatSquadCoordinator | null = null;
+  private pendingExitTimeoutId: number | null = null;
 
   constructor(private readonly engine: Engine, options: GameOptions = {}) {
     this.root = engine.root;
@@ -104,6 +114,14 @@ export class Game {
     this.engine.stop();
     this.unbindBrowserEvents();
 
+    if (this.pendingExitTimeoutId !== null) {
+      window.clearTimeout(this.pendingExitTimeoutId);
+      this.pendingExitTimeoutId = null;
+    }
+
+    this.npcs.forEach((npc) => npc.dispose());
+    this.npcs = [];
+
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
     s.resolve(GameTokens.WeaponEffects).dispose();
@@ -112,6 +130,7 @@ export class Game {
     s.resolve(GameTokens.Subtitles).dispose();
     s.resolve(GameTokens.MainMenu).dispose();
     s.resolve(GameTokens.DebugOverlay).dispose();
+    s.resolve(GameTokens.NpcDebug).dispose();
     s.resolve(GameTokens.EventBus).clear();
 
     this.engine.dispose();
@@ -153,7 +172,8 @@ export class Game {
     const physics = s.resolve(EngineTokens.Physics);
     const input = s.resolve(EngineTokens.Input);
 
-    s.register(GameTokens.Controls, new Controls(input));
+    const controls = s.register(GameTokens.Controls, new Controls(input));
+    s.register(GameTokens.NpcDebug, new NpcDebugSystem(input, controls));
     s.register(
       GameTokens.Characters,
       new CharacterFactory(assets, physics, eventBus),
@@ -167,6 +187,35 @@ export class Game {
     );
     s.register(GameTokens.InteractSystem, new InteractSystem(eventBus));
     s.register(GameTokens.TriggerSystem, new TriggerSystem(eventBus));
+
+    eventBus.on("npc.weapon.dropped", (payload) => {
+      void this.handleWeaponDrop(payload.npcId, payload.weaponId, payload.position);
+    });
+  }
+
+  private async handleWeaponDrop(
+    npcId: string,
+    weaponId: string,
+    position: Vector3,
+  ): Promise<void> {
+    if (!(weaponId in WeaponDefinitions)) {
+      console.warn(`[Game] Dropped weapon '${weaponId}' no está en WeaponDefinitions`);
+      return;
+    }
+    const s = this.engine.services;
+    const scene = s.resolve(EngineTokens.Scene);
+    const assets = s.resolve(EngineTokens.Assets);
+    const physics = s.resolve(EngineTokens.Physics);
+    try {
+      const pickup = await WeaponPickup.create(scene.scene, physics, assets, {
+        id: `drop-${npcId}-${Date.now()}`,
+        weaponId: weaponId as WeaponId,
+        position,
+      });
+      this.weaponPickups.push(pickup);
+    } catch (error) {
+      console.warn(`[Game] No se pudo crear pickup del weapon dropeado`, error);
+    }
   }
 
   private registerUi(): void {
@@ -209,6 +258,15 @@ export class Game {
 
     if (controls.wasPressed("toggleDebug")) {
       debugOverlay.toggle();
+    }
+
+    s.resolve(GameTokens.NpcDebug).update();
+
+    if (input.wasKeyPressed("F2") && this.player) {
+      const enabled = this.player.health.toggleGodMode();
+      this.engine.services
+        .resolve(GameTokens.EventBus)
+        .emit("subtitle.show", enabled ? Dialogue.godModeOn : Dialogue.godModeOff);
     }
 
     if (controls.wasPressed("pause") && this.gameState === "playing") {
@@ -254,7 +312,38 @@ export class Game {
     this.weaponPickups.forEach((pickup) =>
       pickup.update(time.delta, playerPosition, player.weapons),
     );
-    this.npcs.forEach((npc) => npc.update(time.delta, playerPosition, player));
+    if (this.coverSystem && this.navGraph && this.squad) {
+      const playerSnapshot: ActorSnapshot = {
+        id: "player",
+        position: playerPosition,
+        faction: "player",
+        entity: player,
+        isAlive: player.isAlive(),
+        radius: 0.35,
+      };
+      const npcSnapshots: ActorSnapshot[] = this.npcs.map((npc) => ({
+        id: npc.id,
+        position: npc.position,
+        faction: npc.faction,
+        entity: npc,
+        isAlive: npc.isAlive(),
+        radius: npc.radius,
+      }));
+      const ctx: NpcUpdateContext = {
+        delta: time.delta,
+        elapsed: time.elapsed,
+        player: playerSnapshot,
+        npcs: [],
+        coverSystem: this.coverSystem,
+        navGraph: this.navGraph,
+        squad: this.squad,
+      };
+      this.npcs.forEach((npc, index) => {
+        ctx.npcs = npcSnapshots.filter((_, j) => j !== index);
+        npc.update(ctx);
+      });
+      this.squad.tickAssignments(time.elapsed, playerPosition);
+    }
     this.doors.forEach((door) => door.update(time.delta));
     physics.step(time.delta);
     this.npcs.forEach((npc) => npc.syncFromPhysics());
@@ -308,7 +397,13 @@ export class Game {
 
   private readonly handlePointerLockChange = (): void => {
     const input = this.engine.services.resolve(EngineTokens.Input);
-    if (!input.isPointerLocked() && this.gameState === "playing") {
+    const npcDebug = this.engine.services.resolve(GameTokens.NpcDebug);
+    const debugRelease = npcDebug.isDebugMouseRelease();
+    if (
+      !input.isPointerLocked() &&
+      this.gameState === "playing" &&
+      !debugRelease
+    ) {
       this.setGameState("paused");
     }
     if (!input.isPointerLocked()) {
@@ -415,10 +510,15 @@ export class Game {
       assets,
     );
 
+    this.npcs.forEach((npc) => npc.dispose());
+
     const loaded = await loader.load(level);
     this.npcs = loaded.npcs;
     this.doors = loaded.doors;
     this.weaponPickups = loaded.weaponPickups;
+    this.coverSystem = loaded.coverSystem;
+    this.navGraph = loaded.navGraph;
+    this.squad = loaded.squad;
 
     this.player = new Player(
       new Vector3(...level.playerStart),
@@ -449,11 +549,12 @@ export class Game {
 
     ambience.stop();
     music.stopMusic();
-    mainMenu.showLoading("Volviendo al menu principal...");
+    mainMenu.showLoading(MenuStrings.exitingToMainMenu);
 
     // Pequeña espera para que el overlay de carga llegue a pintarse antes de
     // que el navegador descarte la página por el reload.
-    window.setTimeout(() => {
+    this.pendingExitTimeoutId = window.setTimeout(() => {
+      this.pendingExitTimeoutId = null;
       window.location.reload();
     }, 250);
   }

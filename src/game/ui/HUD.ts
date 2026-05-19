@@ -1,4 +1,5 @@
 import type { Disposable } from "../../shared/types/lifecycle";
+import { HudStrings } from "../config/strings";
 import type { GameEventBus } from "../GameEvents";
 import type { HUDValue } from "./HealthArmorHUD";
 import { HUDView } from "./HUDView";
@@ -20,7 +21,7 @@ const DefaultHUDState = (): HUDStateShape => ({
   aux: { current: 100, max: 100 },
   auxDepleted: false,
   armorEnabled: false,
-  weapon: { name: "UNARMED", ammo: 0, reserve: 0 },
+  weapon: { name: HudStrings.unarmed, ammo: 0, reserve: 0 },
 });
 
 /**
@@ -85,13 +86,13 @@ export class HUD implements Disposable {
       ),
       eventBus.on("interaction.blur", () => this.setInteraction(undefined)),
       eventBus.on("player.pickup.health", ({ amount }) =>
-        this.view.notify(`+${amount} health`, "pickup"),
+        this.view.notify(HudStrings.healthPickedUp(amount), "pickup"),
       ),
       eventBus.on("player.pickup.ammo", ({ amount, weaponName }) => {
-        this.view.notify(`+${amount} ${weaponName ?? "ammo"}`, "pickup");
+        this.view.notify(HudStrings.ammoPickedUp(amount, weaponName), "pickup");
       }),
       eventBus.on("player.pickup.weapon", ({ weaponName }) =>
-        this.view.notify(`weapon acquired: ${weaponName}`, "pickup"),
+        this.view.notify(HudStrings.weaponPickedUp(weaponName), "pickup"),
       ),
       eventBus.on("dialogue.show", ({ text }) =>
         this.view.notify(text, "info"),

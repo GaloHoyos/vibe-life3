@@ -16,6 +16,8 @@ export type GameAction =
   | "weaponSlot4"
   | "weaponSlot5"
   | "toggleDebug"
+  | "toggleNpcDebug"
+  | "releaseMouse"
   | "pause";
 
 export const DefaultBindings: BindingMap<GameAction> = {
@@ -34,6 +36,8 @@ export const DefaultBindings: BindingMap<GameAction> = {
   weaponSlot4: ["Digit4"],
   weaponSlot5: ["Digit5"],
   toggleDebug: ["F3"],
+  toggleNpcDebug: ["F4"],
+  releaseMouse: ["F9"],
   pause: ["Escape"],
 };
 
@@ -53,6 +57,8 @@ export const ActionLabels: Record<GameAction, string> = {
   weaponSlot4: "Arma 4",
   weaponSlot5: "Arma 5",
   toggleDebug: "Mostrar / ocultar debug",
+  toggleNpcDebug: "Panel debug de NPCs",
+  releaseMouse: "Liberar cursor",
   pause: "Pausa",
 };
 
@@ -72,6 +78,8 @@ export const ActionOrder: readonly GameAction[] = [
   "weaponSlot4",
   "weaponSlot5",
   "toggleDebug",
+  "toggleNpcDebug",
+  "releaseMouse",
   "pause",
 ];
 

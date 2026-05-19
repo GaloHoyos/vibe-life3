@@ -1,10 +1,15 @@
-import { MathUtils, Vector3 } from 'three';
-import type { ArmsMode, HumanoidBoneAxesConfig } from '../characters/CharacterDefinition';
-import type { BoneMap } from './BoneMapper';
-import { applyBoneRotationOffset } from './BoneRotation';
+import type {
+  ArmsMode,
+  HumanoidBoneAxesConfig,
+} from "../characters/CharacterDefinition";
 
-export type WalkStyle = 'normal' | 'staggered' | 'heavy' | 'creature';
+export type WalkStyle = "normal" | "staggered" | "heavy" | "creature";
 
+/**
+ * Parámetros del ciclo de paso del `LocomotionLayer`. Históricamente vivía
+ * en una clase `ProceduralWalk`; quedó como datos puros más los defaults
+ * (la lógica vive ahora en `layers/LocomotionLayer.ts`).
+ */
 export interface ProceduralWalkConfig {
   stepFrequency: number;
   strideLength: number;
@@ -49,103 +54,17 @@ export const DefaultWalkConfig: ProceduralWalkConfig = {
   maxHeadPitch: 0.35,
   sideToSide: 0.015,
   randomness: 0.04,
-  style: 'normal',
+  style: "normal",
 };
 
 export const DefaultWalkOptions: ProceduralWalkOptions = {
   boneAxes: {
-    legSwingAxis: 'x',
-    armSwingAxis: 'x',
-    kneeBendAxis: 'x',
-    elbowBendAxis: 'x',
-    spineLeanAxis: 'x',
-    headYawAxis: 'y',
+    legSwingAxis: "x",
+    armSwingAxis: "x",
+    kneeBendAxis: "x",
+    elbowBendAxis: "x",
+    spineLeanAxis: "x",
+    headYawAxis: "y",
   },
-  armsMode: 'relaxed',
+  armsMode: "relaxed",
 };
-
-export class ProceduralWalk {
-  constructor(
-    private readonly config: ProceduralWalkConfig = DefaultWalkConfig,
-    private readonly options: ProceduralWalkOptions = DefaultWalkOptions,
-  ) {}
-
-  apply(bones: BoneMap, velocity: Vector3, time: number, intensity: number, runMultiplier = 1): number {
-    const speed = velocity.length();
-    const styleMultiplier = getStyleMultiplier(this.config.style);
-    const normalizedSpeed = MathUtils.clamp(speed / 3.2, 0, 1.25);
-    const phase = time * this.config.stepFrequency * Math.max(0.25, normalizedSpeed) * runMultiplier * styleMultiplier;
-    const leftStep = Math.sin(phase);
-    const rightStep = Math.sin(phase + Math.PI);
-    const leftLift = Math.max(0, Math.cos(phase)) * this.config.stepHeight * intensity;
-    const rightLift = Math.max(0, Math.cos(phase + Math.PI)) * this.config.stepHeight * intensity;
-    const stride = clamp(this.config.strideLength * intensity * runMultiplier, this.config.maxLegSwing);
-    const armSwing = clamp(this.config.armSwing * intensity * runMultiplier * getArmSwingMultiplier(this.options.armsMode), this.config.maxArmSwing);
-    const kneeBend = MathUtils.clamp(stride * 0.55, 0, this.config.maxKneeBend);
-    const torsoLean = clamp(this.config.torsoLean * intensity * runMultiplier, this.config.maxTorsoLean);
-    const side = MathUtils.clamp(Math.sin(phase) * this.config.sideToSide * intensity, -this.config.maxSideSwing, this.config.maxSideSwing);
-    const staggerNoise = this.config.style === 'staggered' ? Math.sin(time * 2.1) * this.config.randomness : 0;
-
-    applyBoneRotationOffset(bones.leftThigh, this.options.boneAxes.legSwingAxis, MathUtils.clamp(leftStep * stride + staggerNoise * 0.25, -this.config.maxLegSwing, this.config.maxLegSwing));
-    applyBoneRotationOffset(bones.rightThigh, this.options.boneAxes.legSwingAxis, MathUtils.clamp(rightStep * stride - staggerNoise * 0.25, -this.config.maxLegSwing, this.config.maxLegSwing));
-    applyBoneRotationOffset(bones.leftShin, this.options.boneAxes.kneeBendAxis, MathUtils.clamp(Math.max(0, -leftStep) * kneeBend + leftLift, 0, this.config.maxKneeBend));
-    applyBoneRotationOffset(bones.rightShin, this.options.boneAxes.kneeBendAxis, MathUtils.clamp(Math.max(0, -rightStep) * kneeBend + rightLift, 0, this.config.maxKneeBend));
-    applyBoneRotationOffset(bones.leftFoot, this.options.boneAxes.kneeBendAxis, MathUtils.clamp(-leftStep * 0.08, -this.config.maxFootRotation, this.config.maxFootRotation));
-    applyBoneRotationOffset(bones.rightFoot, this.options.boneAxes.kneeBendAxis, MathUtils.clamp(-rightStep * 0.08, -this.config.maxFootRotation, this.config.maxFootRotation));
-
-    applyBoneRotationOffset(bones.leftUpperArm, this.options.boneAxes.armSwingAxis, rightStep * armSwing * 0.55);
-    applyBoneRotationOffset(bones.rightUpperArm, this.options.boneAxes.armSwingAxis, leftStep * armSwing * 0.55);
-    applyBoneRotationOffset(bones.leftForearm, this.options.boneAxes.elbowBendAxis, getForearmBend(this.options.armsMode, leftStep, intensity));
-    applyBoneRotationOffset(bones.rightForearm, this.options.boneAxes.elbowBendAxis, getForearmBend(this.options.armsMode, rightStep, intensity));
-
-    applyBoneRotationOffset(bones.spine, this.options.boneAxes.spineLeanAxis, torsoLean);
-    applyBoneRotationOffset(bones.chest, this.options.boneAxes.spineLeanAxis, torsoLean * 0.45);
-    applyBoneRotationOffset(bones.chest, 'z', side);
-
-    return Math.abs(Math.sin(phase * 2)) * this.config.torsoBob * intensity * runMultiplier;
-  }
-}
-
-function clamp(value: number, max: number): number {
-  return MathUtils.clamp(value, -max, max);
-}
-
-function getStyleMultiplier(style: WalkStyle): number {
-  if (style === 'staggered') {
-    return 0.74;
-  }
-
-  if (style === 'heavy') {
-    return 0.72;
-  }
-
-  if (style === 'creature') {
-    return 1.15;
-  }
-
-  return 1;
-}
-
-function getArmSwingMultiplier(mode: ArmsMode): number {
-  if (mode === 'zombieForward') {
-    return 0.55;
-  }
-
-  if (mode === 'weaponAim') {
-    return 0.25;
-  }
-
-  return 1;
-}
-
-function getForearmBend(mode: ArmsMode, step: number, intensity: number): number {
-  if (mode === 'zombieForward') {
-    return -0.08 * intensity + Math.max(0, step) * 0.035;
-  }
-
-  if (mode === 'weaponAim') {
-    return -0.18 * intensity;
-  }
-
-  return -0.1 * intensity + Math.max(0, step) * 0.055;
-}

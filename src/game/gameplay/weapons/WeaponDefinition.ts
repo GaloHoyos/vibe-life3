@@ -1,9 +1,16 @@
 import { Euler, Vector3 } from "three";
+import type { WeaponHandedness as AnimationHandedness } from "../../../engine/animation/AnimationInput";
 import type { ModelAssetId } from "../../../engine/assets/AssetManifest";
 
 export type WeaponId = "crowbar" | "pistol" | "smg" | "ar3" | "gravityGun";
 export type WeaponType = "melee" | "hitscan" | "special";
 export type WeaponFireMode = "semi" | "auto";
+/**
+ * Cómo se empuña el arma — define la pose del AimLayer / ReloadLayer
+ * del NPC. Compartido con el view-model del player. Es el subset
+ * "con arma" del `WeaponHandedness` del engine (sin "none").
+ */
+export type WeaponHandedness = Exclude<AnimationHandedness, "none">;
 
 /**
  * Categoría HL-style. Cada categoría se mapea a un número de slot (1-5)
@@ -38,6 +45,7 @@ export interface WeaponDefinition {
   pickupModelId: ModelAssetId;
   category: WeaponCategory;
   type: WeaponType;
+  handedness: WeaponHandedness;
   damage: number;
   fireRate: number;
   magazineSize: number;

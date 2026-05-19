@@ -69,6 +69,17 @@ export interface GameEventMap {
     id: string;
     characterId: CharacterId;
   };
+  /**
+   * Un NPC vio un threat — broadcast a la facción para que aliados cercanos
+   * reciban la LKP. Sólo NPCs hostiles a `threatFaction` deberían reaccionar.
+   */
+  "npc.threat.spotted": {
+    spotterId: string;
+    spotterFaction: import("../engine/ai/Faction").Faction;
+    threatId: string;
+    threatPosition: Vector3;
+    spotterPosition: Vector3;
+  };
   "npc.attack": {
     id: string;
     characterId: CharacterId;
@@ -81,6 +92,12 @@ export interface GameEventMap {
   "npc.killed": {
     id: string;
     characterId: CharacterId;
+  };
+  /** El NPC dropea su arma en la posición indicada (típicamente al morir). */
+  "npc.weapon.dropped": {
+    npcId: string;
+    weaponId: string;
+    position: Vector3;
   };
   "door.opened": {
     id: string;

@@ -163,7 +163,9 @@ export class NpcCombat {
     direction: Vector3,
     distance: number,
   ): boolean {
-    const origin = npcPosition.clone().add(new Vector3(0, 0.9, 0));
+    const origin = npcPosition
+      .clone()
+      .add(new Vector3(0, this.definition.perception.eyeHeight, 0));
     const hit = this.raycast.cast(origin, direction, distance + 0.2);
     return hit?.metadata?.id === "player";
   }

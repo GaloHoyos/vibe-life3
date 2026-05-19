@@ -45,7 +45,8 @@
       "PowerShell(Get-ChildItem -Path 'src/engine/assets/textures/environment/snow' -File | Select-Object Name, @{N='SizeKB';E={[math]::Round\\($_.Length/1KB,1\\)}})",
       "PowerShell(\\(Get-Content CLAUDE.md | Measure-Object -Line\\).Lines, \\(Get-Content TESTING.md | Measure-Object -Line\\).Lines -join ' / ')",
       "PowerShell(\\(Get-Content 'src/style.css' | Measure-Object -Line\\).Lines)",
-      "Read(//home/crucijucegos/Documents/CRM/crm-backend/.claude/**)"
+      "Read(//home/crucijucegos/Documents/CRM/crm-backend/.claude/**)",
+      "PowerShell(npx tsc --noEmit; \"exit=$LASTEXITCODE\")"
     ],
     "deny": [
       "PowerShell(git push --force *)",

@@ -1,6 +1,7 @@
 import type { CharacterAnimationConfig, HumanoidRestPoseConfig } from '../characters/CharacterDefinition';
 import type { BoneMap } from './BoneMapper';
 import { applyBoneRotationOffsets } from './BoneRotation';
+import { getRestPoseTuning } from './RestPoseTuning';
 
 const RelaxedRestPose: HumanoidRestPoseConfig = {
   type: 'tpose_to_relaxed',
@@ -26,12 +27,42 @@ const ZombieRestPose: HumanoidRestPoseConfig = {
 
 export class HumanoidRestPose {
   private readonly pose: HumanoidRestPoseConfig;
+  private readonly characterId?: string;
 
-  constructor(animation?: CharacterAnimationConfig) {
+  constructor(animation?: CharacterAnimationConfig, characterId?: string) {
     this.pose = mergeRestPose(animation?.restPose);
+    this.characterId = characterId;
   }
 
   apply(bones: BoneMap): void {
+    const tuned = getRestPoseTuning(this.characterId);
+    if (tuned) {
+      applyBoneRotationOffsets(bones.leftUpperArm, {
+        x: tuned.leftUpperArmX,
+        y: tuned.leftUpperArmY,
+        z: tuned.leftUpperArmZ,
+      });
+      applyBoneRotationOffsets(bones.rightUpperArm, {
+        x: tuned.rightUpperArmX,
+        y: tuned.rightUpperArmY,
+        z: tuned.rightUpperArmZ,
+      });
+      applyBoneRotationOffsets(bones.leftForearm, {
+        x: tuned.leftForearmX,
+        y: tuned.leftForearmY,
+        z: tuned.leftForearmZ,
+      });
+      applyBoneRotationOffsets(bones.rightForearm, {
+        x: tuned.rightForearmX,
+        y: tuned.rightForearmY,
+        z: tuned.rightForearmZ,
+      });
+      applyBoneRotationOffsets(bones.spine, { x: tuned.spineX });
+      applyBoneRotationOffsets(bones.chest, { x: tuned.chestX });
+      applyBoneRotationOffsets(bones.head, { x: tuned.headX });
+      return;
+    }
+
     if (this.pose.type === 'none') {
       return;
     }
