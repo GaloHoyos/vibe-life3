@@ -4,6 +4,9 @@ import type { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundA
 import type { FootstepSoundSystem } from "@engine/audio/systems/FootstepSoundSystem";
 import type { MusicManager } from "@engine/audio/core/MusicManager";
 import type { CharacterFactory } from "@game/characters/CharacterFactory";
+import type { NpcAiDebugOverlay } from "@game/debug/NpcAiDebugOverlay";
+import type { NpcAiTracePanel } from "@game/debug/NpcAiTracePanel";
+import type { NpcAiTraceRecorder } from "@game/debug/NpcAiTraceRecorder";
 import type { NpcDebugSystem } from "@game/debug/NpcDebugSystem";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
@@ -41,6 +44,9 @@ export const GameTokens = {
   MainMenu: new ServiceToken<MainMenu>("MainMenu"),
   DebugOverlay: new ServiceToken<DebugOverlay>("DebugOverlay"),
   NpcDebug: new ServiceToken<NpcDebugSystem>("NpcDebugSystem"),
+  NpcAiDebug: new ServiceToken<NpcAiDebugOverlay>("NpcAiDebugOverlay"),
+  NpcAiTrace: new ServiceToken<NpcAiTraceRecorder>("NpcAiTraceRecorder"),
+  NpcAiTracePanel: new ServiceToken<NpcAiTracePanel>("NpcAiTracePanel"),
   BackgroundAmbience: new ServiceToken<BackgroundAmbienceSystem>(
     "BackgroundAmbienceSystem",
   ),

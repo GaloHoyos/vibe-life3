@@ -49,12 +49,211 @@ const OUTPOSTS: HouseSpec[] = [
     height: 3,
     removeWall: "south",
   },
+  {
+    id: "sfw-west-hamlet-a",
+    center: [-142, 64],
+    floorY: 0.45,
+    width: 10,
+    depth: 8,
+    height: 3.2,
+    door: { side: "east", width: 1.3 },
+  },
+  {
+    id: "sfw-west-hamlet-b",
+    center: [-164, 42],
+    floorY: 0.35,
+    width: 8,
+    depth: 7,
+    height: 3,
+    door: { side: "south", width: 1.2 },
+  },
+  {
+    id: "sfw-west-hamlet-c",
+    center: [-128, 28],
+    floorY: 0.55,
+    width: 13,
+    depth: 9,
+    height: 3.4,
+    removeWall: "east",
+  },
+  {
+    id: "sfw-west-hamlet-d",
+    center: [-152, 8],
+    floorY: 0.25,
+    width: 7,
+    depth: 6,
+    height: 2.8,
+    door: { side: "north", width: 1.1 },
+  },
+  {
+    id: "sfw-west-hamlet-e",
+    center: [-112, 92],
+    floorY: 0.65,
+    width: 12,
+    depth: 8,
+    height: 3.2,
+    door: { side: "west", width: 1.4 },
+  },
+  {
+    id: "sfw-west-hamlet-f",
+    center: [-178, 82],
+    floorY: 0.2,
+    width: 9,
+    depth: 7,
+    height: 3,
+    removeWall: "east",
+  },
+  {
+    id: "sfw-east-hamlet-a",
+    center: [126, 72],
+    floorY: 0.7,
+    width: 11,
+    depth: 8,
+    height: 3.2,
+    door: { side: "west", width: 1.3 },
+  },
+  {
+    id: "sfw-east-hamlet-b",
+    center: [154, 44],
+    floorY: 0.85,
+    width: 14,
+    depth: 10,
+    height: 3.5,
+    door: { side: "south", width: 1.5 },
+  },
+  {
+    id: "sfw-east-hamlet-c",
+    center: [178, 16],
+    floorY: 0.55,
+    width: 8,
+    depth: 6,
+    height: 2.9,
+    door: { side: "west", width: 1.1 },
+  },
+  {
+    id: "sfw-east-hamlet-d",
+    center: [112, 26],
+    floorY: 0.65,
+    width: 9,
+    depth: 7,
+    height: 3.1,
+    removeWall: "north",
+  },
+  {
+    id: "sfw-east-hamlet-e",
+    center: [148, 92],
+    floorY: 0.95,
+    width: 10,
+    depth: 8,
+    height: 3.2,
+    door: { side: "north", width: 1.3 },
+  },
+  {
+    id: "sfw-east-hamlet-f",
+    center: [184, 72],
+    floorY: 0.6,
+    width: 7,
+    depth: 6,
+    height: 2.8,
+    removeWall: "west",
+  },
+  {
+    id: "sfw-north-village-a",
+    center: [-92, -148],
+    floorY: -0.1,
+    width: 12,
+    depth: 8,
+    height: 3.3,
+    door: { side: "south", width: 1.4 },
+  },
+  {
+    id: "sfw-north-village-b",
+    center: [-64, -164],
+    floorY: 0.15,
+    width: 8,
+    depth: 7,
+    height: 3,
+    removeWall: "east",
+  },
+  {
+    id: "sfw-north-village-c",
+    center: [-32, -150],
+    floorY: 0.3,
+    width: 10,
+    depth: 8,
+    height: 3.1,
+    door: { side: "south", width: 1.3 },
+  },
+  {
+    id: "sfw-north-village-d",
+    center: [30, -164],
+    floorY: 0.25,
+    width: 13,
+    depth: 9,
+    height: 3.5,
+    door: { side: "east", width: 1.4 },
+  },
+  {
+    id: "sfw-north-village-e",
+    center: [68, -142],
+    floorY: 0.4,
+    width: 9,
+    depth: 7,
+    height: 3,
+    door: { side: "west", width: 1.2 },
+  },
+  {
+    id: "sfw-north-village-f",
+    center: [106, -166],
+    floorY: 0.2,
+    width: 11,
+    depth: 8,
+    height: 3.2,
+    removeWall: "south",
+  },
+  {
+    id: "sfw-south-cabin-a",
+    center: [-86, 128],
+    floorY: 0.75,
+    width: 10,
+    depth: 8,
+    height: 3.2,
+    door: { side: "east", width: 1.3 },
+  },
+  {
+    id: "sfw-south-cabin-b",
+    center: [84, 126],
+    floorY: 0.7,
+    width: 9,
+    depth: 7,
+    height: 3,
+    door: { side: "west", width: 1.2 },
+  },
+  {
+    id: "sfw-south-cabin-c",
+    center: [-138, 118],
+    floorY: 0.55,
+    width: 8,
+    depth: 6,
+    height: 2.9,
+    removeWall: "east",
+  },
+  {
+    id: "sfw-south-cabin-d",
+    center: [138, 132],
+    floorY: 0.9,
+    width: 12,
+    depth: 9,
+    height: 3.3,
+    door: { side: "north", width: 1.4 },
+  },
 ];
 
 const staticBoxes: StaticBoxDefinition[] = [
   ...buildStartArea(),
   ...buildCheckpoint(),
   ...buildFactory(),
+  ...buildAdministrationBlock(),
   ...buildExteriorStructures(),
   ...OUTPOSTS.flatMap(buildHouse),
 ];
@@ -65,9 +264,17 @@ const dynamicBoxes: DynamicBoxDefinition[] = [
   ...crateCluster("sfw-yard-east-crate", [42, 2.1, -2], 10),
   ...crateCluster("sfw-factory-crate", [10, 2.1, -22], 12),
   ...crateCluster("sfw-mezz-crate", [-20, 5.4, -40], 5),
+  ...crateCluster("sfw-admin-crate", [104, 2.4, -82], 10),
+  ...crateCluster("sfw-west-hamlet-crate", [-148, 2.1, 52], 8),
+  ...crateCluster("sfw-east-hamlet-crate", [142, 2.3, 54], 8),
+  ...crateCluster("sfw-north-village-crate", [-18, 2.0, -154], 8),
+  ...crateCluster("sfw-south-cabins-crate", [96, 2.2, 126], 7),
   ...barrelLine("sfw-barrel-south", [-20, 2.2, 35], 6, "x"),
   ...barrelLine("sfw-barrel-factory", [22, 2.2, -42], 7, "z"),
   ...barrelLine("sfw-barrel-depot", [70, 2.3, -2], 5, "x"),
+  ...barrelLine("sfw-barrel-admin", [126, 2.2, -110], 7, "x"),
+  ...barrelLine("sfw-barrel-west-road", [-166, 2.0, 26], 5, "z"),
+  ...barrelLine("sfw-barrel-east-road", [170, 2.1, 34], 5, "z"),
 ];
 
 const npcs: NPCDefinition[] = [
@@ -77,14 +284,53 @@ const npcs: NPCDefinition[] = [
   ...npcLine("sfw-combine-checkpoint", "combine", [-14, 2.0, 46], 3, "x", 8.0),
   ...npcLine("sfw-combine-yard", "combine", [36, 2.0, -6], 4, "z", 8.0),
   ...npcLine("sfw-combine-mezz", "combine", [-20, 5.4, -30], 3, "z", 8.0),
-  { id: "sfw-combine-overseer", position: [-18, 5.4, -58], characterId: "combine" },
+  {
+    id: "sfw-combine-overseer",
+    position: [-18, 5.4, -58],
+    characterId: "combine",
+  },
+  ...npcLine(
+    "sfw-combine-admin-ground",
+    "combine",
+    [104, 2.2, -90],
+    4,
+    "x",
+    6.5,
+  ),
+  ...npcLine(
+    "sfw-combine-admin-roof",
+    "combine",
+    [110, 13.8, -100],
+    3,
+    "x",
+    6.0,
+  ),
+  ...npcLine("sfw-zombie-west-hamlet", "zombie", [-158, 2.1, 56], 5, "x", 5.0),
+  ...npcLine("sfw-zombie-east-hamlet", "zombie", [138, 2.2, 68], 5, "x", 5.0),
+  ...npcLine(
+    "sfw-zombie-north-village",
+    "zombie",
+    [-48, 2.0, -154],
+    6,
+    "x",
+    7.0,
+  ),
+  ...npcLine(
+    "sfw-combine-south-cabins",
+    "combine",
+    [-96, 2.2, 124],
+    3,
+    "x",
+    8.0,
+  ),
+  ...npcLine("sfw-zombie-south-cabins", "zombie", [82, 2.1, 128], 4, "x", 5.0),
 ];
 
 export const SnowFactoryLevel: LevelDefinition = {
   id: "snow-factory",
   title: "Complejo Boreal",
   description:
-    "Campo nevado enorme con fabrica, entrepiso, patios de combate, zombies, combine y botones de repeticion.",
+    "Valle nevado masivo con fabrica, bloque de varios pisos, caserios, zombies, combine y botones de repeticion.",
   background: 0xb9c9d8,
   sun: {
     direction: [0.35, 1.0, 0.25],
@@ -104,9 +350,9 @@ export const SnowFactoryLevel: LevelDefinition = {
   terrain: {
     id: "snow-factory-terrain",
     position: [0, 0, 0],
-    size: [260, 260],
-    widthSamples: 129,
-    depthSamples: 129,
+    size: [420, 420],
+    widthSamples: 161,
+    depthSamples: 161,
     source: {
       kind: "noise",
       seed: 314,
@@ -122,6 +368,11 @@ export const SnowFactoryLevel: LevelDefinition = {
         { center: [0, 24], radius: 24, falloff: 10, height: 0.45 },
         { center: [0, 4], radius: 22, falloff: 8, height: FACTORY_FLOOR_Y },
         { center: [0, -35], radius: 52, falloff: 16, height: FACTORY_FLOOR_Y },
+        { center: [118, -92], radius: 30, falloff: 14, height: 0.9 },
+        { center: [0, -145], radius: 70, falloff: 22, height: 0.22 },
+        { center: [-145, 48], radius: 62, falloff: 18, height: 0.4 },
+        { center: [150, 62], radius: 62, falloff: 18, height: 0.72 },
+        { center: [0, 128], radius: 86, falloff: 24, height: 0.75 },
         { center: [-24, 31], radius: 18, falloff: 8, height: 0.55 },
         { center: [31, 12], radius: 18, falloff: 8, height: 0.65 },
         { center: [-42, 20], radius: 20, falloff: 8, height: 0.6 },
@@ -130,6 +381,7 @@ export const SnowFactoryLevel: LevelDefinition = {
         { center: [76, -8], radius: 18, falloff: 8, height: 0.7 },
         { center: [48, 58], radius: 12, falloff: 6, height: 1.2 },
         { center: [-48, -76], radius: 16, falloff: 8, height: -0.2 },
+        ...houseFlattenRegions(OUTPOSTS),
       ],
     },
     material: "snow",
@@ -182,21 +434,110 @@ export const SnowFactoryLevel: LevelDefinition = {
     { id: "sfw-cover-mezz-1", position: [-11, 5.1, -22], normal: [1, 0, 0] },
     { id: "sfw-cover-mezz-2", position: [-11, 5.1, -44], normal: [1, 0, 0] },
     { id: "sfw-cover-mezz-3", position: [-11, 5.1, -60], normal: [1, 0, 0] },
-    { id: "sfw-cover-crosswalk-1", position: [-2, 5.1, -32], normal: [0, 0, -1] },
+    {
+      id: "sfw-cover-crosswalk-1",
+      position: [-2, 5.1, -32],
+      normal: [0, 0, -1],
+    },
     { id: "sfw-cover-crosswalk-2", position: [8, 5.1, -36], normal: [0, 0, 1] },
     { id: "sfw-cover-loading", position: [18, 2.0, -8], normal: [-1, 0, 0] },
     { id: "sfw-cover-barracks", position: [-64, 1.1, 38], normal: [-1, 0, 0] },
     { id: "sfw-cover-depot", position: [68, 1.5, -8], normal: [1, 0, 0] },
+    {
+      id: "sfw-cover-admin-entry-1",
+      position: [104, 1.8, -78],
+      normal: [0, 0, 1],
+    },
+    {
+      id: "sfw-cover-admin-entry-2",
+      position: [132, 1.8, -82],
+      normal: [-1, 0, 0],
+    },
+    {
+      id: "sfw-cover-admin-roof-1",
+      position: [110, 13.7, -104],
+      normal: [0, 0, 1],
+    },
+    {
+      id: "sfw-cover-admin-roof-2",
+      position: [130, 13.7, -96],
+      normal: [-1, 0, 0],
+    },
+    {
+      id: "sfw-cover-west-hamlet-1",
+      position: [-142, 1.4, 56],
+      normal: [1, 0, 0],
+    },
+    {
+      id: "sfw-cover-west-hamlet-2",
+      position: [-164, 1.3, 34],
+      normal: [0, 0, 1],
+    },
+    {
+      id: "sfw-cover-east-hamlet-1",
+      position: [128, 1.6, 72],
+      normal: [-1, 0, 0],
+    },
+    {
+      id: "sfw-cover-east-hamlet-2",
+      position: [154, 1.7, 36],
+      normal: [0, 0, 1],
+    },
+    {
+      id: "sfw-cover-north-village-1",
+      position: [-32, 1.3, -146],
+      normal: [0, 0, -1],
+    },
+    {
+      id: "sfw-cover-north-village-2",
+      position: [68, 1.4, -138],
+      normal: [-1, 0, 0],
+    },
+    {
+      id: "sfw-cover-south-cabin-1",
+      position: [-86, 1.6, 124],
+      normal: [1, 0, 0],
+    },
+    {
+      id: "sfw-cover-south-cabin-2",
+      position: [138, 1.8, 128],
+      normal: [0, 0, -1],
+    },
   ],
   weaponPickups: [
     { id: "sfw-pickup-crowbar", weaponId: "crowbar", position: [-5, 1.2, 84] },
     { id: "sfw-pickup-pistol", weaponId: "pistol", position: [-3, 1.2, 84] },
     { id: "sfw-pickup-smg", weaponId: "smg", position: [-1, 1.2, 84] },
-    { id: "sfw-pickup-gravity-gun", weaponId: "gravityGun", position: [1, 1.2, 84] },
+    {
+      id: "sfw-pickup-gravity-gun",
+      weaponId: "gravityGun",
+      position: [1, 1.2, 84],
+    },
     { id: "sfw-pickup-shotgun", weaponId: "shotgun", position: [3, 1.2, 84] },
     { id: "sfw-pickup-grenade-1", weaponId: "grenade", position: [5, 1.2, 84] },
     { id: "sfw-pickup-grenade-2", weaponId: "grenade", position: [6, 1.2, 84] },
     { id: "sfw-pickup-ar3", weaponId: "ar3", position: [-18, 5.2, -52] },
+    {
+      id: "sfw-pickup-admin-shotgun",
+      weaponId: "shotgun",
+      position: [104, 1.8, -78],
+    },
+    {
+      id: "sfw-pickup-admin-ar3",
+      weaponId: "ar3",
+      position: [128, 13.6, -102],
+    },
+    {
+      id: "sfw-pickup-west-grenade",
+      weaponId: "grenade",
+      position: [-144, 1.4, 64],
+    },
+    { id: "sfw-pickup-east-smg", weaponId: "smg", position: [126, 1.7, 72] },
+    {
+      id: "sfw-pickup-north-grenade",
+      weaponId: "grenade",
+      position: [30, 1.3, -160],
+    },
   ],
   triggers: [
     {
@@ -221,6 +562,28 @@ export const SnowFactoryLevel: LevelDefinition = {
         duration: 4,
       },
     },
+    {
+      id: "sfw-admin-entry",
+      position: [116, 2.4, -78],
+      size: [30, 4.8, 10],
+      once: true,
+      dialogue: {
+        speaker: "Radio",
+        text: "Bloque administrativo a la vista. Hay movimiento en los pisos superiores.",
+        duration: 4,
+      },
+    },
+    {
+      id: "sfw-north-village-entry",
+      position: [0, 2, -136],
+      size: [48, 4, 16],
+      once: true,
+      dialogue: {
+        speaker: "Radio",
+        text: "Caserio norte abandonado. Mantente atento a las casas pequenas.",
+        duration: 4,
+      },
+    },
   ],
 };
 
@@ -231,6 +594,15 @@ function b(
   material: MaterialKey,
 ): StaticBoxDefinition {
   return { id, position, size, material };
+}
+
+function houseFlattenRegions(houses: HouseSpec[]) {
+  return houses.map((house) => ({
+    center: house.center,
+    radius: Math.max(house.width, house.depth) * 0.7,
+    falloff: 8,
+    height: house.floorY,
+  }));
 }
 
 function buildStartArea(): StaticBoxDefinition[] {
@@ -281,7 +653,12 @@ function buildFactory(): StaticBoxDefinition[] {
     b("sfw-east-mezz-platform", [15, MEZZANINE_Y, -34], [12, 0.35, 16], "trim"),
     b("sfw-east-mezz-rail-e", [21, 5.15, -34], [0.25, 1.1, 16], "hazard"),
     b("sfw-east-mezz-rail-n", [15, 5.15, -42], [12, 1.1, 0.25], "hazard"),
-    b("sfw-mezz-office-floor", [-17, MEZZANINE_Y, -62], [16, 0.35, 12], "floor"),
+    b(
+      "sfw-mezz-office-floor",
+      [-17, MEZZANINE_Y, -62],
+      [16, 0.35, 12],
+      "floor",
+    ),
     b("sfw-mezz-office-wall", [-9, 5.9, -62], [0.35, 3.0, 12], "wall"),
     b("sfw-mezz-office-back", [-17, 5.9, -68], [16, 3.0, 0.35], "wall"),
     b("sfw-mezz-rail-long", [-10.8, 5.15, -35], [0.25, 1.25, 46], "hazard"),
@@ -296,8 +673,246 @@ function buildFactory(): StaticBoxDefinition[] {
     b("sfw-factory-gate-console", [-6.2, 1.05, 5.35], [0.8, 1.1, 0.35], "trim"),
     b("sfw-factory-conveyor-a", [-2, 1.1, -26], [1.2, 1.0, 30], "dynamic"),
     b("sfw-factory-conveyor-b", [2, 1.1, -42], [1.2, 1.0, 24], "dynamic"),
-    ...buildStairs("sfw-mezz-stair", [-11.6, FACTORY_FLOOR_Y, -3], 18, 4.2, 0.21, 0.58, -1),
+    ...buildStairs(
+      "sfw-mezz-stair",
+      [-11.6, FACTORY_FLOOR_Y, -3],
+      18,
+      4.2,
+      0.21,
+      0.58,
+      -1,
+    ),
     ...smokestacks(),
+  ];
+}
+
+function buildAdministrationBlock(): StaticBoxDefinition[] {
+  const cx = 118;
+  const cz = -92;
+  const baseY = 0.9;
+  const floorHeight = 3.2;
+  const width = 32;
+  const depth = 28;
+  const totalHeight = floorHeight * 4;
+  const minX = cx - width / 2;
+  const maxX = cx + width / 2;
+  const minZ = cz - depth / 2;
+  const maxZ = cz + depth / 2;
+  const stairHole = {
+    minX: minX + 2,
+    maxX: minX + 14,
+    minZ: maxZ - 12,
+    maxZ: maxZ - 0.4,
+  };
+  const boxes: StaticBoxDefinition[] = [
+    b("sfw-admin-ground-pad", [cx, baseY - 0.22, cz], [40, 0.45, 36], "floor"),
+    b(
+      "sfw-admin-wall-west",
+      [minX, baseY + totalHeight / 2, cz],
+      [0.6, totalHeight, depth],
+      "brick",
+    ),
+    b(
+      "sfw-admin-wall-east",
+      [maxX, baseY + totalHeight / 2, cz],
+      [0.6, totalHeight, depth],
+      "brick",
+    ),
+    b(
+      "sfw-admin-wall-north",
+      [cx, baseY + totalHeight / 2, minZ],
+      [width, totalHeight, 0.6],
+      "brick",
+    ),
+    b(
+      "sfw-admin-wall-south-l",
+      [cx - 10, baseY + totalHeight / 2, maxZ],
+      [12, totalHeight, 0.6],
+      "brick",
+    ),
+    b(
+      "sfw-admin-wall-south-r",
+      [cx + 10, baseY + totalHeight / 2, maxZ],
+      [12, totalHeight, 0.6],
+      "brick",
+    ),
+    b(
+      "sfw-admin-wall-south-upper",
+      [cx, baseY + 7.9, maxZ],
+      [8, 9.8, 0.6],
+      "brick",
+    ),
+    b("sfw-admin-door-header", [cx, baseY + 2.8, maxZ], [8, 0.6, 0.6], "trim"),
+    b(
+      "sfw-admin-roof-rail-n",
+      [cx, baseY + totalHeight + 0.75, minZ],
+      [width + 1, 1.1, 0.25],
+      "hazard",
+    ),
+    b(
+      "sfw-admin-roof-rail-e",
+      [maxX, baseY + totalHeight + 0.75, cz],
+      [0.25, 1.1, depth],
+      "hazard",
+    ),
+    b(
+      "sfw-admin-roof-rail-w",
+      [minX, baseY + totalHeight + 0.75, cz],
+      [0.25, 1.1, depth],
+      "hazard",
+    ),
+    b(
+      "sfw-admin-roof-rail-s-l",
+      [cx - 9, baseY + totalHeight + 0.75, maxZ],
+      [14, 1.1, 0.25],
+      "hazard",
+    ),
+    b(
+      "sfw-admin-roof-rail-s-r",
+      [cx + 9, baseY + totalHeight + 0.75, maxZ],
+      [14, 1.1, 0.25],
+      "hazard",
+    ),
+    b(
+      "sfw-admin-comms-mast",
+      [cx + 9, baseY + totalHeight + 5, cz - 8],
+      [0.5, 9, 0.5],
+      "trim",
+    ),
+    b(
+      "sfw-admin-comms-cross",
+      [cx + 9, baseY + totalHeight + 8.5, cz - 8],
+      [7, 0.25, 0.25],
+      "trim",
+    ),
+    ...buildStairs(
+      "sfw-admin-stair-01",
+      [106, baseY, -78.8],
+      16,
+      3.2,
+      0.2,
+      0.55,
+      -1,
+    ),
+    ...buildStairs(
+      "sfw-admin-stair-02",
+      [112, baseY + floorHeight, -89.1],
+      16,
+      3.2,
+      0.2,
+      0.55,
+      1,
+    ),
+    ...buildStairs(
+      "sfw-admin-stair-03",
+      [106, baseY + floorHeight * 2, -78.8],
+      16,
+      3.2,
+      0.2,
+      0.55,
+      -1,
+    ),
+    ...buildStairs(
+      "sfw-admin-stair-04",
+      [112, baseY + floorHeight * 3, -89.1],
+      16,
+      3.2,
+      0.2,
+      0.55,
+      1,
+    ),
+  ];
+
+  for (let level = 0; level <= 4; level += 1) {
+    const y = baseY + floorHeight * level;
+    boxes.push(
+      ...buildAdminFloor(
+        `sfw-admin-floor-${level}`,
+        y,
+        minX,
+        maxX,
+        minZ,
+        maxZ,
+        level === 0 ? null : stairHole,
+        level === 4 ? "roof" : "floor",
+      ),
+    );
+  }
+
+  for (let level = 1; level <= 4; level += 1) {
+    const y = baseY + floorHeight * level;
+    const landingZ = level % 2 === 1 ? -88.6 : -80.0;
+    boxes.push(
+      b(
+        `sfw-admin-landing-${level}`,
+        [110, y, landingZ],
+        [12, 0.32, 3.2],
+        "trim",
+      ),
+    );
+  }
+
+  for (let level = 1; level <= 3; level += 1) {
+    const y = baseY + floorHeight * level;
+    boxes.push(
+      b(
+        `sfw-admin-window-band-${level}-n`,
+        [cx, y + 1.15, minZ - 0.08],
+        [24, 0.45, 0.2],
+        "trim",
+      ),
+      b(
+        `sfw-admin-window-band-${level}-s`,
+        [cx, y + 1.15, maxZ + 0.08],
+        [18, 0.45, 0.2],
+        "trim",
+      ),
+    );
+  }
+
+  return boxes;
+}
+
+function buildAdminFloor(
+  id: string,
+  y: number,
+  minX: number,
+  maxX: number,
+  minZ: number,
+  maxZ: number,
+  hole: { minX: number; maxX: number; minZ: number; maxZ: number } | null,
+  material: MaterialKey,
+): StaticBoxDefinition[] {
+  if (!hole) {
+    return [
+      b(
+        id,
+        [(minX + maxX) / 2, y - 0.16, (minZ + maxZ) / 2],
+        [maxX - minX, 0.32, maxZ - minZ],
+        material,
+      ),
+    ];
+  }
+
+  return [
+    b(
+      `${id}-north`,
+      [(minX + maxX) / 2, y - 0.16, (minZ + hole.minZ) / 2],
+      [maxX - minX, 0.32, hole.minZ - minZ],
+      material,
+    ),
+    b(
+      `${id}-west`,
+      [(minX + hole.minX) / 2, y - 0.16, (hole.minZ + hole.maxZ) / 2],
+      [hole.minX - minX, 0.32, hole.maxZ - hole.minZ],
+      material,
+    ),
+    b(
+      `${id}-east`,
+      [(hole.maxX + maxX) / 2, y - 0.16, (hole.minZ + hole.maxZ) / 2],
+      [maxX - hole.maxX, 0.32, hole.maxZ - hole.minZ],
+      material,
+    ),
   ];
 }
 
@@ -307,6 +922,12 @@ function buildExteriorStructures(): StaticBoxDefinition[] {
     b("sfw-road-check-factory", [0, 0.46, 23], [20, 0.32, 42], "floor"),
     b("sfw-road-west-branch", [-24, 0.55, 31], [34, 0.3, 6], "floor"),
     b("sfw-road-east-branch", [31, 0.62, 12], [34, 0.3, 6], "floor"),
+    b("sfw-road-west-hamlet", [-116, 0.58, 50], [98, 0.3, 6], "floor"),
+    b("sfw-road-east-hamlet", [116, 0.82, 54], [102, 0.3, 6], "floor"),
+    b("sfw-road-admin-spur", [74, 0.78, -88], [88, 0.3, 6], "floor"),
+    b("sfw-road-north-village", [0, 0.5, -112], [18, 0.3, 72], "floor"),
+    b("sfw-road-south-cabins-w", [-66, 0.85, 116], [74, 0.3, 6], "floor"),
+    b("sfw-road-south-cabins-e", [74, 0.88, 120], [84, 0.3, 6], "floor"),
     b("sfw-west-yard-wall-a", [-46, 1.2, 15], [20, 1.4, 0.45], "wall"),
     b("sfw-west-yard-wall-b", [-34, 1.2, 26], [0.45, 1.4, 18], "wall"),
     b("sfw-east-yard-wall-a", [46, 1.3, -18], [22, 1.5, 0.45], "wall"),
@@ -322,6 +943,10 @@ function buildExteriorStructures(): StaticBoxDefinition[] {
     b("sfw-snow-berm-west", [-62, 1.2, -22], [3.5, 2.0, 58], "rock"),
     b("sfw-snow-berm-east", [64, 1.2, 12], [3.5, 2.0, 58], "rock"),
     b("sfw-snow-berm-north", [0, 1.1, -92], [56, 1.8, 3.5], "rock"),
+    b("sfw-far-ridge-west", [-205, 2.0, 0], [5, 3.4, 280], "rock"),
+    b("sfw-far-ridge-east", [205, 2.0, 0], [5, 3.4, 280], "rock"),
+    b("sfw-far-ridge-north", [0, 2.0, -205], [280, 3.4, 5], "rock"),
+    b("sfw-far-ridge-south", [0, 2.0, 205], [280, 3.4, 5], "rock"),
     b("sfw-north-ramp", [-8, 0.7, -84], [26, 0.6, 10], "rock"),
     b("sfw-radio-mast", [48, 8, 58], [0.7, 13, 0.7], "trim"),
     b("sfw-radio-cross-a", [48, 12, 58], [8, 0.35, 0.35], "trim"),
@@ -369,7 +994,11 @@ function smokestacks(): StaticBoxDefinition[] {
   ];
 }
 
-function crateCluster(id: string, start: Vec3, count: number): DynamicBoxDefinition[] {
+function crateCluster(
+  id: string,
+  start: Vec3,
+  count: number,
+): DynamicBoxDefinition[] {
   const out: DynamicBoxDefinition[] = [];
   for (let i = 0; i < count; i += 1) {
     const row = Math.floor(i / 4);
@@ -377,7 +1006,11 @@ function crateCluster(id: string, start: Vec3, count: number): DynamicBoxDefinit
     const tall = i % 5 === 0;
     out.push({
       id: `${id}-${i}`,
-      position: [start[0] + column * 1.35, start[1] + row * 0.1, start[2] + row * 1.25],
+      position: [
+        start[0] + column * 1.35,
+        start[1] + row * 0.1,
+        start[2] + row * 1.25,
+      ],
       size: tall ? [1.1, 1.4, 1.1] : [1, 1, 1],
       mass: tall ? 2.2 : 1.4,
       material: i % 3 === 0 ? "dynamic" : "crate",

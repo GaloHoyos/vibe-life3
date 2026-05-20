@@ -6,6 +6,22 @@ interface NavNode {
   edges: Array<{ to: number; cost: number }>;
 }
 
+export interface NavGraphDebugNode {
+  id: number;
+  position: Vector3;
+}
+
+export interface NavGraphDebugEdge {
+  from: Vector3;
+  to: Vector3;
+}
+
+export interface NavGraphDebugSnapshot {
+  nodes: NavGraphDebugNode[];
+  edges: NavGraphDebugEdge[];
+  totalNodes: number;
+}
+
 /**
  * Grafo de navegación. Nodos colocados en posiciones walkables del mundo +
  * edges entre vecinos con visibility check. La generación es externa
@@ -36,8 +52,51 @@ export class NavGraph {
     return this.nodes.length;
   }
 
+  edgeCountOf(id: number): number {
+    return this.nodes[id]?.edges.length ?? 0;
+  }
+
   getNode(id: number): Vector3 | null {
     return this.nodes[id]?.position.clone() ?? null;
+  }
+
+  getDebugSnapshot(
+    center: Vector3,
+    radius = 55,
+    maxNodes = 360,
+  ): NavGraphDebugSnapshot {
+    const radiusSq = radius * radius;
+    const selectedIds = new Set<number>();
+    const nodes: NavGraphDebugNode[] = [];
+
+    for (const node of this.nodes) {
+      if (nodes.length >= maxNodes) {
+        break;
+      }
+      if (node.position.distanceToSquared(center) > radiusSq) {
+        continue;
+      }
+      selectedIds.add(node.id);
+      nodes.push({ id: node.id, position: node.position.clone() });
+    }
+
+    const edges: NavGraphDebugEdge[] = [];
+    for (const node of this.nodes) {
+      if (!selectedIds.has(node.id)) {
+        continue;
+      }
+      for (const edge of node.edges) {
+        if (node.id >= edge.to || !selectedIds.has(edge.to)) {
+          continue;
+        }
+        edges.push({
+          from: node.position.clone(),
+          to: this.nodes[edge.to].position.clone(),
+        });
+      }
+    }
+
+    return { nodes, edges, totalNodes: this.nodes.length };
   }
 
   /**

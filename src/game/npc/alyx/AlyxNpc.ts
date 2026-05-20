@@ -19,7 +19,12 @@ import type { Damageable } from "@shared/types/lifecycle";
 import { Dialogue } from "@game/config/strings";
 import type { GameEventBus } from "@game/GameEvents";
 import { Health } from "@game/gameplay/Health";
-import type { ActorSnapshot, INpc, NpcUpdateContext } from "@game/npc/core/INpc";
+import type {
+  ActorSnapshot,
+  INpc,
+  NpcAiDebugSnapshot,
+  NpcUpdateContext,
+} from "@game/npc/core/INpc";
 import { NpcDebugFlags } from "@game/npc/core/NpcDebugFlags";
 import { NpcAnimationBridge } from "@game/npc/animation/NpcAnimationBridge";
 import { NpcPathFollower } from "@game/npc/movement/NpcPathFollower";
@@ -323,6 +328,21 @@ export class AlyxNpc implements Damageable, INpc {
   getState(): string {
     const ammo = this.combat.snapshot(0);
     return `alyx:${this.fsm.getState()} mag:${ammo.magazine}`;
+  }
+
+  getAiDebugSnapshot(): NpcAiDebugSnapshot {
+    return {
+      id: this.id,
+      state: this.getState(),
+      position: this.mesh.position.clone(),
+      isAlive: this.isAlive(),
+      wantsMove: this.wantsMove,
+      target: this.desiredTarget.clone(),
+      threatId: this.currentThreat?.id ?? null,
+      threatPosition: this.currentThreat?.position.clone() ?? null,
+      coverId: this.blackboard.currentCoverId,
+      path: this.pathFollower.getDebugSnapshot(),
+    };
   }
 
   // ---------------------------------------------------------------------------

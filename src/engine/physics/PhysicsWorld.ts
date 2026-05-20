@@ -149,6 +149,17 @@ export class PhysicsWorld {
     this.syncMeshes();
   }
 
+  /**
+   * Fuerza la actualizaciÃ³n del broadphase / query pipeline sin avanzar la
+   * simulaciÃ³n. Necesario antes de hacer raycasts en sistemas de setup
+   * (NavGraphBuilder, SpawnValidator) que corren **antes** del primer
+   * `step()`: hasta ese momento Rapier no tiene a los colliders en sus
+   * estructuras de aceleraciÃ³n y los queries devuelven null para todo.
+   */
+  updateQueryPipeline(): void {
+    this.world.updateSceneQueries();
+  }
+
   getBodyCount(): number {
     return this.world.bodies.len();
   }

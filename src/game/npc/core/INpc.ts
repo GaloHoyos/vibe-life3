@@ -5,6 +5,7 @@ import type { Damageable } from "@shared/types/lifecycle";
 import type { Health } from "@game/gameplay/Health";
 import type { CoverSystem } from "@game/levels/CoverSystem";
 import type { CombatSquadCoordinator } from "@game/npc/combat/CombatSquadCoordinator";
+import type { NpcPathDebugSnapshot } from "@game/npc/movement/NpcPathFollower";
 
 /**
  * Snapshot ligero de un actor del mundo (player u otro NPC) que cualquier
@@ -34,6 +35,19 @@ export interface NpcUpdateContext {
   squad: CombatSquadCoordinator;
 }
 
+export interface NpcAiDebugSnapshot {
+  id: string;
+  state: string;
+  position: Vector3;
+  isAlive: boolean;
+  wantsMove: boolean;
+  target: Vector3 | null;
+  threatId: string | null;
+  threatPosition: Vector3 | null;
+  coverId: string | null;
+  path: NpcPathDebugSnapshot;
+}
+
 /**
  * Interfaz uniforme que consume `Game`/`LevelLoader`. `ZombieNpc`,
  * `CombineNpc` y `AlyxNpc` la implementan.
@@ -51,6 +65,7 @@ export interface INpc {
   applyDamage(amount: number, hitDirection?: Vector3, hitPartName?: string): void;
   isAlive(): boolean;
   getState(): string;
+  getAiDebugSnapshot(): NpcAiDebugSnapshot;
   /**
    * Libera listeners del bus, releases de cover/squad y desactiva motor/animator.
    * Debe ser idempotente â€” `die()` y el teardown de nivel lo invocan ambos.

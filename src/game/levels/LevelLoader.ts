@@ -152,6 +152,7 @@ export class LevelLoader {
       );
     });
 
+    this.physics.updateQueryPipeline();
     const spawnValidator = new SpawnValidator(new Raycast(this.physics));
     for (const definition of level.npcs) {
       const requested = tupleToVector3(definition.position);
@@ -188,6 +189,7 @@ export class LevelLoader {
       this.triggerSystem.addTrigger(definition);
     });
 
+    this.physics.updateQueryPipeline();
     const navGraph = new NavGraphBuilder().build(level, sharedRaycast);
     console.info(
       `[LevelLoader] NavGraph: ${navGraph.nodeCount()} nodos generados`,

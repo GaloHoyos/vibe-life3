@@ -26,6 +26,7 @@ import { Health } from "@game/gameplay/Health";
 import type {
   ActorSnapshot,
   INpc,
+  NpcAiDebugSnapshot,
   NpcUpdateContext,
 } from "@game/npc/core/INpc";
 import { NpcDebugFlags } from "@game/npc/core/NpcDebugFlags";
@@ -432,6 +433,21 @@ export class CombineNpc implements Damageable, INpc {
   getState(): string {
     const ammo = this.combat.snapshot(0);
     return `${this.fsm.getState()} mag:${ammo.magazine}${ammo.isReloading ? "R" : ""}`;
+  }
+
+  getAiDebugSnapshot(): NpcAiDebugSnapshot {
+    return {
+      id: this.id,
+      state: this.getState(),
+      position: this.mesh.position.clone(),
+      isAlive: this.isAlive(),
+      wantsMove: this.wantsMove,
+      target: this.desiredTarget.clone(),
+      threatId: this.currentThreat?.id ?? null,
+      threatPosition: this.currentThreat?.position.clone() ?? null,
+      coverId: this.blackboard.currentCoverId,
+      path: this.pathFollower.getDebugSnapshot(),
+    };
   }
 
   // ---------------------------------------------------------------------------

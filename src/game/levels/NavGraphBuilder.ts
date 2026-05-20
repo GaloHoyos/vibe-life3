@@ -10,6 +10,13 @@ interface LevelBounds {
   maxZ: number;
 }
 
+interface SampledNavNode {
+  id: number;
+  position: Vector3;
+  gridX: number;
+  gridZ: number;
+}
+
 export interface NavGraphBuildOptions {
   /** Distancia entre nodos del grid de muestreo. Menor = mÃ¡s denso. */
   spacing?: number;
@@ -35,7 +42,7 @@ const tmpDown = new Vector3(0, -1, 0);
  *  2. Samplea un grid 2D con `spacing` metros.
  *  3. En cada candidate, raycast hacia abajo desde Y alto. Si el primer hit
  *     es `static`, agrega un nodo en hit.point + offset chico.
- *  4. Conecta cada par de nodos cercanos si:
+ *  4. Conecta vecinos cercanos del grid si:
  *     - distancia â‰¤ `maxEdgeDistance`
  *     - delta vertical â‰¤ `maxStepHeight`
  *     - raycast a altura `losHeight` entre ambos no choca con geometrÃ­a sÃ³lida
@@ -61,34 +68,125 @@ export class NavGraphBuilder {
     const bounds = this.computeBounds(level);
     if (!bounds) return graph;
 
-    const sampledNodes: Array<{ id: number; position: Vector3 }> = [];
+    const sampledNodes: SampledNavNode[] = [];
+    const nodeByGrid = new Map<string, SampledNavNode>();
 
+    let candidatesSampled = 0;
+    let hitsByKind: Record<string, number> = {};
+    let hitsNone = 0;
+
+    let gridX = 0;
     for (let x = bounds.minX; x <= bounds.maxX; x += spacing) {
+      let gridZ = 0;
       for (let z = bounds.minZ; z <= bounds.maxZ; z += spacing) {
+        candidatesSampled += 1;
         const origin = new Vector3(x, castFromY, z);
         const hit = raycast.cast(origin, tmpDown, castDepth);
-        if (!hit || hit.metadata?.kind !== "static") continue;
-        const position = hit.point.clone();
-        position.y += 0.1;
-        const id = graph.addNode(position);
-        sampledNodes.push({ id, position });
+        if (!hit) {
+          hitsNone += 1;
+        } else {
+          const k = hit.metadata?.kind ?? "(none)";
+          hitsByKind[k] = (hitsByKind[k] ?? 0) + 1;
+        }
+        if (hit && hit.metadata?.kind === "static") {
+          const position = hit.point.clone();
+          position.y += 0.1;
+          const node = {
+            id: graph.addNode(position),
+            position,
+            gridX,
+            gridZ,
+          };
+          sampledNodes.push(node);
+          nodeByGrid.set(gridKey(gridX, gridZ), node);
+        }
+        gridZ += 1;
+      }
+      gridX += 1;
+    }
+
+    let edgeAttempts = 0;
+    let edgesAccepted = 0;
+    let rejectedByDistance = 0;
+    let rejectedByStep = 0;
+    let rejectedByLos = 0;
+    let losBlockerByKind: Record<string, number> = {};
+
+    const neighborRange = Math.ceil(maxEdgeDistance / spacing);
+    for (const a of sampledNodes) {
+      for (let dx = -neighborRange; dx <= neighborRange; dx += 1) {
+        for (let dz = -neighborRange; dz <= neighborRange; dz += 1) {
+          if (dx < 0 || (dx === 0 && dz <= 0)) continue;
+          const b = nodeByGrid.get(gridKey(a.gridX + dx, a.gridZ + dz));
+          if (!b) continue;
+          edgeAttempts += 1;
+          const dist = a.position.distanceTo(b.position);
+          if (dist > maxEdgeDistance) {
+            rejectedByDistance += 1;
+            continue;
+          }
+          if (Math.abs(a.position.y - b.position.y) > maxStepHeight) {
+            rejectedByStep += 1;
+            continue;
+          }
+          const losResult = this.lineOfSightWithReason(
+            raycast,
+            a.position,
+            b.position,
+            losHeight,
+          );
+          if (!losResult.ok) {
+            rejectedByLos += 1;
+            const k = losResult.blockerKind ?? "(none)";
+            losBlockerByKind[k] = (losBlockerByKind[k] ?? 0) + 1;
+            continue;
+          }
+          graph.addEdge(a.id, b.id, dist);
+          edgesAccepted += 1;
+        }
       }
     }
 
-    for (let i = 0; i < sampledNodes.length; i += 1) {
-      const a = sampledNodes[i];
-      for (let j = i + 1; j < sampledNodes.length; j += 1) {
-        const b = sampledNodes[j];
-        const dist = a.position.distanceTo(b.position);
-        if (dist > maxEdgeDistance) continue;
-        if (Math.abs(a.position.y - b.position.y) > maxStepHeight) continue;
-        if (!this.lineOfSight(raycast, a.position, b.position, losHeight))
-          continue;
-        graph.addEdge(a.id, b.id, dist);
-      }
+    let nodesWithoutEdges = 0;
+    for (let i = 0; i < graph.nodeCount(); i += 1) {
+      if (graph.edgeCountOf(i) === 0) nodesWithoutEdges += 1;
     }
+
+    console.info("[NavGraphBuilder] build stats", {
+      candidatesSampled,
+      hitsNone,
+      hitsByKind,
+      nodesCreated: graph.nodeCount(),
+      nodesWithoutEdges,
+      edgeAttempts,
+      edgesAccepted,
+      rejectedByDistance,
+      rejectedByStep,
+      rejectedByLos,
+      losBlockerByKind,
+    });
 
     return graph;
+  }
+
+  private lineOfSightWithReason(
+    raycast: Raycast,
+    a: Vector3,
+    b: Vector3,
+    heightOffset: number,
+  ): { ok: boolean; blockerKind?: string } {
+    const from = a.clone();
+    from.y += heightOffset;
+    const to = b.clone();
+    to.y += heightOffset;
+    const direction = to.clone().sub(from);
+    const distance = direction.length();
+    if (distance < 0.001) return { ok: true };
+    direction.divideScalar(distance);
+    const hit = raycast.cast(from, direction, distance - 0.05);
+    if (!hit) return { ok: true };
+    if (hit.metadata?.kind !== "static") return { ok: true };
+    return { ok: false, blockerKind: hit.metadata?.kind };
   }
 
   private lineOfSight(
@@ -144,4 +242,8 @@ export class NavGraphBuilder {
       maxZ: maxZ + margin,
     };
   }
+}
+
+function gridKey(x: number, z: number): string {
+  return `${x}:${z}`;
 }

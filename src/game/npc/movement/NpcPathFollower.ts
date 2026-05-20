@@ -1,6 +1,13 @@
 ﻿import { Vector3 } from "three";
 import type { NavGraph } from "@engine/ai/NavGraph";
 
+export interface NpcPathDebugSnapshot {
+  path: Vector3[];
+  waypointIndex: number;
+  nextWaypoint: Vector3 | null;
+  requestedDestination: Vector3 | null;
+}
+
 /**
  * Sigue un path de waypoints A* devolviendo siempre el siguiente waypoint
  * intermedio como target. Re-pathea cuando:
@@ -69,5 +76,16 @@ export class NpcPathFollower {
     this.waypointIndex = 0;
     this.lastRequestAt = -Infinity;
     this.lastRequestedDestination.set(NaN, NaN, NaN);
+  }
+
+  getDebugSnapshot(): NpcPathDebugSnapshot {
+    return {
+      path: this.path.map((point) => point.clone()),
+      waypointIndex: this.waypointIndex,
+      nextWaypoint: this.path[this.waypointIndex]?.clone() ?? null,
+      requestedDestination: Number.isFinite(this.lastRequestedDestination.x)
+        ? this.lastRequestedDestination.clone()
+        : null,
+    };
   }
 }

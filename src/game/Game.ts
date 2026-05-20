@@ -17,7 +17,11 @@ import { UISoundSystem } from "@game/audio/UISoundSystem";
 import { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
 import type { GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
+import { NpcAiDebugOverlay } from "@game/debug/NpcAiDebugOverlay";
+import { NpcAiTracePanel } from "@game/debug/NpcAiTracePanel";
+import { NpcAiTraceRecorder } from "@game/debug/NpcAiTraceRecorder";
 import { NpcDebugSystem } from "@game/debug/NpcDebugSystem";
+import { installSceneInspector } from "@game/debug/SceneInspector";
 import { Controls } from "@game/gameplay/player/Controls";
 import { Player } from "@game/gameplay/player/Player";
 import { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
@@ -110,6 +114,7 @@ export class Game {
 
     lighting.attach(sceneManager.scene);
     footsteps.configure(FootstepsConfig);
+    installSceneInspector(sceneManager.scene);
 
     if (this.bootIntoLevel) {
       await this.startNewGame(this.bootIntoLevel);
@@ -141,6 +146,9 @@ export class Game {
     s.resolve(GameTokens.Subtitles).dispose();
     s.resolve(GameTokens.MainMenu).dispose();
     s.resolve(GameTokens.DebugOverlay).dispose();
+    s.resolve(GameTokens.NpcAiDebug).dispose();
+    s.resolve(GameTokens.NpcAiTracePanel).dispose();
+    s.resolve(GameTokens.NpcAiTrace).dispose();
     s.resolve(GameTokens.NpcDebug).dispose();
     s.resolve(GameTokens.EventBus).clear();
 
@@ -367,6 +375,19 @@ export class Game {
       GameTokens.DebugOverlay,
       new DebugOverlay(this.root, eventBus),
     );
+    const scene = s.resolve(EngineTokens.Scene);
+    s.register(
+      GameTokens.NpcAiDebug,
+      new NpcAiDebugOverlay(scene.scene, eventBus),
+    );
+    const traceRecorder = s.register(
+      GameTokens.NpcAiTrace,
+      new NpcAiTraceRecorder(eventBus),
+    );
+    s.register(
+      GameTokens.NpcAiTracePanel,
+      new NpcAiTracePanel(this.root, traceRecorder, eventBus),
+    );
 
     s.register(
       GameTokens.MainMenu,
@@ -501,12 +522,26 @@ export class Game {
     weaponEffects.update(time.delta);
     gizmos.update(time.delta);
 
+    const rendererInfo = s.resolve(EngineTokens.Renderer).renderer.info;
     debugOverlay.update({
       fps: time.fps,
       playerPosition,
       physicsBodies: physics.getBodyCount(),
       npcStates: this.npcs.map((npc) => `${npc.id}:${npc.getState()}`),
+      render: {
+        calls: rendererInfo.render.calls,
+        triangles: rendererInfo.render.triangles,
+        geometries: rendererInfo.memory.geometries,
+        textures: rendererInfo.memory.textures,
+        programs: rendererInfo.programs?.length ?? 0,
+      },
     });
+    s.resolve(GameTokens.NpcAiDebug).update(time.delta, {
+      playerPosition,
+      navGraph: this.navGraph,
+      npcs: this.npcs,
+    });
+    s.resolve(GameTokens.NpcAiTrace).update(time.elapsed, this.npcs);
   }
 
   // ---------------------------------------------------------------------------

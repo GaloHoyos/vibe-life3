@@ -8,6 +8,13 @@ export interface DebugSnapshot {
   playerPosition: Vector3;
   physicsBodies: number;
   npcStates: string[];
+  render?: {
+    calls: number;
+    triangles: number;
+    geometries: number;
+    textures: number;
+    programs: number;
+  };
 }
 
 /**
@@ -64,12 +71,20 @@ export class DebugOverlay implements Disposable {
     }
 
     const p = snapshot.playerPosition;
-    this.stats.textContent = [
+    const lines = [
       `FPS: ${snapshot.fps.toFixed(0)}`,
       `Player: ${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}`,
       `Physics bodies: ${snapshot.physicsBodies}`,
-      `NPCs: ${snapshot.npcStates.join(", ") || "none"}`,
-    ].join("\n");
+    ];
+    if (snapshot.render) {
+      const r = snapshot.render;
+      lines.push(
+        `Draw calls: ${r.calls}  tri: ${r.triangles.toLocaleString()}`,
+        `Geos: ${r.geometries}  tex: ${r.textures}  prog: ${r.programs}`,
+      );
+    }
+    lines.push(`NPCs: ${snapshot.npcStates.join(", ") || "none"}`);
+    this.stats.textContent = lines.join("\n");
   }
 
   dispose(): void {

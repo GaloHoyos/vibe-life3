@@ -12,7 +12,12 @@ import {
 } from "@engine/physics/character/CharacterMotor";
 import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import { Raycast } from "@engine/physics/Raycast";
-import type { ActorSnapshot, INpc, NpcUpdateContext } from "@game/npc/core/INpc";
+import type {
+  ActorSnapshot,
+  INpc,
+  NpcAiDebugSnapshot,
+  NpcUpdateContext,
+} from "@game/npc/core/INpc";
 import { NpcAnimationBridge } from "@game/npc/animation/NpcAnimationBridge";
 import { NpcCombat } from "@game/npc/combat/NpcCombat";
 import { NpcDebugFlags } from "@game/npc/core/NpcDebugFlags";
@@ -65,6 +70,7 @@ export class ZombieNpc implements Damageable, INpc {
   private readonly balanceFsm: StateMachine<ZombieBalanceState>;
 
   private currentPlayer: Damageable | null = null;
+  private currentThreatId: string | null = null;
   private lastMotorSnapshot: CharacterMotorSnapshot | null = null;
   private lastHitPartName: string | undefined;
   private stumbleTimer = 0;
@@ -72,6 +78,7 @@ export class ZombieNpc implements Damageable, INpc {
   private recoverTimer = 0;
   private deadHandled = false;
   private disposed = false;
+  private lastWantsMove = false;
 
   constructor(options: ZombieNpcOptions) {
     this.id = options.id;
@@ -144,9 +151,11 @@ export class ZombieNpc implements Damageable, INpc {
     if (threat) {
       this.targetPosition.copy(threat.position);
       this.currentPlayer = threat.entity;
+      this.currentThreatId = threat.id;
     } else {
       this.targetPosition.copy(this.mesh.position);
       this.currentPlayer = null;
+      this.currentThreatId = null;
     }
 
     this.balanceFsm.update(delta);
@@ -170,6 +179,7 @@ export class ZombieNpc implements Damageable, INpc {
     const ai = this.aiFsm.getState();
     const balance = this.balanceFsm.getState();
     const wantsMove = ai === "chase" && balance === "balanced";
+    this.lastWantsMove = wantsMove;
     const useTarget =
       ai !== "idle" && balance !== "fallen" && balance !== "recovering";
     const motorTarget = wantsMove
@@ -295,6 +305,22 @@ export class ZombieNpc implements Damageable, INpc {
       return `${ai}/${balance} d:${m.distanceToTarget.toFixed(1)} v:${m.velocity.length().toFixed(2)} dv:${m.desiredVelocity.length().toFixed(2)} g:${m.grounded ? "1" : "0"}`;
     }
     return `${ai}/${balance}`;
+  }
+
+  getAiDebugSnapshot(): NpcAiDebugSnapshot {
+    const state = `${this.aiFsm.getState()}/${this.balanceFsm.getState()}`;
+    return {
+      id: this.id,
+      state,
+      position: this.mesh.position.clone(),
+      isAlive: this.isAlive(),
+      wantsMove: this.lastWantsMove,
+      target: this.targetPosition.clone(),
+      threatId: this.currentThreatId,
+      threatPosition: this.currentThreatId ? this.targetPosition.clone() : null,
+      coverId: null,
+      path: this.pathFollower.getDebugSnapshot(),
+    };
   }
 
   // ---------------------------------------------------------------------------
