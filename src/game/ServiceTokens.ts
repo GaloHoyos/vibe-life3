@@ -15,6 +15,7 @@ import type { DialogueSystem } from "@game/narrative/DialogueSystem";
 import type { InteractSystem } from "@game/gameplay/interactions";
 import type { TriggerSystem } from "@game/levels/TriggerSystem";
 import type { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
+import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import type { DebugOverlay } from "@game/ui/overlay/DebugOverlay";
 import type { HUD } from "@game/ui/hud/HUD";
 import type { Subtitles } from "@game/ui/subtitles/Subtitles";
@@ -33,6 +34,7 @@ export const GameTokens = {
   Subtitles: new ServiceToken<Subtitles>("Subtitles"),
   Dialogue: new ServiceToken<DialogueSystem>("DialogueSystem"),
   WeaponEffects: new ServiceToken<WeaponEffects>("WeaponEffects"),
+  Grenades: new ServiceToken<GrenadeSystem>("GrenadeSystem"),
   InteractSystem: new ServiceToken<InteractSystem>("InteractSystem"),
   TriggerSystem: new ServiceToken<TriggerSystem>("TriggerSystem"),
   HUD: new ServiceToken<HUD>("HUD"),

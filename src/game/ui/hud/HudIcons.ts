@@ -61,12 +61,29 @@ const GravityGun = `
   <line x1="36" y1="16" x2="36" y2="20"/>
 </svg>`.trim();
 
+const Shotgun = `
+<svg viewBox="0 0 48 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" xmlns="http://www.w3.org/2000/svg">
+  <path d="M 2 10 L 40 10 L 40 14 L 26 14 L 26 20 L 20 20 L 20 14 L 2 14 Z"/>
+  <line x1="40" y1="11" x2="46" y2="11"/>
+  <line x1="40" y1="13" x2="46" y2="13"/>
+</svg>`.trim();
+
+const Grenade = `
+<svg viewBox="0 0 48 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" xmlns="http://www.w3.org/2000/svg">
+  <rect x="18" y="9" width="12" height="14"/>
+  <rect x="20" y="5" width="8" height="4"/>
+  <line x1="24" y1="2" x2="24" y2="5"/>
+  <line x1="24" y1="2" x2="30" y2="2"/>
+</svg>`.trim();
+
 const ICONS: Record<WeaponId, string> = {
   crowbar: Crowbar,
   pistol: Pistol,
   smg: Smg,
   ar3: Ar3,
   gravityGun: GravityGun,
+  shotgun: Shotgun,
+  grenade: Grenade,
 };
 
 export function getWeaponIcon(id: WeaponId): string {

@@ -19,6 +19,7 @@ import { NpcDebugSystem } from "@game/debug/NpcDebugSystem";
 import { Controls } from "@game/gameplay/player/Controls";
 import { Player } from "@game/gameplay/player/Player";
 import { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
+import { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import { InteractSystem, type SlidingDoor } from "@game/gameplay/interactions";
 import type { NavGraph } from "@engine/ai/NavGraph";
 import type { CoverSystem } from "@game/levels/CoverSystem";
@@ -125,6 +126,7 @@ export class Game {
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
     s.resolve(GameTokens.WeaponEffects).dispose();
+    s.resolve(GameTokens.Grenades).dispose();
     this.player?.dispose();
     s.resolve(GameTokens.HUD).dispose();
     s.resolve(GameTokens.Subtitles).dispose();
@@ -170,6 +172,8 @@ export class Game {
     const scene = s.resolve(EngineTokens.Scene);
     const assets = s.resolve(EngineTokens.Assets);
     const physics = s.resolve(EngineTokens.Physics);
+    const raycast = s.resolve(EngineTokens.Raycast);
+    const positionalSounds = s.resolve(EngineTokens.PositionalSound);
     const input = s.resolve(EngineTokens.Input);
 
     const controls = s.register(GameTokens.Controls, new Controls(input));
@@ -184,6 +188,17 @@ export class Game {
     s.register(
       GameTokens.WeaponEffects,
       new WeaponEffects(scene.scene, eventBus),
+    );
+    s.register(
+      GameTokens.Grenades,
+      new GrenadeSystem(
+        physics,
+        scene.scene,
+        assets,
+        raycast,
+        eventBus,
+        positionalSounds,
+      ),
     );
     s.register(GameTokens.InteractSystem, new InteractSystem(eventBus));
     s.register(GameTokens.TriggerSystem, new TriggerSystem(eventBus));
@@ -306,6 +321,10 @@ export class Game {
       player.update(time.delta, input, controls, camera, time.elapsed);
     }
 
+    // Render-tick del viewmodel siempre, aunque F9 haya soltado el puntero,
+    // para que los tweaks del debug tuner se apliquen en vivo.
+    player.tickRender(time.delta, camera);
+
     footsteps.update(time.delta, player.getMoveIntensity());
 
     const playerPosition = player.getPosition();
@@ -347,6 +366,7 @@ export class Game {
     this.doors.forEach((door) => door.update(time.delta));
     physics.step(time.delta);
     this.npcs.forEach((npc) => npc.syncFromPhysics());
+    s.resolve(GameTokens.Grenades).update(time.delta, time.elapsed);
 
     camera.syncToPosition(player.getEyePosition());
     interactSystem.update(
@@ -524,6 +544,7 @@ export class Game {
       assets,
       sceneManager.scene,
       eventBus,
+      services.resolve(GameTokens.Grenades),
     );
 
     camera.syncToPosition(this.player.getEyePosition());

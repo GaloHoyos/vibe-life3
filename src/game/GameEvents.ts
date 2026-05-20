@@ -4,9 +4,14 @@ import type { EventBus } from "@engine/core/EventBus";
 import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
 
 /** Snapshot del estado del selector que se publica al HUD. */
+export interface WeaponSelectorItemState {
+  id: WeaponId;
+  disabled: boolean;
+}
+
 export interface WeaponSelectorState {
   /** Por slot, las armas que el jugador tiene equipadas, en orden canÃ³nico. */
-  slots: Array<{ slot: number; weapons: WeaponId[] }>;
+  slots: Array<{ slot: number; weapons: WeaponSelectorItemState[] }>;
   /** Slot actualmente abierto. */
   activeSlot: number;
   /** Arma tentativamente seleccionada (la que se equiparÃ¡ al confirmar). */
@@ -21,6 +26,16 @@ export interface GameEventMap {
     origin: Vector3;
     direction: Vector3;
     range: number;
+  };
+  /**
+   * Secundario distinto del primario (ej. lanzagranadas del SMG). El audio
+   * usa este evento para reproducir un clip aparte. Las armas cuyo
+   * secundario reusa el mismo sonido del primario emiten `weapon.fired`.
+   */
+  "weapon.alternate.fired": {
+    weaponName: string;
+    origin: Vector3;
+    direction: Vector3;
   };
   "weapon.hit": {
     weaponName: string;
@@ -45,14 +60,25 @@ export interface GameEventMap {
   "weapon.empty": {
     weaponName: string;
   };
+  /**
+   * Sonido mecnico discreto despus de un evento (pump-action de la
+   * shotgun tras disparar y tras recargar el ltimo cartucho). El
+   * `WeaponSoundSystem` lo mapea a `WeaponAudio[name].cock`.
+   */
+  "weapon.cocked": {
+    weaponName: string;
+  };
   "weapon.ammo.changed": {
+    weaponId?: WeaponId;
     current: number;
     reserve: number;
   };
   "weapon.changed": {
+    weaponId?: WeaponId;
     weaponName: string;
     ammo: number;
     reserve: number;
+    secondaryAmmo?: number;
   };
   "weapon.selector.opened": WeaponSelectorState;
   "weapon.selector.cycled": WeaponSelectorState;

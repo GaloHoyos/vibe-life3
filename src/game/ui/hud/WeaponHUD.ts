@@ -1,9 +1,12 @@
 ﻿import type { Disposable } from "@shared/types/lifecycle";
+import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
 
 export interface WeaponHUDState {
+  id?: WeaponId;
   name: string;
   ammo: number;
   reserve: number;
+  secondaryAmmo?: number;
 }
 
 /**
@@ -17,17 +20,22 @@ export class WeaponHUD implements Disposable {
 
   private readonly current = document.createElement("span");
   private readonly reserve = document.createElement("span");
+  private readonly secondary = document.createElement("span");
   private fireTimer = 0;
 
   constructor() {
     this.element.className = "hl-ammo";
     this.element.innerHTML = `
       <div class="hl-ammo__label">MUNICIÃ“N</div>
+      <div class="hl-ammo__secondary"></div>
       <div class="hl-ammo__row">
         <span class="hl-ammo__current"></span>
         <span class="hl-ammo__reserve"></span>
       </div>
     `;
+    this.element
+      .querySelector(".hl-ammo__secondary")
+      ?.appendChild(this.secondary);
     this.element
       .querySelector(".hl-ammo__current")
       ?.appendChild(this.current);
@@ -39,6 +47,13 @@ export class WeaponHUD implements Disposable {
   setWeapon(state: WeaponHUDState): void {
     this.current.textContent = `${state.ammo}`;
     this.reserve.textContent = `${state.reserve}`;
+    const hasSecondary = state.secondaryAmmo !== undefined;
+    this.secondary.textContent = hasSecondary ? `${state.secondaryAmmo}` : "";
+    this.element.classList.toggle("has-secondary", hasSecondary);
+    this.element.classList.toggle(
+      "is-secondary-empty",
+      hasSecondary && state.secondaryAmmo === 0,
+    );
     this.element.classList.toggle("is-low", state.ammo > 0 && state.ammo <= 5);
     this.element.classList.toggle("is-empty", state.ammo === 0);
   }

@@ -2,11 +2,6 @@
 import { BoxGeometry, Group, Mesh, MeshStandardMaterial, Scene, Vector3 } from 'three';
 import type { AssetManager } from '@engine/assets/AssetManager';
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
-import {
-  isWeaponAttachmentKey,
-  registerAttachment,
-  WeaponAttachmentTuning,
-} from '@game/npc/combat/WeaponAttachmentTuning';
 import type { WeaponController } from '@game/gameplay/weapons/core/WeaponController';
 import type { WeaponId } from '@game/gameplay/weapons/core/WeaponDefinition';
 import { getWeapon } from '@game/gameplay/weapons/core/WeaponFactory';
@@ -26,7 +21,6 @@ export class WeaponPickup {
   private pickedUp = false;
   private readonly body: RAPIER.RigidBody;
   private readonly collider: RAPIER.Collider;
-  private readonly unregisterTuning: (() => void) | null = null;
 
   private constructor(
     private readonly scene: Scene,
@@ -35,22 +29,7 @@ export class WeaponPickup {
   ) {
     const definition = getWeapon(options.weaponId);
     this.object.name = options.id;
-
-    // Si el weapon tiene entrada en `WeaponAttachmentTuning`, el pickup
-    // toma su `worldScale` (y reacciona a los sliders en runtime). Si no,
-    // cae al `pickupScale` del config.
-    if (isWeaponAttachmentKey(options.weaponId)) {
-      const tuning = WeaponAttachmentTuning[options.weaponId];
-      this.object.scale.setScalar(tuning.worldScale);
-      this.unregisterTuning = registerAttachment({
-        weapon: this.object,
-        weaponId: options.weaponId,
-        accumulatedScale: 1,
-        kind: "pickup",
-      });
-    } else {
-      this.object.scale.setScalar(definition.pickupScale);
-    }
+    this.object.scale.setScalar(definition.pickupScale);
     this.scene.add(this.object);
 
     const spawnPosition = options.position.clone().add(new Vector3(0, SpawnLift, 0));
@@ -99,6 +78,7 @@ export class WeaponPickup {
     }
 
     this.syncFromPhysics();
+    this.syncScale();
 
     if (getPlanarDistanceSq(playerPosition, this.object.position) > PickupRadius * PickupRadius) {
       return;
@@ -111,7 +91,6 @@ export class WeaponPickup {
   }
 
   dispose(): void {
-    this.unregisterTuning?.();
     this.object.removeFromParent();
     this.collider.setEnabled(false);
     this.body.setEnabled(false);
@@ -127,6 +106,16 @@ export class WeaponPickup {
     const rotation = this.body.rotation();
     this.object.position.set(translation.x, translation.y, translation.z);
     this.object.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
+  }
+
+  /**
+   * Re-aplica scale por frame leyendo `definition.pickupScale`. Esto deja
+   * que el debug panel mute el valor en vivo y los pickups ya spawneados
+   * lo absorban sin recrear nada.
+   */
+  private syncScale(): void {
+    const definition = getWeapon(this.options.weaponId);
+    this.object.scale.setScalar(definition.pickupScale);
   }
 }
 

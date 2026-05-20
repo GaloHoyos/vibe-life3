@@ -43,9 +43,13 @@ export class WeaponInventory {
     return this.activeId ? this.weapons.get(this.activeId) ?? null : null;
   }
 
+  getActiveWeaponId(): WeaponId | null {
+    return this.activeId;
+  }
+
   equipWeapon(id: WeaponId): Weapon | null {
     const weapon = this.weapons.get(id);
-    if (!weapon) {
+    if (!weapon || !this.isWeaponSelectable(id)) {
       return null;
     }
 
@@ -78,21 +82,21 @@ export class WeaponInventory {
   }
 
   nextWeapon(): Weapon | null {
-    return this.cycle(1);
+    return this.cycle(1, true);
   }
 
   previousWeapon(): Weapon | null {
-    return this.cycle(-1);
+    return this.cycle(-1, true);
   }
 
   /** Id del arma que vendrÃ­a despuÃ©s en el cycling, sin equiparla. */
   peekNextWeaponId(): WeaponId | null {
-    return this.peekCycle(1);
+    return this.peekCycle(1, true);
   }
 
   /** Id del arma anterior en el cycling, sin equiparla. */
   peekPreviousWeaponId(): WeaponId | null {
-    return this.peekCycle(-1);
+    return this.peekCycle(-1, true);
   }
 
   isEmpty(): boolean {
@@ -102,6 +106,21 @@ export class WeaponInventory {
   /** Armas en el slot indicado, en el orden canÃ³nico de `WEAPON_ORDER`. */
   getWeaponsInSlot(slot: number): Weapon[] {
     return this.orderedWeaponsInSlot(slot);
+  }
+
+  isWeaponSelectable(id: WeaponId): boolean {
+    const weapon = this.weapons.get(id);
+    if (!weapon) {
+      return false;
+    }
+    return id !== "grenade" || weapon.getAmmo() > 0;
+  }
+
+  getSecondaryAmmoForWeapon(id: WeaponId): number | undefined {
+    if (id !== "smg") {
+      return undefined;
+    }
+    return this.weapons.get("grenade")?.getAmmo() ?? 0;
   }
 
   private orderedWeapons(): Weapon[] {
@@ -116,12 +135,12 @@ export class WeaponInventory {
     );
   }
 
-  private cycle(direction: 1 | -1): Weapon | null {
-    const target = this.peekCycle(direction);
+  private cycle(direction: 1 | -1, selectableOnly = false): Weapon | null {
+    const target = this.peekCycle(direction, selectableOnly);
     return target ? this.equipWeapon(target) : null;
   }
 
-  private peekCycle(direction: 1 | -1): WeaponId | null {
+  private peekCycle(direction: 1 | -1, selectableOnly = false): WeaponId | null {
     const ordered = this.orderedWeapons();
     if (ordered.length === 0) {
       return null;
@@ -131,18 +150,27 @@ export class WeaponInventory {
       0,
       ordered.findIndex((weapon) => weapon.definition.id === this.activeId),
     );
-    const nextIndex =
-      (activeIndex + direction + ordered.length) % ordered.length;
-    return ordered[nextIndex].definition.id;
+    for (let step = 1; step <= ordered.length; step += 1) {
+      const nextIndex =
+        (activeIndex + direction * step + ordered.length) % ordered.length;
+      const id = ordered[nextIndex].definition.id;
+      if (!selectableOnly || this.isWeaponSelectable(id)) {
+        return id;
+      }
+    }
+    return null;
   }
 
   private emitWeaponChanged(weapon: Weapon): void {
     this.eventBus.emit("weapon.changed", {
+      weaponId: weapon.definition.id,
       weaponName: weapon.name,
       ammo: weapon.getAmmo(),
       reserve: weapon.getReserveAmmo(),
+      secondaryAmmo: this.getSecondaryAmmoForWeapon(weapon.definition.id),
     });
     this.eventBus.emit("weapon.ammo.changed", {
+      weaponId: weapon.definition.id,
       current: weapon.getAmmo(),
       reserve: weapon.getReserveAmmo(),
     });

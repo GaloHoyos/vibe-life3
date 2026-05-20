@@ -52,19 +52,28 @@ export class WeaponSelectorView implements Disposable {
 
         const list = document.createElement("div");
         list.className = "hl-selector__list";
-        for (const weaponId of weaponsInSlot) {
+        for (const weapon of weaponsInSlot) {
           const item = document.createElement("div");
           item.className = "hl-selector__item";
-          if (weaponId === state.tentativeId) {
+          if (weapon.disabled) {
+            item.classList.add("is-disabled");
+          }
+          if (weapon.id === state.tentativeId) {
             item.classList.add("is-highlighted");
           }
-          item.innerHTML = getWeaponIcon(weaponId);
+          item.innerHTML = getWeaponIcon(weapon.id);
           list.appendChild(item);
         }
         column.appendChild(list);
 
+        const tentative = weaponsInSlot.find(
+          (weapon) => weapon.id === state.tentativeId,
+        );
         const name = document.createElement("div");
         name.className = "hl-selector__name";
+        if (tentative?.disabled) {
+          name.classList.add("is-disabled");
+        }
         name.textContent = getWeaponDefinition(
           state.tentativeId,
         ).displayName.toUpperCase();

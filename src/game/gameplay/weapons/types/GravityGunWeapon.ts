@@ -10,6 +10,12 @@ import {
 const CONFIG = {
   /** Alcance del raycast tanto para grab como para punt directo. */
   reachRange: 4.0,
+  pullRange: 11.0,
+  pullFarSpeed: 1.8,
+  pullNearSpeed: 11,
+  pullFarResponse: 1.2,
+  pullNearResponse: 8.5,
+  airDownDropPitch: -0.55,
   /** Origin offset del raycast (escapa la cÃ¡psula del player, radius 0.35). */
   rayOriginOffset: 0.55,
   /** Distancia del prop holdeado al ojo del jugador. */
@@ -43,14 +49,17 @@ interface HeldProp {
   rotationOffset: Quaternion;
 }
 
+interface PullTarget {
+  body: RAPIER.RigidBody;
+}
+
 /**
  * Gravity Gun HL2-style.
  *
  * - LMB sin holding: punt â€” raycast forward; si pega a dynamic body le seta
  *   linvel directa (no impulse) para que props pesados tambiÃ©n salgan rÃ¡pido.
- * - RMB sin holding: graba el body a Kinematic y lo flota frente a la cÃ¡mara.
- *   Guarda el offset de rotaciÃ³n cÃ¡maraâ†’prop para mantener la orientaciÃ³n
- *   relativa mientras el jugador mira en otra direcciÃ³n.
+ * - RMB sin holding: graba el body a Kinematic si estÃ¡ en rango; si estÃ¡
+ *   mÃ¡s lejos, lo atrae mientras RMB siga sostenido hasta poder agarrarlo.
  * - LMB con holding: lanza el body con linvel forward (throw).
  * - RMB con holding o switch de arma: dropea sin velocidad.
  *
@@ -62,6 +71,7 @@ interface HeldProp {
  */
 export class GravityGunWeapon extends Weapon {
   private held: HeldProp | null = null;
+  private pullTarget: PullTarget | null = null;
   private readonly launched: LaunchedProp[] = [];
   private readonly tmpDirection = new Vector3();
   private readonly tmpOrigin = new Vector3();
@@ -81,29 +91,21 @@ export class GravityGunWeapon extends Weapon {
     if (this.held) {
       this.drop();
     } else {
-      this.grab(context);
+      this.tryGrabOrPull(context);
     }
   }
 
   override update(_delta: number, context: WeaponUpdateContext): void {
     if (this.held) {
-      this.tmpHoldTarget
-        .copy(context.origin)
-        .addScaledVector(context.direction, CONFIG.holdDistance);
-      this.held.body.setNextKinematicTranslation({
-        x: this.tmpHoldTarget.x,
-        y: this.tmpHoldTarget.y,
-        z: this.tmpHoldTarget.z,
-      });
-      this.tmpHoldRotation
-        .copy(context.cameraQuaternion)
-        .multiply(this.held.rotationOffset);
-      this.held.body.setNextKinematicRotation({
-        x: this.tmpHoldRotation.x,
-        y: this.tmpHoldRotation.y,
-        z: this.tmpHoldRotation.z,
-        w: this.tmpHoldRotation.w,
-      });
+      if (!context.ownerGrounded && context.direction.y < CONFIG.airDownDropPitch) {
+        this.drop();
+      } else {
+        this.updateHeld(context);
+      }
+    }
+
+    if (!this.held) {
+      this.updatePullTarget(context);
     }
 
     for (let i = this.launched.length - 1; i >= 0; i -= 1) {
@@ -159,24 +161,37 @@ export class GravityGunWeapon extends Weapon {
   }
 
   override onUnequip(): void {
+    this.pullTarget = null;
     if (this.held) {
       this.drop();
     }
   }
 
-  private grab(context: WeaponAlternateFireContext): void {
+  private tryGrabOrPull(context: WeaponAlternateFireContext): void {
     const origin = context.origin
       .clone()
       .addScaledVector(context.direction, CONFIG.rayOriginOffset);
     const hit = this.context.raycast.cast(
       origin,
       context.direction,
-      CONFIG.reachRange,
+      CONFIG.pullRange,
     );
     if (!hit) return;
     const body = hit.collider.parent();
     if (!body || !body.isDynamic()) return;
 
+    if (hit.toi <= CONFIG.reachRange) {
+      this.grabBody(body, context);
+      return;
+    }
+
+    this.pullTarget = { body };
+  }
+
+  private grabBody(
+    body: RAPIER.RigidBody,
+    context: Pick<WeaponUpdateContext, "cameraQuaternion">,
+  ): void {
     const propRot = body.rotation();
     const propQ = new Quaternion(propRot.x, propRot.y, propRot.z, propRot.w);
     const rotationOffset = context.cameraQuaternion
@@ -188,6 +203,87 @@ export class GravityGunWeapon extends Weapon {
     body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
     this.held = { body, rotationOffset };
+    this.pullTarget = null;
+  }
+
+  private updateHeld(context: WeaponUpdateContext): void {
+    if (!this.held) return;
+    this.tmpHoldTarget
+      .copy(context.origin)
+      .addScaledVector(context.direction, CONFIG.holdDistance);
+    this.held.body.setNextKinematicTranslation({
+      x: this.tmpHoldTarget.x,
+      y: this.tmpHoldTarget.y,
+      z: this.tmpHoldTarget.z,
+    });
+    this.tmpHoldRotation
+      .copy(context.cameraQuaternion)
+      .multiply(this.held.rotationOffset);
+    this.held.body.setNextKinematicRotation({
+      x: this.tmpHoldRotation.x,
+      y: this.tmpHoldRotation.y,
+      z: this.tmpHoldRotation.z,
+      w: this.tmpHoldRotation.w,
+    });
+  }
+
+  private updatePullTarget(context: WeaponUpdateContext): void {
+    if (!context.alternateHeld || !this.pullTarget) {
+      this.pullTarget = null;
+      return;
+    }
+
+    const body = this.pullTarget.body;
+    if (!body.isValid() || !body.isDynamic()) {
+      this.pullTarget = null;
+      return;
+    }
+
+    this.tmpHoldTarget
+      .copy(context.origin)
+      .addScaledVector(context.direction, CONFIG.holdDistance);
+    const translation = body.translation();
+    this.tmpDirection.set(
+      this.tmpHoldTarget.x - translation.x,
+      this.tmpHoldTarget.y - translation.y,
+      this.tmpHoldTarget.z - translation.z,
+    );
+    const distanceToTarget = this.tmpDirection.length();
+    const distanceToPlayer = context.origin.distanceTo(
+      this.tmpOrigin.set(translation.x, translation.y, translation.z),
+    );
+    if (distanceToPlayer <= CONFIG.reachRange) {
+      this.grabBody(body, context);
+      return;
+    }
+    if (distanceToTarget <= 0.05) {
+      body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      return;
+    }
+
+    this.tmpDirection.divideScalar(distanceToTarget);
+    const proximity = smoothstep(
+      clamp01(
+        (CONFIG.pullRange - distanceToPlayer) /
+          (CONFIG.pullRange - CONFIG.reachRange),
+      ),
+    );
+    const speed = lerp(CONFIG.pullFarSpeed, CONFIG.pullNearSpeed, proximity);
+    const response = lerp(
+      CONFIG.pullFarResponse,
+      CONFIG.pullNearResponse,
+      proximity,
+    );
+    const velocity = body.linvel();
+    const blend = 1 - Math.exp(-response * context.delta);
+    body.setLinvel(
+      {
+        x: velocity.x + (this.tmpDirection.x * speed - velocity.x) * blend,
+        y: velocity.y + (this.tmpDirection.y * speed - velocity.y) * blend,
+        z: velocity.z + (this.tmpDirection.z * speed - velocity.z) * blend,
+      },
+      true,
+    );
   }
 
   private drop(): void {
@@ -195,12 +291,14 @@ export class GravityGunWeapon extends Weapon {
     this.held.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
     this.held.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.held = null;
+    this.pullTarget = null;
   }
 
   private throwHeld(context: WeaponFireContext): void {
     if (!this.held) return;
     const body = this.held.body;
     this.held = null;
+    this.pullTarget = null;
 
     body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
     body.setLinvel(
@@ -243,4 +341,16 @@ export class GravityGunWeapon extends Weapon {
       expiresAt: context.now + CONFIG.launchedDuration,
     });
   }
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function smoothstep(value: number): number {
+  return value * value * (3 - 2 * value);
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
 }

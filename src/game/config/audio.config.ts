@@ -8,7 +8,7 @@
 
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 
-export type WeaponSoundEvent = "shot" | "reload" | "empty";
+export type WeaponSoundEvent = "shot" | "reload" | "empty" | "altShot";
 
 export type WeaponHitSurface =
   | "static"
@@ -23,6 +23,10 @@ export interface WeaponSoundMap {
   shot?: string;
   reload?: string;
   empty?: string;
+  /** Sonido del disparo secundario distinto del primario (ej. lanzagranadas del SMG). */
+  altShot?: string;
+  /** Sonido mecnico (ej. pump de la shotgun tras disparar / tras recargar). */
+  cock?: string;
   /** Sonidos contextuales por tipo de superficie golpeada. */
   hit?: Partial<Record<WeaponHitSurface, string>>;
 }
@@ -41,6 +45,7 @@ export const WeaponAudio: Record<string, WeaponSoundMap> = {
     shot: "weapons.smg.shot",
     reload: "weapons.smg.reload",
     empty: "weapons.smg.empty",
+    altShot: "weapons.smg.secondary",
   },
   AR3: {
     shot: "weapons.ar3.shot",
@@ -52,6 +57,16 @@ export const WeaponAudio: Record<string, WeaponSoundMap> = {
     hit: {
       npc: "weapons.crowbar.hitFlesh",
     },
+  },
+  Shotgun: {
+    shot: "weapons.shotgun.shot",
+    reload: "weapons.shotgun.reload",
+    empty: "weapons.shotgun.empty",
+    cock: "weapons.shotgun.cock",
+  },
+  Grenade: {
+    shot: "weapons.grenade.throw",
+    empty: "weapons.shotgun.empty",
   },
 };
 

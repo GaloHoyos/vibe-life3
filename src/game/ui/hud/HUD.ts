@@ -1,6 +1,7 @@
 ﻿import type { Disposable } from "@shared/types/lifecycle";
 import { HudStrings } from "@game/config/strings";
 import type { GameEventBus } from "@game/GameEvents";
+import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
 import type { HUDValue } from "./HealthArmorHUD";
 import { HUDView } from "./HUDView";
 import type { WeaponHUDState } from "./WeaponHUD";
@@ -57,11 +58,13 @@ export class HUD implements Disposable {
       eventBus.on("player.damaged", ({ amount }) =>
         this.view.damage.flash(amount),
       ),
-      eventBus.on("weapon.changed", ({ weaponName, ammo, reserve }) =>
-        this.setWeapon(weaponName, ammo, reserve),
+      eventBus.on(
+        "weapon.changed",
+        ({ weaponId, weaponName, ammo, reserve, secondaryAmmo }) =>
+          this.setWeapon(weaponId, weaponName, ammo, reserve, secondaryAmmo),
       ),
-      eventBus.on("weapon.ammo.changed", ({ current, reserve }) =>
-        this.setAmmo(current, reserve),
+      eventBus.on("weapon.ammo.changed", ({ weaponId, current, reserve }) =>
+        this.setAmmo(weaponId, current, reserve),
       ),
       eventBus.on("weapon.fired", () => {
         this.view.crosshair.pulseFire();
@@ -114,13 +117,31 @@ export class HUD implements Disposable {
     this.view.healthArmor.setAux(this.state.aux, depleted);
   }
 
-  setAmmo(current: number, reserve: number): void {
-    this.state.weapon = { ...this.state.weapon, ammo: current, reserve };
+  setAmmo(
+    weaponId: WeaponId | undefined,
+    current: number,
+    reserve: number,
+  ): void {
+    if (!weaponId || weaponId === this.state.weapon.id) {
+      this.state.weapon = { ...this.state.weapon, ammo: current, reserve };
+      this.view.weapon.setWeapon(this.state.weapon);
+      return;
+    }
+
+    if (this.state.weapon.id === "smg" && weaponId === "grenade") {
+      this.state.weapon = { ...this.state.weapon, secondaryAmmo: current };
+    }
     this.view.weapon.setWeapon(this.state.weapon);
   }
 
-  setWeapon(name: string, ammo: number, reserve: number): void {
-    this.state.weapon = { name, ammo, reserve };
+  setWeapon(
+    id: WeaponId | undefined,
+    name: string,
+    ammo: number,
+    reserve: number,
+    secondaryAmmo?: number,
+  ): void {
+    this.state.weapon = { id, name, ammo, reserve, secondaryAmmo };
     this.view.weapon.setWeapon(this.state.weapon);
   }
 
