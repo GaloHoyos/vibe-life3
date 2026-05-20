@@ -9,9 +9,9 @@ import {
 } from "three";
 import type { AssetManager } from "@engine/assets/AssetManager";
 import type { PositionalSoundManager } from "@engine/audio/core/PositionalSoundManager";
-import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
+import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
-import type { Disposable } from "@shared/types/lifecycle";
+import type { Damageable, Disposable } from "@shared/types/lifecycle";
 import type { GameEventBus } from "@game/GameEvents";
 import type { ActiveGrenade, GrenadeSpawnOptions } from "./Grenade";
 import { GrenadeRenderTuning } from "./GrenadeRenderTuning";
@@ -41,6 +41,15 @@ const tmpRayDir = new Vector3();
 interface SpawnedMesh {
   root: Object3D;
   fallback: boolean;
+}
+
+interface ExplosionDamageTarget {
+  damageable: Damageable;
+  targetId: string;
+  surfaceKind: PhysicsMetadata["kind"];
+  bodyPartName?: string;
+  damage: number;
+  direction: Vector3;
 }
 
 /**
@@ -207,6 +216,8 @@ export class GrenadeSystem implements Disposable {
 
     const sphere = new RAPIER.Ball(grenade.radius);
     const seenColliders = new Set<number>();
+    const impulseBodies = new Map<number, RAPIER.RigidBody>();
+    const damageTargets = new Map<Damageable, ExplosionDamageTarget>();
 
     this.physics.world.intersectionsWithShape(
       { x: point.x, y: point.y, z: point.z },
@@ -221,7 +232,7 @@ export class GrenadeSystem implements Disposable {
         const parent = collider.parent();
 
         if (parent && parent.isDynamic() && parent !== grenade.body) {
-          this.applyExplosionImpulse(parent, point, grenade.impulse);
+          impulseBodies.set(parent.handle, parent);
         }
 
         if (!metadata?.damageable) {
@@ -250,20 +261,53 @@ export class GrenadeSystem implements Disposable {
         const direction = tmpOffset.lengthSq() > 1e-4
           ? tmpOffset.clone().normalize()
           : new Vector3(0, 1, 0);
-        metadata.damageable.applyDamage(damage, direction, metadata.bodyPart?.name);
-        this.eventBus.emit("weapon.hit", {
-          weaponName: grenade.weaponName,
+        this.collectDamageTarget(damageTargets, {
+          damageable: metadata.damageable,
           targetId: metadata.id,
           surfaceKind: metadata.kind,
-          point: point.clone(),
-          normal: direction,
+          bodyPartName: metadata.bodyPart?.name,
           damage,
+          direction,
         });
         return true;
       },
     );
 
+    impulseBodies.forEach((body) => {
+      this.applyExplosionImpulse(body, point, grenade.impulse);
+    });
+
+    damageTargets.forEach((target) => {
+      target.damageable.applyDamage(
+        target.damage,
+        target.direction.clone(),
+        target.bodyPartName,
+      );
+      this.eventBus.emit("weapon.hit", {
+        weaponName: grenade.weaponName,
+        targetId: target.targetId,
+        surfaceKind: target.surfaceKind,
+        point: point.clone(),
+        normal: target.direction.clone(),
+        damage: target.damage,
+      });
+    });
+
     this.removeQuietly(grenade);
+  }
+
+  private collectDamageTarget(
+    targets: Map<Damageable, ExplosionDamageTarget>,
+    candidate: ExplosionDamageTarget,
+  ): void {
+    const existing = targets.get(candidate.damageable);
+    if (existing && existing.damage >= candidate.damage) {
+      return;
+    }
+    targets.set(candidate.damageable, {
+      ...candidate,
+      direction: candidate.direction.clone(),
+    });
   }
 
   private applyExplosionImpulse(
