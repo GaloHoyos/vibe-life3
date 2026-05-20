@@ -288,6 +288,12 @@ const npcs: NPCDefinition[] = [
     id: "sfw-combine-overseer",
     position: [-18, 5.4, -58],
     characterId: "combine",
+    patrol: [
+      [-28, 5.4, -58],
+      [-8, 5.4, -58],
+      [-8, 5.4, -38],
+      [-28, 5.4, -38],
+    ],
   },
   ...npcLine(
     "sfw-combine-admin-ground",
@@ -296,7 +302,7 @@ const npcs: NPCDefinition[] = [
     4,
     "x",
     6.5,
-  ),
+  ).map((npc) => ({ ...npc, patrol: adminGroundPatrol() })),
   ...npcLine(
     "sfw-combine-admin-roof",
     "combine",
@@ -304,7 +310,7 @@ const npcs: NPCDefinition[] = [
     3,
     "x",
     6.0,
-  ),
+  ).map((npc) => ({ ...npc, patrol: adminRoofPatrol() })),
   ...npcLine("sfw-zombie-west-hamlet", "zombie", [-158, 2.1, 56], 5, "x", 5.0),
   ...npcLine("sfw-zombie-east-hamlet", "zombie", [138, 2.2, 68], 5, "x", 5.0),
   ...npcLine(
@@ -1061,4 +1067,22 @@ function npcLine(
     });
   }
   return out;
+}
+
+function adminGroundPatrol(): Vec3[] {
+  return [
+    [106, 2.2, -102],
+    [128, 2.2, -102],
+    [128, 2.2, -82],
+    [106, 2.2, -82],
+  ];
+}
+
+function adminRoofPatrol(): Vec3[] {
+  return [
+    [108, 13.8, -102],
+    [128, 13.8, -102],
+    [128, 13.8, -84],
+    [108, 13.8, -84],
+  ];
 }

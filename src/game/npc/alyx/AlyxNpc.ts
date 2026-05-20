@@ -159,6 +159,7 @@ export class AlyxNpc implements Damageable, INpc {
     }
     this.combat = new NpcRangedCombat(
       options.id,
+      this.faction,
       rangedConfig,
       this.raycast,
       options.eventBus,
@@ -386,7 +387,7 @@ export class AlyxNpc implements Damageable, INpc {
         if (
           this.perception.isVisibleNow() &&
           !this.combat.isReloading(this.currentElapsed) &&
-          this.combat.canStartBurst(this.currentElapsed)
+          this.canStartAimedBurst()
         ) {
           this.aimTarget.copy(this.currentThreat.position);
           this.combat.startBurst(this.currentElapsed);
@@ -439,6 +440,14 @@ export class AlyxNpc implements Damageable, INpc {
       return;
     }
     this.animation.setAiming(threat.position, this.weaponHandedness);
+  }
+
+  private canStartAimedBurst(): boolean {
+    const aimTime = this.definition.attack.ranged?.aimTime ?? 0;
+    return (
+      this.aimSettleTime >= aimTime &&
+      this.combat.canStartBurst(this.currentElapsed)
+    );
   }
 
   private pickThreat(ctx: NpcUpdateContext): ActorSnapshot | null {
@@ -502,6 +511,8 @@ export class AlyxNpc implements Damageable, INpc {
           this.id,
           this.mesh.position,
           this.currentThreat.position,
+          25,
+          (position) => ctx.navGraph.pathDistance(this.mesh.position, position),
         );
         if (best) {
           ctx.coverSystem.claim(best.id, this.id);

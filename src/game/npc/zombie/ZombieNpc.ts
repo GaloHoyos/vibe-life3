@@ -63,6 +63,7 @@ export class ZombieNpc implements Damageable, INpc {
   private readonly steering: NpcSteering;
   private readonly pathFollower: NpcPathFollower;
   private readonly targetPosition = new Vector3();
+  private readonly heardNoisePosition = new Vector3();
   private readonly lastHitDirection = new Vector3(0, 0, 1);
   private readonly tmpForward = new Vector3(0, 0, 1);
   private readonly tmpNeighbors: { position: Vector3; radius: number }[] = [];
@@ -70,6 +71,7 @@ export class ZombieNpc implements Damageable, INpc {
   private readonly balanceFsm: StateMachine<ZombieBalanceState>;
 
   private currentPlayer: Damageable | null = null;
+  private currentThreatSnapshot: ActorSnapshot | null = null;
   private currentThreatId: string | null = null;
   private lastMotorSnapshot: CharacterMotorSnapshot | null = null;
   private lastHitPartName: string | undefined;
@@ -79,6 +81,10 @@ export class ZombieNpc implements Damageable, INpc {
   private deadHandled = false;
   private disposed = false;
   private lastWantsMove = false;
+  private heardNoiseAge = Infinity;
+  private readonly threatScanInterval = 0.18 + Math.random() * 0.12;
+  private nextThreatScanAt = 0;
+  private readonly unsubscribers: Array<() => void> = [];
 
   constructor(options: ZombieNpcOptions) {
     this.id = options.id;
@@ -132,6 +138,33 @@ export class ZombieNpc implements Damageable, INpc {
 
     this.aiFsm = this.buildAiFsm();
     this.balanceFsm = this.buildBalanceFsm();
+
+    this.unsubscribers.push(
+      options.eventBus.on("world.noise", (payload) => {
+        if (payload.sourceId === this.id) return;
+        if (
+          payload.sourceFaction &&
+          !isHostileTo(this.faction, payload.sourceFaction)
+        ) {
+          return;
+        }
+        const hearingRadius = Math.min(
+          payload.radius,
+          this.definition.perception.hearingRadius,
+        );
+        if (
+          this.mesh.position.distanceToSquared(payload.position) >
+          hearingRadius * hearingRadius
+        ) {
+          return;
+        }
+        this.heardNoisePosition.copy(payload.position);
+        this.heardNoiseAge = 0;
+        if (this.aiFsm.getState() === "idle") {
+          this.aiFsm.setState("alert");
+        }
+      }),
+    );
   }
 
   get position(): Vector3 {
@@ -145,13 +178,18 @@ export class ZombieNpc implements Damageable, INpc {
     }
 
     const delta = ctx.delta;
+    this.tickNoiseMemory(delta);
     this.combat.tickCooldown(delta);
 
-    const threat = this.pickThreat(ctx);
+    const threat = this.updateThreat(ctx);
     if (threat) {
       this.targetPosition.copy(threat.position);
       this.currentPlayer = threat.entity;
       this.currentThreatId = threat.id;
+    } else if (this.hasNoiseMemory()) {
+      this.targetPosition.copy(this.heardNoisePosition);
+      this.currentPlayer = null;
+      this.currentThreatId = null;
     } else {
       this.targetPosition.copy(this.mesh.position);
       this.currentPlayer = null;
@@ -178,7 +216,8 @@ export class ZombieNpc implements Damageable, INpc {
 
     const ai = this.aiFsm.getState();
     const balance = this.balanceFsm.getState();
-    const wantsMove = ai === "chase" && balance === "balanced";
+    const wantsMove =
+      (ai === "chase" || ai === "investigate") && balance === "balanced";
     this.lastWantsMove = wantsMove;
     const useTarget =
       ai !== "idle" && balance !== "fallen" && balance !== "recovering";
@@ -293,6 +332,8 @@ export class ZombieNpc implements Damageable, INpc {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.unsubscribers.forEach((unsubscribe) => unsubscribe());
+    this.unsubscribers.length = 0;
     this.motor.disable();
     this.animation.disable();
   }
@@ -337,8 +378,10 @@ export class ZombieNpc implements Damageable, INpc {
 
     fsm.addState("idle", {
       update: () => {
-        if (distSq() <= detectSq()) {
+        if (this.currentThreatId !== null && distSq() <= detectSq()) {
           fsm.setState("chase");
+        } else if (this.hasNoiseMemory()) {
+          fsm.setState("alert");
         }
       },
     });
@@ -349,13 +392,17 @@ export class ZombieNpc implements Damageable, INpc {
           id: this.mesh.name,
           characterId: this.definition.id,
         }),
-      update: () => fsm.setState("chase"),
+      update: () => fsm.setState(this.currentThreatId ? "chase" : "investigate"),
     });
 
     fsm.addState("chase", {
       update: () => {
         const player = this.currentPlayer;
         const dSq = distSq();
+        if (!this.currentThreatId) {
+          fsm.setState(this.hasNoiseMemory() ? "investigate" : "idle");
+          return;
+        }
         if (dSq > detectSq()) {
           fsm.setState("idle");
           return;
@@ -367,6 +414,23 @@ export class ZombieNpc implements Damageable, INpc {
           dSq <= attackSq()
         ) {
           fsm.setState("attack");
+        }
+      },
+    });
+
+    fsm.addState("investigate", {
+      update: () => {
+        if (this.currentThreatId !== null) {
+          fsm.setState("chase");
+          return;
+        }
+        if (!this.hasNoiseMemory()) {
+          fsm.setState("idle");
+          return;
+        }
+        if (distSq() < 2.25) {
+          this.clearNoiseMemory();
+          fsm.setState("idle");
         }
       },
     });
@@ -452,6 +516,24 @@ export class ZombieNpc implements Damageable, INpc {
     }
   }
 
+  private tickNoiseMemory(delta: number): void {
+    if (!this.hasNoiseMemory()) {
+      return;
+    }
+    this.heardNoiseAge += delta;
+    if (this.heardNoiseAge > this.definition.perception.memoryDuration) {
+      this.clearNoiseMemory();
+    }
+  }
+
+  private hasNoiseMemory(): boolean {
+    return this.heardNoiseAge <= this.definition.perception.memoryDuration;
+  }
+
+  private clearNoiseMemory(): void {
+    this.heardNoiseAge = Infinity;
+  }
+
   /**
    * Calcula el target real que persigue el motor: A* sobre el NavGraph para
    * rodear paredes/edificios + steering (separación entre zombies y sidestep
@@ -505,6 +587,42 @@ export class ZombieNpc implements Damageable, INpc {
       }
     }
     return best;
+  }
+
+  private updateThreat(ctx: NpcUpdateContext): ActorSnapshot | null {
+    this.currentThreatSnapshot = this.refreshThreatSnapshot(
+      ctx,
+      this.currentThreatSnapshot,
+    );
+    const needsScan =
+      ctx.elapsed >= this.nextThreatScanAt ||
+      this.currentThreatSnapshot === null ||
+      !this.currentThreatSnapshot.isAlive;
+    if (!needsScan) {
+      return this.currentThreatSnapshot;
+    }
+
+    const lodMultiplier =
+      ctx.aiLod === "far" ? 4 : ctx.aiLod === "mid" ? 2 : 1;
+    this.nextThreatScanAt =
+      ctx.elapsed +
+      this.threatScanInterval * lodMultiplier +
+      Math.random() * 0.05;
+    this.currentThreatSnapshot = this.pickThreat(ctx);
+    return this.currentThreatSnapshot;
+  }
+
+  private refreshThreatSnapshot(
+    ctx: NpcUpdateContext,
+    threat: ActorSnapshot | null,
+  ): ActorSnapshot | null {
+    if (!threat) {
+      return null;
+    }
+    if (threat.id === ctx.player.id) {
+      return ctx.player.isAlive ? ctx.player : null;
+    }
+    return ctx.npcs.find((npc) => npc.id === threat.id && npc.isAlive) ?? null;
   }
 
   private getForwardDirection(): Vector3 {

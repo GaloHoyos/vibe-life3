@@ -19,14 +19,16 @@ export interface NpcPathDebugSnapshot {
  * (`arriveDistance`) del waypoint actual, avanza al siguiente. Cuando avanza
  * al Ãºltimo, devuelve el destino directo y deja que el steering termine.
  *
- * Si `findPath` devuelve un sÃ³lo punto (sin nodos navegables), funciona
- * como passthrough â€” el NPC va directo al destino vÃ­a steering.
- */
+   * Si `findPath` devuelve un solo punto, funciona como passthrough. Si
+   * devuelve vacío, el destino no es navegable y el NPC mantiene posición.
+   */
 export class NpcPathFollower {
   private path: Vector3[] = [];
   private waypointIndex = 0;
   private lastRequestAt = -Infinity;
   private readonly lastRequestedDestination = new Vector3(NaN, NaN, NaN);
+  private readonly lastProgressPosition = new Vector3(NaN, NaN, NaN);
+  private lastProgressAt = -Infinity;
 
   constructor(
     private readonly repathInterval = 0.8,
@@ -44,6 +46,7 @@ export class NpcPathFollower {
     destination: Vector3,
     elapsed: number,
   ): Vector3 {
+    this.updateProgress(npcPosition, elapsed);
     const elapsedSinceRequest = elapsed - this.lastRequestAt;
     const destinationMoved =
       !Number.isFinite(this.lastRequestedDestination.x) ||
@@ -61,6 +64,10 @@ export class NpcPathFollower {
       this.lastRequestedDestination.copy(destination);
     }
 
+    if (this.path.length === 0) {
+      return npcPosition.clone();
+    }
+
     while (
       this.waypointIndex < this.path.length - 1 &&
       this.path[this.waypointIndex].distanceTo(npcPosition) < this.arriveDistance
@@ -76,6 +83,8 @@ export class NpcPathFollower {
     this.waypointIndex = 0;
     this.lastRequestAt = -Infinity;
     this.lastRequestedDestination.set(NaN, NaN, NaN);
+    this.lastProgressPosition.set(NaN, NaN, NaN);
+    this.lastProgressAt = -Infinity;
   }
 
   getDebugSnapshot(): NpcPathDebugSnapshot {
@@ -87,5 +96,28 @@ export class NpcPathFollower {
         ? this.lastRequestedDestination.clone()
         : null,
     };
+  }
+
+  private updateProgress(npcPosition: Vector3, elapsed: number): void {
+    if (!Number.isFinite(this.lastProgressPosition.x)) {
+      this.lastProgressPosition.copy(npcPosition);
+      this.lastProgressAt = elapsed;
+      return;
+    }
+
+    if (this.lastProgressPosition.distanceToSquared(npcPosition) > 0.16) {
+      this.lastProgressPosition.copy(npcPosition);
+      this.lastProgressAt = elapsed;
+      return;
+    }
+
+    if (this.path.length > 1 && elapsed - this.lastProgressAt > 1.4) {
+      this.path = [];
+      this.waypointIndex = 0;
+      this.lastRequestAt = -Infinity;
+      this.lastRequestedDestination.set(NaN, NaN, NaN);
+      this.lastProgressPosition.copy(npcPosition);
+      this.lastProgressAt = elapsed;
+    }
   }
 }

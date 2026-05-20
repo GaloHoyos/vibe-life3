@@ -113,6 +113,13 @@ export interface GameEventMap {
     threatPosition: Vector3;
     spotterPosition: Vector3;
   };
+  "world.noise": {
+    kind: "gunshot" | "explosion" | "impact" | "movement";
+    position: Vector3;
+    radius: number;
+    sourceId?: string;
+    sourceFaction?: import("../engine/ai/Faction").Faction;
+  };
   "npc.attack": {
     id: string;
     characterId: CharacterId;

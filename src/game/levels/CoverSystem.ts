@@ -102,6 +102,7 @@ export class CoverSystem {
     npcPosition: Vector3,
     threatPosition: Vector3,
     maxDistance = 25,
+    pathDistance?: (position: Vector3) => number | null,
   ): { id: string; position: Vector3 } | null {
     let bestId: string | null = null;
     let bestScore = 0;
@@ -109,7 +110,15 @@ export class CoverSystem {
     for (const point of this.points.values()) {
       const distToNpc = point.position.distanceTo(npcPosition);
       if (distToNpc > maxDistance) continue;
-      const score = this.scoreCoverPoint(point, npcId, npcPosition, threatPosition);
+      const routeDistance = pathDistance?.(point.position);
+      if (routeDistance === null) continue;
+      const score = this.scoreCoverPoint(
+        point,
+        npcId,
+        npcPosition,
+        threatPosition,
+        routeDistance ?? distToNpc,
+      );
       point.lastScore = score;
       if (score > bestScore) {
         bestScore = score;
@@ -138,6 +147,7 @@ export class CoverSystem {
     npcId: string,
     npcPosition: Vector3,
     threatPosition: Vector3,
+    routeDistance: number,
   ): number {
     if (point.occupiedBy !== null && point.occupiedBy !== npcId) {
       return -50;
@@ -152,6 +162,7 @@ export class CoverSystem {
 
     const distToNpc = point.position.distanceTo(npcPosition);
     score += Math.max(0, 15 - distToNpc * 0.6);
+    score += Math.max(0, 18 - routeDistance * 0.45);
 
     const distToThreat = point.position.distanceTo(threatPosition);
     if (distToThreat < distToNpc * 0.5) {
@@ -182,6 +193,10 @@ export class CoverSystem {
     tmpDir.divideScalar(distance);
     const hit = this.raycast.cast(tmpEyes, tmpDir, distance);
     if (!hit) return false;
-    return hit.metadata?.kind === "static" || hit.metadata?.kind === "dynamic";
+    return (
+      hit.metadata?.kind === "static" ||
+      hit.metadata?.kind === "dynamic" ||
+      hit.metadata?.kind === "door"
+    );
   }
 }

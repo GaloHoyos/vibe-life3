@@ -170,6 +170,7 @@ export class LevelLoader {
         definition.characterId,
         definition.id,
         validation.position,
+        definition.patrol?.map(tupleToVector3) ?? [],
       );
       this.scene.add(npc.mesh);
       npcs.push(npc);

@@ -39,6 +39,7 @@ import { LevelLoader } from "@game/levels/LevelLoader";
 import { getLevel, type LevelId } from "@game/levels/LevelRegistry";
 import { TriggerSystem } from "@game/levels/TriggerSystem";
 import type { ActorSnapshot, INpc, NpcUpdateContext } from "@game/npc/core/INpc";
+import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
 import { DialogueSystem } from "@game/narrative/DialogueSystem";
 import { LevelEvents } from "@game/narrative/LevelEvents";
 import { WeaponPickup } from "@game/gameplay/weapons/pickup/WeaponPickup";
@@ -83,6 +84,7 @@ export class Game {
   private squad: CombatSquadCoordinator | null = null;
   private pendingExitTimeoutId: number | null = null;
   private actionSpawnSerial = 0;
+  private readonly npcContextRadius = 90;
 
   constructor(private readonly engine: Engine, options: GameOptions = {}) {
     this.root = engine.root;
@@ -304,6 +306,7 @@ export class Game {
         definition.characterId,
         `${idPrefix}-${definition.id}`,
         validation.position,
+        definition.patrol?.map(tupleToVector3) ?? [],
       );
       scene.scene.add(npc.mesh);
       this.npcs.push(npc);
@@ -459,6 +462,7 @@ export class Game {
     const subtitles = s.resolve(GameTokens.Subtitles);
     const footsteps = s.resolve(GameTokens.Footsteps);
     const debugOverlay = s.resolve(GameTokens.DebugOverlay);
+    const grenades = s.resolve(GameTokens.Grenades);
 
     if (input.isPointerLocked()) {
       camera.updateLook(input);
@@ -488,25 +492,29 @@ export class Game {
         isAlive: npc.isAlive(),
         radius: npc.radius,
       }));
+      const npcIndex = new ActorSpatialIndex(npcSnapshots);
       const ctx: NpcUpdateContext = {
         delta: time.delta,
         elapsed: time.elapsed,
+        aiLod: "near",
         player: playerSnapshot,
         npcs: [],
         coverSystem: this.coverSystem,
         navGraph: this.navGraph,
         squad: this.squad,
+        grenades,
       };
-      this.npcs.forEach((npc, index) => {
-        ctx.npcs = npcSnapshots.filter((_, j) => j !== index);
+      this.npcs.forEach((npc) => {
+        ctx.aiLod = this.computeNpcAiLod(npc.position, playerPosition);
+        ctx.npcs = npcIndex.query(npc.position, this.npcContextRadius, npc.id);
         npc.update(ctx);
       });
-      this.squad.tickAssignments(time.elapsed, playerPosition);
+      this.squad.tickAssignments(time.elapsed, null);
     }
     this.doors.forEach((door) => door.update(time.delta));
     physics.step(time.delta);
     this.npcs.forEach((npc) => npc.syncFromPhysics());
-    s.resolve(GameTokens.Grenades).update(time.delta, time.elapsed);
+    grenades.update(time.delta, time.elapsed);
 
     playerPosition = player.getPosition();
     camera.syncToPosition(player.getEyePosition());
@@ -542,6 +550,17 @@ export class Game {
       npcs: this.npcs,
     });
     s.resolve(GameTokens.NpcAiTrace).update(time.elapsed, this.npcs);
+  }
+
+  private computeNpcAiLod(position: Vector3, playerPosition: Vector3): NpcUpdateContext["aiLod"] {
+    const distanceSq = position.distanceToSquared(playerPosition);
+    if (distanceSq < 55 * 55) {
+      return "near";
+    }
+    if (distanceSq < 115 * 115) {
+      return "mid";
+    }
+    return "far";
   }
 
   // ---------------------------------------------------------------------------

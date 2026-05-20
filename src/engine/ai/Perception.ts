@@ -69,42 +69,13 @@ export class Perception {
     npcForward: Vector3,
     target: PerceptionTarget,
   ): PerceptionResult {
-    this.memoryAge += delta;
-
-    this.tmpFromEyes.copy(npcPosition);
-    this.tmpFromEyes.y += this.config.eyeHeight;
-    this.tmpToTarget.copy(target.position).sub(this.tmpFromEyes);
-    const distance = this.tmpToTarget.length();
-
-    let visible = false;
-    if (distance <= this.config.viewDistance && distance > 0.05) {
-      this.tmpDirection.copy(this.tmpToTarget).divideScalar(distance);
-      this.tmpDirHoriz.copy(this.tmpDirection);
-      this.tmpDirHoriz.y = 0;
-      this.tmpDirHoriz.normalize();
-      this.tmpFwdHoriz.copy(npcForward);
-      this.tmpFwdHoriz.y = 0;
-      this.tmpFwdHoriz.normalize();
-      const facingDot = this.tmpDirHoriz.dot(this.tmpFwdHoriz);
-      const minCosCone = Math.cos(this.config.viewConeRadians / 2);
-      if (facingDot >= minCosCone) {
-        const hit = this.raycast.cast(
-          this.tmpFromEyes,
-          this.tmpDirection,
-          distance + 0.3,
-        );
-        if (hit && hit.metadata?.id === target.id) {
-          visible = true;
-        }
-      }
-    }
+    this.advance(delta);
+    const visible = this.canSee(npcPosition, npcForward, target);
 
     if (visible) {
       this.lastKnown.copy(target.position);
       this.hasMemory = true;
       this.memoryAge = 0;
-    } else if (this.hasMemory && this.memoryAge > this.config.memoryDuration) {
-      this.hasMemory = false;
     }
 
     this.visibleNow = visible;
@@ -114,6 +85,49 @@ export class Perception {
       lastKnownPosition: this.hasMemory || visible ? this.lastKnown.clone() : null,
       memoryAge: this.memoryAge,
     };
+  }
+
+  canSee(
+    npcPosition: Vector3,
+    npcForward: Vector3,
+    target: PerceptionTarget,
+  ): boolean {
+    this.tmpFromEyes.copy(npcPosition);
+    this.tmpFromEyes.y += this.config.eyeHeight;
+    this.tmpToTarget.copy(target.position).sub(this.tmpFromEyes);
+    const distance = this.tmpToTarget.length();
+
+    if (distance > this.config.viewDistance || distance <= 0.05) {
+      return false;
+    }
+
+    this.tmpDirection.copy(this.tmpToTarget).divideScalar(distance);
+    this.tmpDirHoriz.copy(this.tmpDirection);
+    this.tmpDirHoriz.y = 0;
+    this.tmpDirHoriz.normalize();
+    this.tmpFwdHoriz.copy(npcForward);
+    this.tmpFwdHoriz.y = 0;
+    this.tmpFwdHoriz.normalize();
+    const facingDot = this.tmpDirHoriz.dot(this.tmpFwdHoriz);
+    const minCosCone = Math.cos(this.config.viewConeRadians / 2);
+    if (facingDot < minCosCone) {
+      return false;
+    }
+
+    const hit = this.raycast.cast(
+      this.tmpFromEyes,
+      this.tmpDirection,
+      distance + 0.3,
+    );
+    return hit?.metadata?.id === target.id;
+  }
+
+  advance(delta: number): void {
+    this.memoryAge += delta;
+    if (this.hasMemory && this.memoryAge > this.config.memoryDuration) {
+      this.hasMemory = false;
+      this.visibleNow = false;
+    }
   }
 
   /** Alerta externa (disparo cercano, otro NPC gritÃ³ "ahÃ­ estÃ¡"). */
@@ -129,10 +143,7 @@ export class Perception {
    * `memoryDuration` para que pueda investigar el Ãºltimo lugar conocido.
    */
   tickMemory(delta: number): void {
-    this.memoryAge += delta;
-    if (this.hasMemory && this.memoryAge > this.config.memoryDuration) {
-      this.hasMemory = false;
-    }
+    this.advance(delta);
     this.visibleNow = false;
   }
 
@@ -142,6 +153,10 @@ export class Perception {
 
   hasRecentMemory(): boolean {
     return this.hasMemory;
+  }
+
+  getMemoryAge(): number {
+    return this.memoryAge;
   }
 
   getLastKnown(): Vector3 | null {

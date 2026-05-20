@@ -1,5 +1,6 @@
 import type RAPIER from "@dimforge/rapier3d-compat";
 import type { Object3D, Vector3 } from "three";
+import type { Faction } from "@engine/ai/Faction";
 
 /**
  * - `fuse`: la granada hace tick a un fuse (con beeps acelerando). Al
@@ -30,6 +31,8 @@ export interface GrenadeSpawnOptions {
   fuseSeconds?: number;
   /** Faccin propietaria, para attribution del dao. */
   ownerKind: GrenadeOwnerKind;
+  sourceId?: string;
+  sourceFaction?: Faction;
   /** Nombre del arma para el `weapon.hit` emitido por cada vctima. */
   weaponName: string;
   /** Elapsed time del game loop  base para fuse/hardExpires/beep timing. */
@@ -55,6 +58,8 @@ export interface ActiveGrenade {
   /** Cantidad de beeps reproducidos (acelera con cada uno). */
   beepCount: number;
   ownerKind: GrenadeOwnerKind;
+  sourceId?: string;
+  sourceFaction?: Faction;
   weaponName: string;
   exploded: boolean;
 }

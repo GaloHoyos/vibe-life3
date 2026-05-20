@@ -108,6 +108,8 @@ export class GrenadeSystem implements Disposable {
       nextBeepAt: now + INITIAL_BEEP_INTERVAL * 0.5,
       beepCount: 0,
       ownerKind: options.ownerKind,
+      sourceId: options.sourceId,
+      sourceFaction: options.sourceFaction,
       weaponName: options.weaponName,
       exploded: false,
     };
@@ -212,6 +214,16 @@ export class GrenadeSystem implements Disposable {
       maxDistance: 60,
       rolloffFactor: 1.1,
       volume: 1,
+    });
+    this.eventBus.emit("world.noise", {
+      kind: "explosion",
+      position: point.clone(),
+      radius: Math.max(24, grenade.radius * 12),
+      sourceId:
+        grenade.sourceId ?? (grenade.ownerKind === "player" ? "player" : undefined),
+      sourceFaction:
+        grenade.sourceFaction ??
+        (grenade.ownerKind === "player" ? "player" : undefined),
     });
 
     const sphere = new RAPIER.Ball(grenade.radius);

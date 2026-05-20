@@ -23,12 +23,14 @@ interface SquadMember {
   hasLineOfSight: boolean;
   inCover: boolean;
   isFlankerCandidate: boolean;
+  threatPosition: Vector3 | null;
 }
 
 interface RoleAssignment {
   role: SquadRole;
   /** Para flankers: dirección lateral preferida desde el threat (1=derecha, -1=izquierda). */
   flankSide: 1 | -1;
+  assignedAt: number;
 }
 
 /**
@@ -57,6 +59,7 @@ export class CombatSquadCoordinator {
   private readonly assignments = new Map<string, RoleAssignment>();
   private lastTickAt = -Infinity;
   private readonly tickInterval = 0.5;
+  private readonly roleHoldDuration = 1.8;
 
   report(member: SquadMember): void {
     this.reports.set(member.id, member);
@@ -85,22 +88,26 @@ export class CombatSquadCoordinator {
     this.lastTickAt = elapsed;
 
     const members = [...this.reports.values()];
+    const squadThreatPosition = threatPosition ?? this.estimateThreatPosition(members);
     if (members.length === 0) {
       this.assignments.clear();
       return;
     }
 
-    if (members.length === 1 || !threatPosition) {
+    if (members.length === 1 || !squadThreatPosition) {
       const m = members[0];
-      this.assignments.set(m.id, { role: "solo", flankSide: 1 });
+      this.setAssignment(m.id, "solo", 1, elapsed);
       for (let i = 1; i < members.length; i += 1) {
-        this.assignments.set(members[i].id, { role: "solo", flankSide: 1 });
+        this.setAssignment(members[i].id, "solo", 1, elapsed);
       }
       return;
     }
 
     const sorted = members
-      .map((m) => ({ ...m, distToThreat: m.position.distanceTo(threatPosition) }))
+      .map((m) => ({
+        ...m,
+        distToThreat: m.position.distanceTo(squadThreatPosition),
+      }))
       .sort((a, b) => a.distToThreat - b.distToThreat);
 
     const spotter = sorted[0];
@@ -121,7 +128,7 @@ export class CombatSquadCoordinator {
       }
     }
     if (suppressorId) {
-      this.assignments.set(suppressorId, { role: "suppressor", flankSide: 1 });
+      this.setAssignment(suppressorId, "suppressor", 1, elapsed);
     }
 
     let flankerAssigned = false;
@@ -129,17 +136,17 @@ export class CombatSquadCoordinator {
     for (const m of sorted) {
       if (m.id === suppressorId) continue;
       if (!flankerAssigned && m.isFlankerCandidate && m.health01 > 0.4) {
-        const side = this.pickFlankSide(m, spotter, threatPosition);
-        this.assignments.set(m.id, { role: "flanker", flankSide: side });
+        const side = this.pickFlankSide(m, spotter, squadThreatPosition);
+        this.setAssignment(m.id, "flanker", side, elapsed);
         flankerAssigned = true;
         continue;
       }
       if (!chargerAssigned && m.health01 > 0.6 && Math.random() < 0.4) {
-        this.assignments.set(m.id, { role: "charger", flankSide: 1 });
+        this.setAssignment(m.id, "charger", 1, elapsed);
         chargerAssigned = true;
         continue;
       }
-      this.assignments.set(m.id, { role: "coverer", flankSide: 1 });
+      this.setAssignment(m.id, "coverer", 1, elapsed);
     }
   }
 
@@ -158,5 +165,40 @@ export class CombatSquadCoordinator {
     const memberOffset = member.position.clone().sub(spotter.position).setY(0);
     const dotRight = memberOffset.dot(right);
     return dotRight >= 0 ? 1 : -1;
+  }
+
+  private estimateThreatPosition(members: SquadMember[]): Vector3 | null {
+    let count = 0;
+    const sum = new Vector3();
+    for (const member of members) {
+      if (!member.threatPosition) continue;
+      sum.add(member.threatPosition);
+      count += 1;
+    }
+    return count > 0 ? sum.divideScalar(count) : null;
+  }
+
+  private setAssignment(
+    id: string,
+    role: SquadRole,
+    flankSide: 1 | -1,
+    elapsed: number,
+  ): void {
+    const previous = this.assignments.get(id);
+    if (
+      previous &&
+      previous.role !== "solo" &&
+      role !== "solo" &&
+      previous.role !== role &&
+      elapsed - previous.assignedAt < this.roleHoldDuration
+    ) {
+      return;
+    }
+
+    this.assignments.set(id, {
+      role,
+      flankSide,
+      assignedAt: previous?.role === role ? previous.assignedAt : elapsed,
+    });
   }
 }

@@ -17,6 +17,10 @@ interface SampledNavNode {
   gridZ: number;
 }
 
+interface SurfaceCandidate {
+  position: Vector3;
+}
+
 export interface NavGraphBuildOptions {
   /** Distancia entre nodos del grid de muestreo. Menor = mÃ¡s denso. */
   spacing?: number;
@@ -33,6 +37,9 @@ export interface NavGraphBuildOptions {
 }
 
 const tmpDown = new Vector3(0, -1, 0);
+const tmpUp = new Vector3(0, 1, 0);
+const edgeProbe = new Vector3();
+const NODE_LIFT = 0.1;
 
 /**
  * Genera un `NavGraph` automÃ¡ticamente desde la geometrÃ­a del nivel.
@@ -63,52 +70,84 @@ export class NavGraphBuilder {
     const castFromY = options.castFromY ?? 40;
     const castDepth = options.castDepth ?? 60;
     const losHeight = options.losHeight ?? 0.9;
+    const nodeLift = NODE_LIFT;
 
     const graph = new NavGraph();
     const bounds = this.computeBounds(level);
     if (!bounds) return graph;
 
     const sampledNodes: SampledNavNode[] = [];
-    const nodeByGrid = new Map<string, SampledNavNode>();
+    const nodeByCell = new Map<string, SampledNavNode[]>();
+    const occupiedSamples = new Set<string>();
 
     let candidatesSampled = 0;
     let hitsByKind: Record<string, number> = {};
     let hitsNone = 0;
+    let surfaceNodes = 0;
+    let rejectedByClearance = 0;
 
     let gridX = 0;
     for (let x = bounds.minX; x <= bounds.maxX; x += spacing) {
       let gridZ = 0;
       for (let z = bounds.minZ; z <= bounds.maxZ; z += spacing) {
         candidatesSampled += 1;
-        const origin = new Vector3(x, castFromY, z);
-        const hit = raycast.cast(origin, tmpDown, castDepth);
-        if (!hit) {
-          hitsNone += 1;
-        } else {
-          const k = hit.metadata?.kind ?? "(none)";
-          hitsByKind[k] = (hitsByKind[k] ?? 0) + 1;
-        }
-        if (hit && hit.metadata?.kind === "static") {
-          const position = hit.point.clone();
-          position.y += 0.1;
-          const node = {
-            id: graph.addNode(position),
-            position,
-            gridX,
-            gridZ,
-          };
-          sampledNodes.push(node);
-          nodeByGrid.set(gridKey(gridX, gridZ), node);
+        if (level.terrain) {
+          const origin = new Vector3(x, castFromY, z);
+          const hit = raycast.cast(origin, tmpDown, castDepth);
+          if (!hit) {
+            hitsNone += 1;
+          } else {
+            const k = hit.metadata?.kind ?? "(none)";
+            hitsByKind[k] = (hitsByKind[k] ?? 0) + 1;
+          }
+          if (hit?.metadata?.id === level.terrain.id) {
+            const position = hit.point.clone();
+            position.y += nodeLift;
+            if (this.hasCharacterClearance(raycast, position)) {
+              this.addSampledNode(
+                graph,
+                sampledNodes,
+                nodeByCell,
+                occupiedSamples,
+                position,
+                gridX,
+                gridZ,
+              );
+            } else {
+              rejectedByClearance += 1;
+            }
+          }
         }
         gridZ += 1;
       }
       gridX += 1;
     }
 
+    const surfaces = this.collectStaticSurfaceCandidates(level, spacing, nodeLift);
+    for (const surface of surfaces) {
+      const sampleGridX = Math.round((surface.position.x - bounds.minX) / spacing);
+      const sampleGridZ = Math.round((surface.position.z - bounds.minZ) / spacing);
+      if (this.hasCharacterClearance(raycast, surface.position)) {
+        this.addSampledNode(
+          graph,
+          sampledNodes,
+          nodeByCell,
+          occupiedSamples,
+          surface.position,
+          sampleGridX,
+          sampleGridZ,
+        );
+        surfaceNodes += 1;
+      } else {
+        rejectedByClearance += 1;
+      }
+    }
+
     let edgeAttempts = 0;
     let edgesAccepted = 0;
     let rejectedByDistance = 0;
     let rejectedByStep = 0;
+    let rejectedBySupport = 0;
     let rejectedByLos = 0;
     let losBlockerByKind: Record<string, number> = {};
 
@@ -116,33 +155,41 @@ export class NavGraphBuilder {
     for (const a of sampledNodes) {
       for (let dx = -neighborRange; dx <= neighborRange; dx += 1) {
         for (let dz = -neighborRange; dz <= neighborRange; dz += 1) {
-          if (dx < 0 || (dx === 0 && dz <= 0)) continue;
-          const b = nodeByGrid.get(gridKey(a.gridX + dx, a.gridZ + dz));
-          if (!b) continue;
-          edgeAttempts += 1;
-          const dist = a.position.distanceTo(b.position);
-          if (dist > maxEdgeDistance) {
-            rejectedByDistance += 1;
-            continue;
+          const bucket = nodeByCell.get(gridKey(a.gridX + dx, a.gridZ + dz));
+          if (!bucket) continue;
+          for (const b of bucket) {
+            if (a.id >= b.id) continue;
+            edgeAttempts += 1;
+            const dist = a.position.distanceTo(b.position);
+            if (dist > maxEdgeDistance) {
+              rejectedByDistance += 1;
+              continue;
+            }
+            if (Math.abs(a.position.y - b.position.y) > maxStepHeight) {
+              rejectedByStep += 1;
+              continue;
+            }
+            if (
+              !this.hasEdgeSupport(raycast, a.position, b.position, maxStepHeight)
+            ) {
+              rejectedBySupport += 1;
+              continue;
+            }
+            const losResult = this.lineOfSightWithReason(
+              raycast,
+              a.position,
+              b.position,
+              losHeight,
+            );
+            if (!losResult.ok) {
+              rejectedByLos += 1;
+              const k = losResult.blockerKind ?? "(none)";
+              losBlockerByKind[k] = (losBlockerByKind[k] ?? 0) + 1;
+              continue;
+            }
+            graph.addEdge(a.id, b.id, dist);
+            edgesAccepted += 1;
           }
-          if (Math.abs(a.position.y - b.position.y) > maxStepHeight) {
-            rejectedByStep += 1;
-            continue;
-          }
-          const losResult = this.lineOfSightWithReason(
-            raycast,
-            a.position,
-            b.position,
-            losHeight,
-          );
-          if (!losResult.ok) {
-            rejectedByLos += 1;
-            const k = losResult.blockerKind ?? "(none)";
-            losBlockerByKind[k] = (losBlockerByKind[k] ?? 0) + 1;
-            continue;
-          }
-          graph.addEdge(a.id, b.id, dist);
-          edgesAccepted += 1;
         }
       }
     }
@@ -156,13 +203,17 @@ export class NavGraphBuilder {
       candidatesSampled,
       hitsNone,
       hitsByKind,
+      surfaceCandidates: surfaces.length,
+      surfaceNodes,
       nodesCreated: graph.nodeCount(),
       nodesWithoutEdges,
       edgeAttempts,
       edgesAccepted,
       rejectedByDistance,
       rejectedByStep,
+      rejectedBySupport,
       rejectedByLos,
+      rejectedByClearance,
       losBlockerByKind,
     });
 
@@ -185,27 +236,111 @@ export class NavGraphBuilder {
     direction.divideScalar(distance);
     const hit = raycast.cast(from, direction, distance - 0.05);
     if (!hit) return { ok: true };
-    if (hit.metadata?.kind !== "static") return { ok: true };
+    if (hit.metadata?.kind !== "static" && hit.metadata?.kind !== "door") {
+      return { ok: true };
+    }
     return { ok: false, blockerKind: hit.metadata?.kind };
   }
 
-  private lineOfSight(
+  private hasEdgeSupport(
     raycast: Raycast,
     a: Vector3,
     b: Vector3,
-    heightOffset: number,
+    maxStepHeight: number,
   ): boolean {
-    const from = a.clone();
-    from.y += heightOffset;
-    const to = b.clone();
-    to.y += heightOffset;
-    const direction = to.clone().sub(from);
-    const distance = direction.length();
-    if (distance < 0.001) return true;
-    direction.divideScalar(distance);
-    const hit = raycast.cast(from, direction, distance - 0.05);
+    for (let i = 1; i <= 2; i += 1) {
+      edgeProbe.copy(a).lerp(b, i / 3);
+      const expectedY = edgeProbe.y;
+      edgeProbe.y += 0.7;
+      const hit = raycast.cast(edgeProbe, tmpDown, maxStepHeight + 1.0);
+      if (!hit) return false;
+      if (hit.metadata?.kind === "door") return false;
+      if (hit.metadata?.kind !== "static") continue;
+      const supportedY = hit.point.y + NODE_LIFT;
+      if (Math.abs(supportedY - expectedY) > maxStepHeight) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private collectStaticSurfaceCandidates(
+    level: LevelDefinition,
+    spacing: number,
+    nodeLift: number,
+  ): SurfaceCandidate[] {
+    const out: SurfaceCandidate[] = [];
+    const halfStep = spacing / 2;
+    for (const box of level.staticBoxes) {
+      if (!this.isWalkableBox(box)) continue;
+      const [cx, cy, cz] = box.position;
+      const [sx, sy, sz] = box.size;
+      const minX = cx - sx / 2 + Math.min(halfStep, sx / 2);
+      const maxX = cx + sx / 2 - Math.min(halfStep, sx / 2);
+      const minZ = cz - sz / 2 + Math.min(halfStep, sz / 2);
+      const maxZ = cz + sz / 2 - Math.min(halfStep, sz / 2);
+      const y = cy + sy / 2 + nodeLift;
+
+      for (let x = minX; x <= maxX + 0.001; x += spacing) {
+        for (let z = minZ; z <= maxZ + 0.001; z += spacing) {
+          out.push({ position: new Vector3(x, y, z) });
+        }
+      }
+    }
+    return out;
+  }
+
+  private isWalkableBox(box: LevelDefinition["staticBoxes"][number]): boolean {
+    const [, sy] = box.size;
+    if (sy > 0.75) return false;
+    if (
+      box.material !== "floor" &&
+      box.material !== "trim" &&
+      box.material !== "roof" &&
+      box.material !== "rock"
+    ) {
+      return false;
+    }
+    return !/(wall|rail|mast|cross|pipe|stack|console|lightbar|barrier)/i.test(box.id);
+  }
+
+  private hasCharacterClearance(raycast: Raycast, position: Vector3): boolean {
+    const origin = position.clone();
+    origin.y += 0.1;
+    const hit = raycast.cast(origin, tmpUp, 1.65);
     if (!hit) return true;
-    return hit.metadata?.kind !== "static";
+    return hit.metadata?.kind !== "static" && hit.metadata?.kind !== "door";
+  }
+
+  private addSampledNode(
+    graph: NavGraph,
+    sampledNodes: SampledNavNode[],
+    nodeByCell: Map<string, SampledNavNode[]>,
+    occupiedSamples: Set<string>,
+    position: Vector3,
+    gridX: number,
+    gridZ: number,
+  ): void {
+    const sampleKey = [
+      Math.round(position.x * 10),
+      Math.round(position.y * 10),
+      Math.round(position.z * 10),
+    ].join(":");
+    if (occupiedSamples.has(sampleKey)) {
+      return;
+    }
+    occupiedSamples.add(sampleKey);
+    const node = {
+      id: graph.addNode(position),
+      position,
+      gridX,
+      gridZ,
+    };
+    sampledNodes.push(node);
+    const key = gridKey(gridX, gridZ);
+    const bucket = nodeByCell.get(key) ?? [];
+    bucket.push(node);
+    nodeByCell.set(key, bucket);
   }
 
   private computeBounds(level: LevelDefinition): LevelBounds | null {

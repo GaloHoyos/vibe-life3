@@ -28,7 +28,12 @@ export class CharacterFactory {
     private readonly eventBus: GameEventBus,
   ) {}
 
-  async createNPC(characterId: CharacterId, instanceId: string, position: Vector3): Promise<INpc> {
+  async createNPC(
+    characterId: CharacterId,
+    instanceId: string,
+    position: Vector3,
+    patrolPoints: Vector3[] = [],
+  ): Promise<INpc> {
     const definition = CharacterPresets[characterId] ?? CharacterPresets.placeholderHumanoid;
     const model = definition.modelId ? await this.assets.instantiateModel(definition.modelId) : null;
     const visualRoot = model?.root ?? createPlaceholderHumanoid();
@@ -65,6 +70,7 @@ export class CharacterFactory {
       visualRoot,
       physics: this.physics,
       eventBus: this.eventBus,
+      patrolPoints,
     };
 
     switch (definition.behaviorKind) {

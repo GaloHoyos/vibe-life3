@@ -2,6 +2,7 @@ export type ZombieAiState =
   | "idle"
   | "alert"
   | "chase"
+  | "investigate"
   | "attack"
   | "dead";
 

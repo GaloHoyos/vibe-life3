@@ -3,6 +3,7 @@ import type { Faction } from "@engine/ai/Faction";
 import type { NavGraph } from "@engine/ai/NavGraph";
 import type { Damageable } from "@shared/types/lifecycle";
 import type { Health } from "@game/gameplay/Health";
+import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import type { CoverSystem } from "@game/levels/CoverSystem";
 import type { CombatSquadCoordinator } from "@game/npc/combat/CombatSquadCoordinator";
 import type { NpcPathDebugSnapshot } from "@game/npc/movement/NpcPathFollower";
@@ -28,11 +29,13 @@ export interface ActorSnapshot {
 export interface NpcUpdateContext {
   delta: number;
   elapsed: number;
+  aiLod: "near" | "mid" | "far";
   player: ActorSnapshot;
   npcs: ActorSnapshot[];
   coverSystem: CoverSystem;
   navGraph: NavGraph;
   squad: CombatSquadCoordinator;
+  grenades: GrenadeSystem;
 }
 
 export interface NpcAiDebugSnapshot {

@@ -50,6 +50,7 @@ export interface NPCDefinition {
   id: string;
   position: VectorTuple;
   characterId: CharacterId;
+  patrol?: VectorTuple[];
 }
 
 export interface WeaponPickupDefinition {

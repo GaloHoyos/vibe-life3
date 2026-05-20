@@ -53,6 +53,13 @@ export class SmgWeapon extends HitscanWeapon {
       origin: context.origin,
       direction: context.direction,
     });
+    this.context.eventBus.emit("world.noise", {
+      kind: "gunshot",
+      position: context.origin.clone(),
+      radius: 45,
+      sourceId: "player",
+      sourceFaction: "player",
+    });
 
     this.context.grenades.spawn({
       mode: "impact",

@@ -121,6 +121,20 @@ export interface CharacterRangedAttackConfig {
   reactionTime: number;
 }
 
+export interface CharacterGrenadeTacticConfig {
+  enabled: boolean;
+  cooldown: number;
+  minRange: number;
+  maxRange: number;
+  damage: number;
+  radius: number;
+  impulse: number;
+  fuseSeconds: number;
+  launchSpeed: number;
+  launchLift: number;
+  flushAfterMemoryAge: number;
+}
+
 export interface CharacterAttackConfig {
   enabled: boolean;
   type: CharacterAttackType;
@@ -134,6 +148,7 @@ export interface CharacterAttackConfig {
   facingDotThreshold: number;
   /** SÃ³lo presente para `type: 'ranged'`. */
   ranged?: CharacterRangedAttackConfig;
+  grenade?: CharacterGrenadeTacticConfig;
 }
 
 export interface CharacterStumbleConfig {

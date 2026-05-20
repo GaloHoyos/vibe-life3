@@ -1,5 +1,6 @@
 ﻿import RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3 } from "three";
+import type { Faction } from "@engine/ai/Faction";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { CharacterRangedAttackConfig } from "@engine/characters/CharacterDefinition";
 import { getWeaponDefinition } from "@game/config/weapons.config";
@@ -59,6 +60,7 @@ export class NpcRangedCombat {
 
   constructor(
     private readonly ownerId: string,
+    private readonly ownerFaction: Faction,
     private readonly rangedConfig: CharacterRangedAttackConfig,
     private readonly raycast: Raycast,
     private readonly eventBus: GameEventBus,
@@ -201,6 +203,13 @@ export class NpcRangedCombat {
       origin: rayOrigin.clone(),
       direction: spreadDir.clone(),
       range: weapon.range,
+    });
+    this.eventBus.emit("world.noise", {
+      kind: "gunshot",
+      position: rayOrigin.clone(),
+      radius: Math.max(24, Math.min(weapon.range * 0.6, 55)),
+      sourceId: this.ownerId,
+      sourceFaction: this.ownerFaction,
     });
 
     if (!hit) return;

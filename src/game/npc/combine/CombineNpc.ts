@@ -65,6 +65,7 @@ export interface CombineNpcOptions {
   physics: PhysicsWorld;
   eventBus: GameEventBus;
   weaponAttachment?: WeaponAttachmentHandle | null;
+  patrolPoints?: Vector3[];
 }
 
 /**
@@ -103,6 +104,7 @@ export class CombineNpc implements Damageable, INpc {
   private readonly definition: CharacterDefinition;
   private readonly eventBus: GameEventBus;
   private readonly fsm: StateMachine<CombineState>;
+  private readonly patrolPoints: Vector3[];
 
   private readonly desiredTarget = new Vector3();
   private readonly aimTarget = new Vector3();
@@ -111,6 +113,9 @@ export class CombineNpc implements Damageable, INpc {
   private readonly tmpLateral = new Vector3();
   private readonly tmpEye = new Vector3();
   private readonly tmpForward = new Vector3(0, 0, 1);
+  private readonly tmpGrenadeVelocity = new Vector3();
+  private readonly tmpSuppressiveAim = new Vector3();
+  private readonly tmpNeighbors: { position: Vector3; radius: number }[] = [];
   private lastMotorSnapshot: CharacterMotorSnapshot | null = null;
   private currentThreat: ActorSnapshot | null = null;
   private wantsMove = false;
@@ -135,7 +140,20 @@ export class CombineNpc implements Damageable, INpc {
   private scanArrived = false;
   private scanTimer = 0;
   private scanDirection: 1 | -1 = 1;
+  private readonly searchPoints = [
+    new Vector3(),
+    new Vector3(),
+    new Vector3(),
+    new Vector3(),
+  ];
+  private searchPointCount = 0;
+  private searchPointIndex = 0;
   private aimSettleTime = 0;
+  private readonly threatScanInterval = 0.12 + Math.random() * 0.08;
+  private nextThreatScanAt = 0;
+  private nextGrenadeAt = 2 + Math.random() * 4;
+  private patrolIndex = 0;
+  private patrolWaitUntil = 0;
   /**
    * Tiempo (game-elapsed) hasta el cual no se intenta reclamar cover de nuevo.
    * Se setea cuando `findBestCover` devuelve null para evitar el flap engageâ†”takeCover.
@@ -148,6 +166,7 @@ export class CombineNpc implements Damageable, INpc {
     this.eventBus = options.eventBus;
     this.faction = options.definition.faction;
     this.radius = options.definition.collider.radius;
+    this.patrolPoints = options.patrolPoints?.map((point) => point.clone()) ?? [];
     this.health = new Health(options.definition.health.maxHealth);
     this.mesh.name = options.id;
     this.mesh.position.copy(options.position);
@@ -194,6 +213,7 @@ export class CombineNpc implements Damageable, INpc {
     }
     this.combat = new NpcRangedCombat(
       options.id,
+      this.faction,
       rangedConfig,
       this.raycast,
       options.eventBus,
@@ -216,6 +236,26 @@ export class CombineNpc implements Damageable, INpc {
         if (distance > this.commsRadius) return;
         this.perception.notifyAlert(payload.threatPosition);
       }),
+      options.eventBus.on("world.noise", (payload) => {
+        if (payload.sourceId === this.id) return;
+        if (
+          payload.sourceFaction &&
+          !isHostileTo(this.faction, payload.sourceFaction)
+        ) {
+          return;
+        }
+        const hearingRadius = Math.min(
+          payload.radius,
+          this.definition.perception.hearingRadius,
+        );
+        if (
+          this.mesh.position.distanceToSquared(payload.position) >
+          hearingRadius * hearingRadius
+        ) {
+          return;
+        }
+        this.perception.notifyAlert(payload.position);
+      }),
     );
   }
 
@@ -231,17 +271,7 @@ export class CombineNpc implements Damageable, INpc {
 
     this.currentElapsed = ctx.elapsed;
     this.currentCtx = ctx;
-    this.currentThreat = this.pickThreat(ctx);
-    if (this.currentThreat) {
-      this.perception.sense(
-        ctx.delta,
-        this.mesh.position,
-        this.getForwardDirection(),
-        { id: this.currentThreat.id, position: this.currentThreat.position },
-      );
-    } else {
-      this.perception.tickMemory(ctx.delta);
-    }
+    this.updateThreatSense(ctx);
 
     this.blackboard.timeSinceLastSeen += ctx.delta;
     const visibleNow = this.perception.isVisibleNow();
@@ -277,6 +307,8 @@ export class CombineNpc implements Damageable, INpc {
       hasLineOfSight: visibleNow,
       inCover: this.blackboard.currentCoverId !== null,
       isFlankerCandidate: !this.combat.needsReload(),
+      threatPosition:
+        this.currentThreat?.position.clone() ?? this.perception.getLastKnown(),
     });
     const prevRole = this.currentRole;
     this.currentRole = ctx.squad.getRole(this.id);
@@ -303,8 +335,11 @@ export class CombineNpc implements Damageable, INpc {
     }
     const settleDuration =
       this.definition.attack.ranged?.aimSettleDuration ?? 1.5;
-    const aimSettleProgress =
-      settleDuration > 0 ? this.aimSettleTime / settleDuration : 1;
+    const aimSettleProgress = Math.max(
+      0,
+      (settleDuration > 0 ? this.aimSettleTime / settleDuration : 1) -
+        this.blackboard.suppressionLevel * 0.12,
+    );
     this.combat.update({
       origin: this.eyePosition(),
       targetPosition: this.aimTarget,
@@ -464,7 +499,9 @@ export class CombineNpc implements Damageable, INpc {
       update: () => {
         if (this.perception.isVisibleNow() || this.perception.hasRecentMemory()) {
           fsm.setState("alert");
+          return;
         }
+        this.updatePatrol();
       },
     });
 
@@ -551,8 +588,9 @@ export class CombineNpc implements Damageable, INpc {
             this.wantsMove = false;
           }
           if (
+            !this.tryThrowGrenade(threat.position) &&
             this.perception.isVisibleNow() &&
-            this.combat.canStartBurst(this.currentElapsed)
+            this.canStartAimedBurst()
           ) {
             this.aimTarget.copy(threat.position);
             this.combat.startBurst(this.currentElapsed);
@@ -605,10 +643,13 @@ export class CombineNpc implements Damageable, INpc {
         }
 
         if (
-          this.perception.isVisibleNow() &&
-          this.combat.canStartBurst(this.currentElapsed)
+          !this.tryThrowGrenade(threat.position) &&
+          (this.perception.isVisibleNow() || this.trySuppressiveBurst()) &&
+          this.canStartAimedBurst()
         ) {
-          this.aimTarget.copy(threat.position);
+          if (this.perception.isVisibleNow()) {
+            this.aimTarget.copy(threat.position);
+          }
           this.combat.startBurst(this.currentElapsed);
         }
       },
@@ -701,6 +742,20 @@ export class CombineNpc implements Damageable, INpc {
         }
 
         this.coverPhaseTimer -= delta;
+        if (
+          this.coverPhase === "hide" &&
+          !this.perception.isVisibleNow() &&
+          this.perception.hasRecentMemory()
+        ) {
+          const lastKnown = this.perception.getLastKnown();
+          if (
+            lastKnown &&
+            this.perception.getMemoryAge() >=
+              (this.definition.attack.grenade?.flushAfterMemoryAge ?? Infinity)
+          ) {
+            this.tryThrowGrenade(lastKnown);
+          }
+        }
         if (this.coverPhaseTimer <= 0) {
           if (this.coverPhase === "hide") {
             this.coverPhase = "peek";
@@ -709,10 +764,13 @@ export class CombineNpc implements Damageable, INpc {
             this.animation.setCrouch(0);
             this.animation.setLeanSide(this.peekLeanSide);
             if (
-              this.perception.isVisibleNow() &&
-              this.combat.canStartBurst(this.currentElapsed)
+              !this.tryThrowGrenade(threat.position) &&
+              (this.perception.isVisibleNow() || this.trySuppressiveBurst()) &&
+              this.canStartAimedBurst()
             ) {
-              this.aimTarget.copy(threat.position);
+              if (this.perception.isVisibleNow()) {
+                this.aimTarget.copy(threat.position);
+              }
               this.combat.startBurst(this.currentElapsed);
             }
           } else {
@@ -745,7 +803,8 @@ export class CombineNpc implements Damageable, INpc {
       enter: () => {
         const lkp = this.perception.getLastKnown();
         if (lkp) {
-          this.desiredTarget.copy(lkp);
+          this.buildSearchPattern(lkp);
+          this.desiredTarget.copy(this.searchPoints[0]);
           this.wantsMove = true;
         }
         this.scanArrived = false;
@@ -779,8 +838,19 @@ export class CombineNpc implements Damageable, INpc {
             .copy(this.mesh.position)
             .addScaledVector(this.tmpToThreat, 5)
             .addScaledVector(this.tmpLateral, sweep * 4);
-          if (this.scanTimer > 4.5 || !this.perception.hasRecentMemory()) {
-            fsm.setState("idle");
+          if (this.scanTimer > 1.4) {
+            this.searchPointIndex += 1;
+            if (
+              this.searchPointIndex >= this.searchPointCount ||
+              !this.perception.hasRecentMemory()
+            ) {
+              fsm.setState("idle");
+            } else {
+              this.desiredTarget.copy(this.searchPoints[this.searchPointIndex]);
+              this.scanArrived = false;
+              this.wantsMove = true;
+              this.scanTimer = 0;
+            }
           }
         }
       },
@@ -834,11 +904,208 @@ export class CombineNpc implements Damageable, INpc {
     }
   }
 
+  private buildSearchPattern(lastKnown: Vector3): void {
+    this.searchPointIndex = 0;
+    this.searchPointCount = this.searchPoints.length;
+    this.tmpToThreat.copy(lastKnown).sub(this.mesh.position).setY(0);
+    if (this.tmpToThreat.lengthSq() < 0.01) {
+      this.tmpToThreat.set(0, 0, 1);
+    } else {
+      this.tmpToThreat.normalize();
+    }
+    this.tmpLateral.set(-this.tmpToThreat.z, 0, this.tmpToThreat.x);
+    this.searchPoints[0].copy(lastKnown);
+    this.searchPoints[1]
+      .copy(lastKnown)
+      .addScaledVector(this.tmpLateral, 4.5)
+      .addScaledVector(this.tmpToThreat, 2.0);
+    this.searchPoints[2]
+      .copy(lastKnown)
+      .addScaledVector(this.tmpLateral, -4.5)
+      .addScaledVector(this.tmpToThreat, 2.0);
+    this.searchPoints[3]
+      .copy(lastKnown)
+      .addScaledVector(this.tmpToThreat, 6.0);
+  }
+
+  private canStartAimedBurst(): boolean {
+    const aimTime = this.definition.attack.ranged?.aimTime ?? 0;
+    return (
+      this.aimSettleTime >= aimTime &&
+      this.combat.canStartBurst(this.currentElapsed)
+    );
+  }
+
+  private tryThrowGrenade(target: Vector3): boolean {
+    const grenade = this.definition.attack.grenade;
+    const ctx = this.currentCtx;
+    if (!grenade?.enabled || !ctx) {
+      return false;
+    }
+    if (this.currentElapsed < this.nextGrenadeAt) {
+      return false;
+    }
+    if (this.combat.isReloading(this.currentElapsed) || this.combat.isFiringBurst()) {
+      return false;
+    }
+
+    const distance = this.mesh.position.distanceTo(target);
+    if (distance < grenade.minRange || distance > grenade.maxRange) {
+      return false;
+    }
+    if (this.hasAllyNear(target, grenade.radius + 1.2, ctx)) {
+      return false;
+    }
+
+    const origin = this.eyePosition();
+    this.tmpGrenadeVelocity.copy(target).sub(origin);
+    this.tmpGrenadeVelocity.y = 0;
+    if (this.tmpGrenadeVelocity.lengthSq() < 0.01) {
+      return false;
+    }
+    this.tmpGrenadeVelocity.normalize().multiplyScalar(grenade.launchSpeed);
+    this.tmpGrenadeVelocity.y = grenade.launchLift;
+
+    ctx.grenades.spawn({
+      mode: "fuse",
+      origin: origin.clone(),
+      velocity: this.tmpGrenadeVelocity.clone(),
+      damage: grenade.damage,
+      radius: grenade.radius,
+      impulse: grenade.impulse,
+      fuseSeconds: grenade.fuseSeconds,
+      ownerKind: "npc",
+      sourceId: this.id,
+      sourceFaction: this.faction,
+      weaponName: "Granada Combine",
+      now: this.currentElapsed,
+    });
+    this.nextGrenadeAt =
+      this.currentElapsed +
+      grenade.cooldown +
+      Math.random() * grenade.cooldown * 0.35;
+    this.barker.say("advancing", this.currentElapsed);
+    return true;
+  }
+
+  private trySuppressiveBurst(): boolean {
+    if (!this.perception.hasRecentMemory()) {
+      return false;
+    }
+    if (
+      this.currentRole !== "suppressor" &&
+      this.currentRole !== "coverer" &&
+      this.blackboard.suppressionLevel < 0.9
+    ) {
+      return false;
+    }
+    if (!this.combat.canStartBurst(this.currentElapsed)) {
+      return false;
+    }
+
+    const lastKnown = this.perception.getLastKnown();
+    if (!lastKnown) {
+      return false;
+    }
+
+    this.tmpSuppressiveAim.copy(lastKnown);
+    this.tmpSuppressiveAim.x += (Math.random() - 0.5) * 2.8;
+    this.tmpSuppressiveAim.z += (Math.random() - 0.5) * 2.8;
+    this.aimTarget.copy(this.tmpSuppressiveAim);
+    return true;
+  }
+
+  private hasAllyNear(
+    position: Vector3,
+    radius: number,
+    ctx: NpcUpdateContext,
+  ): boolean {
+    const radiusSq = radius * radius;
+    if (isAlliedWith(this.faction, ctx.player.faction)) {
+      if (ctx.player.position.distanceToSquared(position) <= radiusSq) {
+        return true;
+      }
+    }
+    for (const other of ctx.npcs) {
+      if (!other.isAlive || !isAlliedWith(this.faction, other.faction)) {
+        continue;
+      }
+      if (other.position.distanceToSquared(position) <= radiusSq) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private updatePatrol(): void {
+    if (this.patrolPoints.length === 0) {
+      this.wantsMove = false;
+      return;
+    }
+    if (this.currentElapsed < this.patrolWaitUntil) {
+      this.wantsMove = false;
+      return;
+    }
+
+    const target = this.patrolPoints[this.patrolIndex];
+    this.desiredTarget.copy(target);
+    this.wantsMove = true;
+    if (this.mesh.position.distanceToSquared(target) > 1.8 * 1.8) {
+      return;
+    }
+
+    this.patrolIndex = (this.patrolIndex + 1) % this.patrolPoints.length;
+    this.patrolWaitUntil = this.currentElapsed + 0.8 + Math.random() * 1.4;
+    this.wantsMove = false;
+  }
+
   private releaseCover(): void {
     if (this.blackboard.currentCoverId && this.currentCtx) {
       this.currentCtx.coverSystem.release(this.blackboard.currentCoverId, this.id);
     }
     this.blackboard.currentCoverId = null;
+  }
+
+  private updateThreatSense(ctx: NpcUpdateContext): void {
+    this.currentThreat = this.refreshThreatSnapshot(ctx, this.currentThreat);
+    const needsScan =
+      ctx.elapsed >= this.nextThreatScanAt ||
+      this.currentThreat === null ||
+      !this.currentThreat.isAlive;
+
+    if (!needsScan) {
+      this.perception.advance(ctx.delta);
+      return;
+    }
+
+    const lodMultiplier =
+      ctx.aiLod === "far" ? 4 : ctx.aiLod === "mid" ? 2 : 1;
+    this.nextThreatScanAt =
+      ctx.elapsed + this.threatScanInterval * lodMultiplier + Math.random() * 0.04;
+    this.currentThreat = this.pickThreat(ctx);
+    if (this.currentThreat) {
+      this.perception.sense(
+        ctx.delta,
+        this.mesh.position,
+        this.getForwardDirection(),
+        { id: this.currentThreat.id, position: this.currentThreat.position },
+      );
+    } else {
+      this.perception.tickMemory(ctx.delta);
+    }
+  }
+
+  private refreshThreatSnapshot(
+    ctx: NpcUpdateContext,
+    threat: ActorSnapshot | null,
+  ): ActorSnapshot | null {
+    if (!threat) {
+      return null;
+    }
+    if (threat.id === ctx.player.id) {
+      return ctx.player.isAlive ? ctx.player : null;
+    }
+    return ctx.npcs.find((npc) => npc.id === threat.id && npc.isAlive) ?? null;
   }
 
   private pickThreat(ctx: NpcUpdateContext): ActorSnapshot | null {
@@ -859,9 +1126,27 @@ export class CombineNpc implements Damageable, INpc {
 
     let best: ActorSnapshot | null = null;
     let bestScore = -Infinity;
+    const forward = this.getForwardDirection();
     for (const candidate of candidates) {
       const distance = this.mesh.position.distanceTo(candidate.position);
-      const score = -distance;
+      const visible = this.perception.canSee(
+        this.mesh.position,
+        forward,
+        { id: candidate.id, position: candidate.position },
+      );
+      let score = -distance;
+      if (visible) {
+        score += 1000;
+      }
+      if (candidate.id === this.currentThreat?.id) {
+        score += this.perception.hasRecentMemory() ? 180 : 45;
+      }
+      if (!visible && this.perception.hasRecentMemory()) {
+        const lastKnown = this.perception.getLastKnown();
+        if (lastKnown) {
+          score -= candidate.position.distanceTo(lastKnown) * 0.4;
+        }
+      }
       if (score > bestScore) {
         bestScore = score;
         best = candidate;
@@ -883,6 +1168,8 @@ export class CombineNpc implements Damageable, INpc {
         this.id,
         this.mesh.position,
         threat.position,
+        25,
+        (position) => ctx.navGraph.pathDistance(this.mesh.position, position),
       );
       if (best) {
         ctx.coverSystem.claim(best.id, this.id);
@@ -902,24 +1189,43 @@ export class CombineNpc implements Damageable, INpc {
     }
 
     const distanceToFinal = this.mesh.position.distanceTo(this.desiredTarget);
-    const pathTarget = distanceToFinal > 5
-      ? this.pathFollower.nextWaypoint(
-          ctx.navGraph,
-          this.mesh.position,
-          this.desiredTarget,
-          ctx.elapsed,
-        )
-      : this.desiredTarget;
+    const pathTarget =
+      distanceToFinal > 5
+        ? this.pathFollower.nextWaypoint(
+            ctx.navGraph,
+            this.mesh.position,
+            this.desiredTarget,
+            ctx.elapsed,
+          )
+        : this.desiredTarget;
 
-    const neighbors = ctx.npcs
-      .filter((n) => n.isAlive)
-      .map((n) => ({ position: n.position, radius: n.radius }));
-    return this.steering.steer(this.mesh.position, pathTarget, neighbors);
+    this.tmpNeighbors.length = 0;
+    for (const other of ctx.npcs) {
+      if (other.isAlive) {
+        this.tmpNeighbors.push({ position: other.position, radius: other.radius });
+      }
+    }
+    return this.steering.steer(this.mesh.position, pathTarget, this.tmpNeighbors);
   }
 
   private eyePosition(): Vector3 {
     this.tmpEye.copy(this.mesh.position);
     this.tmpEye.y += this.definition.perception.eyeHeight;
+    if (
+      this.fsm.getState() === "coverFire" &&
+      this.coverPhase === "peek" &&
+      this.currentThreat
+    ) {
+      this.tmpToThreat
+        .copy(this.currentThreat.position)
+        .sub(this.mesh.position)
+        .setY(0)
+        .normalize();
+      this.tmpLateral
+        .set(-this.tmpToThreat.z, 0, this.tmpToThreat.x)
+        .multiplyScalar(this.peekLeanSide * 0.45);
+      this.tmpEye.add(this.tmpLateral);
+    }
     return this.tmpEye;
   }
 

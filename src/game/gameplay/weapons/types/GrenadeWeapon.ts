@@ -123,6 +123,13 @@ export class GrenadeWeapon extends Weapon {
       direction,
       range: this.definition.range,
     });
+    this.context.eventBus.emit("world.noise", {
+      kind: "movement",
+      position: origin.clone(),
+      radius: 10,
+      sourceId: "player",
+      sourceFaction: "player",
+    });
   }
 
   private spawnFuseGrenade(

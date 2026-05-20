@@ -293,6 +293,13 @@ export class ShotgunWeapon extends Weapon {
       direction,
       range: this.definition.range,
     });
+    this.context.eventBus.emit("world.noise", {
+      kind: "gunshot",
+      position: origin.clone(),
+      radius: Math.max(24, Math.min(this.definition.range * 0.6, 55)),
+      sourceId: "player",
+      sourceFaction: "player",
+    });
   }
 }
 
