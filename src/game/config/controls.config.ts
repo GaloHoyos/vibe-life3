@@ -1,4 +1,4 @@
-﻿import type { BindingMap } from "@engine/input/KeyBindings";
+import type { BindingMap } from "@engine/input/KeyBindings";
 
 export type GameAction =
   | "moveForward"
@@ -16,7 +16,6 @@ export type GameAction =
   | "weaponSlot4"
   | "weaponSlot5"
   | "toggleDebug"
-  | "toggleNpcDebug"
   | "releaseMouse"
   | "pause";
 
@@ -36,7 +35,6 @@ export const DefaultBindings: BindingMap<GameAction> = {
   weaponSlot4: ["Digit4"],
   weaponSlot5: ["Digit5"],
   toggleDebug: ["F3"],
-  toggleNpcDebug: ["F4"],
   releaseMouse: ["F9"],
   pause: ["Escape"],
 };
@@ -56,8 +54,7 @@ export const ActionLabels: Record<GameAction, string> = {
   weaponSlot3: "Arma 3",
   weaponSlot4: "Arma 4",
   weaponSlot5: "Arma 5",
-  toggleDebug: "Mostrar / ocultar debug",
-  toggleNpcDebug: "Panel debug de NPCs",
+  toggleDebug: "Menu debug",
   releaseMouse: "Liberar cursor",
   pause: "Pausa",
 };
@@ -78,7 +75,6 @@ export const ActionOrder: readonly GameAction[] = [
   "weaponSlot4",
   "weaponSlot5",
   "toggleDebug",
-  "toggleNpcDebug",
   "releaseMouse",
   "pause",
 ];
@@ -86,7 +82,7 @@ export const ActionOrder: readonly GameAction[] = [
 /**
  * Pausa usa `Escape`, que el navegador reserva como salida de pointer lock
  * y de fullscreen. Aunque cambiemos el binding, el navegador igual va a
- * procesar Escape â€” exponer el rebind serÃ­a engaÃ±oso.
+ * procesar Escape -- exponer el rebind seria engañoso.
  */
 export const NonRebindableActions: ReadonlySet<GameAction> = new Set([
   "pause",

@@ -69,10 +69,10 @@ src/
 | `gameplay/weapons/`          | `core/` (`Weapon` base, `WeaponDefinition`, `WeaponController`, `WeaponFactory`, `WeaponInventory`), `types/` (`HitscanWeapon`, `MeleeWeapon`, `GravityGunWeapon`), `effects/` (`MuzzleFlash`, `Recoil`, `WeaponEffects`, `WeaponViewModel`), `pickup/` (`WeaponPickup`). |
 | `levels/`                    | `LevelDefinition`, `LevelRegistry`, `LevelLoader`, `TriggerSystem`, `CoverSystem`, `NavGraphBuilder`. Subcarpetas: `maps/` (`DemoLevel`, `SnowFieldLevel`, …), `builders/` (ej. `HouseBuilder`). |
 | `narrative/`                 | `DialogueSystem`, `ScriptedSequence`, `LevelEvents`.                        |
-| `ui/`                        | `hud/` (`HUD`, `HUDView`, `Crosshair`, `DamageIndicator`, `HealthArmorHUD`, `HudIcons`, `WeaponHUD`, `WeaponSelectorView`), `subtitles/` (`Subtitles`, `SubtitlesView`), `overlay/` (`DebugOverlay`, `AimDebugPanel`, `InteractionPrompt`), `menu/` (`MainMenu`, `MainMenuView`, `MainMenuState`, `PauseMenu`, `OptionsMenu`, `NewGameMenu`, `CreditsMenu`, `MenuStyles.css`). |
+| `ui/`                        | `hud/` (`HUD`, `HUDView`, `Crosshair`, `DamageIndicator`, `HealthArmorHUD`, `HudIcons`, `WeaponHUD`, `WeaponSelectorView`), `subtitles/` (`Subtitles`, `SubtitlesView`), `overlay/` (`InteractionPrompt`, `debug/` con `DebugMenu` + `DebugMenuView` + `DebugModule` + `widgets` y `modules/` por pestania), `menu/` (`MainMenu`, `MainMenuView`, `MainMenuState`, `PauseMenu`, `OptionsMenu`, `NewGameMenu`, `CreditsMenu`, `MenuStyles.css`). |
 | `audio/`                     | Sistemas reactivos a eventos: weapon/enemy/dialogue/UI sound.               |
 | `config/`                    | `weapons.config.ts`, `audio.config.ts`, `gameplay.config.ts`, `controls.config.ts`, `strings.ts`. |
-| `debug/NpcDebugSystem.ts`    | Toggle de overlays y atajos de debug específicos de NPCs.                   |
+| `debug/`                     | Recursos puros (sin DOM ni keybinds) que consume el `DebugMenu`: `NpcAiDebugOverlay` (overlay 3D del nav graph + NPCs), `NpcAiTraceRecorder` (grabador offline) y `SceneInspector` (`window.__inspectScene`). |
 
 ### `shared/`
 

@@ -16,12 +16,11 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import type { NavGraph } from "@engine/ai/NavGraph";
-import type { GameEventBus } from "@game/GameEvents";
 import type { INpc, NpcAiDebugSnapshot } from "@game/npc/core/INpc";
 import type { Disposable } from "@shared/types/lifecycle";
 
 interface NpcAiDebugFrame {
-  playerPosition: Vector3;
+  playerPosition: Vector3 | undefined;
   navGraph: NavGraph | null;
   npcs: readonly INpc[];
 }
@@ -35,7 +34,6 @@ const LABEL_CACHE_MAX = 256;
 
 export class NpcAiDebugOverlay implements Disposable {
   private readonly root = new Group();
-  private readonly unsubscribers: Array<() => void> = [];
   private readonly disposers: Array<() => void> = [];
   private readonly lineMaterials = new Set<LineMaterial>();
   private readonly labelCache = new Map<
@@ -49,21 +47,27 @@ export class NpcAiDebugOverlay implements Disposable {
   private enabled = false;
   private refreshIn = 0;
 
-  constructor(
-    private readonly scene: Scene,
-    eventBus: GameEventBus,
-  ) {
+  constructor(private readonly scene: Scene) {
     this.root.name = "npc-ai-debug-overlay";
     this.root.visible = false;
     this.scene.add(this.root);
-    this.unsubscribers.push(
-      eventBus.on("debug.toggle", ({ enabled }) => this.setEnabled(enabled)),
-    );
     window.addEventListener("resize", this.handleResize);
   }
 
+  setEnabled(enabled: boolean): void {
+    if (this.enabled === enabled) {
+      return;
+    }
+    this.enabled = enabled;
+    this.root.visible = enabled;
+    this.refreshIn = 0;
+    if (!enabled) {
+      this.clear();
+    }
+  }
+
   update(delta: number, frame: NpcAiDebugFrame): void {
-    if (!this.enabled) {
+    if (!this.enabled || !frame.playerPosition) {
       return;
     }
 
@@ -77,8 +81,6 @@ export class NpcAiDebugOverlay implements Disposable {
   }
 
   dispose(): void {
-    this.unsubscribers.forEach((unsubscribe) => unsubscribe());
-    this.unsubscribers.length = 0;
     window.removeEventListener("resize", this.handleResize);
     this.clear();
     this.disposeLabelCache();
@@ -100,21 +102,10 @@ export class NpcAiDebugOverlay implements Disposable {
     });
   };
 
-  private setEnabled(enabled: boolean): void {
-    if (this.enabled === enabled) {
-      return;
-    }
-    this.enabled = enabled;
-    this.root.visible = enabled;
-    this.refreshIn = 0;
-    if (!enabled) {
-      this.clear();
-    }
-  }
-
   private rebuild(frame: NpcAiDebugFrame): void {
     this.clear();
-    this.drawNavGraph(frame);
+    if (!frame.playerPosition) return;
+    this.drawNavGraph(frame, frame.playerPosition);
 
     for (const npc of frame.npcs) {
       const snapshot = npc.getAiDebugSnapshot();
@@ -128,13 +119,13 @@ export class NpcAiDebugOverlay implements Disposable {
     }
   }
 
-  private drawNavGraph(frame: NpcAiDebugFrame): void {
+  private drawNavGraph(frame: NpcAiDebugFrame, playerPosition: Vector3): void {
     if (!frame.navGraph) {
       return;
     }
 
     const snapshot = frame.navGraph.getDebugSnapshot(
-      frame.playerPosition,
+      playerPosition,
       NAV_RADIUS,
       NAV_MAX_NODES,
     );
@@ -152,7 +143,7 @@ export class NpcAiDebugOverlay implements Disposable {
     }
     this.addLineSegments(edgePoints, 0x2a9dc8, 0.7, 2.5);
 
-    const labelPosition = frame.playerPosition.clone().add(new Vector3(0, 3.2, 0));
+    const labelPosition = playerPosition.clone().add(new Vector3(0, 3.2, 0));
     this.addLabel(
       `Nav local ${snapshot.nodes.length}/${snapshot.totalNodes}`,
       "nodos y conexiones cercanas",

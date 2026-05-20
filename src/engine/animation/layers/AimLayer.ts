@@ -7,8 +7,8 @@ const MAX_PITCH = Math.PI * 0.35;
 
 /**
  * Lleva los brazos a la pose de tiro y pitchea el torso hacia el target.
- * Lee los valores de `AimTuning` para permitir tuneo en runtime via el
- * panel de debug (`AimDebugPanel`).
+ * Lee los valores de `AimTuning` para permitir tuneo en runtime via la
+ * pestania NPCs del DebugMenu (F3).
  */
 export class AimLayer implements AnimationLayer {
   apply(ctx: AnimationLayerContext): void {

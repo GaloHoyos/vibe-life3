@@ -17,11 +17,14 @@ import { UISoundSystem } from "@game/audio/UISoundSystem";
 import { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
 import type { GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
-import { NpcAiDebugOverlay } from "@game/debug/NpcAiDebugOverlay";
-import { NpcAiTracePanel } from "@game/debug/NpcAiTracePanel";
-import { NpcAiTraceRecorder } from "@game/debug/NpcAiTraceRecorder";
-import { NpcDebugSystem } from "@game/debug/NpcDebugSystem";
-import { installSceneInspector } from "@game/debug/SceneInspector";
+import { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
+import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
+import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
+import { NpcsModule } from "@game/ui/overlay/debug/modules/NpcsModule";
+import { PlayerModule } from "@game/ui/overlay/debug/modules/PlayerModule";
+import { SceneModule } from "@game/ui/overlay/debug/modules/SceneModule";
+import { StatsModule } from "@game/ui/overlay/debug/modules/StatsModule";
+import { WeaponsModule } from "@game/ui/overlay/debug/modules/WeaponsModule";
 import { Controls } from "@game/gameplay/player/Controls";
 import { Player } from "@game/gameplay/player/Player";
 import { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
@@ -45,7 +48,6 @@ import { LevelEvents } from "@game/narrative/LevelEvents";
 import { WeaponPickup } from "@game/gameplay/weapons/pickup/WeaponPickup";
 import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
 import { WEAPON_ORDER, WeaponDefinitions } from "@game/config/weapons.config";
-import { DebugOverlay } from "@game/ui/overlay/DebugOverlay";
 import { HUD } from "@game/ui/hud/HUD";
 import { Subtitles } from "@game/ui/subtitles/Subtitles";
 import { MainMenu } from "@game/ui/menu/MainMenu";
@@ -97,7 +99,7 @@ export class Game {
 
     this.engine.services
       .resolve(GameTokens.MainMenu)
-      .setDebugEnabled(this.engine.services.resolve(GameTokens.DebugOverlay).isEnabled());
+      .setDebugEnabled(this.engine.services.resolve(GameTokens.DebugMenu).isVisible());
     this.setGameState("mainMenu");
     this.bindBrowserEvents();
   }
@@ -116,7 +118,6 @@ export class Game {
 
     lighting.attach(sceneManager.scene);
     footsteps.configure(FootstepsConfig);
-    installSceneInspector(sceneManager.scene);
 
     if (this.bootIntoLevel) {
       await this.startNewGame(this.bootIntoLevel);
@@ -147,11 +148,7 @@ export class Game {
     s.resolve(GameTokens.HUD).dispose();
     s.resolve(GameTokens.Subtitles).dispose();
     s.resolve(GameTokens.MainMenu).dispose();
-    s.resolve(GameTokens.DebugOverlay).dispose();
-    s.resolve(GameTokens.NpcAiDebug).dispose();
-    s.resolve(GameTokens.NpcAiTracePanel).dispose();
-    s.resolve(GameTokens.NpcAiTrace).dispose();
-    s.resolve(GameTokens.NpcDebug).dispose();
+    s.resolve(GameTokens.DebugMenu).dispose();
     s.resolve(GameTokens.EventBus).clear();
 
     this.engine.dispose();
@@ -195,8 +192,7 @@ export class Game {
     const positionalSounds = s.resolve(EngineTokens.PositionalSound);
     const input = s.resolve(EngineTokens.Input);
 
-    const controls = s.register(GameTokens.Controls, new Controls(input));
-    s.register(GameTokens.NpcDebug, new NpcDebugSystem(input, controls));
+    s.register(GameTokens.Controls, new Controls(input));
     s.register(
       GameTokens.Characters,
       new CharacterFactory(assets, physics, eventBus),
@@ -372,25 +368,20 @@ export class Game {
     const eventBus = s.resolve(GameTokens.EventBus);
     const audio = s.resolve(EngineTokens.Audio);
     const controls = s.resolve(GameTokens.Controls);
+    const input = s.resolve(EngineTokens.Input);
+    const scene = s.resolve(EngineTokens.Scene);
 
     s.register(GameTokens.HUD, new HUD(this.root, eventBus));
-    const debugOverlay = s.register(
-      GameTokens.DebugOverlay,
-      new DebugOverlay(this.root, eventBus),
-    );
-    const scene = s.resolve(EngineTokens.Scene);
-    s.register(
-      GameTokens.NpcAiDebug,
-      new NpcAiDebugOverlay(scene.scene, eventBus),
-    );
-    const traceRecorder = s.register(
-      GameTokens.NpcAiTrace,
-      new NpcAiTraceRecorder(eventBus),
-    );
-    s.register(
-      GameTokens.NpcAiTracePanel,
-      new NpcAiTracePanel(this.root, traceRecorder, eventBus),
-    );
+
+    const debugMenu = new DebugMenu(this.root, input, controls, eventBus);
+    debugMenu.register(new StatsModule());
+    debugMenu.register(new PlayerModule(eventBus));
+    debugMenu.register(new WeaponsModule());
+    debugMenu.register(new NpcsModule());
+    debugMenu.register(new AiViewModule(scene.scene));
+    debugMenu.register(new AiTraceModule(eventBus));
+    debugMenu.register(new SceneModule(scene.scene));
+    s.register(GameTokens.DebugMenu, debugMenu);
 
     s.register(
       GameTokens.MainMenu,
@@ -400,7 +391,7 @@ export class Game {
         },
         onResume: () => this.setGameState("playing"),
         onExitToMain: () => this.exitToMainMenu(),
-        onToggleDebug: (enabled) => debugOverlay.setEnabled(enabled),
+        onToggleDebug: (enabled) => debugMenu.setVisible(enabled),
         onVolumeChange: (bus, value) => audio.setVolume(bus, value),
         onGetVolume: (bus) => audio.getVolume(bus),
         controls,
@@ -416,13 +407,9 @@ export class Game {
     const s = this.engine.services;
     const input = s.resolve(EngineTokens.Input);
     const controls = s.resolve(GameTokens.Controls);
-    const debugOverlay = s.resolve(GameTokens.DebugOverlay);
+    const debugMenu = s.resolve(GameTokens.DebugMenu);
 
-    if (controls.wasPressed("toggleDebug")) {
-      debugOverlay.toggle();
-    }
-
-    s.resolve(GameTokens.NpcDebug).update();
+    this.tickDebug(time, debugMenu);
 
     if (input.wasKeyPressed("F2") && this.player) {
       const enabled = this.player.health.toggleGodMode();
@@ -447,6 +434,23 @@ export class Game {
     input.endFrame();
   }
 
+  private tickDebug(time: Time, debugMenu: DebugMenu): void {
+    const s = this.engine.services;
+    const physics = s.resolve(EngineTokens.Physics);
+    const renderer = s.resolve(EngineTokens.Renderer);
+    debugMenu.update({
+      delta: time.delta,
+      elapsed: time.elapsed,
+      fps: time.fps,
+      player: this.player,
+      npcs: this.npcs,
+      navGraph: this.navGraph,
+      rendererInfo: renderer.renderer.info,
+      physicsBodies: physics.getBodyCount(),
+      playerPosition: this.player?.getPosition() ?? null,
+    });
+  }
+
   /** Tick completo cuando el juego estÃ¡ activo (no en menÃº/pausa). */
   private tickPlaying(time: Time): void {
     const player = this.player!;
@@ -461,7 +465,6 @@ export class Game {
     const weaponEffects = s.resolve(GameTokens.WeaponEffects);
     const subtitles = s.resolve(GameTokens.Subtitles);
     const footsteps = s.resolve(GameTokens.Footsteps);
-    const debugOverlay = s.resolve(GameTokens.DebugOverlay);
     const grenades = s.resolve(GameTokens.Grenades);
 
     if (input.isPointerLocked()) {
@@ -529,27 +532,6 @@ export class Game {
     subtitles.update(time.delta);
     weaponEffects.update(time.delta);
     gizmos.update(time.delta);
-
-    const rendererInfo = s.resolve(EngineTokens.Renderer).renderer.info;
-    debugOverlay.update({
-      fps: time.fps,
-      playerPosition,
-      physicsBodies: physics.getBodyCount(),
-      npcStates: this.npcs.map((npc) => `${npc.id}:${npc.getState()}`),
-      render: {
-        calls: rendererInfo.render.calls,
-        triangles: rendererInfo.render.triangles,
-        geometries: rendererInfo.memory.geometries,
-        textures: rendererInfo.memory.textures,
-        programs: rendererInfo.programs?.length ?? 0,
-      },
-    });
-    s.resolve(GameTokens.NpcAiDebug).update(time.delta, {
-      playerPosition,
-      navGraph: this.navGraph,
-      npcs: this.npcs,
-    });
-    s.resolve(GameTokens.NpcAiTrace).update(time.elapsed, this.npcs);
   }
 
   private computeNpcAiLod(position: Vector3, playerPosition: Vector3): NpcUpdateContext["aiLod"] {
@@ -593,8 +575,8 @@ export class Game {
 
   private readonly handlePointerLockChange = (): void => {
     const input = this.engine.services.resolve(EngineTokens.Input);
-    const npcDebug = this.engine.services.resolve(GameTokens.NpcDebug);
-    const debugRelease = npcDebug.isDebugMouseRelease();
+    const debugMenu = this.engine.services.resolve(GameTokens.DebugMenu);
+    const debugRelease = debugMenu.isDebugMouseRelease();
     if (
       !input.isPointerLocked() &&
       this.gameState === "playing" &&
