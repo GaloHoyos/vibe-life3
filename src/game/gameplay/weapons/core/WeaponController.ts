@@ -18,6 +18,7 @@ import type { WeaponId } from "./WeaponDefinition";
 
 /** Tiempo (s) sin input antes de que el selector auto-confirme la tentativa. */
 const SELECTOR_TIMEOUT = 2.0;
+const WEAPON_SWITCH_FIRE_DELAY = 0.28;
 
 interface SelectorState {
   slot: number;
@@ -48,6 +49,8 @@ export class WeaponController {
   private readonly tmpUpdateDir = new Vector3();
   private readonly tmpUpdateQuat = new Quaternion();
   private readonly unsubscribers: Array<() => void> = [];
+  private lastWeaponBeforeGrenade: WeaponId | null = null;
+  private fireLockedUntil = -Infinity;
 
   constructor(
     private readonly eventBus: GameEventBus,
@@ -76,12 +79,13 @@ export class WeaponController {
     cameraSystem: CameraSystem,
     elapsed: number,
     speed: number,
+    ownerGrounded: boolean,
   ): void {
     if (
       this.selector &&
       elapsed - this.selector.openedAt > SELECTOR_TIMEOUT
     ) {
-      this.commitSelector();
+      this.commitSelector(elapsed);
     }
 
     this.handleSelectionInput(input, controls, elapsed);
@@ -105,12 +109,15 @@ export class WeaponController {
         origin: this.tmpUpdateOrigin,
         direction: this.tmpUpdateDir,
         cameraQuaternion: this.tmpUpdateQuat,
+        alternateHeld: input.isMouseDown(2),
+        ownerGrounded,
       });
     }
 
     if (
       activeWeapon &&
       !this.selector &&
+      this.canFireAfterSwitch(elapsed) &&
       input.wasMousePressed(2)
     ) {
       activeWeapon.tryAlternateFire({
@@ -137,6 +144,7 @@ export class WeaponController {
       activeWeapon &&
       !this.selector &&
       !this.suppressFireUntilRelease &&
+      this.canFireAfterSwitch(elapsed) &&
       this.shouldFireWeapon(activeWeapon.definition.fireMode, input)
     ) {
       const fired = activeWeapon.tryFire({
@@ -150,6 +158,8 @@ export class WeaponController {
         this.viewModel.fire();
       }
     }
+
+    this.switchAwayFromUnavailableActiveWeapon(elapsed);
   }
 
   /**
@@ -169,12 +179,11 @@ export class WeaponController {
     if (existing) {
       const gained = existing.addPickupAmmo(false);
       if (gained > 0) {
-        if (this.inventory.getActiveWeapon() === existing) {
-          this.eventBus.emit("weapon.ammo.changed", {
-            current: existing.getAmmo(),
-            reserve: existing.getReserveAmmo(),
-          });
-        }
+        this.eventBus.emit("weapon.ammo.changed", {
+          weaponId: existing.definition.id,
+          current: existing.getAmmo(),
+          reserve: existing.getReserveAmmo(),
+        });
         this.eventBus.emit("player.pickup.ammo", {
           amount: gained,
           weaponName: existing.name,
@@ -193,6 +202,11 @@ export class WeaponController {
     });
     const shouldEquip = this.inventory.isEmpty();
     this.inventory.addWeapon(weapon);
+    this.eventBus.emit("weapon.ammo.changed", {
+      weaponId: weapon.definition.id,
+      current: weapon.getAmmo(),
+      reserve: weapon.getReserveAmmo(),
+    });
     this.eventBus.emit("player.pickup.weapon", {
       weaponName: definition.displayName,
     });
@@ -212,14 +226,24 @@ export class WeaponController {
     this.viewModel.dispose();
   }
 
-  private switchToWeapon(id: WeaponId): Weapon | null {
+  private switchToWeapon(id: WeaponId, elapsed: number): Weapon | null {
+    if (!this.inventory.isWeaponSelectable(id)) {
+      return null;
+    }
     const previous = this.inventory.getActiveWeapon();
+    const previousId = previous?.definition.id ?? null;
     if (previous && previous.definition.id !== id) {
+      if (previous.definition.id !== "grenade") {
+        this.lastWeaponBeforeGrenade = previous.definition.id;
+      }
       previous.onUnequip();
     }
     const next = this.inventory.equipWeapon(id);
     if (next) {
       void this.viewModel.equip(next.definition);
+      if (previousId !== next.definition.id) {
+        this.fireLockedUntil = elapsed + WEAPON_SWITCH_FIRE_DELAY;
+      }
     }
     return next;
   }
@@ -247,13 +271,13 @@ export class WeaponController {
           ? this.inventory.peekNextWeaponId()
           : this.inventory.peekPreviousWeaponId();
       if (target) {
-        this.switchToWeapon(target);
+        this.switchToWeapon(target, elapsed);
       }
       return;
     }
 
     if (this.selector && input.wasMousePressed(0)) {
-      this.commitSelector();
+      this.commitSelector(elapsed);
       this.suppressFireUntilRelease = true;
     }
   }
@@ -265,18 +289,27 @@ export class WeaponController {
     }
 
     if (this.selector && this.selector.slot === slot) {
-      this.selector.tentativeIndex =
-        (this.selector.tentativeIndex + 1) % inSlot.length;
+      const nextSelectable = this.findNextSelectableIndex(
+        inSlot,
+        this.selector.tentativeIndex,
+      );
+      if (nextSelectable !== null) {
+        this.selector.tentativeIndex = nextSelectable;
+      }
       this.selector.openedAt = elapsed;
       this.eventBus.emit("weapon.selector.cycled", this.buildSelectorState());
       return;
     }
 
-    this.selector = { slot, tentativeIndex: 0, openedAt: elapsed };
+    this.selector = {
+      slot,
+      tentativeIndex: this.findInitialSelectorIndex(inSlot),
+      openedAt: elapsed,
+    };
     this.eventBus.emit("weapon.selector.opened", this.buildSelectorState());
   }
 
-  private commitSelector(): void {
+  private commitSelector(elapsed: number): void {
     if (!this.selector) {
       return;
     }
@@ -285,8 +318,12 @@ export class WeaponController {
     const target = inSlot[this.selector.tentativeIndex];
     this.selector = null;
 
-    if (target && target !== this.inventory.getActiveWeapon()) {
-      this.switchToWeapon(target.definition.id);
+    if (
+      target &&
+      this.inventory.isWeaponSelectable(target.definition.id) &&
+      target !== this.inventory.getActiveWeapon()
+    ) {
+      this.switchToWeapon(target.definition.id, elapsed);
     }
 
     this.eventBus.emit("weapon.selector.closed", { committed: true });
@@ -305,11 +342,14 @@ export class WeaponController {
       throw new Error("buildSelectorState called without active selector");
     }
 
-    const slots: Array<{ slot: number; weapons: WeaponId[] }> = [];
+    const slots: WeaponSelectorState["slots"] = [];
     for (let s = 1; s <= WEAPON_SLOT_COUNT; s += 1) {
       const weapons = this.inventory
         .getWeaponsInSlot(s)
-        .map((weapon) => weapon.definition.id);
+        .map((weapon) => ({
+          id: weapon.definition.id,
+          disabled: !this.inventory.isWeaponSelectable(weapon.definition.id),
+        }));
       if (weapons.length > 0) {
         slots.push({ slot: s, weapons });
       }
@@ -342,5 +382,45 @@ export class WeaponController {
       current: 0,
       reserve: 0,
     });
+  }
+
+  private canFireAfterSwitch(elapsed: number): boolean {
+    return elapsed >= this.fireLockedUntil;
+  }
+
+  private findInitialSelectorIndex(weapons: Weapon[]): number {
+    const firstSelectable = weapons.findIndex((weapon) =>
+      this.inventory.isWeaponSelectable(weapon.definition.id),
+    );
+    return firstSelectable >= 0 ? firstSelectable : 0;
+  }
+
+  private findNextSelectableIndex(
+    weapons: Weapon[],
+    currentIndex: number,
+  ): number | null {
+    for (let offset = 1; offset <= weapons.length; offset += 1) {
+      const nextIndex = (currentIndex + offset) % weapons.length;
+      if (this.inventory.isWeaponSelectable(weapons[nextIndex].definition.id)) {
+        return nextIndex;
+      }
+    }
+    return null;
+  }
+
+  private switchAwayFromUnavailableActiveWeapon(elapsed: number): void {
+    const activeId = this.inventory.getActiveWeaponId();
+    if (!activeId || this.inventory.isWeaponSelectable(activeId)) {
+      return;
+    }
+
+    const fallback =
+      this.lastWeaponBeforeGrenade &&
+      this.inventory.isWeaponSelectable(this.lastWeaponBeforeGrenade)
+        ? this.lastWeaponBeforeGrenade
+        : this.inventory.peekNextWeaponId();
+    if (fallback) {
+      this.switchToWeapon(fallback, elapsed);
+    }
   }
 }

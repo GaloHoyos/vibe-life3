@@ -35,6 +35,8 @@ export interface WeaponUpdateContext {
   direction: Vector3;
   /** Orientación completa de la cámara. */
   cameraQuaternion: Quaternion;
+  alternateHeld: boolean;
+  ownerGrounded: boolean;
 }
 
 export interface WeaponAlternateFireContext extends WeaponFireContext {
@@ -177,6 +179,7 @@ export abstract class Weapon {
 
   protected emitAmmoChanged(): void {
     this.context.eventBus.emit("weapon.ammo.changed", {
+      weaponId: this.definition.id,
       current: this.getAmmo(),
       reserve: this.getReserveAmmo(),
     });

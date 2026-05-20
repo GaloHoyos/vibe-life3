@@ -87,6 +87,7 @@ export class Player implements Damageable {
       cameraSystem,
       elapsed,
       this.controller.getMoveIntensity(),
+      this.controller.isGrounded(),
     );
     this.stamina.tick(delta, this.controller.isSprinting());
   }

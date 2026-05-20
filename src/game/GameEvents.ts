@@ -4,9 +4,14 @@ import type { EventBus } from "@engine/core/EventBus";
 import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
 
 /** Snapshot del estado del selector que se publica al HUD. */
+export interface WeaponSelectorItemState {
+  id: WeaponId;
+  disabled: boolean;
+}
+
 export interface WeaponSelectorState {
   /** Por slot, las armas que el jugador tiene equipadas, en orden canÃ³nico. */
-  slots: Array<{ slot: number; weapons: WeaponId[] }>;
+  slots: Array<{ slot: number; weapons: WeaponSelectorItemState[] }>;
   /** Slot actualmente abierto. */
   activeSlot: number;
   /** Arma tentativamente seleccionada (la que se equiparÃ¡ al confirmar). */
@@ -64,13 +69,16 @@ export interface GameEventMap {
     weaponName: string;
   };
   "weapon.ammo.changed": {
+    weaponId?: WeaponId;
     current: number;
     reserve: number;
   };
   "weapon.changed": {
+    weaponId?: WeaponId;
     weaponName: string;
     ammo: number;
     reserve: number;
+    secondaryAmmo?: number;
   };
   "weapon.selector.opened": WeaponSelectorState;
   "weapon.selector.cycled": WeaponSelectorState;
