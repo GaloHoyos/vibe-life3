@@ -6,6 +6,8 @@ import type { Engine } from "@engine/core/Engine";
 import { EventBus } from "@engine/core/EventBus";
 import { EngineTokens } from "@engine/core/ServiceTokens";
 import type { Time } from "@engine/core/Time";
+import { SpawnValidator } from "@engine/physics/character/SpawnValidator";
+import { Raycast } from "@engine/physics/Raycast";
 import { CharacterFactory } from "@game/characters/CharacterFactory";
 import { FootstepsConfig } from "@game/config/audio.config";
 import { Dialogue, MenuStrings } from "@game/config/strings";
@@ -24,7 +26,11 @@ import { InteractSystem, type SlidingDoor } from "@game/gameplay/interactions";
 import type { NavGraph } from "@engine/ai/NavGraph";
 import type { CoverSystem } from "@game/levels/CoverSystem";
 import type { CombatSquadCoordinator } from "@game/npc/combat/CombatSquadCoordinator";
-import type { LevelDefinition } from "@game/levels/LevelDefinition";
+import type {
+  DynamicBoxDefinition,
+  LevelDefinition,
+  NPCDefinition,
+} from "@game/levels/LevelDefinition";
 import { LevelLoader } from "@game/levels/LevelLoader";
 import { getLevel, type LevelId } from "@game/levels/LevelRegistry";
 import { TriggerSystem } from "@game/levels/TriggerSystem";
@@ -33,12 +39,14 @@ import { DialogueSystem } from "@game/narrative/DialogueSystem";
 import { LevelEvents } from "@game/narrative/LevelEvents";
 import { WeaponPickup } from "@game/gameplay/weapons/pickup/WeaponPickup";
 import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
-import { WeaponDefinitions } from "@game/config/weapons.config";
+import { WEAPON_ORDER, WeaponDefinitions } from "@game/config/weapons.config";
 import { DebugOverlay } from "@game/ui/overlay/DebugOverlay";
 import { HUD } from "@game/ui/hud/HUD";
 import { Subtitles } from "@game/ui/subtitles/Subtitles";
 import { MainMenu } from "@game/ui/menu/MainMenu";
 import type { GameMenuState } from "@game/ui/menu/MainMenuState";
+import { createBoxMesh } from "@engine/render/PrimitiveFactory";
+import { tupleToVector3 } from "@shared/math/VectorTuple";
 
 /**
  * Bootstrap del contenido del juego.
@@ -70,6 +78,7 @@ export class Game {
   private navGraph: NavGraph | null = null;
   private squad: CombatSquadCoordinator | null = null;
   private pendingExitTimeoutId: number | null = null;
+  private actionSpawnSerial = 0;
 
   constructor(private readonly engine: Engine, options: GameOptions = {}) {
     this.root = engine.root;
@@ -206,6 +215,9 @@ export class Game {
     eventBus.on("npc.weapon.dropped", (payload) => {
       void this.handleWeaponDrop(payload.npcId, payload.weaponId, payload.position);
     });
+    eventBus.on("level.action", ({ action, position }) => {
+      void this.handleLevelAction(action, position);
+    });
   }
 
   private async handleWeaponDrop(
@@ -230,6 +242,117 @@ export class Game {
       this.weaponPickups.push(pickup);
     } catch (error) {
       console.warn(`[Game] No se pudo crear pickup del weapon dropeado`, error);
+    }
+  }
+
+  private async handleLevelAction(
+    action: GameEventMap["level.action"]["action"],
+    position: Vector3,
+  ): Promise<void> {
+    if (!this.currentLevel) {
+      return;
+    }
+
+    switch (action) {
+      case "respawnEncounters":
+        await this.respawnLevelEncounters(this.currentLevel);
+        this.engine.services.resolve(GameTokens.EventBus).emit("dialogue.show", {
+          speaker: "Consola",
+          text: "Entidades respawneadas.",
+          duration: 2.5,
+        });
+        return;
+      case "spawnAllWeapons":
+        await this.spawnWeaponSet(position);
+        this.engine.services.resolve(GameTokens.EventBus).emit("dialogue.show", {
+          speaker: "Consola",
+          text: "Arsenal desplegado.",
+          duration: 2.5,
+        });
+        return;
+    }
+  }
+
+  private async respawnLevelEncounters(level: LevelDefinition): Promise<void> {
+    this.actionSpawnSerial += 1;
+    await this.spawnNpcs(level.npcs, `respawn-${this.actionSpawnSerial}`);
+    this.spawnDynamicBoxes(level.dynamicBoxes, `respawn-${this.actionSpawnSerial}`);
+  }
+
+  private async spawnNpcs(
+    definitions: NPCDefinition[],
+    idPrefix: string,
+  ): Promise<void> {
+    const services = this.engine.services;
+    const characters = services.resolve(GameTokens.Characters);
+    const scene = services.resolve(EngineTokens.Scene);
+    const physics = services.resolve(EngineTokens.Physics);
+    const spawnValidator = new SpawnValidator(new Raycast(physics));
+
+    for (const definition of definitions) {
+      const requested = tupleToVector3(definition.position);
+      const validation = spawnValidator.validate(requested);
+      const npc = await characters.createNPC(
+        definition.characterId,
+        `${idPrefix}-${definition.id}`,
+        validation.position,
+      );
+      scene.scene.add(npc.mesh);
+      this.npcs.push(npc);
+    }
+  }
+
+  private spawnDynamicBoxes(
+    definitions: DynamicBoxDefinition[],
+    idPrefix: string,
+  ): void {
+    const services = this.engine.services;
+    const scene = services.resolve(EngineTokens.Scene);
+    const physics = services.resolve(EngineTokens.Physics);
+
+    definitions.forEach((definition) => {
+      const id = `${idPrefix}-${definition.id}`;
+      const mesh = createBoxMesh({
+        id,
+        position: definition.position,
+        size: definition.size,
+        material: definition.material,
+        castShadow: true,
+        receiveShadow: true,
+      });
+      scene.scene.add(mesh);
+      physics.createDynamicBox(
+        {
+          id,
+          position: tupleToVector3(definition.position),
+          size: tupleToVector3(definition.size),
+          mass: definition.mass,
+        },
+        mesh,
+      );
+    });
+  }
+
+  private async spawnWeaponSet(origin: Vector3): Promise<void> {
+    this.actionSpawnSerial += 1;
+    const services = this.engine.services;
+    const scene = services.resolve(EngineTokens.Scene);
+    const assets = services.resolve(EngineTokens.Assets);
+    const physics = services.resolve(EngineTokens.Physics);
+    const weaponIds: WeaponId[] = [...WEAPON_ORDER, "grenade", "grenade", "grenade"];
+
+    for (let i = 0; i < weaponIds.length; i += 1) {
+      const row = Math.floor(i / 5);
+      const column = i % 5;
+      const position = origin
+        .clone()
+        .add(new Vector3((column - 2) * 1.4, 0.2, 2.6 + row * 1.4));
+      const pickup = await WeaponPickup.create(scene.scene, physics, assets, {
+        id: `action-weapon-${this.actionSpawnSerial}-${i}-${weaponIds[i]}`,
+        weaponId: weaponIds[i],
+        position,
+      });
+      this.weaponPickups.push(pickup);
     }
   }
 
@@ -321,13 +444,9 @@ export class Game {
       player.update(time.delta, input, controls, camera, time.elapsed);
     }
 
-    // Render-tick del viewmodel siempre, aunque F9 haya soltado el puntero,
-    // para que los tweaks del debug tuner se apliquen en vivo.
-    player.tickRender(time.delta, camera);
-
     footsteps.update(time.delta, player.getMoveIntensity());
 
-    const playerPosition = player.getPosition();
+    let playerPosition = player.getPosition();
     this.weaponPickups.forEach((pickup) =>
       pickup.update(time.delta, playerPosition, player.weapons),
     );
@@ -368,7 +487,10 @@ export class Game {
     this.npcs.forEach((npc) => npc.syncFromPhysics());
     s.resolve(GameTokens.Grenades).update(time.delta, time.elapsed);
 
+    playerPosition = player.getPosition();
     camera.syncToPosition(player.getEyePosition());
+    // Update the viewmodel after the camera follows the resolved physics pose.
+    player.tickRender(time.delta, camera);
     interactSystem.update(
       camera.camera.position,
       camera.getForwardDirection(),

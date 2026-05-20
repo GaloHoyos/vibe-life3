@@ -5,6 +5,7 @@ import type { MaterialKey } from '@engine/render/material/Materials';
 import type { SkyboxId } from '@engine/render/environment/Skybox';
 import type { SunOptions } from '@engine/render/environment/LightingSystem';
 import type { HeightSource } from '@shared/math/HeightField';
+import type { LevelActionKind } from '@game/GameEvents';
 import type { CoverPointDefinition } from './CoverSystem';
 
 export interface StaticBoxDefinition {
@@ -35,6 +36,14 @@ export interface DoorDefinition {
     position: VectorTuple;
     size: VectorTuple;
   };
+}
+
+export interface ActionButtonDefinition {
+  id: string;
+  label: string;
+  action: LevelActionKind;
+  position: VectorTuple;
+  size: VectorTuple;
 }
 
 export interface NPCDefinition {
@@ -102,6 +111,7 @@ export interface LevelDefinition {
   staticBoxes: StaticBoxDefinition[];
   dynamicBoxes: DynamicBoxDefinition[];
   doors: DoorDefinition[];
+  actionButtons?: ActionButtonDefinition[];
   npcs: NPCDefinition[];
   weaponPickups: WeaponPickupDefinition[];
   triggers: TriggerDefinition[];

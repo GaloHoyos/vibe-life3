@@ -3,6 +3,8 @@ import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { EventBus } from "@engine/core/EventBus";
 import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
 
+export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
+
 /** Snapshot del estado del selector que se publica al HUD. */
 export interface WeaponSelectorItemState {
   id: WeaponId;
@@ -84,6 +86,11 @@ export interface GameEventMap {
   "weapon.selector.cycled": WeaponSelectorState;
   "weapon.selector.closed": {
     committed: boolean;
+  };
+  "level.action": {
+    id: string;
+    action: LevelActionKind;
+    position: Vector3;
   };
   "npc.damaged": {
     id: string;

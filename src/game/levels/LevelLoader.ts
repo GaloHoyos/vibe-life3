@@ -4,7 +4,7 @@ import type { CharacterFactory } from '@game/characters/CharacterFactory';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import { tupleToVector3 } from '@shared/math/VectorTuple';
 import type { GameEventBus } from "@game/GameEvents";
-import { DoorButton, InteractSystem, SlidingDoor } from '@game/gameplay/interactions';
+import { ActionButton, DoorButton, InteractSystem, SlidingDoor } from '@game/gameplay/interactions';
 import { WeaponPickup } from '@game/gameplay/weapons/pickup/WeaponPickup';
 import { CombatSquadCoordinator } from '@game/npc/combat/CombatSquadCoordinator';
 import type { INpc } from '@game/npc/core/INpc';
@@ -129,6 +129,26 @@ export class LevelLoader {
       this.scene.add(button);
       this.interactSystem.register(
         new DoorButton(definition.button.id, definition.button.label, button, door, this.eventBus),
+      );
+    });
+
+    level.actionButtons?.forEach((definition) => {
+      const button = createBoxMesh({
+        id: definition.id,
+        position: definition.position,
+        size: definition.size,
+        material: 'button',
+        castShadow: true,
+      });
+      this.scene.add(button);
+      this.interactSystem.register(
+        new ActionButton(
+          definition.id,
+          definition.label,
+          button,
+          definition.action,
+          this.eventBus,
+        ),
       );
     });
 
