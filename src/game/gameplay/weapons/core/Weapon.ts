@@ -1,11 +1,21 @@
 ﻿import { Quaternion, Vector3 } from "three";
 import type { GameEventBus } from "@game/GameEvents";
 import type { Raycast } from "@engine/physics/Raycast";
+import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import type { WeaponDefinition } from "./WeaponDefinition";
+import type { WeaponInventory } from "./WeaponInventory";
 
 export interface WeaponContext {
   eventBus: GameEventBus;
   raycast: Raycast;
+  /** Sistema de granadas activas. Lo usan `GrenadeWeapon` y el secundario del SMG. */
+  grenades: GrenadeSystem;
+  /**
+   * Inventario del jugador. Permite a un arma consultar otra (ej. SMG-alt
+   * mira la reserva del `grenade`). Es un getter porque el inventario
+   * existe antes que cualquier arma â€” lazy para evitar ciclos.
+   */
+  getInventory: () => WeaponInventory;
 }
 
 export interface WeaponFireContext {

@@ -9,6 +9,7 @@ import { HudStrings } from "@game/config/strings";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { GameAction } from "@game/config/controls.config";
 import { Recoil } from "@game/gameplay/weapons/effects/Recoil";
+import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import type { Weapon } from "./Weapon";
 import { WeaponInventory } from "./WeaponInventory";
 import { createWeapon, getWeapon } from "./WeaponFactory";
@@ -46,15 +47,25 @@ export class WeaponController {
   private readonly tmpUpdateOrigin = new Vector3();
   private readonly tmpUpdateDir = new Vector3();
   private readonly tmpUpdateQuat = new Quaternion();
+  private readonly unsubscribers: Array<() => void> = [];
 
   constructor(
     private readonly eventBus: GameEventBus,
     private readonly raycast: Raycast,
     assets: AssetManager,
     scene: Scene,
+    private readonly grenades: GrenadeSystem,
   ) {
     this.inventory = new WeaponInventory(eventBus);
     this.viewModel = new WeaponViewModel(scene, assets);
+    // Pulse del viewmodel por cada `weapon.reloaded`. Algunas armas (shotgun)
+    // emiten este evento mltiples veces durante una recarga secuencial; cada
+    // emisin debe disparar su propia animacin de tilt.
+    this.unsubscribers.push(
+      eventBus.on("weapon.reloaded", () => {
+        this.viewModel.reload();
+      }),
+    );
     this.emitUnarmed();
   }
 
@@ -117,9 +128,9 @@ export class WeaponController {
       !this.selector &&
       controls.wasPressed("reload")
     ) {
-      if (activeWeapon.tryReload(elapsed)) {
-        this.viewModel.reload();
-      }
+      // El pulse del viewmodel ahora lo dispara el listener de `weapon.reloaded`
+      // (ver constructor). As el shotgun pulsea por bala en recarga secuencial.
+      activeWeapon.tryReload(elapsed);
     }
 
     if (
@@ -139,7 +150,15 @@ export class WeaponController {
         this.viewModel.fire();
       }
     }
+  }
 
+  /**
+   * Render-tick del view model. Se ejecuta cada frame incluso cuando el
+   * input est suspendido (ej. F9 debug mouse release) para que los tweaks
+   * del debug panel  offset/rotation/scale  se vean en vivo sin tener
+   * que recapturar el puntero.
+   */
+  tickRender(delta: number, cameraSystem: CameraSystem, speed: number): void {
     this.viewModel.update(delta, cameraSystem, this.recoil, speed);
   }
 
@@ -169,6 +188,8 @@ export class WeaponController {
     const weapon = createWeapon(id, {
       eventBus: this.eventBus,
       raycast: this.raycast,
+      grenades: this.grenades,
+      getInventory: () => this.inventory,
     });
     const shouldEquip = this.inventory.isEmpty();
     this.inventory.addWeapon(weapon);
@@ -182,6 +203,8 @@ export class WeaponController {
   }
 
   dispose(): void {
+    this.unsubscribers.forEach((unsubscribe) => unsubscribe());
+    this.unsubscribers.length = 0;
     const active = this.inventory.getActiveWeapon();
     if (active) {
       active.onUnequip();

@@ -25,6 +25,10 @@ export class WeaponViewModel {
   private reloadTime = 0;
   private reloadDuration = 0;
   private reloadPitch = 0;
+  private attackTime = 0;
+  private attackDuration = 0;
+  private attackPitch = 0;
+  private attackForward = 0;
 
   constructor(
     private readonly scene: Scene,
@@ -75,6 +79,17 @@ export class WeaponViewModel {
       Math.sin(this.bobTime * 7) * 0.008 * Math.min(speed, 1) - recoil.offset.y;
     offset.z += Math.cos(this.bobTime * 5) * 0.006 * Math.min(speed, 1);
 
+    // Attack swing: empuja el arma hacia adelante (z local ms negativo)
+    // y tira el pitch hacia abajo. Curva sinusoidal 0  peak  0.
+    let attackPitch = 0;
+    if (this.attackTime > 0) {
+      this.attackTime = Math.max(0, this.attackTime - delta);
+      const progress = 1 - this.attackTime / this.attackDuration;
+      const swing = Math.sin(progress * Math.PI);
+      offset.z -= this.attackForward * swing;
+      attackPitch = -this.attackPitch * swing;
+    }
+
     this.root.position.copy(cameraSystem.camera.localToWorld(offset));
     const rotation = new Quaternion().setFromEuler(
       this.equipped.viewModelRotation,
@@ -84,21 +99,34 @@ export class WeaponViewModel {
       .multiply(rotation);
     this.root.scale.setScalar(this.equipped.viewModelScale);
 
+    let modelPitch = 0;
     if (this.reloadTime > 0) {
       this.reloadTime = Math.max(0, this.reloadTime - delta);
       const reloadProgress = 1 - this.reloadTime / this.reloadDuration;
-      this.modelRoot.rotation.x =
-        -Math.sin(reloadProgress * Math.PI) * this.reloadPitch;
-    } else {
-      this.modelRoot.rotation.x = 0;
+      modelPitch -= Math.sin(reloadProgress * Math.PI) * this.reloadPitch;
     }
+    modelPitch += attackPitch;
+    this.modelRoot.rotation.x = modelPitch;
 
     this.muzzleFlash.update(delta);
   }
 
   fire(): void {
-    if (this.equipped && this.equipped.type !== "melee") {
+    if (!this.equipped) {
+      return;
+    }
+    if (
+      this.equipped.type !== "melee" &&
+      this.equipped.type !== "grenade"
+    ) {
       this.muzzleFlash.flash(this.equipped.muzzleFlash);
+    }
+    const duration = this.equipped.attackAnimationDuration ?? 0;
+    if (duration > 0) {
+      this.attackDuration = duration;
+      this.attackTime = duration;
+      this.attackPitch = this.equipped.attackAnimationPitch ?? 0;
+      this.attackForward = this.equipped.attackAnimationForward ?? 0;
     }
   }
 

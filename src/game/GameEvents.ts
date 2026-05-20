@@ -22,6 +22,16 @@ export interface GameEventMap {
     direction: Vector3;
     range: number;
   };
+  /**
+   * Secundario distinto del primario (ej. lanzagranadas del SMG). El audio
+   * usa este evento para reproducir un clip aparte. Las armas cuyo
+   * secundario reusa el mismo sonido del primario emiten `weapon.fired`.
+   */
+  "weapon.alternate.fired": {
+    weaponName: string;
+    origin: Vector3;
+    direction: Vector3;
+  };
   "weapon.hit": {
     weaponName: string;
     targetId?: string;
@@ -43,6 +53,14 @@ export interface GameEventMap {
     reserve: number;
   };
   "weapon.empty": {
+    weaponName: string;
+  };
+  /**
+   * Sonido mecnico discreto despus de un evento (pump-action de la
+   * shotgun tras disparar y tras recargar el ltimo cartucho). El
+   * `WeaponSoundSystem` lo mapea a `WeaponAudio[name].cock`.
+   */
+  "weapon.cocked": {
     weaponName: string;
   };
   "weapon.ammo.changed": {

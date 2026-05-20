@@ -15,6 +15,7 @@ import type { Controls } from "./Controls";
 import { PlayerHealth } from "./PlayerHealth";
 import { Stamina } from "./Stamina";
 import { WeaponController } from "@game/gameplay/weapons/core/WeaponController";
+import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 
 export class Player implements Damageable {
   readonly health: PlayerHealth;
@@ -29,6 +30,7 @@ export class Player implements Damageable {
     assets: AssetManager,
     scene: Scene,
     private readonly eventBus: GameEventBus,
+    grenades: GrenadeSystem,
   ) {
     this.health = new PlayerHealth(
       eventBus,
@@ -59,7 +61,7 @@ export class Player implements Damageable {
       kind: "player",
       damageable: this,
     });
-    this.weapons = new WeaponController(eventBus, raycast, assets, scene);
+    this.weapons = new WeaponController(eventBus, raycast, assets, scene, grenades);
   }
 
   update(
@@ -87,6 +89,15 @@ export class Player implements Damageable {
       this.controller.getMoveIntensity(),
     );
     this.stamina.tick(delta, this.controller.isSprinting());
+  }
+
+  /**
+   * Render-tick que corre todos los frames, incluso cuando el input est
+   * suspendido (F9 debug mouse release). Mantiene el view model actualizado
+   * para que los tweaks del debug panel se vean en vivo.
+   */
+  tickRender(delta: number, cameraSystem: CameraSystem): void {
+    this.weapons.tickRender(delta, cameraSystem, this.controller.getMoveIntensity());
   }
 
   getPosition(): Vector3 {

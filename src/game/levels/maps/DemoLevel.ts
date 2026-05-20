@@ -61,6 +61,10 @@ export const DemoLevel: LevelDefinition = {
     { id: 'pickup-smg', weaponId: 'smg', position: [-0.8, 0.35, 8.2] },
     { id: 'pickup-ar3', weaponId: 'ar3', position: [1.2, 0.35, 8.2] },
     { id: 'pickup-gravity-gun', weaponId: 'gravityGun', position: [3.4, 0.35, 8.4] },
+    { id: 'pickup-shotgun', weaponId: 'shotgun', position: [5.4, 0.35, 8.4] },
+    { id: 'pickup-grenade-1', weaponId: 'grenade', position: [7.2, 0.35, 8.4] },
+    { id: 'pickup-grenade-2', weaponId: 'grenade', position: [7.7, 0.35, 8.4] },
+    { id: 'pickup-grenade-3', weaponId: 'grenade', position: [8.2, 0.35, 8.4] },
   ],
   triggers: [
     {
