@@ -87,6 +87,7 @@ export class AlyxNpc implements Damageable, INpc {
   private readonly tmpForward = new Vector3(0, 0, 1);
   private readonly tmpNeighbors: { position: Vector3; radius: number }[] = [];
   private lastMotorSnapshot: CharacterMotorSnapshot | null = null;
+  private lastMotorTarget: Vector3 | null = null;
   private currentThreat: ActorSnapshot | null = null;
   private wantsMove = false;
   private deadHandled = false;
@@ -227,6 +228,7 @@ export class AlyxNpc implements Damageable, INpc {
 
     const adjusted = this.computeSteeredTarget(ctx);
     const targetForMotor = this.wantsMove ? adjusted : null;
+    this.lastMotorTarget = targetForMotor?.clone() ?? null;
     const frozen = NpcDebugFlags.freezeMovement;
     const alyxState = this.fsm.getState();
     const facingThreat =
@@ -295,6 +297,10 @@ export class AlyxNpc implements Damageable, INpc {
   die(hitDirection?: Vector3, hitPartName?: string): void {
     if (this.deadHandled) return;
     this.deadHandled = true;
+    this.wantsMove = false;
+    this.currentThreat = null;
+    this.lastMotorTarget = null;
+    this.pathFollower.reset();
     this.fsm.setState("dead", "die() invocado");
 
     const rangedWeaponId = this.definition.attack.ranged?.weaponId;
@@ -333,23 +339,77 @@ export class AlyxNpc implements Damageable, INpc {
   }
 
   getState(): string {
-    const ammo = this.combat.snapshot(0);
-    return `alyx:${this.fsm.getState()} mag:${ammo.magazine}`;
+    const ammo = this.combat.snapshot(this.currentElapsed);
+    return `alyx:${this.fsm.getState()} mag:${ammo.magazine}${ammo.isReloading ? "R" : ""}`;
   }
 
   getAiDebugSnapshot(): NpcAiDebugSnapshot {
+    const alive = this.isAlive();
+    const combat = this.combat.snapshot(this.currentElapsed);
+    const perception = this.perception.getDebugSnapshot();
+    const motor = this.lastMotorSnapshot;
+    const lastDamageAgo =
+      this.blackboard.lastDamageTime === -Infinity
+        ? Infinity
+        : Math.max(0, this.currentElapsed - this.blackboard.lastDamageTime);
+    const aimSettleDuration =
+      this.definition.attack.ranged?.aimSettleDuration ?? 1.2;
     return {
       id: this.id,
       state: this.getState(),
+      stateKey: `alyx:${this.fsm.getState()}`,
       lastTransitionReason: this.fsm.getLastTransitionReason(),
       position: this.mesh.position.clone(),
-      isAlive: this.isAlive(),
-      wantsMove: this.wantsMove,
-      target: this.desiredTarget.clone(),
-      threatId: this.currentThreat?.id ?? null,
-      threatPosition: this.currentThreat?.position.clone() ?? null,
-      coverId: this.blackboard.currentCoverId,
+      isAlive: alive,
+      health: this.health.current,
+      maxHealth: this.definition.health.maxHealth,
+      wantsMove: alive && this.wantsMove,
+      target: alive && this.wantsMove ? this.desiredTarget.clone() : null,
+      threatId: alive ? this.currentThreat?.id ?? null : null,
+      threatPosition:
+        alive && this.currentThreat ? this.currentThreat.position.clone() : null,
+      coverId: alive ? this.blackboard.currentCoverId : null,
       path: this.pathFollower.getDebugSnapshot(),
+      perception: {
+        ...perception,
+        timeSinceLastSeen: this.blackboard.timeSinceLastSeen,
+      },
+      locomotion: motor
+        ? {
+            velocity: motor.velocity.clone(),
+            desiredVelocity: motor.desiredVelocity.clone(),
+            speed: motor.velocity.length(),
+            desiredSpeed: motor.desiredVelocity.length(),
+            grounded: motor.grounded,
+            distanceToTarget: motor.distanceToTarget,
+            yaw: motor.yaw,
+            targetYaw: motor.targetYaw,
+          }
+        : undefined,
+      navigation: {
+        motorTarget: alive ? this.lastMotorTarget?.clone() ?? null : null,
+      },
+      combat: {
+        magazine: combat.magazine,
+        reserve: combat.reserve,
+        isReloading: combat.isReloading,
+        isFiringBurst: combat.isFiringBurst,
+        canStartBurst: combat.canStartBurst,
+        cooldownRemaining: combat.cooldownRemaining,
+        reloadRemaining: combat.reloadRemaining,
+        burstShotsLeft: combat.burstShotsLeft,
+        nextShotIn: combat.nextShotIn,
+        aimSettleProgress:
+          aimSettleDuration > 0
+            ? Math.min(1, this.aimSettleTime / aimSettleDuration)
+            : 1,
+        aimRequired: this.definition.attack.ranged?.aimTime ?? 0,
+      },
+      tactical: {
+        suppressionLevel: this.blackboard.suppressionLevel,
+        lastDamageAgo,
+        timeInCover: this.blackboard.timeInCover,
+      },
     };
   }
 
@@ -540,15 +600,20 @@ export class AlyxNpc implements Damageable, INpc {
       }
     }
 
-    const distanceToFinal = this.mesh.position.distanceTo(this.desiredTarget);
-    const pathTarget = distanceToFinal > 5
-      ? this.pathFollower.nextWaypoint(
-          ctx.navGraph,
-          this.mesh.position,
-          this.desiredTarget,
-          ctx.elapsed,
-        )
-      : this.desiredTarget;
+    if (!this.wantsMove) {
+      return this.mesh.position;
+    }
+
+    const route = this.pathFollower.resolve(
+      ctx.navGraph,
+      this.mesh.position,
+      this.desiredTarget,
+      ctx.elapsed,
+    );
+    if (!route.shouldMove) {
+      this.wantsMove = false;
+      return this.mesh.position;
+    }
 
     this.tmpNeighbors.length = 0;
     this.tmpNeighbors.push({ position: playerPos, radius: 0.5 });
@@ -557,7 +622,7 @@ export class AlyxNpc implements Damageable, INpc {
         this.tmpNeighbors.push({ position: other.position, radius: other.radius });
       }
     }
-    return this.steering.steer(this.mesh.position, pathTarget, this.tmpNeighbors);
+    return this.steering.steer(this.mesh.position, route.target, this.tmpNeighbors);
   }
 
   private computeCatchUpMultiplier(

@@ -52,6 +52,9 @@ export class SmgWeapon extends HitscanWeapon {
       weaponName: this.name,
       origin: context.origin,
       direction: context.direction,
+      sourceId: "player",
+      sourceKind: "player",
+      sourceFaction: "player",
     });
     this.context.eventBus.emit("world.noise", {
       kind: "gunshot",
@@ -69,6 +72,8 @@ export class SmgWeapon extends HitscanWeapon {
       radius: grenadeWeapon.definition.range,
       impulse: grenadeWeapon.definition.impulse,
       ownerKind: "player",
+      sourceId: "player",
+      sourceFaction: "player",
       weaponName: grenadeWeapon.definition.displayName,
       now: context.now,
     });

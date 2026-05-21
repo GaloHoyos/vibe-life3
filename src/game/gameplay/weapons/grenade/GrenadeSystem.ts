@@ -304,6 +304,9 @@ export class GrenadeSystem implements Disposable {
         point: point.clone(),
         normal: target.direction.clone(),
         damage: target.damage,
+        sourceId: grenade.sourceId,
+        sourceKind: grenade.ownerKind,
+        sourceFaction: grenade.sourceFaction,
       });
     });
 

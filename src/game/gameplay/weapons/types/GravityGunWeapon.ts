@@ -158,6 +158,9 @@ export class GravityGunWeapon extends Weapon {
         point: hit.point,
         normal: hit.normal,
         damage,
+        sourceId: "player",
+        sourceKind: "player",
+        sourceFaction: "player",
       });
       this.launched.splice(i, 1);
     }

@@ -242,12 +242,21 @@ export class NpcAiDebugOverlay implements Disposable {
     const origin = snapshot.position.clone().add(new Vector3(0, 1.2, 0));
     const labelColor = snapshot.isAlive ? "#ffe66d" : "#9aa0a6";
     const mode = snapshot.wantsMove ? "moviendo" : "quieto";
+    const hp = `hp:${Math.ceil(snapshot.health)}/${Math.ceil(snapshot.maxHealth)}`;
+    const los = snapshot.perception
+      ? ` los:${snapshot.perception.visibleNow ? "1" : "0"}`
+      : "";
+    const role = snapshot.tactical?.role ? ` role:${snapshot.tactical.role}` : "";
+    const path =
+      snapshot.path.lastStatus !== "ok" && snapshot.path.lastStatus !== "never"
+        ? ` path:${snapshot.path.lastStatus}`
+        : "";
     const cover = snapshot.coverId ? ` cover:${snapshot.coverId}` : "";
     const threat = snapshot.threatId ? ` threat:${snapshot.threatId}` : "";
 
     this.addLabel(
       `${snapshot.id} | ${snapshot.state}`,
-      `${mode}${cover}${threat}`,
+      `${mode} ${hp}${los}${role}${path}${cover}${threat}`,
       origin.clone().add(new Vector3(0, 1.1, 0)),
       labelColor,
     );

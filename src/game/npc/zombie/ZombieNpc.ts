@@ -73,7 +73,9 @@ export class ZombieNpc implements Damageable, INpc {
   private currentPlayer: Damageable | null = null;
   private currentThreatSnapshot: ActorSnapshot | null = null;
   private currentThreatId: string | null = null;
+  private currentThreatDetected = false;
   private lastMotorSnapshot: CharacterMotorSnapshot | null = null;
+  private lastMotorTarget: Vector3 | null = null;
   private lastHitPartName: string | undefined;
   private stumbleTimer = 0;
   private fallenTimer = 0;
@@ -186,14 +188,19 @@ export class ZombieNpc implements Damageable, INpc {
       this.targetPosition.copy(threat.position);
       this.currentPlayer = threat.entity;
       this.currentThreatId = threat.id;
+      this.currentThreatDetected =
+        this.mesh.position.distanceToSquared(threat.position) <=
+        this.definition.ai.detectionRange * this.definition.ai.detectionRange;
     } else if (this.hasNoiseMemory()) {
       this.targetPosition.copy(this.heardNoisePosition);
       this.currentPlayer = null;
       this.currentThreatId = null;
+      this.currentThreatDetected = false;
     } else {
       this.targetPosition.copy(this.mesh.position);
       this.currentPlayer = null;
       this.currentThreatId = null;
+      this.currentThreatDetected = false;
     }
 
     this.balanceFsm.update(delta);
@@ -226,6 +233,7 @@ export class ZombieNpc implements Damageable, INpc {
       : useTarget
         ? this.targetPosition
         : null;
+    this.lastMotorTarget = motorTarget?.clone() ?? null;
     const frozen = NpcDebugFlags.freezeMovement;
     this.motor.update(
       delta,
@@ -309,6 +317,13 @@ export class ZombieNpc implements Damageable, INpc {
     }
 
     this.deadHandled = true;
+    this.lastWantsMove = false;
+    this.currentPlayer = null;
+    this.currentThreatSnapshot = null;
+    this.currentThreatId = null;
+    this.currentThreatDetected = false;
+    this.lastMotorTarget = null;
+    this.pathFollower.reset();
     this.aiFsm.setState("dead");
     this.balanceFsm.setState("dead");
     this.motor.disable();
@@ -349,24 +364,68 @@ export class ZombieNpc implements Damageable, INpc {
   }
 
   getAiDebugSnapshot(): NpcAiDebugSnapshot {
+    const alive = this.isAlive();
     const state = `${this.aiFsm.getState()}/${this.balanceFsm.getState()}`;
     const aiReason = this.aiFsm.getLastTransitionReason();
     const balReason = this.balanceFsm.getLastTransitionReason();
     let lastTransitionReason: string | null;
     if (aiReason && balReason) lastTransitionReason = `${aiReason} | ${balReason}`;
     else lastTransitionReason = aiReason ?? balReason;
+    const motor = this.lastMotorSnapshot;
+    const combat = this.combat.snapshot();
+    const candidateDistance = this.currentThreatSnapshot
+      ? this.mesh.position.distanceTo(this.currentThreatSnapshot.position)
+      : Infinity;
+    const activeThreatId =
+      alive && this.currentThreatDetected ? this.currentThreatId : null;
+    const hasNoiseMemory = alive && this.hasNoiseMemory();
     return {
       id: this.id,
       state,
+      stateKey: state,
       lastTransitionReason,
       position: this.mesh.position.clone(),
-      isAlive: this.isAlive(),
-      wantsMove: this.lastWantsMove,
-      target: this.targetPosition.clone(),
-      threatId: this.currentThreatId,
-      threatPosition: this.currentThreatId ? this.targetPosition.clone() : null,
+      isAlive: alive,
+      health: this.health.current,
+      maxHealth: this.definition.health.maxHealth,
+      wantsMove: alive && this.lastWantsMove,
+      target: alive && this.lastWantsMove ? this.targetPosition.clone() : null,
+      threatId: activeThreatId,
+      threatPosition: activeThreatId ? this.targetPosition.clone() : null,
       coverId: null,
       path: this.pathFollower.getDebugSnapshot(),
+      perception: {
+        visibleNow: alive && this.currentThreatDetected,
+        hasMemory: hasNoiseMemory,
+        memoryAge: hasNoiseMemory ? this.heardNoiseAge : Infinity,
+        lastKnownPosition: hasNoiseMemory
+          ? this.heardNoisePosition.clone()
+          : null,
+        timeSinceLastSeen: hasNoiseMemory ? this.heardNoiseAge : Infinity,
+        candidateId: alive ? this.currentThreatId : null,
+        candidateDistance: alive ? candidateDistance : Infinity,
+        detectionRange: this.definition.ai.detectionRange,
+      },
+      locomotion: motor
+        ? {
+            velocity: motor.velocity.clone(),
+            desiredVelocity: motor.desiredVelocity.clone(),
+            speed: motor.velocity.length(),
+            desiredSpeed: motor.desiredVelocity.length(),
+            grounded: motor.grounded,
+            distanceToTarget: motor.distanceToTarget,
+            yaw: motor.yaw,
+            targetYaw: motor.targetYaw,
+          }
+        : undefined,
+      navigation: {
+        motorTarget: alive ? this.lastMotorTarget?.clone() ?? null : null,
+      },
+      combat: {
+        meleeReady: combat.meleeReady,
+        meleeAttacking: combat.meleeAttacking,
+        cooldownRemaining: combat.cooldownRemaining,
+      },
     };
   }
 
@@ -547,16 +606,20 @@ export class ZombieNpc implements Damageable, INpc {
    * y Alyx — los zombies no son tácticos, solo dejan de chocarse contra todo.
    */
   private computeSteeredTarget(ctx: NpcUpdateContext): Vector3 {
-    const distanceToFinal = this.mesh.position.distanceTo(this.targetPosition);
-    const pathTarget =
-      distanceToFinal > 5
-        ? this.pathFollower.nextWaypoint(
-            ctx.navGraph,
-            this.mesh.position,
-            this.targetPosition,
-            ctx.elapsed,
-          )
-        : this.targetPosition;
+    if (!this.lastWantsMove) {
+      return this.mesh.position;
+    }
+
+    const route = this.pathFollower.resolve(
+      ctx.navGraph,
+      this.mesh.position,
+      this.targetPosition,
+      ctx.elapsed,
+    );
+    if (!route.shouldMove) {
+      this.lastWantsMove = false;
+      return this.mesh.position;
+    }
 
     this.tmpNeighbors.length = 0;
     for (const other of ctx.npcs) {
@@ -564,7 +627,7 @@ export class ZombieNpc implements Damageable, INpc {
         this.tmpNeighbors.push({ position: other.position, radius: other.radius });
       }
     }
-    return this.steering.steer(this.mesh.position, pathTarget, this.tmpNeighbors);
+    return this.steering.steer(this.mesh.position, route.target, this.tmpNeighbors);
   }
 
   private pickThreat(ctx: NpcUpdateContext): ActorSnapshot | null {

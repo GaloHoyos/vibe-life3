@@ -1,9 +1,11 @@
 ﻿import type { Vector3 } from "three";
+import type { Faction } from "@engine/ai/Faction";
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { EventBus } from "@engine/core/EventBus";
 import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
 
 export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
+export type CombatEventSourceKind = "player" | "npc" | "system";
 
 /** Snapshot del estado del selector que se publica al HUD. */
 export interface WeaponSelectorItemState {
@@ -28,6 +30,9 @@ export interface GameEventMap {
     origin: Vector3;
     direction: Vector3;
     range: number;
+    sourceId?: string;
+    sourceKind?: CombatEventSourceKind;
+    sourceFaction?: Faction;
   };
   /**
    * Secundario distinto del primario (ej. lanzagranadas del SMG). El audio
@@ -38,6 +43,9 @@ export interface GameEventMap {
     weaponName: string;
     origin: Vector3;
     direction: Vector3;
+    sourceId?: string;
+    sourceKind?: CombatEventSourceKind;
+    sourceFaction?: Faction;
   };
   "weapon.hit": {
     weaponName: string;
@@ -53,6 +61,9 @@ export interface GameEventMap {
     point: Vector3;
     normal?: Vector3;
     damage: number;
+    sourceId?: string;
+    sourceKind?: CombatEventSourceKind;
+    sourceFaction?: Faction;
   };
   "weapon.reloaded": {
     weaponName: string;
@@ -108,7 +119,7 @@ export interface GameEventMap {
    */
   "npc.threat.spotted": {
     spotterId: string;
-    spotterFaction: import("../engine/ai/Faction").Faction;
+    spotterFaction: Faction;
     threatId: string;
     threatPosition: Vector3;
     spotterPosition: Vector3;
@@ -118,7 +129,7 @@ export interface GameEventMap {
     position: Vector3;
     radius: number;
     sourceId?: string;
-    sourceFaction?: import("../engine/ai/Faction").Faction;
+    sourceFaction?: Faction;
   };
   "npc.attack": {
     id: string;

@@ -265,6 +265,9 @@ export class ShotgunWeapon extends Weapon {
         point: hit.point,
         normal: hit.normal,
         damage,
+        sourceId: "player",
+        sourceKind: "player",
+        sourceFaction: "player",
       });
     }
   }
@@ -292,6 +295,9 @@ export class ShotgunWeapon extends Weapon {
       origin,
       direction,
       range: this.definition.range,
+      sourceId: "player",
+      sourceKind: "player",
+      sourceFaction: "player",
     });
     this.context.eventBus.emit("world.noise", {
       kind: "gunshot",

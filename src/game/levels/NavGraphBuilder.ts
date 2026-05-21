@@ -34,6 +34,10 @@ export interface NavGraphBuildOptions {
   castDepth?: number;
   /** Altura del rayo de visibility entre nodos (~rodilla del NPC). */
   losHeight?: number;
+  /** Separación máxima entre muestras de soporte al validar un edge. */
+  supportSampleSpacing?: number;
+  /** Penalización de coste por metro vertical para preferir rutas suaves. */
+  verticalCostMultiplier?: number;
 }
 
 const tmpDown = new Vector3(0, -1, 0);
@@ -70,6 +74,8 @@ export class NavGraphBuilder {
     const castFromY = options.castFromY ?? 40;
     const castDepth = options.castDepth ?? 60;
     const losHeight = options.losHeight ?? 0.9;
+    const supportSampleSpacing = options.supportSampleSpacing ?? 1.4;
+    const verticalCostMultiplier = options.verticalCostMultiplier ?? 1.35;
     const nodeLift = NODE_LIFT;
 
     const graph = new NavGraph();
@@ -170,7 +176,13 @@ export class NavGraphBuilder {
               continue;
             }
             if (
-              !this.hasEdgeSupport(raycast, a.position, b.position, maxStepHeight)
+              !this.hasEdgeSupport(
+                raycast,
+                a.position,
+                b.position,
+                maxStepHeight,
+                supportSampleSpacing,
+              )
             ) {
               rejectedBySupport += 1;
               continue;
@@ -187,7 +199,11 @@ export class NavGraphBuilder {
               losBlockerByKind[k] = (losBlockerByKind[k] ?? 0) + 1;
               continue;
             }
-            graph.addEdge(a.id, b.id, dist);
+            graph.addEdge(
+              a.id,
+              b.id,
+              this.edgeCost(a.position, b.position, verticalCostMultiplier),
+            );
             edgesAccepted += 1;
           }
         }
@@ -247,9 +263,11 @@ export class NavGraphBuilder {
     a: Vector3,
     b: Vector3,
     maxStepHeight: number,
+    sampleSpacing: number,
   ): boolean {
-    for (let i = 1; i <= 2; i += 1) {
-      edgeProbe.copy(a).lerp(b, i / 3);
+    const sampleCount = Math.max(3, Math.ceil(a.distanceTo(b) / sampleSpacing));
+    for (let i = 1; i < sampleCount; i += 1) {
+      edgeProbe.copy(a).lerp(b, i / sampleCount);
       const expectedY = edgeProbe.y;
       edgeProbe.y += 0.7;
       const hit = raycast.cast(edgeProbe, tmpDown, maxStepHeight + 1.0);
@@ -262,6 +280,16 @@ export class NavGraphBuilder {
       }
     }
     return true;
+  }
+
+  private edgeCost(
+    a: Vector3,
+    b: Vector3,
+    verticalCostMultiplier: number,
+  ): number {
+    const horizontal = Math.hypot(a.x - b.x, a.z - b.z);
+    const vertical = Math.abs(a.y - b.y);
+    return a.distanceTo(b) + vertical * verticalCostMultiplier + horizontal * 0.02;
   }
 
   private collectStaticSurfaceCandidates(

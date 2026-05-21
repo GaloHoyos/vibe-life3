@@ -1,4 +1,5 @@
 import { NpcAiTraceRecorder } from "@game/debug/NpcAiTraceRecorder";
+import type { NavGraph } from "@engine/ai/NavGraph";
 import type { GameEventBus } from "@game/GameEvents";
 import type { INpc } from "@game/npc/core/INpc";
 import type { DebugFrame, DebugModule } from "../DebugModule";
@@ -20,6 +21,8 @@ declare global {
       unwatch: (npcId: string) => void;
       watched: () => string[];
       bookmark: (label?: string) => void;
+      navGraph: () => string;
+      downloadNavGraph: () => void;
     };
   }
 }
@@ -42,6 +45,7 @@ export class AiTraceModule implements DebugModule {
   readonly id = "ai-trace";
   readonly label = "IA trace";
   readonly heavy = true;
+  readonly updateWhenHidden = true;
   private readonly recorder: NpcAiTraceRecorder;
   private active = false;
   private statusLine: HTMLDivElement | null = null;
@@ -52,6 +56,7 @@ export class AiTraceModule implements DebugModule {
   private uiRefreshTimer = 0;
   private lastNpcsKey = "";
   private currentNpcIds: string[] = [];
+  private currentNavGraph: NavGraph | null = null;
 
   constructor(eventBus: GameEventBus) {
     this.recorder = new NpcAiTraceRecorder(eventBus);
@@ -84,6 +89,7 @@ export class AiTraceModule implements DebugModule {
         this.refresh();
       }),
     );
+    row.appendChild(buildButton("NavGraph", () => this.handleNavGraphExport()));
     section.appendChild(row);
 
     const npcsHeader = document.createElement("div");
@@ -108,6 +114,7 @@ export class AiTraceModule implements DebugModule {
 
     window.__aiTrace = {
       start: () => {
+        this.active = true;
         this.recorder.start();
         this.refresh();
       },
@@ -133,10 +140,13 @@ export class AiTraceModule implements DebugModule {
         this.recorder.bookmark(label);
         this.refresh();
       },
+      navGraph: () => this.currentNavGraph?.exportDebugText() ?? "(navGraph no disponible)",
+      downloadNavGraph: () => this.handleNavGraphExport(),
     };
   }
 
   update(frame: DebugFrame): void {
+    this.currentNavGraph = frame.navGraph;
     this.recorder.update(frame.elapsed, frame.npcs);
     this.uiRefreshTimer -= frame.delta;
     if (this.uiRefreshTimer <= 0) {
@@ -170,6 +180,7 @@ export class AiTraceModule implements DebugModule {
     if (this.recorder.isRecording()) {
       this.recorder.stopAndExportFile();
     } else {
+      this.active = true;
       this.recorder.start();
     }
     this.refresh();
@@ -179,6 +190,21 @@ export class AiTraceModule implements DebugModule {
     const label = window.prompt("Etiqueta del bookmark (opcional):") ?? "";
     this.recorder.bookmark(label);
     this.refresh();
+  }
+
+  private handleNavGraphExport(): void {
+    if (!this.currentNavGraph) {
+      if (this.statusLine) {
+        this.statusLine.textContent = "NavGraph no disponible todavía";
+      }
+      return;
+    }
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    downloadTextFile(
+      `navgraph-debug-${stamp}.txt`,
+      this.currentNavGraph.exportDebugText(),
+    );
   }
 
   private syncNpcsList(npcs: readonly INpc[]): void {
@@ -254,9 +280,11 @@ export class AiTraceModule implements DebugModule {
                   ? "★"
                   : e.kind === "event"
                     ? "•"
-                    : e.kind === "verbose"
-                      ? "·"
-                      : "→";
+                    : e.kind === "signal"
+                      ? "~"
+                      : e.kind === "verbose"
+                        ? "·"
+                        : "→";
             return `${formatTime(e.t)} ${tag} ${e.npcId}: ${e.text}`;
           })
           .join("\n");
@@ -269,4 +297,16 @@ function formatTime(t: number): string {
   const min = Math.floor(t / 60);
   const sec = t - min * 60;
   return `${String(min).padStart(2, "0")}:${sec.toFixed(2).padStart(5, "0")}`;
+}
+
+function downloadTextFile(filename: string, text: string): void {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

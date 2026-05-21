@@ -12,6 +12,14 @@ export interface CombatTickContext {
   balanceLocked: boolean;
 }
 
+export interface MeleeCombatSnapshot {
+  meleeReady: boolean;
+  meleeAttacking: boolean;
+  cooldownRemaining: number;
+  attackElapsed: number;
+  damageApplied: boolean;
+}
+
 /**
  * Componente de combate del NPC.
  *
@@ -62,6 +70,16 @@ export class NpcCombat {
   /** True mientras la animaciÃ³n de ataque (windup+hitWindow) siga activa. */
   isAttacking(): boolean {
     return this.inAttack;
+  }
+
+  snapshot(): MeleeCombatSnapshot {
+    return {
+      meleeReady: this.isReady(),
+      meleeAttacking: this.inAttack,
+      cooldownRemaining: this.cooldown,
+      attackElapsed: this.elapsedInAttack,
+      damageApplied: this.damageApplied,
+    };
   }
 
   /** Cancela el ataque en curso (e.g. por stumble/fallen). El cooldown se mantiene. */

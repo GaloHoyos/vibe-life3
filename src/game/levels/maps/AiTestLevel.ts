@@ -59,14 +59,18 @@ function buildRamp(
   // Cada escalón tiene espesor pequeño + alto inferior; la altura central del box
   // se calcula para que la cara superior caiga en el Y del escalón.
   const stepThickness = 0.4;
+  const stepDx = Math.abs(dxTotal / steps);
+  const stepDz = Math.abs(dzTotal / steps);
+  const travelAlongX = stepDx >= stepDz;
+  const stepOverlap = 0.05;
   for (let i = 0; i < steps; i += 1) {
     const t = (i + 0.5) / steps;
     const cx = startXZ[0] + dxTotal * t;
     const cz = startXZ[1] + dzTotal * t;
     const topY = startY + dyTotal * ((i + 1) / steps);
     const cy = topY - stepThickness / 2;
-    const sx = Math.max(Math.abs(dxTotal / steps), width);
-    const sz = Math.max(Math.abs(dzTotal / steps), width);
+    const sx = travelAlongX ? Math.max(stepDx + stepOverlap, 0.1) : width;
+    const sz = travelAlongX ? width : Math.max(stepDz + stepOverlap, 0.1);
     out.push({
       id: `${idPrefix}-step-${i}`,
       position: [cx, cy, cz],

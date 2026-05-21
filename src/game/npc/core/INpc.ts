@@ -41,16 +41,68 @@ export interface NpcUpdateContext {
 export interface NpcAiDebugSnapshot {
   id: string;
   state: string;
+  /** Stable logical AI state used for transition detection. */
+  stateKey?: string;
   /** Razón textual del último `fsm.setState(...)` — útil para el trace. */
   lastTransitionReason: string | null;
   position: Vector3;
   isAlive: boolean;
+  health: number;
+  maxHealth: number;
   wantsMove: boolean;
   target: Vector3 | null;
   threatId: string | null;
   threatPosition: Vector3 | null;
   coverId: string | null;
   path: NpcPathDebugSnapshot;
+  perception?: {
+    visibleNow: boolean;
+    hasMemory: boolean;
+    memoryAge: number;
+    lastKnownPosition: Vector3 | null;
+    timeSinceLastSeen?: number;
+    candidateId?: string | null;
+    candidateDistance?: number;
+    detectionRange?: number;
+  };
+  locomotion?: {
+    velocity: Vector3;
+    desiredVelocity: Vector3;
+    speed: number;
+    desiredSpeed: number;
+    grounded: boolean;
+    distanceToTarget: number;
+    yaw: number;
+    targetYaw: number;
+  };
+  navigation?: {
+    motorTarget: Vector3 | null;
+  };
+  combat?: {
+    magazine?: number;
+    reserve?: number;
+    isReloading?: boolean;
+    isFiringBurst?: boolean;
+    canStartBurst?: boolean;
+    cooldownRemaining?: number;
+    reloadRemaining?: number;
+    burstShotsLeft?: number;
+    nextShotIn?: number;
+    aimSettleProgress?: number;
+    aimRequired?: number;
+    meleeReady?: boolean;
+    meleeAttacking?: boolean;
+  };
+  tactical?: {
+    role?: string;
+    flankSide?: 1 | -1;
+    suppressionLevel?: number;
+    lastDamageAgo?: number;
+    coverPhase?: string;
+    coverPhaseRemaining?: number;
+    timeInCover?: number;
+    coverSearchCooldownRemaining?: number;
+  };
 }
 
 /**

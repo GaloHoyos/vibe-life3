@@ -61,11 +61,9 @@ export class DebugMenu implements Disposable {
    */
   update(frame: DebugFrame): void {
     this.pumpKeybinds();
-    if (!this.menuVisible) {
-      return;
-    }
     for (const module of this.modules) {
       if (!module.isActive() || !module.update) continue;
+      if (!this.menuVisible && !module.updateWhenHidden) continue;
       module.update(frame);
     }
   }

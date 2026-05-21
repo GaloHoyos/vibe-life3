@@ -45,6 +45,9 @@ export class MeleeWeapon extends Weapon {
       point: hit.point,
       normal: hit.normal,
       damage: this.definition.damage * damageMultiplier,
+      sourceId: "player",
+      sourceKind: "player",
+      sourceFaction: "player",
     });
   }
 

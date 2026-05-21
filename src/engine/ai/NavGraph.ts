@@ -10,6 +10,7 @@ export interface NavGraphDebugNode {
   id: number;
   position: Vector3;
   edgeCount: number;
+  componentId: number | null;
 }
 
 export interface NavGraphDebugEdge {
@@ -21,6 +22,55 @@ export interface NavGraphDebugSnapshot {
   nodes: NavGraphDebugNode[];
   edges: NavGraphDebugEdge[];
   totalNodes: number;
+}
+
+export interface NavGraphExportEdge {
+  to: number;
+  cost: number;
+}
+
+export interface NavGraphExportNode {
+  id: number;
+  position: Vector3;
+  componentId: number | null;
+  edgeCount: number;
+  edges: NavGraphExportEdge[];
+}
+
+export interface NavGraphExportComponent {
+  id: number;
+  nodeCount: number;
+  edgeCount: number;
+  isolatedNodeCount: number;
+  boundsMin: Vector3;
+  boundsMax: Vector3;
+  centroid: Vector3;
+}
+
+export interface NavGraphExportSnapshot {
+  generatedAt: string;
+  totalNodes: number;
+  totalEdges: number;
+  components: NavGraphExportComponent[];
+  nodes: NavGraphExportNode[];
+}
+
+export type NavPathStatus =
+  | "ok"
+  | "direct-start-missing"
+  | "direct-same-node"
+  | "empty-goal-missing"
+  | "empty-no-route";
+
+export interface NavPathResult {
+  path: Vector3[];
+  status: NavPathStatus;
+  startNodeId: number | null;
+  goalNodeId: number | null;
+  startComponentId: number | null;
+  goalComponentId: number | null;
+  startNodePosition: Vector3 | null;
+  goalNodePosition: Vector3 | null;
 }
 
 /**
@@ -35,6 +85,7 @@ export interface NavGraphDebugSnapshot {
 export class NavGraph {
   private readonly nodes: NavNode[] = [];
   private spatialIndex: Map<string, number[]> | null = null;
+  private componentIds: number[] | null = null;
   private readonly spatialCellSize = 8;
   private readonly pathCache = new Map<string, number[] | null>();
   private readonly pathCacheMaxEntries = 768;
@@ -43,6 +94,7 @@ export class NavGraph {
     const id = this.nodes.length;
     this.nodes.push({ id, position: position.clone(), edges: [] });
     this.spatialIndex = null;
+    this.componentIds = null;
     this.pathCache.clear();
     return id;
   }
@@ -54,6 +106,7 @@ export class NavGraph {
     nodeA.edges.push({ to: b, cost });
     nodeB.edges.push({ to: a, cost });
     this.spatialIndex = null;
+    this.componentIds = null;
     this.pathCache.clear();
   }
 
@@ -67,6 +120,139 @@ export class NavGraph {
 
   getNode(id: number): Vector3 | null {
     return this.nodes[id]?.position.clone() ?? null;
+  }
+
+  connectedComponentOf(id: number): number | null {
+    if (!this.nodes[id]) return null;
+    this.ensureComponents();
+    return this.componentIds?.[id] ?? null;
+  }
+
+  edgeCount(): number {
+    let count = 0;
+    for (const node of this.nodes) {
+      for (const edge of node.edges) {
+        if (node.id < edge.to) {
+          count += 1;
+        }
+      }
+    }
+    return count;
+  }
+
+  getExportSnapshot(): NavGraphExportSnapshot {
+    this.ensureComponents();
+    const componentStats = new Map<number, NavGraphExportComponent>();
+    const nodes: NavGraphExportNode[] = [];
+    let totalEdges = 0;
+
+    for (const node of this.nodes) {
+      const componentId = this.componentIds?.[node.id] ?? null;
+      if (componentId !== null) {
+        let stats = componentStats.get(componentId);
+        if (!stats) {
+          stats = {
+            id: componentId,
+            nodeCount: 0,
+            edgeCount: 0,
+            isolatedNodeCount: 0,
+            boundsMin: new Vector3(Infinity, Infinity, Infinity),
+            boundsMax: new Vector3(-Infinity, -Infinity, -Infinity),
+            centroid: new Vector3(),
+          };
+          componentStats.set(componentId, stats);
+        }
+        stats.nodeCount += 1;
+        stats.boundsMin.min(node.position);
+        stats.boundsMax.max(node.position);
+        stats.centroid.add(node.position);
+        if (node.edges.length === 0) {
+          stats.isolatedNodeCount += 1;
+        }
+      }
+
+      for (const edge of node.edges) {
+        if (node.id < edge.to) {
+          totalEdges += 1;
+          if (componentId !== null) {
+            componentStats.get(componentId)!.edgeCount += 1;
+          }
+        }
+      }
+
+      nodes.push({
+        id: node.id,
+        position: node.position.clone(),
+        componentId,
+        edgeCount: node.edges.length,
+        edges: node.edges.map((edge) => ({ to: edge.to, cost: edge.cost })),
+      });
+    }
+
+    const components = [...componentStats.values()]
+      .map((component) => ({
+        ...component,
+        boundsMin: component.boundsMin.clone(),
+        boundsMax: component.boundsMax.clone(),
+        centroid:
+          component.nodeCount > 0
+            ? component.centroid.clone().divideScalar(component.nodeCount)
+            : component.centroid.clone(),
+      }))
+      .sort((a, b) => a.id - b.id);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      totalNodes: this.nodes.length,
+      totalEdges,
+      components,
+      nodes,
+    };
+  }
+
+  exportDebugText(): string {
+    const snapshot = this.getExportSnapshot();
+    const largestComponent = snapshot.components.reduce<NavGraphExportComponent | null>(
+      (best, component) =>
+        best === null || component.nodeCount > best.nodeCount ? component : best,
+      null,
+    );
+    const lines: string[] = [];
+
+    lines.push("==== NavGraph Debug Export ====");
+    lines.push(`Generated:  ${snapshot.generatedAt}`);
+    lines.push(`Nodes:      ${snapshot.totalNodes}`);
+    lines.push(`Edges:      ${snapshot.totalEdges}`);
+    lines.push(`Components: ${snapshot.components.length}`);
+    lines.push("");
+
+    lines.push("---- Components ----");
+    for (const component of snapshot.components) {
+      const main = component.id === largestComponent?.id ? " main=1" : "";
+      lines.push(
+        `component ${component.id}${main} nodes=${component.nodeCount} edges=${component.edgeCount}` +
+          ` isolated=${component.isolatedNodeCount}` +
+          ` centroid=${formatNavVec(component.centroid)}` +
+          ` bounds=${formatNavVec(component.boundsMin)}..${formatNavVec(component.boundsMax)}`,
+      );
+    }
+    lines.push("");
+
+    lines.push("---- Nodes ----");
+    for (const node of snapshot.nodes) {
+      const edges =
+        node.edges.length > 0
+          ? node.edges
+              .map((edge) => `${edge.to}(${edge.cost.toFixed(1)})`)
+              .join(",")
+          : "-";
+      lines.push(
+        `node ${node.id} comp=${node.componentId ?? "-"} pos=${formatNavVec(node.position)}` +
+          ` edges=${node.edgeCount} to=${edges}`,
+      );
+    }
+
+    return lines.join("\n");
   }
 
   getDebugSnapshot(
@@ -90,6 +276,7 @@ export class NavGraph {
         id: node.id,
         position: node.position.clone(),
         edgeCount: node.edges.length,
+        componentId: this.connectedComponentOf(node.id),
       });
     }
 
@@ -157,24 +344,83 @@ export class NavGraph {
    * para no caminar hacia pisos o techos inalcanzables.
    */
   findPath(from: Vector3, to: Vector3): Vector3[] {
+    return this.findPathDetailed(from, to).path;
+  }
+
+  findPathDetailed(from: Vector3, to: Vector3): NavPathResult {
     const startId = this.nearestConnectedNode(from);
     const goalId = this.nearestConnectedNode(to);
+    const startNode = startId === null ? null : this.nodes[startId];
+    const goalNode = goalId === null ? null : this.nodes[goalId];
+    const startComponentId =
+      startId === null ? null : this.connectedComponentOf(startId);
+    const goalComponentId =
+      goalId === null ? null : this.connectedComponentOf(goalId);
     if (startId === null) {
-      return [to.clone()];
+      return {
+        path: [to.clone()],
+        status: "direct-start-missing",
+        startNodeId: null,
+        goalNodeId: goalId,
+        startComponentId: null,
+        goalComponentId,
+        startNodePosition: null,
+        goalNodePosition: goalNode?.position.clone() ?? null,
+      };
     }
-    if (goalId === null) return [];
+    if (goalId === null) {
+      return {
+        path: [],
+        status: "empty-goal-missing",
+        startNodeId: startId,
+        goalNodeId: null,
+        startComponentId,
+        goalComponentId: null,
+        startNodePosition: startNode?.position.clone() ?? null,
+        goalNodePosition: null,
+      };
+    }
     if (startId === goalId) {
-      return [to.clone()];
+      return {
+        path: [to.clone()],
+        status: "direct-same-node",
+        startNodeId: startId,
+        goalNodeId: goalId,
+        startComponentId,
+        goalComponentId,
+        startNodePosition: startNode?.position.clone() ?? null,
+        goalNodePosition: goalNode?.position.clone() ?? null,
+      };
     }
 
     const path = this.aStar(startId, goalId);
-    if (!path) return [];
+    if (!path) {
+      return {
+        path: [],
+        status: "empty-no-route",
+        startNodeId: startId,
+        goalNodeId: goalId,
+        startComponentId,
+        goalComponentId,
+        startNodePosition: startNode?.position.clone() ?? null,
+        goalNodePosition: goalNode?.position.clone() ?? null,
+      };
+    }
 
     // Las positions de los nodos viajan por referencia. Los callers (NpcPathFollower,
     // NpcSteering) solo leen — si en el futuro alguno muta, agregar .clone() acá.
     const positions: Vector3[] = path.map((id) => this.nodes[id].position);
     positions.push(to.clone());
-    return positions;
+    return {
+      path: positions,
+      status: "ok",
+      startNodeId: startId,
+      goalNodeId: goalId,
+      startComponentId,
+      goalComponentId,
+      startNodePosition: startNode?.position.clone() ?? null,
+      goalNodePosition: goalNode?.position.clone() ?? null,
+    };
   }
 
   pathDistance(from: Vector3, to: Vector3): number | null {
@@ -284,6 +530,44 @@ export class NavGraph {
     }
     this.spatialIndex = index;
   }
+
+  private ensureComponents(): void {
+    if (this.componentIds) {
+      return;
+    }
+
+    const ids = new Array<number>(this.nodes.length).fill(-1);
+    const stack: number[] = [];
+    let componentId = 0;
+
+    for (const node of this.nodes) {
+      if (ids[node.id] !== -1) {
+        continue;
+      }
+
+      ids[node.id] = componentId;
+      stack.push(node.id);
+
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (current === undefined) {
+          continue;
+        }
+
+        for (const edge of this.nodes[current].edges) {
+          if (ids[edge.to] !== -1) {
+            continue;
+          }
+          ids[edge.to] = componentId;
+          stack.push(edge.to);
+        }
+      }
+
+      componentId += 1;
+    }
+
+    this.componentIds = ids;
+  }
 }
 
 interface QueueItem {
@@ -363,4 +647,8 @@ class MinHeap {
 
 function navCellKey(x: number, z: number): string {
   return `${x}:${z}`;
+}
+
+function formatNavVec(v: Vector3): string {
+  return `(${v.x.toFixed(1)}, ${v.y.toFixed(1)}, ${v.z.toFixed(1)})`;
 }

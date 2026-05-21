@@ -28,6 +28,11 @@ export interface RangedSnapshot {
   reserve: number;
   isReloading: boolean;
   isFiringBurst: boolean;
+  canStartBurst: boolean;
+  cooldownRemaining: number;
+  reloadRemaining: number;
+  burstShotsLeft: number;
+  nextShotIn: number;
 }
 
 /**
@@ -167,6 +172,11 @@ export class NpcRangedCombat {
       reserve: this.reserve,
       isReloading: this.isReloading(now),
       isFiringBurst: this.isFiringBurst(),
+      canStartBurst: this.canStartBurst(now),
+      cooldownRemaining: Math.max(0, this.cooldownUntil - now),
+      reloadRemaining: Math.max(0, this.reloadUntil - now),
+      burstShotsLeft: this.burstShotsLeft,
+      nextShotIn: Math.max(0, this.nextShotAt - now),
     };
   }
 
@@ -203,6 +213,9 @@ export class NpcRangedCombat {
       origin: rayOrigin.clone(),
       direction: spreadDir.clone(),
       range: weapon.range,
+      sourceId: this.ownerId,
+      sourceKind: "npc",
+      sourceFaction: this.ownerFaction,
     });
     this.eventBus.emit("world.noise", {
       kind: "gunshot",
@@ -221,6 +234,9 @@ export class NpcRangedCombat {
         point: hit.point,
         normal: hit.normal,
         damage: 0,
+        sourceId: this.ownerId,
+        sourceKind: "npc",
+        sourceFaction: this.ownerFaction,
       });
       return;
     }
@@ -237,6 +253,9 @@ export class NpcRangedCombat {
       point: hit.point,
       normal: hit.normal,
       damage,
+      sourceId: this.ownerId,
+      sourceKind: "npc",
+      sourceFaction: this.ownerFaction,
     });
   }
 

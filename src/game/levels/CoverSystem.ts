@@ -103,11 +103,13 @@ export class CoverSystem {
     threatPosition: Vector3,
     maxDistance = 25,
     pathDistance?: (position: Vector3) => number | null,
+    isAllowed?: (coverId: string) => boolean,
   ): { id: string; position: Vector3 } | null {
     let bestId: string | null = null;
     let bestScore = 0;
 
     for (const point of this.points.values()) {
+      if (isAllowed && !isAllowed(point.def.id)) continue;
       const distToNpc = point.position.distanceTo(npcPosition);
       if (distToNpc > maxDistance) continue;
       const routeDistance = pathDistance?.(point.position);

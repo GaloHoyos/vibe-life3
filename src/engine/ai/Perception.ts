@@ -31,6 +31,13 @@ export interface PerceptionResult {
   memoryAge: number;
 }
 
+export interface PerceptionDebugSnapshot {
+  visibleNow: boolean;
+  hasMemory: boolean;
+  memoryAge: number;
+  lastKnownPosition: Vector3 | null;
+}
+
 /**
  * Componente de percepciÃ³n por NPC.
  *
@@ -161,6 +168,15 @@ export class Perception {
 
   getLastKnown(): Vector3 | null {
     return this.hasMemory ? this.lastKnown.clone() : null;
+  }
+
+  getDebugSnapshot(): PerceptionDebugSnapshot {
+    return {
+      visibleNow: this.visibleNow,
+      hasMemory: this.hasMemory,
+      memoryAge: this.memoryAge,
+      lastKnownPosition: this.getLastKnown(),
+    };
   }
 
   clearMemory(): void {

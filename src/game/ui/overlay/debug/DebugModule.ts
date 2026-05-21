@@ -36,6 +36,7 @@ export interface DebugModule extends Disposable {
   readonly id: string;
   readonly label: string;
   readonly heavy?: boolean;
+  readonly updateWhenHidden?: boolean;
   mount(container: HTMLElement): void;
   update?(frame: DebugFrame): void;
   setActive(active: boolean): void;

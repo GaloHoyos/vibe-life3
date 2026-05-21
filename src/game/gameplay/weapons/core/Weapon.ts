@@ -144,6 +144,9 @@ export abstract class Weapon {
       origin: fireContext.origin,
       direction: fireContext.direction,
       range: this.definition.range,
+      sourceId: "player",
+      sourceKind: "player",
+      sourceFaction: "player",
     });
     this.context.eventBus.emit("world.noise", {
       kind: this.definition.type === "melee" ? "impact" : "gunshot",
