@@ -115,6 +115,7 @@ export class CombineNpc implements Damageable, INpc {
   private readonly tmpForward = new Vector3(0, 0, 1);
   private readonly tmpGrenadeVelocity = new Vector3();
   private readonly tmpSuppressiveAim = new Vector3();
+  private readonly tmpMoveTarget = new Vector3();
   private readonly tmpNeighbors: { position: Vector3; radius: number }[] = [];
   private lastMotorSnapshot: CharacterMotorSnapshot | null = null;
   private lastMotorTarget: Vector3 | null = null;
@@ -678,8 +679,10 @@ export class CombineNpc implements Damageable, INpc {
             this.tmpLateral
               .set(-this.tmpToThreat.z, 0, this.tmpToThreat.x)
               .multiplyScalar(this.flankSide * 9);
-            this.desiredTarget.copy(threat.position).add(this.tmpLateral);
-            this.wantsMove = true;
+            this.tmpMoveTarget.copy(threat.position).add(this.tmpLateral);
+            if (!this.setReachableMoveTarget(this.tmpMoveTarget)) {
+              this.setReachableMoveTarget(threat.position);
+            }
           } else {
             this.wantsMove = false;
           }
@@ -698,8 +701,7 @@ export class CombineNpc implements Damageable, INpc {
         const idealRange = this.definition.attack.range;
 
         if (distance > idealRange * tuning.chargeFactor) {
-          this.desiredTarget.copy(threat.position);
-          this.wantsMove = true;
+          this.setReachableMoveTarget(threat.position);
         } else if (distance < idealRange * 0.35) {
           this.strafeTimer -= delta;
           if (this.strafeTimer <= 0) {
@@ -714,8 +716,8 @@ export class CombineNpc implements Damageable, INpc {
           this.tmpLateral
             .set(-this.tmpToThreat.z, 0, this.tmpToThreat.x)
             .multiplyScalar(this.strafeDirection * 2.5);
-          this.desiredTarget.copy(this.mesh.position).add(this.tmpLateral);
-          this.wantsMove = true;
+          this.tmpMoveTarget.copy(this.mesh.position).add(this.tmpLateral);
+          this.setReachableMoveTarget(this.tmpMoveTarget);
         } else {
           this.strafeTimer -= delta;
           if (this.strafeTimer <= 0) {
@@ -732,8 +734,8 @@ export class CombineNpc implements Damageable, INpc {
             this.tmpLateral
               .set(-this.tmpToThreat.z, 0, this.tmpToThreat.x)
               .multiplyScalar(this.strafeDirection * 1.5);
-            this.desiredTarget.copy(this.mesh.position).add(this.tmpLateral);
-            this.wantsMove = true;
+            this.tmpMoveTarget.copy(this.mesh.position).add(this.tmpLateral);
+            this.setReachableMoveTarget(this.tmpMoveTarget);
           } else {
             this.wantsMove = false;
           }
@@ -1186,6 +1188,17 @@ export class CombineNpc implements Damageable, INpc {
     this.wantsMove = false;
   }
 
+  private setReachableMoveTarget(target: Vector3): boolean {
+    const ctx = this.currentCtx;
+    if (ctx && ctx.navGraph.pathDistance(this.mesh.position, target) === null) {
+      this.wantsMove = false;
+      return false;
+    }
+    this.desiredTarget.copy(target);
+    this.wantsMove = true;
+    return true;
+  }
+
   private releaseCover(): void {
     if (this.blackboard.currentCoverId && this.currentCtx) {
       this.currentCtx.coverSystem.release(this.blackboard.currentCoverId, this.id);
@@ -1353,6 +1366,9 @@ export class CombineNpc implements Damageable, INpc {
       ctx.elapsed,
     );
     if (!route.shouldMove) {
+      if (fsmState === "takeCover" && this.blackboard.currentCoverId) {
+        this.invalidateCover(this.blackboard.currentCoverId);
+      }
       this.wantsMove = false;
       return this.mesh.position;
     }
@@ -1363,7 +1379,15 @@ export class CombineNpc implements Damageable, INpc {
         this.tmpNeighbors.push({ position: other.position, radius: other.radius });
       }
     }
-    return this.steering.steer(this.mesh.position, route.target, this.tmpNeighbors);
+    const steeringOptions = route.targetIsStair
+      ? { maxTargetDistance: 0.55, avoidObstacles: false }
+      : {};
+    return this.steering.steer(
+      this.mesh.position,
+      route.target,
+      this.tmpNeighbors,
+      steeringOptions,
+    );
   }
 
   private eyePosition(): Vector3 {

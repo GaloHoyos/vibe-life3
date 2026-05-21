@@ -10,16 +10,26 @@ interface LevelBounds {
   maxZ: number;
 }
 
+interface StairAnchor {
+  group: string;
+  index: number;
+}
+
 interface SampledNavNode {
   id: number;
   position: Vector3;
   gridX: number;
   gridZ: number;
+  stair: StairAnchor | null;
 }
 
 interface SurfaceCandidate {
   position: Vector3;
+  stair: StairAnchor | null;
+  surfaceId: string;
 }
+
+type StairConnectionKind = "normal" | "chain" | "endpoint" | "reject";
 
 export interface NavGraphBuildOptions {
   /** Distancia entre nodos del grid de muestreo. Menor = mÃ¡s denso. */
@@ -118,6 +128,8 @@ export class NavGraphBuilder {
                 position,
                 gridX,
                 gridZ,
+                null,
+                level.terrain.id,
               );
             } else {
               rejectedByClearance += 1;
@@ -133,7 +145,11 @@ export class NavGraphBuilder {
     for (const surface of surfaces) {
       const sampleGridX = Math.round((surface.position.x - bounds.minX) / spacing);
       const sampleGridZ = Math.round((surface.position.z - bounds.minZ) / spacing);
-      if (this.hasCharacterClearance(raycast, surface.position)) {
+      const isStairSurface = surface.stair !== null;
+      if (
+        isStairSurface ||
+        this.hasCharacterClearance(raycast, surface.position)
+      ) {
         this.addSampledNode(
           graph,
           sampledNodes,
@@ -142,6 +158,8 @@ export class NavGraphBuilder {
           surface.position,
           sampleGridX,
           sampleGridZ,
+          surface.stair,
+          surface.surfaceId,
         );
         surfaceNodes += 1;
       } else {
@@ -149,10 +167,21 @@ export class NavGraphBuilder {
       }
     }
 
+    const stairGroupMaxIndex = new Map<string, number>();
+    for (const node of sampledNodes) {
+      if (!node.stair) continue;
+      const current = stairGroupMaxIndex.get(node.stair.group) ?? -1;
+      if (node.stair.index > current) {
+        stairGroupMaxIndex.set(node.stair.group, node.stair.index);
+      }
+    }
+
     let edgeAttempts = 0;
     let edgesAccepted = 0;
+    let explicitStairEdges = 0;
     let rejectedByDistance = 0;
     let rejectedByStep = 0;
+    let rejectedByStair = 0;
     let rejectedBySupport = 0;
     let rejectedByLos = 0;
     let losBlockerByKind: Record<string, number> = {};
@@ -166,6 +195,15 @@ export class NavGraphBuilder {
           for (const b of bucket) {
             if (a.id >= b.id) continue;
             edgeAttempts += 1;
+            const stairConnection = this.stairConnectionKind(
+              a,
+              b,
+              stairGroupMaxIndex,
+            );
+            if (stairConnection === "reject") {
+              rejectedByStair += 1;
+              continue;
+            }
             const dist = a.position.distanceTo(b.position);
             if (dist > maxEdgeDistance) {
               rejectedByDistance += 1;
@@ -173,6 +211,16 @@ export class NavGraphBuilder {
             }
             if (Math.abs(a.position.y - b.position.y) > maxStepHeight) {
               rejectedByStep += 1;
+              continue;
+            }
+            if (stairConnection === "chain") {
+              graph.addEdge(
+                a.id,
+                b.id,
+                this.edgeCost(a.position, b.position, verticalCostMultiplier),
+              );
+              edgesAccepted += 1;
+              explicitStairEdges += 1;
               continue;
             }
             if (
@@ -221,12 +269,15 @@ export class NavGraphBuilder {
       hitsByKind,
       surfaceCandidates: surfaces.length,
       surfaceNodes,
+      stairGroups: stairGroupMaxIndex.size,
       nodesCreated: graph.nodeCount(),
       nodesWithoutEdges,
       edgeAttempts,
       edgesAccepted,
+      explicitStairEdges,
       rejectedByDistance,
       rejectedByStep,
+      rejectedByStair,
       rejectedBySupport,
       rejectedByLos,
       rejectedByClearance,
@@ -309,13 +360,57 @@ export class NavGraphBuilder {
       const maxZ = cz + sz / 2 - Math.min(halfStep, sz / 2);
       const y = cy + sy / 2 + nodeLift;
 
+      const stair = this.parseStairId(box.id);
       for (let x = minX; x <= maxX + 0.001; x += spacing) {
         for (let z = minZ; z <= maxZ + 0.001; z += spacing) {
-          out.push({ position: new Vector3(x, y, z) });
+          out.push({
+            position: new Vector3(x, y, z),
+            stair,
+            surfaceId: box.id,
+          });
         }
       }
     }
     return out;
+  }
+
+  /**
+   * Reconoce nodos generados sobre escalones de un `buildRamp` (id =
+   * `<grupo>-step-<n>`). El builder usa esto para que solo el primer y
+   * último escalón de cada grupo se conecten con nodos ajenos al staircase;
+   * los intermedios quedan unidos a sus vecinos del mismo grupo y nada más.
+   */
+  private parseStairId(id: string): StairAnchor | null {
+    const match = /^(.+)-step-(\d+)$/.exec(id);
+    if (!match) return null;
+    const index = Number.parseInt(match[2], 10);
+    if (!Number.isFinite(index)) return null;
+    return { group: match[1], index };
+  }
+
+  /**
+   * Clasifica conexiones de escalera para tratarlas como links explícitos.
+   * Las cadenas internas no dependen de soporte ni LOS porque cada escalón
+   * ya es la superficie caminable; las entradas y salidas siguen validando
+   * el entorno como cualquier edge normal.
+   */
+  private stairConnectionKind(
+    a: SampledNavNode,
+    b: SampledNavNode,
+    maxIndexByGroup: Map<string, number>,
+  ): StairConnectionKind {
+    if (a.stair && b.stair) {
+      const sameAdjacentGroup =
+        a.stair.group === b.stair.group &&
+        Math.abs(a.stair.index - b.stair.index) <= 1;
+      return sameAdjacentGroup ? "chain" : "reject";
+    }
+    const stair = a.stair ?? b.stair;
+    if (!stair) return "normal";
+    const maxIndex = maxIndexByGroup.get(stair.group) ?? 0;
+    return stair.index === 0 || stair.index === maxIndex
+      ? "endpoint"
+      : "reject";
   }
 
   private isWalkableBox(box: LevelDefinition["staticBoxes"][number]): boolean {
@@ -348,6 +443,8 @@ export class NavGraphBuilder {
     position: Vector3,
     gridX: number,
     gridZ: number,
+    stair: StairAnchor | null,
+    surfaceId: string,
   ): void {
     const sampleKey = [
       Math.round(position.x * 10),
@@ -358,11 +455,17 @@ export class NavGraphBuilder {
       return;
     }
     occupiedSamples.add(sampleKey);
-    const node = {
-      id: graph.addNode(position),
+    const node: SampledNavNode = {
+      id: graph.addNode(position, {
+        ...(stair
+          ? { stairGroup: stair.group, stairIndex: stair.index }
+          : {}),
+        surfaceId,
+      }),
       position,
       gridX,
       gridZ,
+      stair,
     };
     sampledNodes.push(node);
     const key = gridKey(gridX, gridZ);

@@ -3,7 +3,14 @@ import { Vector3 } from "three";
 interface NavNode {
   id: number;
   position: Vector3;
+  metadata: NavNodeMetadata;
   edges: Array<{ to: number; cost: number }>;
+}
+
+export interface NavNodeMetadata {
+  stairGroup?: string;
+  stairIndex?: number;
+  surfaceId?: string;
 }
 
 export interface NavGraphDebugNode {
@@ -11,6 +18,7 @@ export interface NavGraphDebugNode {
   position: Vector3;
   edgeCount: number;
   componentId: number | null;
+  metadata: NavNodeMetadata;
 }
 
 export interface NavGraphDebugEdge {
@@ -34,6 +42,7 @@ export interface NavGraphExportNode {
   position: Vector3;
   componentId: number | null;
   edgeCount: number;
+  metadata: NavNodeMetadata;
   edges: NavGraphExportEdge[];
 }
 
@@ -71,6 +80,21 @@ export interface NavPathResult {
   goalComponentId: number | null;
   startNodePosition: Vector3 | null;
   goalNodePosition: Vector3 | null;
+  pathNodeIds: Array<number | null>;
+}
+
+interface NearestNodeOptions {
+  componentId?: number;
+  excludeNodeId?: number;
+  stairSnap?: StairSnapMode;
+  verticalPenalty?: number;
+}
+
+type StairSnapMode = "all" | "corridor" | "exclude";
+
+interface StairGroupInfo {
+  start: Vector3;
+  end: Vector3;
 }
 
 /**
@@ -79,22 +103,35 @@ export interface NavPathResult {
  * (`NavGraphBuilder`); este archivo sólo guarda la data y resuelve A*.
  *
  * Los NPCs llaman `findPath(from, to)` y reciben una lista de waypoints
- * world-space que el `motor` puede consumir secuencialmente. Si no hay
- * camino o ambos puntos están en el mismo nodo, devuelve el endpoint directo.
+ * world-space que el `motor` puede consumir secuencialmente. Si ambos puntos
+ * caen en el mismo nodo y no hay salto vertical real, devuelve el endpoint
+ * directo; si no hay ruta, devuelve un path vacío.
  */
 export class NavGraph {
   private readonly nodes: NavNode[] = [];
   private spatialIndex: Map<string, number[]> | null = null;
   private componentIds: number[] | null = null;
+  private stairGroups: Map<string, StairGroupInfo> | null = null;
   private readonly spatialCellSize = 8;
   private readonly pathCache = new Map<string, number[] | null>();
   private readonly pathCacheMaxEntries = 768;
+  private readonly startSnapVerticalDistance = 1.8;
+  private readonly goalSnapVerticalDistance = 1.55;
+  private readonly directSameNodeVerticalDistance = 1.1;
+  private readonly stairSnapLateralDistance = 0.95;
+  private readonly stairSnapAlongPadding = 1.0;
 
-  addNode(position: Vector3): number {
+  addNode(position: Vector3, metadata: NavNodeMetadata = {}): number {
     const id = this.nodes.length;
-    this.nodes.push({ id, position: position.clone(), edges: [] });
+    this.nodes.push({
+      id,
+      position: position.clone(),
+      metadata: { ...metadata },
+      edges: [],
+    });
     this.spatialIndex = null;
     this.componentIds = null;
+    this.stairGroups = null;
     this.pathCache.clear();
     return id;
   }
@@ -120,6 +157,18 @@ export class NavGraph {
 
   getNode(id: number): Vector3 | null {
     return this.nodes[id]?.position.clone() ?? null;
+  }
+
+  getNodeMetadata(id: number): NavNodeMetadata | null {
+    const node = this.nodes[id];
+    return node ? { ...node.metadata } : null;
+  }
+
+  isStairNode(id: number | null): boolean {
+    if (id === null) {
+      return false;
+    }
+    return this.nodes[id]?.metadata.stairGroup !== undefined;
   }
 
   connectedComponentOf(id: number): number | null {
@@ -185,6 +234,7 @@ export class NavGraph {
         position: node.position.clone(),
         componentId,
         edgeCount: node.edges.length,
+        metadata: { ...node.metadata },
         edges: node.edges.map((edge) => ({ to: edge.to, cost: edge.cost })),
       });
     }
@@ -246,9 +296,10 @@ export class NavGraph {
               .map((edge) => `${edge.to}(${edge.cost.toFixed(1)})`)
               .join(",")
           : "-";
+      const metadata = formatNavMetadata(node.metadata);
       lines.push(
         `node ${node.id} comp=${node.componentId ?? "-"} pos=${formatNavVec(node.position)}` +
-          ` edges=${node.edgeCount} to=${edges}`,
+          ` edges=${node.edgeCount} to=${edges}${metadata}`,
       );
     }
 
@@ -277,6 +328,7 @@ export class NavGraph {
         position: node.position.clone(),
         edgeCount: node.edges.length,
         componentId: this.connectedComponentOf(node.id),
+        metadata: { ...node.metadata },
       });
     }
 
@@ -308,26 +360,46 @@ export class NavGraph {
     position: Vector3,
     maxDistance = 12,
     maxVerticalDistance = 2.2,
+    options: NearestNodeOptions = {},
   ): number | null {
     this.ensureSpatialIndex();
     let best = -1;
-    let bestDistSq = maxDistance * maxDistance;
+    let bestScore = Infinity;
+    const maxDistanceSq = maxDistance * maxDistance;
     const cellRadius = Math.ceil(maxDistance / this.spatialCellSize);
     const cx = Math.floor(position.x / this.spatialCellSize);
     const cz = Math.floor(position.z / this.spatialCellSize);
+    const verticalPenalty = options.verticalPenalty ?? 0;
 
     for (let x = cx - cellRadius; x <= cx + cellRadius; x += 1) {
       for (let z = cz - cellRadius; z <= cz + cellRadius; z += 1) {
         const ids = this.spatialIndex?.get(navCellKey(x, z));
         if (!ids) continue;
         for (const id of ids) {
+          if (options.excludeNodeId !== undefined && id === options.excludeNodeId) {
+            continue;
+          }
+          if (
+            options.componentId !== undefined &&
+            this.connectedComponentOf(id) !== options.componentId
+          ) {
+            continue;
+          }
           const node = this.nodes[id];
-          if (Math.abs(node.position.y - position.y) > maxVerticalDistance) {
+          if (!this.canSnapToNode(node, position, options.stairSnap ?? "all")) {
+            continue;
+          }
+          const verticalDelta = Math.abs(node.position.y - position.y);
+          if (verticalDelta > maxVerticalDistance) {
             continue;
           }
           const dSq = node.position.distanceToSquared(position);
-          if (dSq < bestDistSq) {
-            bestDistSq = dSq;
+          if (dSq > maxDistanceSq) {
+            continue;
+          }
+          const score = dSq + verticalDelta * verticalDelta * verticalPenalty;
+          if (score < bestScore) {
+            bestScore = score;
             best = node.id;
           }
         }
@@ -348,8 +420,18 @@ export class NavGraph {
   }
 
   findPathDetailed(from: Vector3, to: Vector3): NavPathResult {
-    const startId = this.nearestConnectedNode(from);
-    const goalId = this.nearestConnectedNode(to);
+    const startId = this.nearestConnectedNode(
+      from,
+      12,
+      this.startSnapVerticalDistance,
+      { verticalPenalty: 4, stairSnap: "corridor" },
+    );
+    const goalId = this.nearestConnectedNode(
+      to,
+      12,
+      this.goalSnapVerticalDistance,
+      { verticalPenalty: 4, stairSnap: "corridor" },
+    );
     const startNode = startId === null ? null : this.nodes[startId];
     const goalNode = goalId === null ? null : this.nodes[goalId];
     const startComponentId =
@@ -366,6 +448,7 @@ export class NavGraph {
         goalComponentId,
         startNodePosition: null,
         goalNodePosition: goalNode?.position.clone() ?? null,
+        pathNodeIds: [null],
       };
     }
     if (goalId === null) {
@@ -378,9 +461,23 @@ export class NavGraph {
         goalComponentId: null,
         startNodePosition: startNode?.position.clone() ?? null,
         goalNodePosition: null,
+        pathNodeIds: [],
       };
     }
     if (startId === goalId) {
+      if (Math.abs(from.y - to.y) > this.directSameNodeVerticalDistance) {
+        return {
+          path: [],
+          status: "empty-no-route",
+          startNodeId: startId,
+          goalNodeId: goalId,
+          startComponentId,
+          goalComponentId,
+          startNodePosition: startNode?.position.clone() ?? null,
+          goalNodePosition: goalNode?.position.clone() ?? null,
+          pathNodeIds: [],
+        };
+      }
       return {
         path: [to.clone()],
         status: "direct-same-node",
@@ -390,6 +487,25 @@ export class NavGraph {
         goalComponentId,
         startNodePosition: startNode?.position.clone() ?? null,
         goalNodePosition: goalNode?.position.clone() ?? null,
+        pathNodeIds: [goalId],
+      };
+    }
+
+    if (
+      startComponentId !== null &&
+      goalComponentId !== null &&
+      startComponentId !== goalComponentId
+    ) {
+      return {
+        path: [],
+        status: "empty-no-route",
+        startNodeId: startId,
+        goalNodeId: goalId,
+        startComponentId,
+        goalComponentId,
+        startNodePosition: startNode?.position.clone() ?? null,
+        goalNodePosition: goalNode?.position.clone() ?? null,
+        pathNodeIds: [],
       };
     }
 
@@ -404,6 +520,7 @@ export class NavGraph {
         goalComponentId,
         startNodePosition: startNode?.position.clone() ?? null,
         goalNodePosition: goalNode?.position.clone() ?? null,
+        pathNodeIds: [],
       };
     }
 
@@ -411,6 +528,7 @@ export class NavGraph {
     // NpcSteering) solo leen — si en el futuro alguno muta, agregar .clone() acá.
     const positions: Vector3[] = path.map((id) => this.nodes[id].position);
     positions.push(to.clone());
+    const pathNodeIds: Array<number | null> = [...path, null];
     return {
       path: positions,
       status: "ok",
@@ -420,17 +538,40 @@ export class NavGraph {
       goalComponentId,
       startNodePosition: startNode?.position.clone() ?? null,
       goalNodePosition: goalNode?.position.clone() ?? null,
+      pathNodeIds,
     };
   }
 
   pathDistance(from: Vector3, to: Vector3): number | null {
-    const startId = this.nearestConnectedNode(from);
-    const goalId = this.nearestConnectedNode(to);
+    const startId = this.nearestConnectedNode(
+      from,
+      12,
+      this.startSnapVerticalDistance,
+      { verticalPenalty: 4, stairSnap: "corridor" },
+    );
+    const goalId = this.nearestConnectedNode(
+      to,
+      12,
+      this.goalSnapVerticalDistance,
+      { verticalPenalty: 4, stairSnap: "corridor" },
+    );
     if (startId === null || goalId === null) {
       return null;
     }
     if (startId === goalId) {
+      if (Math.abs(from.y - to.y) > this.directSameNodeVerticalDistance) {
+        return null;
+      }
       return from.distanceTo(to);
+    }
+    const startComponentId = this.connectedComponentOf(startId);
+    const goalComponentId = this.connectedComponentOf(goalId);
+    if (
+      startComponentId !== null &&
+      goalComponentId !== null &&
+      startComponentId !== goalComponentId
+    ) {
+      return null;
     }
 
     const path = this.aStar(startId, goalId);
@@ -512,6 +653,84 @@ export class NavGraph {
     }
     this.pathCache.set(key, path);
     return path;
+  }
+
+  private canSnapToNode(
+    node: NavNode,
+    position: Vector3,
+    mode: StairSnapMode,
+  ): boolean {
+    const stairGroup = node.metadata.stairGroup;
+    if (stairGroup === undefined) {
+      return true;
+    }
+    if (mode === "all") {
+      return true;
+    }
+    if (mode === "exclude") {
+      return false;
+    }
+    return this.isPositionInStairCorridor(position, stairGroup);
+  }
+
+  private isPositionInStairCorridor(position: Vector3, group: string): boolean {
+    this.ensureStairGroups();
+    const info = this.stairGroups?.get(group);
+    if (!info) {
+      return false;
+    }
+    const dx = info.end.x - info.start.x;
+    const dz = info.end.z - info.start.z;
+    const length = Math.hypot(dx, dz);
+    if (length < 0.001) {
+      return (
+        horizontalDistance(position, info.start) <=
+        this.stairSnapLateralDistance
+      );
+    }
+    const ux = dx / length;
+    const uz = dz / length;
+    const fromStartX = position.x - info.start.x;
+    const fromStartZ = position.z - info.start.z;
+    const along = fromStartX * ux + fromStartZ * uz;
+    if (
+      along < -this.stairSnapAlongPadding ||
+      along > length + this.stairSnapAlongPadding
+    ) {
+      return false;
+    }
+    const lateral = Math.abs(fromStartX * uz - fromStartZ * ux);
+    return lateral <= this.stairSnapLateralDistance;
+  }
+
+  private ensureStairGroups(): void {
+    if (this.stairGroups) {
+      return;
+    }
+    const grouped = new Map<string, NavNode[]>();
+    for (const node of this.nodes) {
+      const group = node.metadata.stairGroup;
+      if (group === undefined || node.metadata.stairIndex === undefined) {
+        continue;
+      }
+      const groupNodes = grouped.get(group) ?? [];
+      groupNodes.push(node);
+      grouped.set(group, groupNodes);
+    }
+
+    const groups = new Map<string, StairGroupInfo>();
+    for (const [group, groupNodes] of grouped) {
+      groupNodes.sort(
+        (a, b) => (a.metadata.stairIndex ?? 0) - (b.metadata.stairIndex ?? 0),
+      );
+      const first = groupNodes[0];
+      const last = groupNodes[groupNodes.length - 1];
+      groups.set(group, {
+        start: first.position.clone(),
+        end: last.position.clone(),
+      });
+    }
+    this.stairGroups = groups;
   }
 
   private ensureSpatialIndex(): void {
@@ -649,6 +868,27 @@ function navCellKey(x: number, z: number): string {
   return `${x}:${z}`;
 }
 
+function horizontalDistance(
+  a: Vector3 | { x: number; z: number },
+  b: Vector3 | { x: number; z: number },
+): number {
+  return Math.hypot(a.x - b.x, a.z - b.z);
+}
+
 function formatNavVec(v: Vector3): string {
   return `(${v.x.toFixed(1)}, ${v.y.toFixed(1)}, ${v.z.toFixed(1)})`;
+}
+
+function formatNavMetadata(metadata: NavNodeMetadata): string {
+  const parts: string[] = [];
+  if (metadata.surfaceId) {
+    parts.push(`surface=${metadata.surfaceId}`);
+  }
+  if (
+    metadata.stairGroup !== undefined &&
+    metadata.stairIndex !== undefined
+  ) {
+    parts.push(`stair=${metadata.stairGroup}:${metadata.stairIndex}`);
+  }
+  return parts.length > 0 ? ` meta=${parts.join(",")}` : "";
 }

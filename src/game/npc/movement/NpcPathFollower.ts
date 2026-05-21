@@ -17,6 +17,8 @@ export type NpcPathUseReason =
 
 export interface NpcPathResolveResult {
   target: Vector3;
+  targetNodeId: number | null;
+  targetIsStair: boolean;
   shouldMove: boolean;
   pathUsed: boolean;
   reason: NpcPathUseReason;
@@ -24,7 +26,9 @@ export interface NpcPathResolveResult {
 
 export interface NpcPathDebugSnapshot {
   path: Vector3[];
+  pathNodeIds: Array<number | null>;
   waypointIndex: number;
+  nextWaypointNodeId: number | null;
   nextWaypoint: Vector3 | null;
   pathTarget: Vector3 | null;
   pathUsed: boolean;
@@ -61,6 +65,7 @@ export interface NpcPathDebugSnapshot {
    */
 export class NpcPathFollower {
   private path: Vector3[] = [];
+  private pathNodeIds: Array<number | null> = [];
   private waypointIndex = 0;
   private lastRequestAt = -Infinity;
   private readonly lastRequestedDestination = new Vector3(NaN, NaN, NaN);
@@ -133,6 +138,7 @@ export class NpcPathFollower {
     if (repathReason) {
       const result = navGraph.findPathDetailed(npcPosition, destination);
       this.path = result.path;
+      this.pathNodeIds = result.pathNodeIds;
       this.waypointIndex = 0;
       this.lastRequestAt = elapsed;
       this.lastRequestedDestination.copy(destination);
@@ -151,6 +157,8 @@ export class NpcPathFollower {
       this.setLastResolvedTarget(target, false, "unreachable");
       return {
         target,
+        targetNodeId: null,
+        targetIsStair: false,
         shouldMove: false,
         pathUsed: false,
         reason: "unreachable",
@@ -159,12 +167,23 @@ export class NpcPathFollower {
 
     while (
       this.waypointIndex < this.path.length - 1 &&
-      this.isWaypointReached(npcPosition, this.path[this.waypointIndex])
+      this.isWaypointReached(
+        navGraph,
+        npcPosition,
+        this.path[this.waypointIndex],
+        this.waypointIndex,
+      )
     ) {
+      const wasStairWaypoint = this.isStairWaypoint(navGraph, this.waypointIndex);
       this.waypointIndex += 1;
+      if (wasStairWaypoint) {
+        break;
+      }
     }
 
     const target = (this.path[this.waypointIndex] ?? destination).clone();
+    const targetNodeId = this.pathNodeIds[this.waypointIndex] ?? null;
+    const targetIsStair = this.isStairWaypoint(navGraph, this.waypointIndex);
     const pathUsed =
       this.lastStatus === "ok" &&
       this.path.length > 1 &&
@@ -173,6 +192,8 @@ export class NpcPathFollower {
     this.setLastResolvedTarget(target, pathUsed, reason);
     return {
       target,
+      targetNodeId,
+      targetIsStair,
       shouldMove: true,
       pathUsed,
       reason,
@@ -181,6 +202,7 @@ export class NpcPathFollower {
 
   reset(): void {
     this.path = [];
+    this.pathNodeIds = [];
     this.waypointIndex = 0;
     this.lastRequestAt = -Infinity;
     this.lastRequestedDestination.set(NaN, NaN, NaN);
@@ -205,7 +227,9 @@ export class NpcPathFollower {
   getDebugSnapshot(): NpcPathDebugSnapshot {
     return {
       path: this.path.map((point) => point.clone()),
+      pathNodeIds: [...this.pathNodeIds],
       waypointIndex: this.waypointIndex,
+      nextWaypointNodeId: this.pathNodeIds[this.waypointIndex] ?? null,
       nextWaypoint: this.path[this.waypointIndex]?.clone() ?? null,
       pathTarget: Number.isFinite(this.lastPathTarget.x)
         ? this.lastPathTarget.clone()
@@ -258,6 +282,7 @@ export class NpcPathFollower {
       elapsed - this.lastProgressAt > this.stuckRepathTime
     ) {
       this.path = [];
+      this.pathNodeIds = [];
       this.waypointIndex = 0;
       this.lastRequestAt = -Infinity;
       this.lastRequestedDestination.set(NaN, NaN, NaN);
@@ -274,10 +299,82 @@ export class NpcPathFollower {
     }
   }
 
-  private isWaypointReached(npcPosition: Vector3, waypoint: Vector3): boolean {
+  private isWaypointReached(
+    navGraph: NavGraph,
+    npcPosition: Vector3,
+    waypoint: Vector3,
+    waypointIndex: number,
+  ): boolean {
+    const nearStair = this.isStairWaypoint(navGraph, waypointIndex);
+    const arriveVerticalDistance = nearStair
+      ? Math.min(this.arriveVerticalDistance, 1.15)
+      : this.arriveVerticalDistance;
+    const verticalOk =
+      Math.abs(npcPosition.y - waypoint.y) < arriveVerticalDistance;
+    if (!nearStair) {
+      return (
+        horizontalDistance(npcPosition, waypoint) < this.arriveDistance &&
+        verticalOk
+      );
+    }
+    return this.isStairWaypointReached(
+      npcPosition,
+      waypoint,
+      waypointIndex,
+      verticalOk,
+    );
+  }
+
+  private isStairWaypointReached(
+    npcPosition: Vector3,
+    waypoint: Vector3,
+    waypointIndex: number,
+    verticalOk: boolean,
+  ): boolean {
+    if (!verticalOk) {
+      return false;
+    }
+    if (
+      horizontalDistance(npcPosition, waypoint) <
+      Math.min(this.arriveDistance, 0.45)
+    ) {
+      return true;
+    }
+    if (waypointIndex === 0) {
+      return false;
+    }
+
+    const previous = this.path[waypointIndex - 1];
+    if (!previous) {
+      return false;
+    }
+    const dx = waypoint.x - previous.x;
+    const dz = waypoint.z - previous.z;
+    const length = Math.hypot(dx, dz);
+    if (length < 0.001) {
+      return false;
+    }
+    const ux = dx / length;
+    const uz = dz / length;
+    const toNpcX = npcPosition.x - waypoint.x;
+    const toNpcZ = npcPosition.z - waypoint.z;
+    const along = toNpcX * ux + toNpcZ * uz;
+    const lateral = Math.abs(toNpcX * uz - toNpcZ * ux);
+    return along > -0.05 && lateral < 0.65;
+  }
+
+  private isStairWaypoint(navGraph: NavGraph, waypointIndex: number): boolean {
+    const nodeId = this.pathNodeIds[waypointIndex] ?? null;
+    const previousNodeId =
+      waypointIndex > 0 ? this.pathNodeIds[waypointIndex - 1] ?? null : null;
+    const nextNodeId =
+      waypointIndex < this.pathNodeIds.length - 1
+        ? this.pathNodeIds[waypointIndex + 1] ?? null
+        : null;
     return (
-      horizontalDistance(npcPosition, waypoint) < this.arriveDistance &&
-      Math.abs(npcPosition.y - waypoint.y) < this.arriveVerticalDistance
+      navGraph.isStairNode(nodeId) ||
+      navGraph.isStairNode(previousNodeId) ||
+      navGraph.isStairNode(nextNodeId)
     );
   }
 

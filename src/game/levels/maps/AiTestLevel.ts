@@ -1,4 +1,5 @@
 import { buildHouse, type HouseSpec } from '@game/levels/builders/HouseBuilder';
+import { buildRamp } from '@game/levels/builders/RampBuilder';
 import type {
   LevelDefinition,
   StaticBoxDefinition,
@@ -41,45 +42,6 @@ const SLAB_THICKNESS = 0.4;
 // alto, el primer escalón excede el `stepOffset` del player (0.45m) y no
 // se puede subir sin saltar.
 const FLOOR_TOP = 0;
-
-/** Construye una "rampa" como una secuencia de escalones planos walkables. */
-function buildRamp(
-  idPrefix: string,
-  startXZ: [number, number],
-  endXZ: [number, number],
-  startY: number,
-  endY: number,
-  width: number,
-  steps: number,
-): StaticBoxDefinition[] {
-  const out: StaticBoxDefinition[] = [];
-  const dxTotal = endXZ[0] - startXZ[0];
-  const dzTotal = endXZ[1] - startXZ[1];
-  const dyTotal = endY - startY;
-  // Cada escalón tiene espesor pequeño + alto inferior; la altura central del box
-  // se calcula para que la cara superior caiga en el Y del escalón.
-  const stepThickness = 0.4;
-  const stepDx = Math.abs(dxTotal / steps);
-  const stepDz = Math.abs(dzTotal / steps);
-  const travelAlongX = stepDx >= stepDz;
-  const stepOverlap = 0.05;
-  for (let i = 0; i < steps; i += 1) {
-    const t = (i + 0.5) / steps;
-    const cx = startXZ[0] + dxTotal * t;
-    const cz = startXZ[1] + dzTotal * t;
-    const topY = startY + dyTotal * ((i + 1) / steps);
-    const cy = topY - stepThickness / 2;
-    const sx = travelAlongX ? Math.max(stepDx + stepOverlap, 0.1) : width;
-    const sz = travelAlongX ? width : Math.max(stepDz + stepOverlap, 0.1);
-    out.push({
-      id: `${idPrefix}-step-${i}`,
-      position: [cx, cy, cz],
-      size: [sx, stepThickness, sz],
-      material: 'floor',
-    });
-  }
-  return out;
-}
 
 /** Caja walkable plana (slab) con material `floor`. */
 function slab(
@@ -134,7 +96,15 @@ const COMBINE_ZONE: StaticBoxDefinition[] = [
   { id: 'cz-cover-4', position: [-26, 0.7, -22], size: [0.6, 1.4, 3], material: 'brick' },
   // Plataforma elevada con rampa subiendo hacia el sur.
   slab('cz-platform', -20, 2.0, -28, 8, 6, 'trim'),
-  ...buildRamp('cz-ramp', [-20, -22], [-20, -25], FLOOR_TOP, 2.2, 4, 12),
+  ...buildRamp({
+    id: 'cz-ramp',
+    start: [-20, -22],
+    end: [-20, -25],
+    startY: FLOOR_TOP,
+    endY: 2.2,
+    width: 4,
+    steps: 12,
+  }),
   // Cubierta arriba de la plataforma (cover detrás del que un combine puede agacharse).
   { id: 'cz-platform-cover', position: [-20, 3.0, -30], size: [6, 1.2, 0.5], material: 'brick' },
 ];
@@ -191,39 +161,60 @@ const HOUSE: StaticBoxDefinition[] = [
   slab('house-roof', 18, HOUSE_ROOF_Y - 0.2, -18, 14, 14, 'roof'),
   // Balcón sobre el lado sur del piso 2 — losa que sale 2m al sur.
   slab('house-balcony', 18, HOUSE_FLOOR_2_Y - 0.2, -11, 6, 2.4, 'floor'),
-  // Antepecho del balcón (half-wall para cover).
-  { id: 'house-balcony-railing', position: [18, HOUSE_FLOOR_2_Y + 0.5, -9.8], size: [6, 1, 0.3], material: 'brick' },
+  // Antepecho del balcón, partido para dejar el acceso libre a la escalera.
+  { id: 'house-balcony-railing-l', position: [15.6, HOUSE_FLOOR_2_Y + 0.5, -9.8], size: [1.2, 1, 0.3], material: 'brick' },
+  { id: 'house-balcony-railing-r', position: [20.4, HOUSE_FLOOR_2_Y + 0.5, -9.8], size: [1.2, 1, 0.3], material: 'brick' },
   // Escalera interior: sube del piso 1 al piso 2 en la mitad norte del
   // interior. Corre por Z=-22.3 para que el escalón superior (sz=1.6) tenga
   // su borde sur exactamente en Z=-21.5, alineado con el borde norte de
   // `house-floor-2b`. 12 escalones sobre 3.5m → ~0.29m de subida por
   // escalón (debajo del `stepOffset` 0.45 del player y 0.4 del NPC).
-  ...buildRamp(
-    'house-stair-interior',
-    [22, -22.3],
-    [14, -22.3],
-    FLOOR_TOP,
-    HOUSE_FLOOR_2_Y,
-    1.6,
-    12,
+  ...buildRamp({
+    id: 'house-stair-interior',
+    start: [22, -22.3],
+    end: [14, -22.3],
+    startY: FLOOR_TOP,
+    endY: HOUSE_FLOOR_2_Y,
+    width: 1.6,
+    steps: 12,
+  }),
+  // Pasarela exterior al techo: sale del balcon hacia el este para que la
+  // escalera no quede debajo de la losa ni pegada al muro sur.
+  slab(
+    'house-balcony-east-walkway',
+    23.4,
+    HOUSE_FLOOR_2_Y - 0.2,
+    -10.8,
+    5.2,
+    2.4,
+    'floor',
   ),
-  // Rampa exterior al techo: del piso 2 (balcón sur) sube al techo.
-  // De (18, -11.5) y=3.5 hasta (18, -8) y=6.5.
-  ...buildRamp(
-    'house-stair-roof',
-    [22, -11],
-    [22, -8],
-    HOUSE_FLOOR_2_Y + 0.1,
-    HOUSE_ROOF_Y + 0.1,
-    1.6,
-    10,
+  slab(
+    'house-roof-east-landing',
+    24.7,
+    HOUSE_ROOF_Y - 0.2,
+    -18.8,
+    2.6,
+    4.8,
+    'roof',
   ),
+  // Escalera exterior al techo: corre por fuera del muro este y conecta la
+  // pasarela del balcon con un landing a nivel del roof.
+  ...buildRamp({
+    id: 'house-stair-roof',
+    start: [26.2, -11.0],
+    end: [26.2, -18.8],
+    startY: HOUSE_FLOOR_2_Y,
+    endY: HOUSE_ROOF_Y,
+    width: 1.8,
+    steps: 12,
+  }),
   // Pilar en el techo (cover en altura para el combine del balcón si sube).
   { id: 'house-roof-chimney', position: [18, HOUSE_ROOF_Y + 1, -16], size: [1.2, 2, 1.2], material: 'brick' },
 ];
 
 const HOUSE_COVER_POINTS = [
-  cp('house-cp-balcony', [18, HOUSE_FLOOR_2_Y + 0.1, -10.3], [0, 0, -1]),
+  cp('house-cp-balcony', [20.4, HOUSE_FLOOR_2_Y + 0.1, -10.3], [0, 0, -1]),
   cp('house-cp-roof-chimney-s', [18, HOUSE_ROOF_Y + 0.1, -14], [0, 0, -1]),
   cp('house-cp-interior-corner', [14.5, HOUSE_FLOOR_1_Y + 0.1, -14], [1, 0, 0]),
 ];

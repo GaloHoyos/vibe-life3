@@ -792,6 +792,10 @@ function formatPathDebug(snap: NpcAiDebugSnapshot): string {
     snap.path.startComponentId !== null || snap.path.goalComponentId !== null
       ? ` comps=${snap.path.startComponentId ?? "—"}→${snap.path.goalComponentId ?? "—"}`
       : "";
+  const nextNode =
+    snap.path.nextWaypointNodeId !== null
+      ? ` nextNode=${snap.path.nextWaypointNodeId}`
+      : "";
   const nodePositions = isUnreachablePathStatus(snap.path.lastStatus)
     ? ` nodePos=${snap.path.startNodePosition ? formatVec(snap.path.startNodePosition) : "—"}→${snap.path.goalNodePosition ? formatVec(snap.path.goalNodePosition) : "—"}`
     : "";
@@ -810,6 +814,7 @@ function formatPathDebug(snap: NpcAiDebugSnapshot): string {
     reason +
     nodes +
     components +
+    nextNode +
     nodePositions +
     ` next=${next ? formatVec(next) : "—"}` +
     ` pathTarget=${pathTarget ? formatVec(pathTarget) : "—"}` +

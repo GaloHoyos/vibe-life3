@@ -7,6 +7,17 @@ export interface SteeringNeighbor {
   radius: number;
 }
 
+export interface NpcSteeringOptions {
+  /** Rango (m) en el que un vecino contribuye a empujarme. */
+  separationRadius?: number;
+  /** Distancia (m) del raycast frontal para esquivar. */
+  obstacleRange?: number;
+  /** Distancia mÃ¡xima que el target ajustado puede adelantarse este frame. */
+  maxTargetDistance?: number;
+  /** Desactivar en escaleras: el ray frontal suele ver la propia geometrÃ­a. */
+  avoidObstacles?: boolean;
+}
+
 const tmpDir = new Vector3();
 const tmpAway = new Vector3();
 const tmpSidestep = new Vector3();
@@ -27,16 +38,19 @@ export class NpcSteering {
    * Devuelve un target world-space ajustado. El motor del NPC lo persigue
    * como si fuera el target real.
    *
-   * @param separationRadius - rango (m) en el que un vecino contribuye a empujarme.
-   * @param obstacleRange    - distancia (m) del raycast frontal para esquivar.
+   * @param options - parÃ¡metros finos de separaciÃ³n, obstÃ¡culos y avance.
    */
   steer(
     npcPosition: Vector3,
     desiredTarget: Vector3,
     neighbors: SteeringNeighbor[],
-    separationRadius = 1.6,
-    obstacleRange = 1.4,
+    options: NpcSteeringOptions = {},
   ): Vector3 {
+    const separationRadius = options.separationRadius ?? 1.6;
+    const obstacleRange = options.obstacleRange ?? 1.4;
+    const maxTargetDistance = options.maxTargetDistance ?? 3;
+    const avoidObstacles = options.avoidObstacles ?? true;
+
     tmpDir.copy(desiredTarget).sub(npcPosition).setY(0);
     const distance = tmpDir.length();
     if (distance < 0.05) {
@@ -69,7 +83,9 @@ export class NpcSteering {
 
     const origin = npcPosition.clone();
     origin.y += 1.0;
-    const hit = this.raycast.cast(origin, tmpDir, obstacleRange);
+    const hit = avoidObstacles
+      ? this.raycast.cast(origin, tmpDir, obstacleRange)
+      : null;
     if (
       hit &&
       (hit.metadata?.kind === "static" || hit.metadata?.kind === "dynamic")
@@ -90,9 +106,9 @@ export class NpcSteering {
     }
 
     return new Vector3(
-      npcPosition.x + tmpDir.x * Math.min(distance, 3),
+      npcPosition.x + tmpDir.x * Math.min(distance, maxTargetDistance),
       desiredTarget.y,
-      npcPosition.z + tmpDir.z * Math.min(distance, 3),
+      npcPosition.z + tmpDir.z * Math.min(distance, maxTargetDistance),
     );
   }
 }

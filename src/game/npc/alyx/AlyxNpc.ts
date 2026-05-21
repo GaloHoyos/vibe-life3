@@ -622,7 +622,15 @@ export class AlyxNpc implements Damageable, INpc {
         this.tmpNeighbors.push({ position: other.position, radius: other.radius });
       }
     }
-    return this.steering.steer(this.mesh.position, route.target, this.tmpNeighbors);
+    const steeringOptions = route.targetIsStair
+      ? { maxTargetDistance: 0.55, avoidObstacles: false }
+      : {};
+    return this.steering.steer(
+      this.mesh.position,
+      route.target,
+      this.tmpNeighbors,
+      steeringOptions,
+    );
   }
 
   private computeCatchUpMultiplier(
