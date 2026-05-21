@@ -62,13 +62,24 @@ export class SpawnValidator {
     this.groundClearance = options.groundClearance ?? 0.15;
   }
 
-  validate(requested: Vector3): SpawnValidationResult {
-    const direct = this.tryGround(requested.x, requested.z, requested.y);
+  /**
+   * @param capsuleHalfExtent Distancia del centro del body al extremo inferior
+   * de la cápsula (= height / 2 para una cápsula con `halfHeight + radius`).
+   * Se usa para que el centro del body quede por encima del suelo en vez de
+   * incrustar la mitad inferior dentro del terreno.
+   */
+  validate(requested: Vector3, capsuleHalfExtent: number): SpawnValidationResult {
+    const direct = this.tryGround(
+      requested.x,
+      requested.z,
+      requested.y,
+      capsuleHalfExtent,
+    );
     if (direct) {
       return { position: direct, valid: true, relocated: false };
     }
 
-    const fallback = this.searchAround(requested);
+    const fallback = this.searchAround(requested, capsuleHalfExtent);
     if (fallback) {
       return { position: fallback, valid: true, relocated: true };
     }
@@ -84,6 +95,7 @@ export class SpawnValidator {
     x: number,
     z: number,
     referenceY: number,
+    capsuleHalfExtent: number,
   ): Vector3 | null {
     tmpOrigin.set(x, referenceY + this.castFromAbove, z);
     const hit = this.raycast.cast(tmpOrigin, tmpDir, this.maxCastDistance);
@@ -105,10 +117,17 @@ export class SpawnValidator {
       }
     }
 
-    return new Vector3(x, hit.point.y + this.groundClearance, z);
+    return new Vector3(
+      x,
+      hit.point.y + capsuleHalfExtent + this.groundClearance,
+      z,
+    );
   }
 
-  private searchAround(requested: Vector3): Vector3 | null {
+  private searchAround(
+    requested: Vector3,
+    capsuleHalfExtent: number,
+  ): Vector3 | null {
     for (let ring = 1; ring <= 3; ring += 1) {
       const radius = (this.fallbackRadius / 3) * ring;
       const samples = Math.max(6, Math.floor(this.fallbackSamples * (ring / 3)));
@@ -116,7 +135,7 @@ export class SpawnValidator {
         const angle = (i / samples) * Math.PI * 2;
         const x = requested.x + Math.cos(angle) * radius;
         const z = requested.z + Math.sin(angle) * radius;
-        const ground = this.tryGround(x, z, requested.y);
+        const ground = this.tryGround(x, z, requested.y, capsuleHalfExtent);
         if (ground) return ground;
       }
     }

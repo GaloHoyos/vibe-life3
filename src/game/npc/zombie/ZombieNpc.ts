@@ -350,9 +350,15 @@ export class ZombieNpc implements Damageable, INpc {
 
   getAiDebugSnapshot(): NpcAiDebugSnapshot {
     const state = `${this.aiFsm.getState()}/${this.balanceFsm.getState()}`;
+    const aiReason = this.aiFsm.getLastTransitionReason();
+    const balReason = this.balanceFsm.getLastTransitionReason();
+    let lastTransitionReason: string | null;
+    if (aiReason && balReason) lastTransitionReason = `${aiReason} | ${balReason}`;
+    else lastTransitionReason = aiReason ?? balReason;
     return {
       id: this.id,
       state,
+      lastTransitionReason,
       position: this.mesh.position.clone(),
       isAlive: this.isAlive(),
       wantsMove: this.lastWantsMove,

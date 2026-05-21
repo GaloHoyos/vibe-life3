@@ -29,6 +29,7 @@ export type StateHandler<TState extends string> = {
 export class StateMachine<TState extends string> {
   private readonly states = new Map<TState, StateHandler<TState>>();
   private activeState: TState;
+  private lastTransitionReason: string | null = null;
 
   constructor(initialState: TState) {
     this.activeState = initialState;
@@ -41,15 +42,19 @@ export class StateMachine<TState extends string> {
 
   /**
    * Cambia al estado dado, ejecutando `exit` del actual y `enter` del nuevo.
-   * Es no-op si `state === getState()`.
+   * Es no-op si `state === getState()`. `reason` es un texto corto para
+   * debugging — queda accesible vía `getLastTransitionReason()` y aparece
+   * en el trace recorder; si no se provee, queda en `null` (transición
+   * silenciosa).
    */
-  setState(state: TState): void {
+  setState(state: TState, reason?: string): void {
     if (state === this.activeState) {
       return;
     }
 
     this.states.get(this.activeState)?.exit?.();
     this.activeState = state;
+    this.lastTransitionReason = reason ?? null;
     this.states.get(this.activeState)?.enter?.();
   }
 
@@ -61,5 +66,10 @@ export class StateMachine<TState extends string> {
   /** Estado actualmente activo. */
   getState(): TState {
     return this.activeState;
+  }
+
+  /** Razón pasada al último `setState`, o null si no se especificó. */
+  getLastTransitionReason(): string | null {
+    return this.lastTransitionReason;
   }
 }

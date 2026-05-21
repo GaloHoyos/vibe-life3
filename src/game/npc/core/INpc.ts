@@ -41,6 +41,8 @@ export interface NpcUpdateContext {
 export interface NpcAiDebugSnapshot {
   id: string;
   state: string;
+  /** Razón textual del último `fsm.setState(...)` — útil para el trace. */
+  lastTransitionReason: string | null;
   position: Vector3;
   isAlive: boolean;
   wantsMove: boolean;

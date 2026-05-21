@@ -9,6 +9,7 @@ interface NavNode {
 export interface NavGraphDebugNode {
   id: number;
   position: Vector3;
+  edgeCount: number;
 }
 
 export interface NavGraphDebugEdge {
@@ -85,7 +86,11 @@ export class NavGraph {
         continue;
       }
       selectedIds.add(node.id);
-      nodes.push({ id: node.id, position: node.position.clone() });
+      nodes.push({
+        id: node.id,
+        position: node.position.clone(),
+        edgeCount: node.edges.length,
+      });
     }
 
     const edges: NavGraphDebugEdge[] = [];

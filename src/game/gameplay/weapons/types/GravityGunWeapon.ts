@@ -96,6 +96,9 @@ export class GravityGunWeapon extends Weapon {
   }
 
   override update(_delta: number, context: WeaponUpdateContext): void {
+    if (this.held && !this.held.body.isValid()) {
+      this.held = null;
+    }
     if (this.held) {
       if (!context.ownerGrounded && context.direction.y < CONFIG.airDownDropPitch) {
         this.drop();
@@ -110,7 +113,7 @@ export class GravityGunWeapon extends Weapon {
 
     for (let i = this.launched.length - 1; i >= 0; i -= 1) {
       const prop = this.launched[i];
-      if (context.elapsed > prop.expiresAt) {
+      if (context.elapsed > prop.expiresAt || !prop.body.isValid()) {
         this.launched.splice(i, 1);
         continue;
       }

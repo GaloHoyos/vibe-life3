@@ -9,6 +9,7 @@ import type { Time } from "@engine/core/Time";
 import { SpawnValidator } from "@engine/physics/character/SpawnValidator";
 import { Raycast } from "@engine/physics/Raycast";
 import { CharacterFactory } from "@game/characters/CharacterFactory";
+import { CharacterPresets } from "@game/characters/CharacterPresets";
 import { FootstepsConfig } from "@game/config/audio.config";
 import { Dialogue, MenuStrings } from "@game/config/strings";
 import { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
@@ -297,7 +298,11 @@ export class Game {
 
     for (const definition of definitions) {
       const requested = tupleToVector3(definition.position);
-      const validation = spawnValidator.validate(requested);
+      const preset =
+        CharacterPresets[definition.characterId] ??
+        CharacterPresets.placeholderHumanoid;
+      const halfExtent = preset.collider.height / 2;
+      const validation = spawnValidator.validate(requested, halfExtent);
       const npc = await characters.createNPC(
         definition.characterId,
         `${idPrefix}-${definition.id}`,
@@ -370,6 +375,7 @@ export class Game {
     const controls = s.resolve(GameTokens.Controls);
     const input = s.resolve(EngineTokens.Input);
     const scene = s.resolve(EngineTokens.Scene);
+    const raycast = s.resolve(EngineTokens.Raycast);
 
     s.register(GameTokens.HUD, new HUD(this.root, eventBus));
 
@@ -378,7 +384,7 @@ export class Game {
     debugMenu.register(new PlayerModule(eventBus));
     debugMenu.register(new WeaponsModule());
     debugMenu.register(new NpcsModule());
-    debugMenu.register(new AiViewModule(scene.scene));
+    debugMenu.register(new AiViewModule(scene.scene, raycast));
     debugMenu.register(new AiTraceModule(eventBus));
     debugMenu.register(new SceneModule(scene.scene));
     s.register(GameTokens.DebugMenu, debugMenu);

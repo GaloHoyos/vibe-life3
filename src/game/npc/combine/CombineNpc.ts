@@ -351,10 +351,19 @@ export class CombineNpc implements Damageable, INpc {
     const adjusted = this.computeSteeredTarget(ctx);
     const targetForMotor = this.wantsMove ? adjusted : null;
     const frozen = NpcDebugFlags.freezeMovement;
+    const combatState = this.fsm.getState();
+    const facingThreat =
+      this.currentThreat &&
+      (combatState === "engage" ||
+        combatState === "coverFire" ||
+        combatState === "reload")
+        ? this.currentThreat.position
+        : null;
     this.motor.update(
       ctx.delta,
       frozen ? null : targetForMotor,
       frozen ? false : this.wantsMove,
+      frozen ? null : facingThreat,
     );
   }
 
@@ -435,7 +444,7 @@ export class CombineNpc implements Damageable, INpc {
         position: dropPos,
       });
     }
-    this.fsm.setState("dead");
+    this.fsm.setState("dead", "die() invocado");
     this.animation.notifyDeath(
       hitDirection,
       this.motor.getVelocity(),
@@ -474,6 +483,7 @@ export class CombineNpc implements Damageable, INpc {
     return {
       id: this.id,
       state: this.getState(),
+      lastTransitionReason: this.fsm.getLastTransitionReason(),
       position: this.mesh.position.clone(),
       isAlive: this.isAlive(),
       wantsMove: this.wantsMove,
@@ -498,7 +508,10 @@ export class CombineNpc implements Damageable, INpc {
       },
       update: () => {
         if (this.perception.isVisibleNow() || this.perception.hasRecentMemory()) {
-          fsm.setState("alert");
+          fsm.setState(
+            "alert",
+            this.perception.isVisibleNow() ? "threat visible" : "memoria reciente",
+          );
           return;
         }
         this.updatePatrol();
@@ -518,7 +531,7 @@ export class CombineNpc implements Damageable, INpc {
         this.alertReactionTimer += delta;
         const reaction = this.definition.attack.ranged?.reactionTime ?? 0.4;
         if (this.alertReactionTimer >= reaction) {
-          fsm.setState("engage");
+          fsm.setState("engage", `reaccion ${reaction.toFixed(2)}s cumplida`);
         }
       },
     });
@@ -536,15 +549,15 @@ export class CombineNpc implements Damageable, INpc {
         const threat = this.currentThreat;
         if (!threat) {
           if (this.perception.hasRecentMemory()) {
-            fsm.setState("investigate");
+            fsm.setState("investigate", "threat perdido, mem reciente");
           } else {
-            fsm.setState("idle");
+            fsm.setState("idle", "sin threat ni memoria");
           }
           return;
         }
 
         if (this.combat.needsReload()) {
-          fsm.setState("reload");
+          fsm.setState("reload", "mag=0");
           return;
         }
 
@@ -567,7 +580,16 @@ export class CombineNpc implements Damageable, INpc {
           coverSearchAllowed &&
           this.blackboard.currentCoverId === null
         ) {
-          fsm.setState("takeCover");
+          const triggers: string[] = [];
+          if (healthRatio < tuning.coverHealthThreshold) {
+            triggers.push(`hp=${healthRatio.toFixed(2)}<${tuning.coverHealthThreshold.toFixed(2)}`);
+          }
+          if (this.blackboard.suppressionLevel > 0.8) {
+            triggers.push(`supr=${this.blackboard.suppressionLevel.toFixed(2)}`);
+          }
+          if (recentlyHit) triggers.push("hitRecent");
+          if (!this.perception.isVisibleNow()) triggers.push("sinLOS");
+          fsm.setState("takeCover", `role=${role} ${triggers.join(",")}`);
           return;
         }
 
@@ -666,6 +688,7 @@ export class CombineNpc implements Damageable, INpc {
         if (!this.combat.isReloading(this.currentElapsed)) {
           fsm.setState(
             this.blackboard.currentCoverId !== null ? "coverFire" : "engage",
+            "reload completo",
           );
         }
       },
@@ -680,11 +703,11 @@ export class CombineNpc implements Damageable, INpc {
       update: () => {
         const threat = this.currentThreat;
         if (!threat) {
-          fsm.setState("engage");
+          fsm.setState("engage", "threat perdido en takeCover");
           return;
         }
         if (!this.blackboard.currentCoverId) {
-          fsm.setState("engage");
+          fsm.setState("engage", "no cover disponible");
           return;
         }
         const distance = this.mesh.position.distanceTo(this.desiredTarget);
@@ -692,7 +715,7 @@ export class CombineNpc implements Damageable, INpc {
           this.wantsMove = false;
           this.blackboard.timeInCover = 0;
           this.blackboard.timeSincePeek = 0;
-          fsm.setState("coverFire");
+          fsm.setState("coverFire", "llegó a cover");
         }
       },
     });
@@ -714,13 +737,14 @@ export class CombineNpc implements Damageable, INpc {
           this.animation.setLeanSide(0);
           fsm.setState(
             this.perception.hasRecentMemory() ? "investigate" : "idle",
+            "threat perdido en coverFire",
           );
           return;
         }
         if (this.combat.needsReload()) {
           this.animation.setCrouch(1);
           this.animation.setLeanSide(0);
-          fsm.setState("reload");
+          fsm.setState("reload", "mag=0 en coverFire");
           return;
         }
 
@@ -737,7 +761,7 @@ export class CombineNpc implements Damageable, INpc {
           this.releaseCover();
           this.animation.setCrouch(0);
           this.animation.setLeanSide(0);
-          fsm.setState("takeCover");
+          fsm.setState("takeCover", "cover ya no bloquea");
           return;
         }
 
@@ -794,7 +818,12 @@ export class CombineNpc implements Damageable, INpc {
           this.releaseCover();
           this.animation.setCrouch(0);
           this.animation.setLeanSide(0);
-          fsm.setState("engage");
+          fsm.setState(
+            "engage",
+            coverTuning.preferOpenCombat
+              ? "role agresivo"
+              : `hp=${healthRatio.toFixed(2)} recuperado`,
+          );
         }
       },
     });
@@ -814,7 +843,7 @@ export class CombineNpc implements Damageable, INpc {
       },
       update: (delta) => {
         if (this.perception.isVisibleNow()) {
-          fsm.setState("engage");
+          fsm.setState("engage", "threat reaparecio en investigate");
           return;
         }
         const distance = this.mesh.position.distanceTo(this.desiredTarget);
@@ -844,7 +873,12 @@ export class CombineNpc implements Damageable, INpc {
               this.searchPointIndex >= this.searchPointCount ||
               !this.perception.hasRecentMemory()
             ) {
-              fsm.setState("idle");
+              fsm.setState(
+                "idle",
+                this.perception.hasRecentMemory()
+                  ? "search points agotados"
+                  : "memoria expiro",
+              );
             } else {
               this.desiredTarget.copy(this.searchPoints[this.searchPointIndex]);
               this.scanArrived = false;

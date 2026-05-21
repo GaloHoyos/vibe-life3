@@ -16,6 +16,7 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import type { NavGraph } from "@engine/ai/NavGraph";
+import type { Raycast } from "@engine/physics/Raycast";
 import type { INpc, NpcAiDebugSnapshot } from "@game/npc/core/INpc";
 import type { Disposable } from "@shared/types/lifecycle";
 
@@ -31,6 +32,13 @@ const NAV_MAX_NODES = 520;
 const NPC_RADIUS = 120;
 const LIFT = new Vector3(0, 0.18, 0);
 const LABEL_CACHE_MAX = 256;
+/** Si un nodo está más que esto sobre el piso, lo flaggeamos como "flotando". */
+const DROP_FLOAT_THRESHOLD = 0.3;
+/** Cuánto puede caer el raycast desde el nodo antes de considerar "out of bounds". */
+const DROP_RAY_DISTANCE = 8;
+/** Desde dónde arranca el ray (un poco arriba del nodo para no spawnear dentro del collider). */
+const DROP_RAY_OFFSET = 0.15;
+const DROP_DIR = new Vector3(0, -1, 0);
 
 export class NpcAiDebugOverlay implements Disposable {
   private readonly root = new Group();
@@ -47,7 +55,10 @@ export class NpcAiDebugOverlay implements Disposable {
   private enabled = false;
   private refreshIn = 0;
 
-  constructor(private readonly scene: Scene) {
+  constructor(
+    private readonly scene: Scene,
+    private readonly raycast: Raycast,
+  ) {
     this.root.name = "npc-ai-debug-overlay";
     this.root.visible = false;
     this.scene.add(this.root);
@@ -130,12 +141,46 @@ export class NpcAiDebugOverlay implements Disposable {
       NAV_MAX_NODES,
     );
 
-    this.addPoints(
-      snapshot.nodes.map((node) => node.position.clone().add(LIFT)),
-      0x61d6ff,
-      0.95,
-      0.45,
-    );
+    const connectedPositions: Vector3[] = [];
+    const orphanPositions: Vector3[] = [];
+    const floatLineSegments: Vector3[] = [];
+    const sinkLineSegments: Vector3[] = [];
+    const voidLineSegments: Vector3[] = [];
+    let orphanCount = 0;
+    let floatingCount = 0;
+    let sunkCount = 0;
+    let voidCount = 0;
+
+    for (const node of snapshot.nodes) {
+      const lifted = node.position.clone().add(LIFT);
+      if (node.edgeCount === 0) {
+        orphanPositions.push(lifted);
+        orphanCount += 1;
+      } else {
+        connectedPositions.push(lifted);
+      }
+
+      const drop = this.measureDropToGround(node.position);
+      if (drop === "void") {
+        voidLineSegments.push(
+          node.position.clone(),
+          node.position.clone().add(new Vector3(0, -DROP_RAY_DISTANCE, 0)),
+        );
+        voidCount += 1;
+      } else if (drop.kind === "floating") {
+        floatLineSegments.push(node.position.clone(), drop.groundPoint);
+        floatingCount += 1;
+      } else if (drop.kind === "sunk") {
+        sinkLineSegments.push(node.position.clone(), drop.groundPoint);
+        sunkCount += 1;
+      }
+    }
+
+    this.addPoints(connectedPositions, 0x61d6ff, 0.95, 0.45);
+    this.addPoints(orphanPositions, 0xff4b4b, 1, 0.6);
+    this.addLineSegments(floatLineSegments, 0xffa040, 0.85, 2);
+    this.addLineSegments(sinkLineSegments, 0xff4b4b, 0.95, 2);
+    this.addLineSegments(voidLineSegments, 0xff00ff, 0.95, 2);
 
     const edgePoints: Vector3[] = [];
     for (const edge of snapshot.edges) {
@@ -144,12 +189,53 @@ export class NpcAiDebugOverlay implements Disposable {
     this.addLineSegments(edgePoints, 0x2a9dc8, 0.7, 2.5);
 
     const labelPosition = playerPosition.clone().add(new Vector3(0, 3.2, 0));
+    const issues: string[] = [];
+    if (orphanCount > 0) issues.push(`huerf:${orphanCount}`);
+    if (floatingCount > 0) issues.push(`flot:${floatingCount}`);
+    if (sunkCount > 0) issues.push(`hund:${sunkCount}`);
+    if (voidCount > 0) issues.push(`vacio:${voidCount}`);
+    const detail = issues.length > 0 ? issues.join(" ") : "todos OK";
     this.addLabel(
       `Nav local ${snapshot.nodes.length}/${snapshot.totalNodes}`,
-      "nodos y conexiones cercanas",
+      detail,
       labelPosition,
       "#84e9ff",
     );
+  }
+
+  /**
+   * Lanza un raycast hacia abajo desde el nodo. Si pega cerca → nodo bien
+   * apoyado. Si pega lejos → flotando (drop > umbral). Si no pega → fuera del
+   * mundo. Distinguir además "sunk" cuando el nodo está por debajo del piso
+   * (el raycast no puede salir desde dentro de un collider sólido, lo
+   * detectamos con un re-cast desde arriba del nodo).
+   */
+  private measureDropToGround(
+    nodePosition: Vector3,
+  ):
+    | "void"
+    | { kind: "ok" }
+    | { kind: "floating"; groundPoint: Vector3 }
+    | { kind: "sunk"; groundPoint: Vector3 } {
+    const origin = new Vector3(
+      nodePosition.x,
+      nodePosition.y + DROP_RAY_OFFSET,
+      nodePosition.z,
+    );
+    const hit = this.raycast.cast(origin, DROP_DIR, DROP_RAY_DISTANCE);
+    if (!hit) {
+      const fromAbove = new Vector3(nodePosition.x, nodePosition.y + 4, nodePosition.z);
+      const above = this.raycast.cast(fromAbove, DROP_DIR, DROP_RAY_DISTANCE);
+      if (above && above.point.y < nodePosition.y - 0.05) {
+        return { kind: "sunk", groundPoint: above.point.clone() };
+      }
+      return "void";
+    }
+    const drop = (nodePosition.y + DROP_RAY_OFFSET) - hit.point.y;
+    if (drop <= DROP_FLOAT_THRESHOLD + DROP_RAY_OFFSET) {
+      return { kind: "ok" };
+    }
+    return { kind: "floating", groundPoint: hit.point.clone() };
   }
 
   private drawNpc(snapshot: NpcAiDebugSnapshot): void {

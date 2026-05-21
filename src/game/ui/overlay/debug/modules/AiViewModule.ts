@@ -1,5 +1,6 @@
 import type { Scene } from "three";
 import { NpcAiDebugOverlay } from "@game/debug/NpcAiDebugOverlay";
+import type { Raycast } from "@engine/physics/Raycast";
 import type { DebugFrame, DebugModule } from "../DebugModule";
 import { buildSection } from "../widgets";
 
@@ -17,8 +18,8 @@ export class AiViewModule implements DebugModule {
   private active = false;
   private status: HTMLDivElement | null = null;
 
-  constructor(scene: Scene) {
-    this.overlay = new NpcAiDebugOverlay(scene);
+  constructor(scene: Scene, raycast: Raycast) {
+    this.overlay = new NpcAiDebugOverlay(scene, raycast);
   }
 
   mount(container: HTMLElement): void {

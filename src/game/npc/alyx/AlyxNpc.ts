@@ -228,10 +228,16 @@ export class AlyxNpc implements Damageable, INpc {
     const adjusted = this.computeSteeredTarget(ctx);
     const targetForMotor = this.wantsMove ? adjusted : null;
     const frozen = NpcDebugFlags.freezeMovement;
+    const alyxState = this.fsm.getState();
+    const facingThreat =
+      this.currentThreat && alyxState === "combat"
+        ? this.currentThreat.position
+        : null;
     this.motor.update(
       ctx.delta,
       frozen ? null : targetForMotor,
       frozen ? false : this.wantsMove,
+      frozen ? null : facingThreat,
     );
   }
 
@@ -289,7 +295,7 @@ export class AlyxNpc implements Damageable, INpc {
   die(hitDirection?: Vector3, hitPartName?: string): void {
     if (this.deadHandled) return;
     this.deadHandled = true;
-    this.fsm.setState("dead");
+    this.fsm.setState("dead", "die() invocado");
 
     const rangedWeaponId = this.definition.attack.ranged?.weaponId;
     if (this.weaponAttachment && rangedWeaponId) {
@@ -335,6 +341,7 @@ export class AlyxNpc implements Damageable, INpc {
     return {
       id: this.id,
       state: this.getState(),
+      lastTransitionReason: this.fsm.getLastTransitionReason(),
       position: this.mesh.position.clone(),
       isAlive: this.isAlive(),
       wantsMove: this.wantsMove,
@@ -356,7 +363,7 @@ export class AlyxNpc implements Damageable, INpc {
     fsm.addState("follow", {
       update: () => {
         if (this.currentThreat) {
-          fsm.setState("combat");
+          fsm.setState("combat", "threat detectado");
         }
       },
     });
@@ -364,12 +371,12 @@ export class AlyxNpc implements Damageable, INpc {
     fsm.addState("combat", {
       update: () => {
         if (!this.currentThreat) {
-          fsm.setState("follow");
+          fsm.setState("follow", "sin threat");
           return;
         }
         const healthRatio = this.health.current / this.definition.health.maxHealth;
         if (healthRatio < 0.4) {
-          fsm.setState("takeCover");
+          fsm.setState("takeCover", `hp=${healthRatio.toFixed(2)}<0.40`);
           return;
         }
 
@@ -398,12 +405,12 @@ export class AlyxNpc implements Damageable, INpc {
     fsm.addState("takeCover", {
       update: () => {
         if (!this.currentThreat) {
-          fsm.setState("follow");
+          fsm.setState("follow", "sin threat en takeCover");
           return;
         }
         const healthRatio = this.health.current / this.definition.health.maxHealth;
         if (healthRatio >= 0.65) {
-          fsm.setState("combat");
+          fsm.setState("combat", `hp=${healthRatio.toFixed(2)} recuperado`);
         }
       },
     });

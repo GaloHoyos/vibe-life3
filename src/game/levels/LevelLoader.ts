@@ -1,6 +1,7 @@
 ﻿import type { Scene } from 'three';
 import type { AssetManager } from '@engine/assets/AssetManager';
 import type { CharacterFactory } from '@game/characters/CharacterFactory';
+import { CharacterPresets } from '@game/characters/CharacterPresets';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import { tupleToVector3 } from '@shared/math/VectorTuple';
 import type { GameEventBus } from "@game/GameEvents";
@@ -156,7 +157,11 @@ export class LevelLoader {
     const spawnValidator = new SpawnValidator(new Raycast(this.physics));
     for (const definition of level.npcs) {
       const requested = tupleToVector3(definition.position);
-      const validation = spawnValidator.validate(requested);
+      const preset =
+        CharacterPresets[definition.characterId] ??
+        CharacterPresets.placeholderHumanoid;
+      const halfExtent = preset.collider.height / 2;
+      const validation = spawnValidator.validate(requested, halfExtent);
       if (!validation.valid) {
         console.warn(
           `[LevelLoader] NPC '${definition.id}' spawn invalid at ${requested.toArray().join(',')} — usando posición pedida igual`,

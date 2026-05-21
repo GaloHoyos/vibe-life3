@@ -23,7 +23,7 @@ const FUSE_HARD_TIMEOUT_BUFFER = 1.5;
 const INITIAL_BEEP_INTERVAL = 0.6;
 const MIN_BEEP_INTERVAL = 0.12;
 const BEEP_INTERVAL_DECAY = 0.78;
-const GRENADE_RADIUS = 0.08;
+const GRENADE_RADIUS = 0.11;
 const GRENADE_DENSITY = 800;
 const GRENADE_RESTITUTION = 0.18;
 const GRENADE_FRICTION = 1.8;
@@ -72,7 +72,9 @@ export class GrenadeSystem implements Disposable {
     private readonly raycast: Raycast,
     private readonly eventBus: GameEventBus,
     private readonly positionalSounds: PositionalSoundManager,
-  ) {}
+  ) {
+    void this.assets.loadModel("grenadePrimed");
+  }
 
   spawn(options: GrenadeSpawnOptions): void {
     const body = this.createBody(options);
@@ -384,7 +386,8 @@ export class GrenadeSystem implements Disposable {
       .setTranslation(options.origin.x, options.origin.y, options.origin.z)
       .setLinvel(options.velocity.x, options.velocity.y, options.velocity.z)
       .setAngularDamping(GRENADE_ANGULAR_DAMPING)
-      .setLinearDamping(GRENADE_LINEAR_DAMPING);
+      .setLinearDamping(GRENADE_LINEAR_DAMPING)
+      .setCcdEnabled(true);
     const body = this.physics.world.createRigidBody(desc);
     const colliderDesc = RAPIER.ColliderDesc.ball(GRENADE_RADIUS)
       .setDensity(GRENADE_DENSITY)

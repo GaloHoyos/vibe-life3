@@ -4,12 +4,13 @@ import type { INpc, NpcAiDebugSnapshot } from "@game/npc/core/INpc";
 import type { Disposable } from "@shared/types/lifecycle";
 
 type AnomalyKind = "stuck" | "path-empty" | "waypoint-loop" | "death";
+type TraceKind = "transition" | "anomaly" | "verbose" | "event" | "bookmark";
 
 interface TraceEntry {
   /** Elapsed-time relativo al `start()`. */
   t: number;
   npcId: string;
-  kind: "transition" | "anomaly" | "verbose";
+  kind: TraceKind;
   text: string;
 }
 
@@ -84,7 +85,63 @@ export class NpcAiTraceRecorder implements Disposable {
         if (!this.recording) return;
         this.pushEntry(this.lastElapsed - this.startElapsed, id, "transition", "muerto");
       }),
+      eventBus.on("weapon.fired", ({ weaponName, weaponType }) => {
+        if (!this.recording) return;
+        this.pushEntry(
+          this.lastElapsed - this.startElapsed,
+          "—",
+          "event",
+          `fired ${weaponName} (${weaponType})`,
+        );
+      }),
+      eventBus.on("weapon.hit", ({ weaponName, targetId, surfaceKind, damage }) => {
+        if (!this.recording) return;
+        const id = targetId ?? "—";
+        this.pushEntry(
+          this.lastElapsed - this.startElapsed,
+          id,
+          "event",
+          `hit ${weaponName} → ${surfaceKind ?? "?"} dmg=${damage.toFixed(1)}`,
+        );
+      }),
+      eventBus.on("npc.damaged", ({ id, amount, health }) => {
+        if (!this.recording) return;
+        this.pushEntry(
+          this.lastElapsed - this.startElapsed,
+          id,
+          "event",
+          `daño ${amount.toFixed(1)} (hp restante=${health.toFixed(1)})`,
+        );
+      }),
+      eventBus.on("player.damaged", ({ amount, direction }) => {
+        if (!this.recording) return;
+        const dirText = direction
+          ? ` dir=(${direction.x.toFixed(1)},${direction.y.toFixed(1)},${direction.z.toFixed(1)})`
+          : "";
+        this.pushEntry(
+          this.lastElapsed - this.startElapsed,
+          "player",
+          "event",
+          `player recibió ${amount.toFixed(1)}${dirText}`,
+        );
+      }),
     );
+  }
+
+  /**
+   * Marca un punto del trace. Útil para correlacionar "vi algo raro aquí"
+   * con lo que el log muestra después. Llamado típicamente desde una
+   * hotkey/botón del DebugMenu.
+   */
+  bookmark(label?: string): void {
+    if (!this.recording) return;
+    const text = label?.trim() ? label : "marca";
+    this.pushEntry(this.lastElapsed - this.startElapsed, "—", "bookmark", text);
+  }
+
+  /** Lista de NPCs vistos en este trace (para popular UI in-game). */
+  observedNpcIds(): string[] {
+    return [...this.states.keys()].sort();
   }
 
   isRecording(): boolean {
@@ -144,6 +201,8 @@ export class NpcAiTraceRecorder implements Disposable {
     const transitions = this.entries.filter((e) => e.kind === "transition");
     const anomalies = this.entries.filter((e) => e.kind === "anomaly");
     const verbose = this.entries.filter((e) => e.kind === "verbose");
+    const events = this.entries.filter((e) => e.kind === "event");
+    const bookmarks = this.entries.filter((e) => e.kind === "bookmark");
     const npcsObserved = new Set(this.entries.map((e) => e.npcId));
 
     lines.push("==== NPC AI Trace ====");
@@ -153,8 +212,16 @@ export class NpcAiTraceRecorder implements Disposable {
     lines.push(`NPCs seen:   ${npcsObserved.size}`);
     lines.push(`Transitions: ${transitions.length}`);
     lines.push(`Anomalies:   ${anomalies.length}`);
+    lines.push(`Combat ev.:  ${events.length}`);
+    lines.push(`Bookmarks:   ${bookmarks.length}`);
     lines.push(`Verbose:     ${[...this.verboseSet].join(", ") || "(none)"}`);
     lines.push("");
+
+    if (bookmarks.length > 0) {
+      lines.push("---- Bookmarks ----");
+      for (const e of bookmarks) lines.push(formatLine(e));
+      lines.push("");
+    }
 
     if (anomalies.length > 0) {
       lines.push("---- Anomalies (likely problems) ----");
@@ -165,6 +232,12 @@ export class NpcAiTraceRecorder implements Disposable {
     if (transitions.length > 0) {
       lines.push("---- State transitions ----");
       for (const e of transitions) lines.push(formatLine(e));
+      lines.push("");
+    }
+
+    if (events.length > 0) {
+      lines.push("---- Combat events ----");
+      for (const e of events) lines.push(formatLine(e));
       lines.push("");
     }
 
@@ -234,12 +307,16 @@ export class NpcAiTraceRecorder implements Disposable {
 
   private detectTransitions(t: number, snap: NpcAiDebugSnapshot, state: PerNpcState): void {
     if (state.lastState !== null && state.lastState !== snap.state) {
+      const reason = snap.lastTransitionReason
+        ? ` · ${snap.lastTransitionReason}`
+        : "";
       this.pushEntry(
         t,
         snap.id,
         "transition",
         `${state.lastState} → ${snap.state}` +
-          (snap.threatId ? ` (threat=${snap.threatId})` : ""),
+          (snap.threatId ? ` (threat=${snap.threatId})` : "") +
+          reason,
       );
     }
     state.lastState = snap.state;
@@ -248,6 +325,17 @@ export class NpcAiTraceRecorder implements Disposable {
       this.pushEntry(t, snap.id, "transition", `murió en ${formatVec(snap.position)}`);
     }
     state.wasAlive = snap.isAlive;
+  }
+
+  /** Últimas N entradas para mostrar como preview en vivo en el panel. */
+  recentEntries(limit: number): readonly TraceEntry[] {
+    if (this.entries.length <= limit) return this.entries;
+    return this.entries.slice(this.entries.length - limit);
+  }
+
+  /** Total de entries acumuladas (todas las kinds). */
+  entryCount(): number {
+    return this.entries.length;
   }
 
   private detectAnomalies(t: number, snap: NpcAiDebugSnapshot, state: PerNpcState): void {
