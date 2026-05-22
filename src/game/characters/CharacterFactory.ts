@@ -13,10 +13,10 @@ import { CharacterPresets } from './CharacterPresets';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 
 /**
- * Instancia NPCs a partir de un `CharacterId`. Dispatch por `behaviorKind`:
- *  - `zombieMelee`   → `ZombieNpc`
- *  - `combineRanged` → `CombineNpc`
- *  - `alyxAlly`      → `AlyxNpc`
+ * Instancia NPCs a partir de un `CharacterId`. Dispatch por `aiProfileId`:
+ *  - `zombieMelee`     → `ZombieNpc`
+ *  - `combineSoldier`  → `CombineNpc`
+ *  - `alyxSupport`     → `AlyxNpc`
  *
  * Carga el modelo del manifest si tiene `modelId`, o cae a un humanoid
  * placeholder bone-rigged que cumple la interfaz `ProceduralCharacterAnimator`.
@@ -73,10 +73,10 @@ export class CharacterFactory {
       patrolPoints,
     };
 
-    switch (definition.behaviorKind) {
-      case "combineRanged":
+    switch (definition.aiProfileId) {
+      case "combineSoldier":
         return new CombineNpc({ ...shared, weaponAttachment });
-      case "alyxAlly":
+      case "alyxSupport":
         return new AlyxNpc({ ...shared, weaponAttachment });
       case "zombieMelee":
       default:

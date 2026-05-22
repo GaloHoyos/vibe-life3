@@ -14,10 +14,10 @@ export interface BuildingDoor {
 
 export interface BuildingStair {
   /**
-   * AABB del stairwell en coords locales al centro del edificio.
-   * La losa del piso superior se corta exactamente sobre este rectángulo y la
-   * escalera se construye adentro. El top step queda flush con el borde del
-   * footprint en el lado `topAt`.
+   * AABB de la escalera en coords locales al centro del edificio.
+   * La losa del piso superior se corta sobre este rectángulo más el margen de
+   * `cutoutPadding`. El top step queda flush con el borde del footprint en el
+   * lado `topAt`.
    */
   footprint: { x: [number, number]; z: [number, number] };
   /**
@@ -29,6 +29,12 @@ export interface BuildingStair {
   topAt: HouseSide;
   /** Cantidad de escalones. Default ceil(storyHeight / 0.3). */
   steps?: number;
+  /**
+   * Extra opening around the stair on the upper slab. It grows the lateral
+   * sides and the lower end, but keeps the top edge flush with the landing.
+   * Default 0.35m.
+   */
+  cutoutPadding?: number;
   /** Material de los escalones. Default `floor`. */
   material?: MaterialKey;
 }
@@ -74,6 +80,7 @@ export interface BuildingSpec {
 }
 
 const SIDES: HouseSide[] = ['north', 'south', 'east', 'west'];
+const DEFAULT_STAIR_CUTOUT_PADDING = 0.35;
 
 /**
  * Construye un edificio de N pisos con paredes, puertas, escaleras internas y
@@ -116,6 +123,16 @@ export function buildBuilding(spec: BuildingSpec): StaticBoxDefinition[] {
     const storyTopY = spec.groundY + (i + 1) * storyH;
     const wallCenterY = (storyBottomY + storyTopY) / 2;
     const isTopStory = i === spec.stories.length - 1;
+    const stair =
+      story.stair && !isTopStory
+        ? {
+            ...story.stair,
+            footprint: clampFootprint(
+              story.stair.footprint,
+              interiorBounds(w, d, wallT),
+            ),
+          }
+        : null;
 
     for (const side of SIDES) {
       if (story.openSides?.includes(side)) continue;
@@ -140,7 +157,9 @@ export function buildBuilding(spec: BuildingSpec): StaticBoxDefinition[] {
     if (slabIsRoof && roof === 'none') {
       // sin techo, nada que hacer arriba
     } else {
-      const cutout = !slabIsRoof ? story.stair?.footprint ?? null : null;
+      const cutout = !slabIsRoof && stair
+        ? buildStairCutout(stair, slabBounds(w, d))
+        : null;
       const slabId = slabIsRoof ? `${spec.id}-roof` : `${spec.id}-floor-${i + 1}`;
       const slabMat = slabIsRoof ? roofMat : floorMat;
       const slabCenterY = storyTopY - slabT / 2;
@@ -149,16 +168,12 @@ export function buildBuilding(spec: BuildingSpec): StaticBoxDefinition[] {
       );
     }
 
-    if (story.stair && !isTopStory) {
-      const steps = story.stair.steps ?? suggestStepCount(storyH);
+    if (stair) {
+      const steps = stair.steps ?? suggestStepCount(storyH);
       const stairId = `${spec.id}-s${i}-stair`;
-      // El cutout se clampea al interior (entre las caras internas de las
-      // paredes) para que el escalón del extremo no penetre la pared.
-      const interior = interiorBounds(w, d, wallT);
-      const safeFp = clampFootprint(story.stair.footprint, interior);
       out.push(
         ...buildInternalStair(
-          { ...story.stair, footprint: safeFp },
+          stair,
           stairId,
           cx,
           cz,
@@ -436,6 +451,58 @@ function clampFootprint(
     z: [
       clamp(Math.min(fp.z[0], fp.z[1]), interior.z[0], interior.z[1]),
       clamp(Math.max(fp.z[0], fp.z[1]), interior.z[0], interior.z[1]),
+    ],
+  };
+}
+
+function slabBounds(w: number, d: number): InteriorBounds {
+  return {
+    x: [-w / 2, w / 2],
+    z: [-d / 2, d / 2],
+  };
+}
+
+function buildStairCutout(
+  stair: BuildingStair,
+  bounds: InteriorBounds,
+): { x: [number, number]; z: [number, number] } {
+  const padding = stair.cutoutPadding ?? DEFAULT_STAIR_CUTOUT_PADDING;
+  let x0 = Math.min(stair.footprint.x[0], stair.footprint.x[1]);
+  let x1 = Math.max(stair.footprint.x[0], stair.footprint.x[1]);
+  let z0 = Math.min(stair.footprint.z[0], stair.footprint.z[1]);
+  let z1 = Math.max(stair.footprint.z[0], stair.footprint.z[1]);
+
+  switch (stair.topAt) {
+    case 'north':
+      x0 -= padding;
+      x1 += padding;
+      z1 += padding;
+      break;
+    case 'south':
+      x0 -= padding;
+      x1 += padding;
+      z0 -= padding;
+      break;
+    case 'east':
+      z0 -= padding;
+      z1 += padding;
+      x0 -= padding;
+      break;
+    case 'west':
+      z0 -= padding;
+      z1 += padding;
+      x1 += padding;
+      break;
+  }
+
+  return {
+    x: [
+      clamp(x0, bounds.x[0], bounds.x[1]),
+      clamp(x1, bounds.x[0], bounds.x[1]),
+    ],
+    z: [
+      clamp(z0, bounds.z[0], bounds.z[1]),
+      clamp(z1, bounds.z[0], bounds.z[1]),
     ],
   };
 }

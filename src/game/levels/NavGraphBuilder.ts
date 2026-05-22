@@ -89,6 +89,9 @@ export class NavGraphBuilder {
     const nodeLift = NODE_LIFT;
 
     const graph = new NavGraph();
+    graph.setReachabilityValidator((from, to) =>
+      this.lineOfSightWithReason(raycast, from, to, losHeight).ok,
+    );
     const bounds = this.computeBounds(level);
     if (!bounds) return graph;
 

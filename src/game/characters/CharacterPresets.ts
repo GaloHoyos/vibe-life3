@@ -4,7 +4,7 @@ import type { CharacterDefinition, CharacterId } from "@engine/characters/Charac
 const baseHumanoid = {
   type: "humanoid",
   faction: "creatures",
-  behaviorKind: "zombieMelee",
+  aiProfileId: "zombieMelee",
   height: 1.75,
   radius: 0.35,
   mass: 60,
@@ -208,7 +208,7 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     id: "combine",
     modelId: "combine",
     faction: "combine",
-    behaviorKind: "combineRanged",
+    aiProfileId: "combineSoldier",
     visualOffset: new Vector3(0, -0.875, 0),
     movement: {
       ...baseHumanoid.movement,
@@ -304,7 +304,7 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     id: "alyx",
     modelId: "alyx",
     faction: "player",
-    behaviorKind: "alyxAlly",
+    aiProfileId: "alyxSupport",
     visualOffset: new Vector3(0, -0.875, 0),
     movement: {
       ...baseHumanoid.movement,

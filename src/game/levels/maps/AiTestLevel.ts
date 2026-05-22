@@ -308,11 +308,6 @@ export const AiTestLevel: LevelDefinition = {
     { id: 'ai-zombie-corridor-1', position: [-18, 2, 14], characterId: 'zombie' },
     { id: 'ai-zombie-corridor-2', position: [-22, 2, 25], characterId: 'zombie' },
   ],
-  coverPoints: [
-    ...COMBINE_COVER_POINTS,
-    ...HOUSE_COVER_POINTS,
-    ...OBSTACLE_COVER_POINTS,
-  ],
   weaponPickups: [
     // Pickups en el centro, junto al spawn, para que arrancar sea rápido.
     { id: 'ai-pickup-crowbar', weaponId: 'crowbar', position: [-2, 0.7, 2] },

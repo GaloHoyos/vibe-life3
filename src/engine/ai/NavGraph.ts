@@ -68,6 +68,7 @@ export type NavPathStatus =
   | "ok"
   | "direct-start-missing"
   | "direct-same-node"
+  | "empty-start-missing"
   | "empty-goal-missing"
   | "empty-no-route";
 
@@ -88,9 +89,11 @@ interface NearestNodeOptions {
   excludeNodeId?: number;
   stairSnap?: StairSnapMode;
   verticalPenalty?: number;
+  requireReachability?: boolean;
 }
 
 type StairSnapMode = "all" | "corridor" | "exclude";
+export type NavReachabilityValidator = (from: Vector3, to: Vector3) => boolean;
 
 interface StairGroupInfo {
   start: Vector3;
@@ -114,6 +117,7 @@ export class NavGraph {
   private stairGroups: Map<string, StairGroupInfo> | null = null;
   private readonly spatialCellSize = 8;
   private readonly pathCache = new Map<string, number[] | null>();
+  private reachabilityValidator: NavReachabilityValidator | null = null;
   private readonly pathCacheMaxEntries = 768;
   private readonly startSnapVerticalDistance = 1.8;
   private readonly goalSnapVerticalDistance = 1.55;
@@ -157,6 +161,10 @@ export class NavGraph {
 
   getNode(id: number): Vector3 | null {
     return this.nodes[id]?.position.clone() ?? null;
+  }
+
+  setReachabilityValidator(validator: NavReachabilityValidator | null): void {
+    this.reachabilityValidator = validator;
   }
 
   getNodeMetadata(id: number): NavNodeMetadata | null {
@@ -398,6 +406,13 @@ export class NavGraph {
             continue;
           }
           const score = dSq + verticalDelta * verticalDelta * verticalPenalty;
+          if (
+            options.requireReachability &&
+            this.reachabilityValidator &&
+            !this.reachabilityValidator(position, node.position)
+          ) {
+            continue;
+          }
           if (score < bestScore) {
             bestScore = score;
             best = node.id;
@@ -424,13 +439,13 @@ export class NavGraph {
       from,
       12,
       this.startSnapVerticalDistance,
-      { verticalPenalty: 4, stairSnap: "corridor" },
+      { verticalPenalty: 4, stairSnap: "corridor", requireReachability: true },
     );
     const goalId = this.nearestConnectedNode(
       to,
       12,
       this.goalSnapVerticalDistance,
-      { verticalPenalty: 4, stairSnap: "corridor" },
+      { verticalPenalty: 4, stairSnap: "corridor", requireReachability: true },
     );
     const startNode = startId === null ? null : this.nodes[startId];
     const goalNode = goalId === null ? null : this.nodes[goalId];
@@ -439,6 +454,19 @@ export class NavGraph {
     const goalComponentId =
       goalId === null ? null : this.connectedComponentOf(goalId);
     if (startId === null) {
+      if (this.nodes.length > 0) {
+        return {
+          path: [],
+          status: "empty-start-missing",
+          startNodeId: null,
+          goalNodeId: goalId,
+          startComponentId: null,
+          goalComponentId,
+          startNodePosition: null,
+          goalNodePosition: goalNode?.position.clone() ?? null,
+          pathNodeIds: [],
+        };
+      }
       return {
         path: [to.clone()],
         status: "direct-start-missing",
@@ -547,13 +575,13 @@ export class NavGraph {
       from,
       12,
       this.startSnapVerticalDistance,
-      { verticalPenalty: 4, stairSnap: "corridor" },
+      { verticalPenalty: 4, stairSnap: "corridor", requireReachability: true },
     );
     const goalId = this.nearestConnectedNode(
       to,
       12,
       this.goalSnapVerticalDistance,
-      { verticalPenalty: 4, stairSnap: "corridor" },
+      { verticalPenalty: 4, stairSnap: "corridor", requireReachability: true },
     );
     if (startId === null || goalId === null) {
       return null;

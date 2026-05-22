@@ -21,16 +21,18 @@ import type { GameEventBus } from "@game/GameEvents";
 import { Health } from "@game/gameplay/Health";
 import type {
   ActorSnapshot,
+  AiFrameContext,
   INpc,
   NpcAiDebugSnapshot,
-  NpcUpdateContext,
 } from "@game/npc/core/INpc";
 import { NpcDebugFlags } from "@game/npc/core/NpcDebugFlags";
 import { NpcAnimationBridge } from "@game/npc/animation/NpcAnimationBridge";
-import { NpcPathFollower } from "@game/npc/movement/NpcPathFollower";
 import { NpcRangedCombat } from "@game/npc/combat/NpcRangedCombat";
-import { NpcSteering } from "@game/npc/movement/NpcSteering";
+import { NpcNavigator } from "@game/npc/movement/NpcNavigator";
 import type { WeaponAttachmentHandle } from "@game/npc/combat/NpcWeaponAttachment";
+import { NpcBrainRuntime } from "@game/npc/ai/NpcBrainRuntime";
+import { getCharacterAIProfile } from "@game/npc/ai/CharacterAIProfiles";
+import type { NpcCondition } from "@game/npc/ai/NpcConditionSet";
 
 type AlyxState = "follow" | "combat" | "takeCover" | "regroup" | "dead";
 
@@ -71,8 +73,8 @@ export class AlyxNpc implements Damageable, INpc {
   private readonly animation: NpcAnimationBridge;
   private readonly combat: NpcRangedCombat;
   private readonly perception: Perception;
-  private readonly steering: NpcSteering;
-  private readonly pathFollower = new NpcPathFollower();
+  private readonly navigator: NpcNavigator;
+  private readonly brain: NpcBrainRuntime;
   private readonly raycast: Raycast;
   private readonly blackboard: Blackboard;
   private readonly definition: CharacterDefinition;
@@ -93,6 +95,7 @@ export class AlyxNpc implements Damageable, INpc {
   private deadHandled = false;
   private disposed = false;
   private currentElapsed = 0;
+  private currentCtx: AiFrameContext | null = null;
   private aimSettleTime = 0;
   private readonly weaponAttachment: WeaponAttachmentHandle | null;
   private readonly weaponHandedness: WeaponHandedness;
@@ -122,7 +125,15 @@ export class AlyxNpc implements Damageable, INpc {
     this.raycast = new Raycast(options.physics);
     this.blackboard = createBlackboard();
     this.perception = new Perception(options.definition.perception, this.raycast);
-    this.steering = new NpcSteering(this.raycast);
+    this.navigator = new NpcNavigator(this.raycast, {
+      repathInterval: 0.8,
+      repathDistance: 2.5,
+      arriveDistance: 1.4,
+      stuckRepathTime: 2.2,
+    });
+    this.brain = new NpcBrainRuntime(
+      getCharacterAIProfile(options.definition.aiProfileId),
+    );
 
     this.motor = new CharacterMotor(options.physics, {
       id: options.id,
@@ -178,13 +189,14 @@ export class AlyxNpc implements Damageable, INpc {
     return this.mesh.position;
   }
 
-  update(ctx: NpcUpdateContext): void {
+  update(ctx: AiFrameContext): void {
     if (this.deadHandled) {
       this.animation.updateStandalone(ctx.delta, { dead: true });
       return;
     }
 
     this.currentElapsed = ctx.elapsed;
+    this.currentCtx = ctx;
     this.currentThreat = this.pickThreat(ctx);
     if (this.currentThreat) {
       this.perception.sense(
@@ -208,6 +220,7 @@ export class AlyxNpc implements Damageable, INpc {
       this.aimSettleTime = Math.max(0, this.aimSettleTime - ctx.delta * 0.8);
     }
 
+    this.updateBrain(ctx);
     this.fsm.update(ctx.delta);
     this.updateAimingPose();
 
@@ -300,7 +313,7 @@ export class AlyxNpc implements Damageable, INpc {
     this.wantsMove = false;
     this.currentThreat = null;
     this.lastMotorTarget = null;
-    this.pathFollower.reset();
+    this.navigator.reset();
     this.fsm.setState("dead", "die() invocado");
 
     const rangedWeaponId = this.definition.attack.ranged?.weaponId;
@@ -333,6 +346,10 @@ export class AlyxNpc implements Damageable, INpc {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    if (this.blackboard.currentCoverId && this.currentCtx) {
+      this.currentCtx.tacticalMap.release(this.blackboard.currentCoverId, this.id);
+      this.blackboard.currentCoverId = null;
+    }
     this.weaponAttachment?.detach();
     this.motor.disable();
     this.animation.disable();
@@ -369,7 +386,7 @@ export class AlyxNpc implements Damageable, INpc {
       threatPosition:
         alive && this.currentThreat ? this.currentThreat.position.clone() : null,
       coverId: alive ? this.blackboard.currentCoverId : null,
-      path: this.pathFollower.getDebugSnapshot(),
+      path: this.navigator.getDebugSnapshot(),
       perception: {
         ...perception,
         timeSinceLastSeen: this.blackboard.timeSinceLastSeen,
@@ -410,6 +427,7 @@ export class AlyxNpc implements Damageable, INpc {
         lastDamageAgo,
         timeInCover: this.blackboard.timeInCover,
       },
+      brain: this.brain.snapshot(this.currentElapsed),
     };
   }
 
@@ -495,6 +513,43 @@ export class AlyxNpc implements Damageable, INpc {
   // Helpers
   // ---------------------------------------------------------------------------
 
+  private updateBrain(ctx: AiFrameContext): void {
+    const conditions: NpcCondition[] = [];
+    const visible = this.perception.isVisibleNow();
+    const hasMemory = this.perception.hasRecentMemory();
+    const healthRatio = this.health.current / this.definition.health.maxHealth;
+    const distanceToPlayer = this.mesh.position.distanceTo(ctx.player.position);
+    const path = this.navigator.getDebugSnapshot();
+
+    if (!this.isAlive()) conditions.push("EnemyDead");
+    if (visible) conditions.push("SeeEnemy");
+    if (!visible && hasMemory) conditions.push("LostEnemy");
+    if (healthRatio < 0.4) conditions.push("LowHealth");
+    if (this.combat.needsReload()) conditions.push("NeedsReload");
+    if (this.blackboard.currentCoverId) conditions.push("HasCover");
+    if (this.navigator.isDestinationUnreachable()) conditions.push("PathFailed");
+    if (path.lastRepathReason === "stuck-reset") conditions.push("Stuck");
+    if (distanceToPlayer > this.tooFarFromPlayer) {
+      conditions.push("TooFarFromLeader");
+    }
+
+    this.brain.update({
+      delta: ctx.delta,
+      elapsed: ctx.elapsed,
+      conditions,
+      threatId: this.currentThreat?.id ?? null,
+      threatPosition:
+        this.currentThreat?.position ?? this.perception.getLastKnown(),
+      threatVisible: visible,
+      threatMemoryAge: this.perception.getMemoryAge(),
+      squadRole: null,
+      coverId: this.blackboard.currentCoverId,
+      tacticalTarget: this.wantsMove ? this.desiredTarget : null,
+      stuckReason:
+        path.lastRepathReason === "stuck-reset" ? "stuck-reset" : null,
+    });
+  }
+
   private updateAimingPose(): void {
     const threat = this.currentThreat;
     const state = this.fsm.getState();
@@ -517,7 +572,7 @@ export class AlyxNpc implements Damageable, INpc {
     );
   }
 
-  private pickThreat(ctx: NpcUpdateContext): ActorSnapshot | null {
+  private pickThreat(ctx: AiFrameContext): ActorSnapshot | null {
     let best: ActorSnapshot | null = null;
     let bestDist = Infinity;
     for (const other of ctx.npcs) {
@@ -532,7 +587,7 @@ export class AlyxNpc implements Damageable, INpc {
     return best;
   }
 
-  private computeSteeredTarget(ctx: NpcUpdateContext): Vector3 {
+  private computeSteeredTarget(ctx: AiFrameContext): Vector3 {
     const playerPos = ctx.player.position;
     const state = this.fsm.getState();
     const distanceToPlayer = this.mesh.position.distanceTo(playerPos);
@@ -574,7 +629,7 @@ export class AlyxNpc implements Damageable, INpc {
       }
     } else if (state === "takeCover" && this.currentThreat) {
       if (!this.blackboard.currentCoverId) {
-        const best = ctx.coverSystem.findBestCover(
+        const best = ctx.tacticalMap.findBestCover(
           this.id,
           this.mesh.position,
           this.currentThreat.position,
@@ -582,13 +637,13 @@ export class AlyxNpc implements Damageable, INpc {
           (position) => ctx.navGraph.pathDistance(this.mesh.position, position),
         );
         if (best) {
-          ctx.coverSystem.claim(best.id, this.id);
+          ctx.tacticalMap.claim(best.id, this.id);
           this.blackboard.currentCoverId = best.id;
           this.desiredTarget.copy(best.position);
           this.wantsMove = true;
         }
       } else {
-        const cover = ctx.coverSystem.getCoverPosition(
+        const cover = ctx.tacticalMap.getCoverPosition(
           this.blackboard.currentCoverId,
         );
         if (cover) {
@@ -604,17 +659,6 @@ export class AlyxNpc implements Damageable, INpc {
       return this.mesh.position;
     }
 
-    const route = this.pathFollower.resolve(
-      ctx.navGraph,
-      this.mesh.position,
-      this.desiredTarget,
-      ctx.elapsed,
-    );
-    if (!route.shouldMove) {
-      this.wantsMove = false;
-      return this.mesh.position;
-    }
-
     this.tmpNeighbors.length = 0;
     this.tmpNeighbors.push({ position: playerPos, radius: 0.5 });
     for (const other of ctx.npcs) {
@@ -622,15 +666,18 @@ export class AlyxNpc implements Damageable, INpc {
         this.tmpNeighbors.push({ position: other.position, radius: other.radius });
       }
     }
-    const steeringOptions = route.targetIsStair
-      ? { maxTargetDistance: 0.55, avoidObstacles: false }
-      : {};
-    return this.steering.steer(
+    const nav = this.navigator.resolve(
+      ctx.navGraph,
       this.mesh.position,
-      route.target,
+      this.desiredTarget,
       this.tmpNeighbors,
-      steeringOptions,
+      ctx.elapsed,
     );
+    if (!nav.shouldMove) {
+      this.wantsMove = false;
+      return this.mesh.position;
+    }
+    return nav.target;
   }
 
   private computeCatchUpMultiplier(

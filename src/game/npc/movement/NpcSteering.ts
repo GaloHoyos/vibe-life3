@@ -16,9 +16,12 @@ export interface NpcSteeringOptions {
   maxTargetDistance?: number;
   /** Desactivar en escaleras: el ray frontal suele ver la propia geometrÃ­a. */
   avoidObstacles?: boolean;
+  /** Limita cuÃ¡nto puede desviarse el steering del target del path. */
+  maxDeviationRadians?: number;
 }
 
 const tmpDir = new Vector3();
+const tmpOriginalDir = new Vector3();
 const tmpAway = new Vector3();
 const tmpSidestep = new Vector3();
 
@@ -57,6 +60,7 @@ export class NpcSteering {
       return desiredTarget.clone();
     }
     tmpDir.divideScalar(distance);
+    tmpOriginalDir.copy(tmpDir);
 
     let pushX = 0;
     let pushZ = 0;
@@ -102,6 +106,22 @@ export class NpcSteering {
       if (len > 0.01) {
         tmpDir.x /= len;
         tmpDir.z /= len;
+      }
+    }
+
+    const maxDeviation = options.maxDeviationRadians;
+    if (maxDeviation !== undefined && maxDeviation < Math.PI) {
+      const dot = Math.max(-1, Math.min(1, tmpDir.dot(tmpOriginalDir)));
+      const minDot = Math.cos(maxDeviation);
+      if (dot < minDot) {
+        tmpDir.multiplyScalar(0.25).addScaledVector(tmpOriginalDir, 0.75);
+        const len = Math.hypot(tmpDir.x, tmpDir.z);
+        if (len > 0.01) {
+          tmpDir.x /= len;
+          tmpDir.z /= len;
+        } else {
+          tmpDir.copy(tmpOriginalDir);
+        }
       }
     }
 

@@ -7,17 +7,10 @@ import type {
 import type { RagdollConfig } from "@engine/animation/ragdoll/RagdollDefinition";
 import type { Faction } from "@engine/ai/Faction";
 import type { PerceptionConfig } from "@engine/ai/Perception";
+import type { CharacterAIProfileId } from "@game/npc/ai/CharacterAIProfile";
 
 export type CharacterType = "humanoid" | "creature" | "robot" | "prop";
 export type CharacterId = string;
-
-/**
- * Discrimina qué clase de NPC instanciar.
- * - `zombieMelee`   — `ZombieNpc`, AI simple melee.
- * - `combineRanged` — `CombineNpc`, armas, cover y perception táctica.
- * - `alyxAlly`      — `AlyxNpc`, aliado del player, follow + combate ranged.
- */
-export type NpcBehaviorKind = "zombieMelee" | "combineRanged" | "alyxAlly";
 
 export interface CharacterMovementConfig {
   maxSpeed: number;
@@ -165,8 +158,8 @@ export interface CharacterDefinition {
   type: CharacterType;
   /** Bando lÃ³gico â€” controla quiÃ©n ataca a quiÃ©n. */
   faction: Faction;
-  /** QuÃ© clase de NPC instancia el factory. */
-  behaviorKind: NpcBehaviorKind;
+  /** Perfil data-driven que define archetype, schedules, sensores y squad. */
+  aiProfileId: CharacterAIProfileId;
   height: number;
   radius: number;
   mass: number;

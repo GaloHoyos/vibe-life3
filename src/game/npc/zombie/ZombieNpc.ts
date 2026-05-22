@@ -14,15 +14,17 @@ import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import { Raycast } from "@engine/physics/Raycast";
 import type {
   ActorSnapshot,
+  AiFrameContext,
   INpc,
   NpcAiDebugSnapshot,
-  NpcUpdateContext,
 } from "@game/npc/core/INpc";
 import { NpcAnimationBridge } from "@game/npc/animation/NpcAnimationBridge";
 import { NpcCombat } from "@game/npc/combat/NpcCombat";
 import { NpcDebugFlags } from "@game/npc/core/NpcDebugFlags";
-import { NpcPathFollower } from "@game/npc/movement/NpcPathFollower";
-import { NpcSteering } from "@game/npc/movement/NpcSteering";
+import { NpcNavigator } from "@game/npc/movement/NpcNavigator";
+import { NpcBrainRuntime } from "@game/npc/ai/NpcBrainRuntime";
+import { getCharacterAIProfile } from "@game/npc/ai/CharacterAIProfiles";
+import type { NpcCondition } from "@game/npc/ai/NpcConditionSet";
 import type { ZombieAiState, ZombieBalanceState } from "./ZombieNpcState";
 
 export interface ZombieNpcOptions {
@@ -60,8 +62,8 @@ export class ZombieNpc implements Damageable, INpc {
   private readonly definition: CharacterDefinition;
   private readonly eventBus: GameEventBus;
   private readonly raycast: Raycast;
-  private readonly steering: NpcSteering;
-  private readonly pathFollower: NpcPathFollower;
+  private readonly navigator: NpcNavigator;
+  private readonly brain: NpcBrainRuntime;
   private readonly targetPosition = new Vector3();
   private readonly heardNoisePosition = new Vector3();
   private readonly lastHitDirection = new Vector3(0, 0, 1);
@@ -82,6 +84,7 @@ export class ZombieNpc implements Damageable, INpc {
   private recoverTimer = 0;
   private deadHandled = false;
   private disposed = false;
+  private currentElapsed = 0;
   private lastWantsMove = false;
   private heardNoiseAge = Infinity;
   private readonly threatScanInterval = 0.18 + Math.random() * 0.12;
@@ -100,8 +103,15 @@ export class ZombieNpc implements Damageable, INpc {
     this.mesh.add(options.visualRoot);
 
     this.raycast = new Raycast(options.physics);
-    this.steering = new NpcSteering(this.raycast);
-    this.pathFollower = new NpcPathFollower(1.2, 3.0, 2.0);
+    this.navigator = new NpcNavigator(this.raycast, {
+      repathInterval: 1.2,
+      repathDistance: 3,
+      arriveDistance: 1.2,
+      stuckRepathTime: 2,
+    });
+    this.brain = new NpcBrainRuntime(
+      getCharacterAIProfile(options.definition.aiProfileId),
+    );
 
     this.motor = new CharacterMotor(options.physics, {
       id: options.id,
@@ -173,13 +183,14 @@ export class ZombieNpc implements Damageable, INpc {
     return this.mesh.position;
   }
 
-  update(ctx: NpcUpdateContext): void {
+  update(ctx: AiFrameContext): void {
     if (this.deadHandled) {
       this.animation.updateStandalone(ctx.delta, { dead: true });
       return;
     }
 
     const delta = ctx.delta;
+    this.currentElapsed = ctx.elapsed;
     this.tickNoiseMemory(delta);
     this.combat.tickCooldown(delta);
 
@@ -204,6 +215,7 @@ export class ZombieNpc implements Damageable, INpc {
     }
 
     this.balanceFsm.update(delta);
+    this.updateBrain(ctx);
     if (this.balanceFsm.getState() === "balanced") {
       this.aiFsm.update(delta);
     }
@@ -323,7 +335,7 @@ export class ZombieNpc implements Damageable, INpc {
     this.currentThreatId = null;
     this.currentThreatDetected = false;
     this.lastMotorTarget = null;
-    this.pathFollower.reset();
+    this.navigator.reset();
     this.aiFsm.setState("dead");
     this.balanceFsm.setState("dead");
     this.motor.disable();
@@ -393,7 +405,7 @@ export class ZombieNpc implements Damageable, INpc {
       threatId: activeThreatId,
       threatPosition: activeThreatId ? this.targetPosition.clone() : null,
       coverId: null,
-      path: this.pathFollower.getDebugSnapshot(),
+      path: this.navigator.getDebugSnapshot(),
       perception: {
         visibleNow: alive && this.currentThreatDetected,
         hasMemory: hasNoiseMemory,
@@ -426,6 +438,7 @@ export class ZombieNpc implements Damageable, INpc {
         meleeAttacking: combat.meleeAttacking,
         cooldownRemaining: combat.cooldownRemaining,
       },
+      brain: this.brain.snapshot(this.currentElapsed),
     };
   }
 
@@ -599,25 +612,56 @@ export class ZombieNpc implements Damageable, INpc {
     this.heardNoiseAge = Infinity;
   }
 
+  private updateBrain(ctx: AiFrameContext): void {
+    const conditions: NpcCondition[] = [];
+    const attackRangeSq =
+      this.definition.attack.range * this.definition.attack.range;
+    const seesEnemy =
+      this.currentThreatId !== null &&
+      this.currentThreatDetected &&
+      this.mesh.position.distanceToSquared(this.targetPosition) <=
+        this.definition.ai.detectionRange * this.definition.ai.detectionRange;
+    const path = this.navigator.getDebugSnapshot();
+
+    if (!this.isAlive()) conditions.push("EnemyDead");
+    if (seesEnemy) conditions.push("SeeEnemy");
+    if (this.hasNoiseMemory()) conditions.push("HeardDanger");
+    if (
+      this.currentThreatId !== null &&
+      this.mesh.position.distanceToSquared(this.targetPosition) <= attackRangeSq
+    ) {
+      conditions.push("InMeleeRange");
+    }
+    if (this.navigator.isDestinationUnreachable()) conditions.push("PathFailed");
+    if (path.lastRepathReason === "stuck-reset") conditions.push("Stuck");
+
+    this.brain.update({
+      delta: ctx.delta,
+      elapsed: ctx.elapsed,
+      conditions,
+      threatId: this.currentThreatId,
+      threatPosition:
+        this.currentThreatId !== null || this.hasNoiseMemory()
+          ? this.targetPosition
+          : null,
+      threatVisible: seesEnemy,
+      threatMemoryAge: this.hasNoiseMemory() ? this.heardNoiseAge : Infinity,
+      squadRole: null,
+      coverId: null,
+      tacticalTarget: this.lastWantsMove ? this.targetPosition : null,
+      stuckReason:
+        path.lastRepathReason === "stuck-reset" ? "stuck-reset" : null,
+    });
+  }
+
   /**
    * Calcula el target real que persigue el motor: A* sobre el NavGraph para
    * rodear paredes/edificios + steering (separación entre zombies y sidestep
    * por raycast frontal para los últimos metros). Mismo pipeline que Combine
    * y Alyx — los zombies no son tácticos, solo dejan de chocarse contra todo.
    */
-  private computeSteeredTarget(ctx: NpcUpdateContext): Vector3 {
+  private computeSteeredTarget(ctx: AiFrameContext): Vector3 {
     if (!this.lastWantsMove) {
-      return this.mesh.position;
-    }
-
-    const route = this.pathFollower.resolve(
-      ctx.navGraph,
-      this.mesh.position,
-      this.targetPosition,
-      ctx.elapsed,
-    );
-    if (!route.shouldMove) {
-      this.lastWantsMove = false;
       return this.mesh.position;
     }
 
@@ -627,18 +671,21 @@ export class ZombieNpc implements Damageable, INpc {
         this.tmpNeighbors.push({ position: other.position, radius: other.radius });
       }
     }
-    const steeringOptions = route.targetIsStair
-      ? { maxTargetDistance: 0.55, avoidObstacles: false }
-      : {};
-    return this.steering.steer(
+    const nav = this.navigator.resolve(
+      ctx.navGraph,
       this.mesh.position,
-      route.target,
+      this.targetPosition,
       this.tmpNeighbors,
-      steeringOptions,
+      ctx.elapsed,
     );
+    if (!nav.shouldMove) {
+      this.lastWantsMove = false;
+      return this.mesh.position;
+    }
+    return nav.target;
   }
 
-  private pickThreat(ctx: NpcUpdateContext): ActorSnapshot | null {
+  private pickThreat(ctx: AiFrameContext): ActorSnapshot | null {
     const candidates: ActorSnapshot[] = [];
     if (
       !NpcDebugFlags.ignorePlayer &&
@@ -666,7 +713,7 @@ export class ZombieNpc implements Damageable, INpc {
     return best;
   }
 
-  private updateThreat(ctx: NpcUpdateContext): ActorSnapshot | null {
+  private updateThreat(ctx: AiFrameContext): ActorSnapshot | null {
     this.currentThreatSnapshot = this.refreshThreatSnapshot(
       ctx,
       this.currentThreatSnapshot,
@@ -690,7 +737,7 @@ export class ZombieNpc implements Damageable, INpc {
   }
 
   private refreshThreatSnapshot(
-    ctx: NpcUpdateContext,
+    ctx: AiFrameContext,
     threat: ActorSnapshot | null,
   ): ActorSnapshot | null {
     if (!threat) {

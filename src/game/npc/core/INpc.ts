@@ -4,8 +4,9 @@ import type { NavGraph } from "@engine/ai/NavGraph";
 import type { Damageable } from "@shared/types/lifecycle";
 import type { Health } from "@game/gameplay/Health";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
-import type { CoverSystem } from "@game/levels/CoverSystem";
-import type { CombatSquadCoordinator } from "@game/npc/combat/CombatSquadCoordinator";
+import type { GameEventBus } from "@game/GameEvents";
+import type { TacticalMap } from "@game/npc/ai/TacticalMap";
+import type { SquadDirector, SquadRole } from "@game/npc/ai/SquadDirector";
 import type { NpcPathDebugSnapshot } from "@game/npc/movement/NpcPathFollower";
 
 /**
@@ -26,16 +27,17 @@ export interface ActorSnapshot {
  * Contexto de mundo que se construye 1Ã— por frame y se pasa a cada NPC.
  * Por convenciÃ³n `npcs` NO incluye al NPC que estÃ¡ corriendo `update`.
  */
-export interface NpcUpdateContext {
+export interface AiFrameContext {
   delta: number;
   elapsed: number;
   aiLod: "near" | "mid" | "far";
   player: ActorSnapshot;
   npcs: ActorSnapshot[];
-  coverSystem: CoverSystem;
+  tacticalMap: TacticalMap;
   navGraph: NavGraph;
-  squad: CombatSquadCoordinator;
+  squadDirector: SquadDirector;
   grenades: GrenadeSystem;
+  eventBus: GameEventBus;
 }
 
 export interface NpcAiDebugSnapshot {
@@ -95,6 +97,7 @@ export interface NpcAiDebugSnapshot {
   };
   tactical?: {
     role?: string;
+    squadRole?: SquadRole;
     flankSide?: 1 | -1;
     suppressionLevel?: number;
     lastDamageAgo?: number;
@@ -102,6 +105,24 @@ export interface NpcAiDebugSnapshot {
     coverPhaseRemaining?: number;
     timeInCover?: number;
     coverSearchCooldownRemaining?: number;
+  };
+  brain?: {
+    schedule: string;
+    previousSchedule: string | null;
+    scheduleElapsed: number;
+    task: string | null;
+    taskIndex: number;
+    activeConditions: string[];
+    threat: {
+      id: string | null;
+      visibleNow: boolean;
+      memoryAge: number;
+      lastKnownPosition: Vector3 | null;
+    };
+    squadRole: SquadRole | null;
+    tacticalTarget: Vector3 | null;
+    coverId: string | null;
+    stuckReason: string | null;
   };
 }
 
@@ -117,7 +138,7 @@ export interface INpc {
   readonly position: Vector3;
   readonly radius: number;
 
-  update(ctx: NpcUpdateContext): void;
+  update(ctx: AiFrameContext): void;
   syncFromPhysics(): void;
   applyDamage(amount: number, hitDirection?: Vector3, hitPartName?: string): void;
   isAlive(): boolean;

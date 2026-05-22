@@ -7,7 +7,7 @@ import { tupleToVector3 } from '@shared/math/VectorTuple';
 import type { GameEventBus } from "@game/GameEvents";
 import { ActionButton, DoorButton, InteractSystem, SlidingDoor } from '@game/gameplay/interactions';
 import { WeaponPickup } from '@game/gameplay/weapons/pickup/WeaponPickup';
-import { CombatSquadCoordinator } from '@game/npc/combat/CombatSquadCoordinator';
+import { SquadDirector } from '@game/npc/ai/SquadDirector';
 import type { INpc } from '@game/npc/core/INpc';
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import { Raycast } from '@engine/physics/Raycast';
@@ -17,7 +17,7 @@ import { createTerrainMesh } from '@engine/render/TerrainMesh';
 import type { MaterialKey } from '@engine/render/material/Materials';
 import { generateHeightField } from '@shared/math/HeightField';
 import type { NavGraph } from '@engine/ai/NavGraph';
-import { CoverSystem } from './CoverSystem';
+import { TacticalMap, TacticalMapAnalyzer } from '@game/npc/ai/TacticalMap';
 import type { LevelDefinition } from './LevelDefinition';
 import { NavGraphBuilder } from './NavGraphBuilder';
 import type { TriggerSystem } from './TriggerSystem';
@@ -26,9 +26,9 @@ export interface LoadedLevel {
   npcs: INpc[];
   doors: SlidingDoor[];
   weaponPickups: WeaponPickup[];
-  coverSystem: CoverSystem;
+  tacticalMap: TacticalMap;
   navGraph: NavGraph;
-  squad: CombatSquadCoordinator;
+  squadDirector: SquadDirector;
 }
 
 /**
@@ -52,8 +52,6 @@ export class LevelLoader {
     const doors: SlidingDoor[] = [];
     const weaponPickups: WeaponPickup[] = [];
     const sharedRaycast = new Raycast(this.physics);
-    const coverSystem = new CoverSystem(sharedRaycast);
-    coverSystem.load(level.coverPoints ?? []);
 
     if (level.terrain) {
       const terrain = level.terrain;
@@ -201,9 +199,14 @@ export class LevelLoader {
       `[LevelLoader] NavGraph: ${navGraph.nodeCount()} nodos generados`,
     );
 
-    const squad = new CombatSquadCoordinator();
+    const tacticalMap = new TacticalMapAnalyzer().analyze(
+      level,
+      navGraph,
+      sharedRaycast,
+    );
+    const squadDirector = new SquadDirector();
 
-    return { npcs, doors, weaponPickups, coverSystem, navGraph, squad };
+    return { npcs, doors, weaponPickups, tacticalMap, navGraph, squadDirector };
   }
 }
 

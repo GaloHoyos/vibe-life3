@@ -32,8 +32,8 @@ import { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
 import { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import { InteractSystem, type SlidingDoor } from "@game/gameplay/interactions";
 import type { NavGraph } from "@engine/ai/NavGraph";
-import type { CoverSystem } from "@game/levels/CoverSystem";
-import type { CombatSquadCoordinator } from "@game/npc/combat/CombatSquadCoordinator";
+import type { TacticalMap } from "@game/npc/ai/TacticalMap";
+import type { SquadDirector } from "@game/npc/ai/SquadDirector";
 import type {
   DynamicBoxDefinition,
   LevelDefinition,
@@ -42,7 +42,7 @@ import type {
 import { LevelLoader } from "@game/levels/LevelLoader";
 import { getLevel, type LevelId } from "@game/levels/LevelRegistry";
 import { TriggerSystem } from "@game/levels/TriggerSystem";
-import type { ActorSnapshot, INpc, NpcUpdateContext } from "@game/npc/core/INpc";
+import type { ActorSnapshot, AiFrameContext, INpc } from "@game/npc/core/INpc";
 import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
 import { DialogueSystem } from "@game/narrative/DialogueSystem";
 import { LevelEvents } from "@game/narrative/LevelEvents";
@@ -82,9 +82,9 @@ export class Game {
   private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
-  private coverSystem: CoverSystem | null = null;
+  private tacticalMap: TacticalMap | null = null;
   private navGraph: NavGraph | null = null;
-  private squad: CombatSquadCoordinator | null = null;
+  private squadDirector: SquadDirector | null = null;
   private pendingExitTimeoutId: number | null = null;
   private actionSpawnSerial = 0;
   private readonly npcContextRadius = 90;
@@ -345,6 +345,52 @@ export class Game {
     });
   }
 
+  /**
+   * Spawn debug: lanza un raycast desde la cámara y crea un Combine en el
+   * primer impacto válido. Si el suelo está demasiado lejos o el rayo no
+   * pega nada, no hace nada (mensaje en la consola).
+   */
+  private async spawnDebugCombineAtAim(): Promise<void> {
+    if (!this.currentLevel) return;
+    const services = this.engine.services;
+    const camera = services.resolve(EngineTokens.Camera);
+    const physics = services.resolve(EngineTokens.Physics);
+    const scene = services.resolve(EngineTokens.Scene);
+    const characters = services.resolve(GameTokens.Characters);
+    const eventBus = services.resolve(GameTokens.EventBus);
+
+    const raycast = new Raycast(physics);
+    const origin = camera.camera.position;
+    const direction = camera.getForwardDirection();
+    const hit = raycast.cast(origin, direction, 100);
+    if (!hit) {
+      eventBus.emit("subtitle.show", {
+        text: "No hay superficie para spawnear Combine.",
+        duration: 1.5,
+      });
+      return;
+    }
+
+    this.actionSpawnSerial += 1;
+    const instanceId = `action-combine-${this.actionSpawnSerial}`;
+    const preset = CharacterPresets.combine ?? CharacterPresets.placeholderHumanoid;
+    const halfExtent = preset.collider.height / 2;
+    const validator = new SpawnValidator(raycast);
+    const validation = validator.validate(hit.point, halfExtent);
+
+    try {
+      const npc = await characters.createNPC("combine", instanceId, validation.position, []);
+      scene.scene.add(npc.mesh);
+      this.npcs.push(npc);
+      eventBus.emit("subtitle.show", {
+        text: "Combine spawneado.",
+        duration: 1.2,
+      });
+    } catch (error) {
+      console.warn("[Game] No se pudo spawnear combine debug:", error);
+    }
+  }
+
   private async spawnWeaponSet(origin: Vector3): Promise<void> {
     this.actionSpawnSerial += 1;
     const services = this.engine.services;
@@ -478,13 +524,17 @@ export class Game {
       player.update(time.delta, input, controls, camera, time.elapsed);
     }
 
+    if (controls.wasPressed("spawnDebugCombine")) {
+      void this.spawnDebugCombineAtAim();
+    }
+
     footsteps.update(time.delta, player.getMoveIntensity());
 
     let playerPosition = player.getPosition();
     this.weaponPickups.forEach((pickup) =>
       pickup.update(time.delta, playerPosition, player.weapons),
     );
-    if (this.coverSystem && this.navGraph && this.squad) {
+    if (this.tacticalMap && this.navGraph && this.squadDirector) {
       const playerSnapshot: ActorSnapshot = {
         id: "player",
         position: playerPosition,
@@ -502,23 +552,24 @@ export class Game {
         radius: npc.radius,
       }));
       const npcIndex = new ActorSpatialIndex(npcSnapshots);
-      const ctx: NpcUpdateContext = {
+      const ctx: AiFrameContext = {
         delta: time.delta,
         elapsed: time.elapsed,
         aiLod: "near",
         player: playerSnapshot,
         npcs: [],
-        coverSystem: this.coverSystem,
+        tacticalMap: this.tacticalMap,
         navGraph: this.navGraph,
-        squad: this.squad,
+        squadDirector: this.squadDirector,
         grenades,
+        eventBus: s.resolve(GameTokens.EventBus),
       };
       this.npcs.forEach((npc) => {
         ctx.aiLod = this.computeNpcAiLod(npc.position, playerPosition);
         ctx.npcs = npcIndex.query(npc.position, this.npcContextRadius, npc.id);
         npc.update(ctx);
       });
-      this.squad.tickAssignments(time.elapsed, null);
+      this.squadDirector.tickAssignments(time.elapsed, null);
     }
     this.doors.forEach((door) => door.update(time.delta));
     physics.step(time.delta);
@@ -540,7 +591,7 @@ export class Game {
     gizmos.update(time.delta);
   }
 
-  private computeNpcAiLod(position: Vector3, playerPosition: Vector3): NpcUpdateContext["aiLod"] {
+  private computeNpcAiLod(position: Vector3, playerPosition: Vector3): AiFrameContext["aiLod"] {
     const distanceSq = position.distanceToSquared(playerPosition);
     if (distanceSq < 55 * 55) {
       return "near";
@@ -697,9 +748,9 @@ export class Game {
     this.npcs = loaded.npcs;
     this.doors = loaded.doors;
     this.weaponPickups = loaded.weaponPickups;
-    this.coverSystem = loaded.coverSystem;
+    this.tacticalMap = loaded.tacticalMap;
     this.navGraph = loaded.navGraph;
-    this.squad = loaded.squad;
+    this.squadDirector = loaded.squadDirector;
 
     this.player = new Player(
       new Vector3(...level.playerStart),

@@ -9,13 +9,23 @@ export interface RampSpec {
    * extremos). No usar `-step-` en otros ids.
    */
   id: string;
-  /** XZ del centro del escalón inferior. */
+  /**
+   * XZ del borde inferior de la rampa (cara de "entrada" del primer escalón).
+   * NO es el centro del escalón inferior: el primer escalón se centra a media
+   * profundidad de su tramo dentro del rango [start, end]. Con `STEP_OVERLAP`,
+   * la cara externa real del primer escalón cae en `start - overlap/2` sobre el
+   * eje de avance.
+   */
   start: [number, number];
-  /** XZ del centro del escalón superior. */
+  /**
+   * XZ del borde superior de la rampa (cara de "salida" del último escalón).
+   * Mismo criterio que `start`: el último escalón llega hasta `end + overlap/2`
+   * sobre el eje de avance.
+   */
   end: [number, number];
-  /** Y de la cara superior del escalón inferior. */
+  /** Y de la superficie superior del primer escalón (donde camina el player al entrar). */
   startY: number;
-  /** Y de la cara superior del escalón superior (debe coincidir con la losa de destino). */
+  /** Y de la superficie superior del último escalón (debe coincidir con la losa de destino). */
   endY: number;
   /** Ancho perpendicular al eje de viaje. */
   width: number;

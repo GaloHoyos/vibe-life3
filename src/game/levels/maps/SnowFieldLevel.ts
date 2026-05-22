@@ -104,16 +104,6 @@ export const SnowFieldLevel: LevelDefinition = {
     { id: 'combine-sf-02', position: [-22, 5, 18], characterId: 'combine' },
     { id: 'combine-sf-03', position: [22, 5, 18], characterId: 'combine' },
   ],
-  coverPoints: [
-    { id: 'cover-house-n', position: [-20, 0.5, 11.5], normal: [0, 0, 1] },
-    { id: 'cover-house-s', position: [-20, 0.5, 18.5], normal: [0, 0, -1] },
-    { id: 'cover-house-e', position: [-16.5, 0.5, 15], normal: [-1, 0, 0] },
-    { id: 'cover-shed-w', position: [21, 2, 20], normal: [1, 0, 0] },
-    { id: 'cover-shed-e', position: [29, 2, 20], normal: [-1, 0, 0] },
-    { id: 'cover-tower-s', position: [-25, 1.5, -17], normal: [0, 0, -1] },
-    { id: 'cover-crate-a', position: [12, 5, -6], normal: [0, 0, 1] },
-    { id: 'cover-crate-b', position: [-10, 4, 9], normal: [1, 0, 0] },
-  ],
   weaponPickups: [
     { id: 'pickup-pistol-sf', weaponId: 'pistol', position: [-5, 6, -2] },
     { id: 'pickup-smg-sf', weaponId: 'smg', position: [-3, 6, -2] },

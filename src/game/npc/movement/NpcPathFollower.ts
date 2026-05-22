@@ -259,6 +259,7 @@ export class NpcPathFollower {
 
   isDestinationUnreachable(): boolean {
     return (
+      this.lastStatus === "empty-start-missing" ||
       this.lastStatus === "empty-goal-missing" ||
       this.lastStatus === "empty-no-route"
     );
@@ -396,7 +397,11 @@ function pathUseReasonForStatus(
   if (pathUsed) return "path";
   if (status === "direct-same-node") return "direct-same-node";
   if (status === "direct-start-missing") return "direct-start-missing";
-  if (status === "empty-goal-missing" || status === "empty-no-route") {
+  if (
+    status === "empty-start-missing" ||
+    status === "empty-goal-missing" ||
+    status === "empty-no-route"
+  ) {
     return "unreachable";
   }
   return status === "ok" ? "final-segment" : "path";

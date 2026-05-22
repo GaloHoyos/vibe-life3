@@ -25,17 +25,20 @@ import type { GameEventBus } from "@game/GameEvents";
 import { Health } from "@game/gameplay/Health";
 import type {
   ActorSnapshot,
+  AiFrameContext,
   INpc,
   NpcAiDebugSnapshot,
-  NpcUpdateContext,
 } from "@game/npc/core/INpc";
 import { NpcDebugFlags } from "@game/npc/core/NpcDebugFlags";
 import { NpcAnimationBridge } from "@game/npc/animation/NpcAnimationBridge";
 import { NpcBarker } from "@game/npc/voice/NpcBarker";
-import { NpcPathFollower } from "@game/npc/movement/NpcPathFollower";
+import { NpcNavigator } from "@game/npc/movement/NpcNavigator";
 import { NpcRangedCombat } from "@game/npc/combat/NpcRangedCombat";
-import { NpcSteering } from "@game/npc/movement/NpcSteering";
 import type { WeaponAttachmentHandle } from "@game/npc/combat/NpcWeaponAttachment";
+import { NpcBrainRuntime } from "@game/npc/ai/NpcBrainRuntime";
+import { getCharacterAIProfile } from "@game/npc/ai/CharacterAIProfiles";
+import type { NpcCondition } from "@game/npc/ai/NpcConditionSet";
+import type { SquadRole } from "@game/npc/ai/SquadDirector";
 import {
   COMBINE_ROLE_TUNING,
   COVER_HIDE_BETWEEN_PEEKS_MIN,
@@ -94,8 +97,8 @@ export class CombineNpc implements Damageable, INpc {
   private readonly animation: NpcAnimationBridge;
   private readonly combat: NpcRangedCombat;
   private readonly perception: Perception;
-  private readonly steering: NpcSteering;
-  private readonly pathFollower = new NpcPathFollower();
+  private readonly navigator: NpcNavigator;
+  private readonly brain: NpcBrainRuntime;
   private readonly barker: NpcBarker;
   private readonly weaponAttachment: WeaponAttachmentHandle | null;
   private readonly weaponHandedness: WeaponHandedness;
@@ -125,7 +128,7 @@ export class CombineNpc implements Damageable, INpc {
   private disposed = false;
   private alertReactionTimer = 0;
   private currentElapsed = 0;
-  private currentCtx: NpcUpdateContext | null = null;
+  private currentCtx: AiFrameContext | null = null;
   private strafeDirection: 1 | -1 = 1;
   private strafeTimer = 0;
   private strafeMoving = false;
@@ -134,8 +137,7 @@ export class CombineNpc implements Damageable, INpc {
   /** Radio (m) en el que un alert de un aliado le interesa a este NPC. */
   private readonly commsRadius = 35;
   /** Role asignado por el squad. Se refresca cada frame en update(). */
-  private currentRole: "solo" | "suppressor" | "flanker" | "coverer" | "charger" =
-    "solo";
+  private currentRole: SquadRole = "leader";
   private flankSide: 1 | -1 = 1;
   private coverPhase: "hide" | "peek" = "hide";
   private coverPhaseTimer = 0;
@@ -180,7 +182,15 @@ export class CombineNpc implements Damageable, INpc {
     this.raycast = new Raycast(options.physics);
     this.blackboard = createBlackboard();
     this.perception = new Perception(options.definition.perception, this.raycast);
-    this.steering = new NpcSteering(this.raycast);
+    this.navigator = new NpcNavigator(this.raycast, {
+      repathInterval: 0.75,
+      repathDistance: 2.6,
+      arriveDistance: 1.35,
+      stuckRepathTime: 2.1,
+    });
+    this.brain = new NpcBrainRuntime(
+      getCharacterAIProfile(options.definition.aiProfileId),
+    );
 
     this.motor = new CharacterMotor(options.physics, {
       id: options.id,
@@ -268,7 +278,7 @@ export class CombineNpc implements Damageable, INpc {
     return this.mesh.position;
   }
 
-  update(ctx: NpcUpdateContext): void {
+  update(ctx: AiFrameContext): void {
     if (this.deadHandled) {
       this.animation.updateStandalone(ctx.delta, { dead: true });
       return;
@@ -305,23 +315,28 @@ export class CombineNpc implements Damageable, INpc {
     }
     this.wasVisiblePrevFrame = visibleNow;
 
-    ctx.squad.report({
+    ctx.squadDirector.report({
       id: this.id,
+      faction: this.faction,
       position: this.mesh.position,
       health01: this.health.current / this.definition.health.maxHealth,
       hasLineOfSight: visibleNow,
       inCover: this.blackboard.currentCoverId !== null,
-      isFlankerCandidate: !this.combat.needsReload(),
+      wantsGrenade: this.definition.attack.grenade?.enabled === true,
+      canFlank: !this.combat.needsReload(),
       threatPosition:
         this.currentThreat?.position.clone() ?? this.perception.getLastKnown(),
     });
     const prevRole = this.currentRole;
-    this.currentRole = ctx.squad.getRole(this.id);
-    this.flankSide = ctx.squad.getFlankSide(this.id);
+    this.currentRole = ctx.squadDirector.getRole(this.id);
+    this.flankSide = ctx.squadDirector.getFlankSide(this.id);
     if (prevRole !== this.currentRole) {
       if (this.currentRole === "flanker") {
         this.barker.say("flanking", ctx.elapsed);
-      } else if (this.currentRole === "charger") {
+      } else if (
+        this.currentRole === "assault" ||
+        this.currentRole === "grenadier"
+      ) {
         this.barker.say("advancing", ctx.elapsed);
       }
     }
@@ -331,6 +346,7 @@ export class CombineNpc implements Damageable, INpc {
       this.blackboard.suppressionLevel - ctx.delta * 0.5,
     );
 
+    this.updateBrain(ctx);
     this.fsm.update(ctx.delta);
     this.updateAimingPose();
     this.updateAnimationActivity();
@@ -442,7 +458,7 @@ export class CombineNpc implements Damageable, INpc {
     this.wantsMove = false;
     this.currentThreat = null;
     this.lastMotorTarget = null;
-    this.pathFollower.reset();
+    this.navigator.reset();
 
     const rangedWeaponId = this.definition.attack.ranged?.weaponId;
     if (this.weaponAttachment && rangedWeaponId) {
@@ -478,7 +494,7 @@ export class CombineNpc implements Damageable, INpc {
     for (const unsub of this.unsubscribers) unsub();
     this.unsubscribers.length = 0;
     this.releaseCover();
-    this.currentCtx?.squad.unregister(this.id);
+    this.currentCtx?.squadDirector.unregister(this.id);
     this.weaponAttachment?.detach();
     this.motor.disable();
     this.animation.disable();
@@ -515,7 +531,7 @@ export class CombineNpc implements Damageable, INpc {
       threatPosition:
         alive && this.currentThreat ? this.currentThreat.position.clone() : null,
       coverId: alive ? this.blackboard.currentCoverId : null,
-      path: this.pathFollower.getDebugSnapshot(),
+      path: this.navigator.getDebugSnapshot(),
       perception: {
         ...perception,
         timeSinceLastSeen: this.blackboard.timeSinceLastSeen,
@@ -553,6 +569,7 @@ export class CombineNpc implements Damageable, INpc {
       },
       tactical: {
         role: this.currentRole,
+        squadRole: this.currentRole,
         flankSide: this.flankSide,
         suppressionLevel: this.blackboard.suppressionLevel,
         lastDamageAgo,
@@ -566,6 +583,7 @@ export class CombineNpc implements Damageable, INpc {
           this.coverSearchCooldownUntil - this.currentElapsed,
         ),
       },
+      brain: this.brain.snapshot(this.currentElapsed),
     };
   }
 
@@ -785,12 +803,36 @@ export class CombineNpc implements Damageable, INpc {
         }
         const coverId = this.blackboard.currentCoverId;
         if (!coverId) {
+          if (
+            this.currentCtx &&
+            this.currentElapsed >= this.coverSearchCooldownUntil
+          ) {
+            const best = this.currentCtx.tacticalMap.findBestCover(
+              this.id,
+              this.mesh.position,
+              threat.position,
+              25,
+              (position) =>
+                this.currentCtx?.navGraph.pathDistance(
+                  this.mesh.position,
+                  position,
+                ) ?? null,
+              (candidateId) => this.canUseCoverCandidate(candidateId),
+            );
+            if (best && this.currentCtx.tacticalMap.claim(best.id, this.id)) {
+              this.blackboard.currentCoverId = best.id;
+              this.desiredTarget.copy(best.position);
+              this.wantsMove = true;
+              return;
+            }
+            this.coverSearchCooldownUntil = this.currentElapsed + 4;
+          }
           fsm.setState("engage", "no cover disponible");
           return;
         }
         const coverStillBlocks =
           this.currentCtx !== null &&
-          this.currentCtx.coverSystem.isStillValid(
+          this.currentCtx.tacticalMap.isStillValid(
             coverId,
             this.id,
             threat.position,
@@ -841,7 +883,7 @@ export class CombineNpc implements Damageable, INpc {
         const coverStillBlocks =
           this.blackboard.currentCoverId !== null &&
           this.currentCtx !== null &&
-          this.currentCtx.coverSystem.isStillValid(
+          this.currentCtx.tacticalMap.isStillValid(
             this.blackboard.currentCoverId,
             this.id,
             threat.position,
@@ -998,6 +1040,41 @@ export class CombineNpc implements Damageable, INpc {
   // Helpers
   // ---------------------------------------------------------------------------
 
+  private updateBrain(ctx: AiFrameContext): void {
+    const conditions: NpcCondition[] = [];
+    const visible = this.perception.isVisibleNow();
+    const hasMemory = this.perception.hasRecentMemory();
+    const healthRatio = this.health.current / this.definition.health.maxHealth;
+    const tuning = COMBINE_ROLE_TUNING[this.currentRole];
+    const path = this.navigator.getDebugSnapshot();
+
+    if (!this.isAlive()) conditions.push("EnemyDead");
+    if (visible) conditions.push("SeeEnemy");
+    if (!visible && hasMemory) conditions.push("LostEnemy");
+    if (healthRatio < tuning.coverHealthThreshold) conditions.push("LowHealth");
+    if (this.combat.needsReload()) conditions.push("NeedsReload");
+    if (this.blackboard.currentCoverId) conditions.push("HasCover");
+    if (this.navigator.isDestinationUnreachable()) conditions.push("PathFailed");
+    if (path.lastRepathReason === "stuck-reset") conditions.push("Stuck");
+    if (this.currentRole !== "leader") conditions.push("SquadOrder");
+
+    this.brain.update({
+      delta: ctx.delta,
+      elapsed: ctx.elapsed,
+      conditions,
+      threatId: this.currentThreat?.id ?? null,
+      threatPosition:
+        this.currentThreat?.position ?? this.perception.getLastKnown(),
+      threatVisible: visible,
+      threatMemoryAge: this.perception.getMemoryAge(),
+      squadRole: this.currentRole,
+      coverId: this.blackboard.currentCoverId,
+      tacticalTarget: this.wantsMove ? this.desiredTarget : null,
+      stuckReason:
+        path.lastRepathReason === "stuck-reset" ? "stuck-reset" : null,
+    });
+  }
+
   /**
    * Decide si el NPC estÃ¡ actualmente "apuntando con el arma" (manos
    * agarrando, body alineado con el threat) y se lo dice al bridge para
@@ -1123,7 +1200,7 @@ export class CombineNpc implements Damageable, INpc {
     }
     if (
       this.currentRole !== "suppressor" &&
-      this.currentRole !== "coverer" &&
+      this.currentRole !== "cover" &&
       this.blackboard.suppressionLevel < 0.9
     ) {
       return false;
@@ -1147,7 +1224,7 @@ export class CombineNpc implements Damageable, INpc {
   private hasAllyNear(
     position: Vector3,
     radius: number,
-    ctx: NpcUpdateContext,
+    ctx: AiFrameContext,
   ): boolean {
     const radiusSq = radius * radius;
     if (isAlliedWith(this.faction, ctx.player.faction)) {
@@ -1201,7 +1278,7 @@ export class CombineNpc implements Damageable, INpc {
 
   private releaseCover(): void {
     if (this.blackboard.currentCoverId && this.currentCtx) {
-      this.currentCtx.coverSystem.release(this.blackboard.currentCoverId, this.id);
+      this.currentCtx.tacticalMap.release(this.blackboard.currentCoverId, this.id);
     }
     this.blackboard.currentCoverId = null;
   }
@@ -1232,7 +1309,7 @@ export class CombineNpc implements Damageable, INpc {
     return false;
   }
 
-  private updateThreatSense(ctx: NpcUpdateContext): void {
+  private updateThreatSense(ctx: AiFrameContext): void {
     this.currentThreat = this.refreshThreatSnapshot(ctx, this.currentThreat);
     const needsScan =
       ctx.elapsed >= this.nextThreatScanAt ||
@@ -1262,7 +1339,7 @@ export class CombineNpc implements Damageable, INpc {
   }
 
   private refreshThreatSnapshot(
-    ctx: NpcUpdateContext,
+    ctx: AiFrameContext,
     threat: ActorSnapshot | null,
   ): ActorSnapshot | null {
     if (!threat) {
@@ -1274,7 +1351,7 @@ export class CombineNpc implements Damageable, INpc {
     return ctx.npcs.find((npc) => npc.id === threat.id && npc.isAlive) ?? null;
   }
 
-  private pickThreat(ctx: NpcUpdateContext): ActorSnapshot | null {
+  private pickThreat(ctx: AiFrameContext): ActorSnapshot | null {
     const candidates: ActorSnapshot[] = [];
     if (
       !NpcDebugFlags.ignorePlayer &&
@@ -1321,7 +1398,7 @@ export class CombineNpc implements Damageable, INpc {
     return best;
   }
 
-  private computeSteeredTarget(ctx: NpcUpdateContext): Vector3 {
+  private computeSteeredTarget(ctx: AiFrameContext): Vector3 {
     const fsmState = this.fsm.getState();
     const threat = this.currentThreat;
 
@@ -1330,7 +1407,7 @@ export class CombineNpc implements Damageable, INpc {
       this.blackboard.currentCoverId === null &&
       threat
     ) {
-      const best = ctx.coverSystem.findBestCover(
+      const best = ctx.tacticalMap.findBestCover(
         this.id,
         this.mesh.position,
         threat.position,
@@ -1338,7 +1415,7 @@ export class CombineNpc implements Damageable, INpc {
         (position) => ctx.navGraph.pathDistance(this.mesh.position, position),
         (coverId) => this.canUseCoverCandidate(coverId),
       );
-      if (best && ctx.coverSystem.claim(best.id, this.id)) {
+      if (best && ctx.tacticalMap.claim(best.id, this.id)) {
         this.blackboard.currentCoverId = best.id;
         this.desiredTarget.copy(best.position);
       } else {
@@ -1351,25 +1428,11 @@ export class CombineNpc implements Damageable, INpc {
       (fsmState === "takeCover" || fsmState === "coverFire") &&
       this.blackboard.currentCoverId
     ) {
-      const cover = ctx.coverSystem.getCoverPosition(this.blackboard.currentCoverId);
+      const cover = ctx.tacticalMap.getCoverPosition(this.blackboard.currentCoverId);
       if (cover) this.desiredTarget.copy(cover);
     }
 
     if (!this.wantsMove) {
-      return this.mesh.position;
-    }
-
-    const route = this.pathFollower.resolve(
-      ctx.navGraph,
-      this.mesh.position,
-      this.desiredTarget,
-      ctx.elapsed,
-    );
-    if (!route.shouldMove) {
-      if (fsmState === "takeCover" && this.blackboard.currentCoverId) {
-        this.invalidateCover(this.blackboard.currentCoverId);
-      }
-      this.wantsMove = false;
       return this.mesh.position;
     }
 
@@ -1379,15 +1442,22 @@ export class CombineNpc implements Damageable, INpc {
         this.tmpNeighbors.push({ position: other.position, radius: other.radius });
       }
     }
-    const steeringOptions = route.targetIsStair
-      ? { maxTargetDistance: 0.55, avoidObstacles: false }
-      : {};
-    return this.steering.steer(
+    const nav = this.navigator.resolve(
+      ctx.navGraph,
       this.mesh.position,
-      route.target,
+      this.desiredTarget,
       this.tmpNeighbors,
-      steeringOptions,
+      ctx.elapsed,
     );
+    if (!nav.shouldMove) {
+      if (fsmState === "takeCover" && this.blackboard.currentCoverId) {
+        this.invalidateCover(this.blackboard.currentCoverId);
+      }
+      this.wantsMove = false;
+      return this.mesh.position;
+    }
+
+    return nav.target;
   }
 
   private eyePosition(): Vector3 {
