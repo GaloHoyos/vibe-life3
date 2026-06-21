@@ -144,6 +144,16 @@ export abstract class Weapon {
       origin: fireContext.origin,
       direction: fireContext.direction,
       range: this.definition.range,
+      sourceId: "player",
+      sourceKind: "player",
+      sourceFaction: "player",
+    });
+    this.context.eventBus.emit("world.noise", {
+      kind: this.definition.type === "melee" ? "impact" : "gunshot",
+      position: fireContext.origin.clone(),
+      radius: noiseRadiusForWeapon(this.definition.type, this.definition.range),
+      sourceId: "player",
+      sourceFaction: "player",
     });
     this.performFire(fireContext);
     this.emitAmmoChanged();
@@ -205,4 +215,14 @@ export abstract class Weapon {
   onUnequip(): void {}
 
   protected abstract performFire(context: WeaponFireContext): void;
+}
+
+function noiseRadiusForWeapon(type: WeaponDefinition["type"], range: number): number {
+  if (type === "melee" || type === "special") {
+    return 7;
+  }
+  if (type === "grenade") {
+    return 18;
+  }
+  return Math.max(24, Math.min(range * 0.6, 55));
 }

@@ -50,6 +50,7 @@ export class CharacterMotor extends KinematicCharacterBase {
   private readonly desiredVelocity = new Vector3();
   private readonly forward = new Vector3(0, 0, 1);
   private readonly tmpDirection = new Vector3();
+  private readonly tmpFacing = new Vector3();
   private readonly tmpRotation = new Quaternion();
   private distanceToTarget = Number.POSITIVE_INFINITY;
   private yaw = 0;
@@ -64,10 +65,16 @@ export class CharacterMotor extends KinematicCharacterBase {
     super(physics, motorBaseOptions(physics, config));
   }
 
+  /**
+   * @param facingTarget Si se provee, el body apunta el yaw hacia este punto
+   * y la velocidad se computa directamente hacia `targetPosition` (strafe).
+   * Si es null, el body mira hacia donde camina (comportamiento por defecto).
+   */
   update(
     delta: number,
     targetPosition: Vector3 | null,
     wantsMove: boolean,
+    facingTarget: Vector3 | null = null,
   ): void {
     if (!this.enabled) {
       return;
@@ -83,12 +90,20 @@ export class CharacterMotor extends KinematicCharacterBase {
     directionToTarget.y = 0;
     this.distanceToTarget = directionToTarget.length();
 
+    const directionToFace = this.tmpFacing;
+    if (facingTarget) {
+      directionToFace.copy(facingTarget).sub(position);
+      directionToFace.y = 0;
+    } else {
+      directionToFace.copy(directionToTarget);
+    }
+
     if (
-      directionToTarget.lengthSq() >
+      directionToFace.lengthSq() >
       this.config.faceTargetDeadzone * this.config.faceTargetDeadzone
     ) {
-      directionToTarget.normalize();
-      this.targetYaw = Math.atan2(directionToTarget.x, directionToTarget.z);
+      directionToFace.normalize();
+      this.targetYaw = Math.atan2(directionToFace.x, directionToFace.z);
       const turnLambda =
         this.config.turnSpeed * Math.max(0.15, 1 - this.config.rotationSmoothing);
       this.yaw = dampAngle(this.yaw, this.targetYaw, turnLambda, delta);
@@ -97,25 +112,35 @@ export class CharacterMotor extends KinematicCharacterBase {
     this.forward.set(Math.sin(this.yaw), 0, Math.cos(this.yaw)).normalize();
 
     if (wantsMove) {
-      const facingDot = targetPosition
-        ? MathUtils.clamp(this.forward.dot(directionToTarget), -1, 1)
-        : 1;
-      const angleToTarget = Math.acos(facingDot);
-      const facingSpeedFactor = MathUtils.smoothstep(
-        facingDot,
-        this.config.minMoveFacingDot,
-        1,
-      );
-      const turnSlowdown =
-        angleToTarget > this.config.turnBeforeMoveAngle ? 0.35 : 1;
-      this.desiredVelocity
-        .copy(this.forward)
-        .multiplyScalar(
-          this.config.maxSpeed *
-            this.speedMultiplier *
-            facingSpeedFactor *
-            turnSlowdown,
+      if (facingTarget && directionToTarget.lengthSq() > 0.0001) {
+        directionToTarget.normalize();
+        this.desiredVelocity
+          .copy(directionToTarget)
+          .multiplyScalar(this.config.maxSpeed * this.speedMultiplier);
+      } else {
+        if (directionToTarget.lengthSq() > 0.0001) {
+          directionToTarget.normalize();
+        }
+        const facingDot = targetPosition
+          ? MathUtils.clamp(this.forward.dot(directionToTarget), -1, 1)
+          : 1;
+        const angleToTarget = Math.acos(facingDot);
+        const facingSpeedFactor = MathUtils.smoothstep(
+          facingDot,
+          this.config.minMoveFacingDot,
+          1,
         );
+        const turnSlowdown =
+          angleToTarget > this.config.turnBeforeMoveAngle ? 0.35 : 1;
+        this.desiredVelocity
+          .copy(this.forward)
+          .multiplyScalar(
+            this.config.maxSpeed *
+              this.speedMultiplier *
+              facingSpeedFactor *
+              turnSlowdown,
+          );
+      }
     } else {
       this.desiredVelocity.set(0, 0, 0);
     }

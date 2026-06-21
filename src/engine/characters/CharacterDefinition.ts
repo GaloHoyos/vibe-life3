@@ -6,18 +6,28 @@ import type {
 } from "@engine/animation/procedural/ProceduralWalk";
 import type { RagdollConfig } from "@engine/animation/ragdoll/RagdollDefinition";
 import type { Faction } from "@engine/ai/Faction";
-import type { PerceptionConfig } from "@engine/ai/Perception";
 
 export type CharacterType = "humanoid" | "creature" | "robot" | "prop";
 export type CharacterId = string;
 
 /**
- * Discrimina qué clase de NPC instanciar.
- * - `zombieMelee`   — `ZombieNpc`, AI simple melee.
- * - `combineRanged` — `CombineNpc`, armas, cover y perception táctica.
- * - `alyxAlly`      — `AlyxNpc`, aliado del player, follow + combate ranged.
+ * Identifica la familia de comportamiento del NPC. La factory de game lo
+ * mapea a un preset v2 (`game/npc/presets/`).
  */
-export type NpcBehaviorKind = "zombieMelee" | "combineRanged" | "alyxAlly";
+export type CharacterAIProfileId =
+  | "combineSoldier"
+  | "zombieMelee"
+  | "alyxSupport"
+  | "passiveHumanoid";
+
+/** Configuracion de sentidos declarada por el personaje. */
+export interface CharacterPerceptionConfig {
+  viewDistance: number;
+  viewConeRadians: number;
+  hearingRadius: number;
+  memoryDuration: number;
+  eyeHeight: number;
+}
 
 export interface CharacterMovementConfig {
   maxSpeed: number;
@@ -121,6 +131,20 @@ export interface CharacterRangedAttackConfig {
   reactionTime: number;
 }
 
+export interface CharacterGrenadeTacticConfig {
+  enabled: boolean;
+  cooldown: number;
+  minRange: number;
+  maxRange: number;
+  damage: number;
+  radius: number;
+  impulse: number;
+  fuseSeconds: number;
+  launchSpeed: number;
+  launchLift: number;
+  flushAfterMemoryAge: number;
+}
+
 export interface CharacterAttackConfig {
   enabled: boolean;
   type: CharacterAttackType;
@@ -134,6 +158,7 @@ export interface CharacterAttackConfig {
   facingDotThreshold: number;
   /** SÃ³lo presente para `type: 'ranged'`. */
   ranged?: CharacterRangedAttackConfig;
+  grenade?: CharacterGrenadeTacticConfig;
 }
 
 export interface CharacterStumbleConfig {
@@ -150,8 +175,8 @@ export interface CharacterDefinition {
   type: CharacterType;
   /** Bando lÃ³gico â€” controla quiÃ©n ataca a quiÃ©n. */
   faction: Faction;
-  /** QuÃ© clase de NPC instancia el factory. */
-  behaviorKind: NpcBehaviorKind;
+  /** Familia de comportamiento — la factory lo mapea a un preset v2. */
+  aiProfileId: CharacterAIProfileId;
   height: number;
   radius: number;
   mass: number;
@@ -165,7 +190,7 @@ export interface CharacterDefinition {
   collider: CharacterColliderConfig;
   ai: CharacterAIConfig;
   /** VisiÃ³n + LOS + memoria. SÃ³lo usado por `combineRanged` y `alyxAlly`. */
-  perception: PerceptionConfig;
+  perception: CharacterPerceptionConfig;
   attack: CharacterAttackConfig;
   stumble: CharacterStumbleConfig;
   debug: boolean;

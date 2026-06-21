@@ -256,6 +256,7 @@ export class ShotgunWeapon extends Weapon {
         damage,
         dir.clone(),
         hit.metadata?.bodyPart?.name,
+        "player",
       );
 
       this.context.eventBus.emit("weapon.hit", {
@@ -265,6 +266,9 @@ export class ShotgunWeapon extends Weapon {
         point: hit.point,
         normal: hit.normal,
         damage,
+        sourceId: "player",
+        sourceKind: "player",
+        sourceFaction: "player",
       });
     }
   }
@@ -292,6 +296,16 @@ export class ShotgunWeapon extends Weapon {
       origin,
       direction,
       range: this.definition.range,
+      sourceId: "player",
+      sourceKind: "player",
+      sourceFaction: "player",
+    });
+    this.context.eventBus.emit("world.noise", {
+      kind: "gunshot",
+      position: origin.clone(),
+      radius: Math.max(24, Math.min(this.definition.range * 0.6, 55)),
+      sourceId: "player",
+      sourceFaction: "player",
     });
   }
 }

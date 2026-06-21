@@ -49,7 +49,11 @@
       "PowerShell(npx tsc --noEmit; \"exit=$LASTEXITCODE\")",
       "PowerShell(Get-ChildItem -Recurse src -File | Where-Object { $_.Extension -in @\\('.ts', '.html', '.css'\\) } | Group-Object Directory | ForEach-Object { Write-Output \"\"; Write-Output \"=== $\\($_.Name\\) ===\"; $_.Group | ForEach-Object { Write-Output $_.Name } })",
       "PowerShell(& '.\\\\scripts\\\\rewrite-imports.ps1')",
-      "PowerShell(npm ls *)"
+      "PowerShell(npm ls *)",
+      "Bash(echo \"exit code: $?\")",
+      "Bash(powershell -Command \"npx tsc --noEmit; if \\(\\\\$?\\) { Write-Output 'OK' } else { Write-Output 'FAIL' }\")",
+      "Bash(echo \"exit=$?\")",
+      "PowerShell(node \"C:\\\\Users\\\\galoh\\\\AppData\\\\Local\\\\Temp\\\\verify-ai\\\\diag-bt2.cjs\")"
     ],
     "deny": [
       "PowerShell(git push --force *)",

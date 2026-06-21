@@ -42,6 +42,7 @@ export class HitscanWeapon extends Weapon {
       this.definition.damage * damageMultiplier,
       direction.clone(),
       hit.metadata?.bodyPart?.name,
+      "player",
     );
 
     this.context.eventBus.emit("weapon.hit", {
@@ -51,6 +52,9 @@ export class HitscanWeapon extends Weapon {
       point: hit.point,
       normal: hit.normal,
       damage: this.definition.damage * damageMultiplier,
+      sourceId: "player",
+      sourceKind: "player",
+      sourceFaction: "player",
     });
   }
 

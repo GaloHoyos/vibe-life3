@@ -8,16 +8,26 @@ export interface CombatTickContext {
   npcPosition: Vector3;
   npcForward: Vector3;
   targetPosition: Vector3;
-  player: Damageable;
+  target: Damageable;
+  /** Id del actor target — el LOS valida que el primer hit sea ese actor. */
+  targetId: string;
   balanceLocked: boolean;
+}
+
+export interface MeleeCombatSnapshot {
+  meleeReady: boolean;
+  meleeAttacking: boolean;
+  cooldownRemaining: number;
+  attackElapsed: number;
+  damageApplied: boolean;
 }
 
 /**
  * Componente de combate del NPC.
  *
- * Encapsula cooldown, windup, hit-window, line-of-sight y aplicaciÃ³n
- * de daÃ±o al jugador. El NPC lo posee por composiciÃ³n y decide cuÃ¡ndo
- * iniciarlo; el combat se encarga del resto.
+ * Encapsula cooldown, windup, hit-window, line-of-sight y aplicación
+ * de daño al target (player u otro NPC hostil). El NPC lo posee por
+ * composición y decide cuándo iniciarlo; el combat se encarga del resto.
  */
 export class NpcCombat {
   private cooldown = 0;
@@ -62,6 +72,16 @@ export class NpcCombat {
   /** True mientras la animaciÃ³n de ataque (windup+hitWindow) siga activa. */
   isAttacking(): boolean {
     return this.inAttack;
+  }
+
+  snapshot(): MeleeCombatSnapshot {
+    return {
+      meleeReady: this.isReady(),
+      meleeAttacking: this.inAttack,
+      cooldownRemaining: this.cooldown,
+      attackElapsed: this.elapsedInAttack,
+      damageApplied: this.damageApplied,
+    };
   }
 
   /** Cancela el ataque en curso (e.g. por stumble/fallen). El cooldown se mantiene. */
@@ -114,9 +134,9 @@ export class NpcCombat {
 
     const directionToTarget = directionTo(ctx.npcPosition, ctx.targetPosition);
     const attack = this.definition.attack;
-    ctx.player.applyDamage(attack.damage, directionToTarget);
+    ctx.target.applyDamage(attack.damage, directionToTarget, undefined, this.id);
 
-    const knockbackReceiver = ctx.player as {
+    const knockbackReceiver = ctx.target as {
       applyKnockback?: (direction: Vector3, strength: number) => void;
     };
     if (attack.knockback > 0 && knockbackReceiver.applyKnockback) {
@@ -129,7 +149,7 @@ export class NpcCombat {
   }
 
   private canHit(ctx: CombatTickContext): boolean {
-    if (!ctx.player.isAlive() || ctx.balanceLocked) {
+    if (!ctx.target.isAlive() || ctx.balanceLocked) {
       return false;
     }
 
@@ -149,7 +169,7 @@ export class NpcCombat {
 
     if (
       attack.requireLineOfSight &&
-      !this.hasLineOfSight(ctx.npcPosition, directionToTarget, Math.sqrt(distanceSq))
+      !this.hasLineOfSight(ctx.npcPosition, directionToTarget, Math.sqrt(distanceSq), ctx.targetId)
     ) {
       this.logDebug("attack failed: line of sight");
       return false;
@@ -162,12 +182,15 @@ export class NpcCombat {
     npcPosition: Vector3,
     direction: Vector3,
     distance: number,
+    targetId: string,
   ): boolean {
     const origin = npcPosition
       .clone()
       .add(new Vector3(0, this.definition.perception.eyeHeight, 0));
     const hit = this.raycast.cast(origin, direction, distance + 0.2);
-    return hit?.metadata?.id === "player";
+    // El golpe vale si lo primero en la linea es el propio target — con
+    // "player" hardcodeado, el melee nunca conectaba contra otros NPCs.
+    return hit?.metadata?.id === targetId;
   }
 
   private logDebug(message: string): void {

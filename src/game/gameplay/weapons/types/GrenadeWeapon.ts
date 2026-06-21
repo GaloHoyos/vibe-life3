@@ -122,6 +122,16 @@ export class GrenadeWeapon extends Weapon {
       origin,
       direction,
       range: this.definition.range,
+      sourceId: "player",
+      sourceKind: "player",
+      sourceFaction: "player",
+    });
+    this.context.eventBus.emit("world.noise", {
+      kind: "movement",
+      position: origin.clone(),
+      radius: 10,
+      sourceId: "player",
+      sourceFaction: "player",
     });
   }
 
@@ -144,6 +154,8 @@ export class GrenadeWeapon extends Weapon {
       radius: this.definition.range,
       impulse: this.definition.impulse,
       ownerKind: "player",
+      sourceId: "player",
+      sourceFaction: "player",
       weaponName: this.name,
       now,
     });

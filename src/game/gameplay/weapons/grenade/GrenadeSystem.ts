@@ -23,7 +23,7 @@ const FUSE_HARD_TIMEOUT_BUFFER = 1.5;
 const INITIAL_BEEP_INTERVAL = 0.6;
 const MIN_BEEP_INTERVAL = 0.12;
 const BEEP_INTERVAL_DECAY = 0.78;
-const GRENADE_RADIUS = 0.08;
+const GRENADE_RADIUS = 0.11;
 const GRENADE_DENSITY = 800;
 const GRENADE_RESTITUTION = 0.18;
 const GRENADE_FRICTION = 1.8;
@@ -72,7 +72,9 @@ export class GrenadeSystem implements Disposable {
     private readonly raycast: Raycast,
     private readonly eventBus: GameEventBus,
     private readonly positionalSounds: PositionalSoundManager,
-  ) {}
+  ) {
+    void this.assets.loadModel("grenadePrimed");
+  }
 
   spawn(options: GrenadeSpawnOptions): void {
     const body = this.createBody(options);
@@ -108,6 +110,8 @@ export class GrenadeSystem implements Disposable {
       nextBeepAt: now + INITIAL_BEEP_INTERVAL * 0.5,
       beepCount: 0,
       ownerKind: options.ownerKind,
+      sourceId: options.sourceId,
+      sourceFaction: options.sourceFaction,
       weaponName: options.weaponName,
       exploded: false,
     };
@@ -213,6 +217,16 @@ export class GrenadeSystem implements Disposable {
       rolloffFactor: 1.1,
       volume: 1,
     });
+    this.eventBus.emit("world.noise", {
+      kind: "explosion",
+      position: point.clone(),
+      radius: Math.max(24, grenade.radius * 12),
+      sourceId:
+        grenade.sourceId ?? (grenade.ownerKind === "player" ? "player" : undefined),
+      sourceFaction:
+        grenade.sourceFaction ??
+        (grenade.ownerKind === "player" ? "player" : undefined),
+    });
 
     const sphere = new RAPIER.Ball(grenade.radius);
     const seenColliders = new Set<number>();
@@ -282,6 +296,7 @@ export class GrenadeSystem implements Disposable {
         target.damage,
         target.direction.clone(),
         target.bodyPartName,
+        grenade.sourceId,
       );
       this.eventBus.emit("weapon.hit", {
         weaponName: grenade.weaponName,
@@ -290,6 +305,9 @@ export class GrenadeSystem implements Disposable {
         point: point.clone(),
         normal: target.direction.clone(),
         damage: target.damage,
+        sourceId: grenade.sourceId,
+        sourceKind: grenade.ownerKind,
+        sourceFaction: grenade.sourceFaction,
       });
     });
 
@@ -372,7 +390,8 @@ export class GrenadeSystem implements Disposable {
       .setTranslation(options.origin.x, options.origin.y, options.origin.z)
       .setLinvel(options.velocity.x, options.velocity.y, options.velocity.z)
       .setAngularDamping(GRENADE_ANGULAR_DAMPING)
-      .setLinearDamping(GRENADE_LINEAR_DAMPING);
+      .setLinearDamping(GRENADE_LINEAR_DAMPING)
+      .setCcdEnabled(true);
     const body = this.physics.world.createRigidBody(desc);
     const colliderDesc = RAPIER.ColliderDesc.ball(GRENADE_RADIUS)
       .setDensity(GRENADE_DENSITY)

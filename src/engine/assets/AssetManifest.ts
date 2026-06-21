@@ -9,6 +9,10 @@ const gravityGunUrl = new URL('../../models/weapons/gravitygun.glb', import.meta
 const shotgunUrl = new URL('../../models/weapons/shotgun.glb', import.meta.url).href;
 const grenadeUrl = new URL('../../models/weapons/grenade.glb', import.meta.url).href;
 const grenadePrimedUrl = new URL('../../models/weapons/grenade-primed.glb', import.meta.url).href;
+const medkitUrl = new URL('../../models/items/medkit.glb', import.meta.url).href;
+const hevBatteryUrl = new URL('../../models/items/hev-battery.glb', import.meta.url).href;
+const healthChargerUrl = new URL('../../models/items/health-charger.glb', import.meta.url).href;
+const hevChargerUrl = new URL('../../models/items/hev-charger.glb', import.meta.url).href;
 
 export type ModelAssetType = 'character' | 'weapon' | 'prop' | 'environment' | 'generated';
 
@@ -86,6 +90,30 @@ export const AssetManifest = {
     grenadePrimed: {
       id: 'grenadePrimed',
       path: grenadePrimedUrl,
+      type: 'prop',
+      debug: false,
+    },
+    medkit: {
+      id: 'medkit',
+      path: medkitUrl,
+      type: 'prop',
+      debug: false,
+    },
+    hevBattery: {
+      id: 'hevBattery',
+      path: hevBatteryUrl,
+      type: 'prop',
+      debug: false,
+    },
+    healthCharger: {
+      id: 'healthCharger',
+      path: healthChargerUrl,
+      type: 'prop',
+      debug: false,
+    },
+    hevCharger: {
+      id: 'hevCharger',
+      path: hevChargerUrl,
       type: 'prop',
       debug: false,
     },

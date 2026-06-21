@@ -7,6 +7,7 @@ export class InteractSystem {
   private readonly interactables: Interactable[] = [];
   private readonly raycaster = new Raycaster();
   private current: Interactable | null = null;
+  private held: Interactable | null = null;
 
   constructor(private readonly eventBus: GameEventBus) {}
 
@@ -14,7 +15,14 @@ export class InteractSystem {
     this.interactables.push(interactable);
   }
 
-  update(cameraPosition: Vector3, cameraDirection: Vector3, controls: Controls): void {
+  /** Vacía el registro (al recargar nivel) — evita interactables huérfanos. */
+  clear(): void {
+    this.endHeld();
+    this.interactables.length = 0;
+    this.current = null;
+  }
+
+  update(delta: number, cameraPosition: Vector3, cameraDirection: Vector3, controls: Controls): void {
     this.raycaster.set(cameraPosition, cameraDirection);
     this.raycaster.far = 4;
     const objects = this.interactables.map((interactable) => interactable.object);
@@ -46,6 +54,19 @@ export class InteractSystem {
     if (this.current && controls.wasPressed("interact")) {
       this.current.interact();
     }
+
+    const holding =
+      this.current && controls.isDown("interact") ? this.current : null;
+    if (this.held && this.held !== holding) {
+      this.held.interactEnd?.();
+    }
+    holding?.interactHeld?.(delta);
+    this.held = holding;
+  }
+
+  private endHeld(): void {
+    this.held?.interactEnd?.();
+    this.held = null;
   }
 
   private findInteractable(object: Object3D): Interactable | null {

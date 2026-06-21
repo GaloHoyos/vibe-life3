@@ -1,10 +1,9 @@
-﻿import type { EventBus } from "@engine/core/EventBus";
+import type { EventBus } from "@engine/core/EventBus";
 import { ServiceToken } from "@engine/core/ServiceContainer";
 import type { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
 import type { FootstepSoundSystem } from "@engine/audio/systems/FootstepSoundSystem";
 import type { MusicManager } from "@engine/audio/core/MusicManager";
 import type { CharacterFactory } from "@game/characters/CharacterFactory";
-import type { NpcDebugSystem } from "@game/debug/NpcDebugSystem";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
 import type { EnemySoundSystem } from "@game/audio/EnemySoundSystem";
@@ -16,13 +15,13 @@ import type { InteractSystem } from "@game/gameplay/interactions";
 import type { TriggerSystem } from "@game/levels/TriggerSystem";
 import type { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
-import type { DebugOverlay } from "@game/ui/overlay/DebugOverlay";
+import type { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
 import type { HUD } from "@game/ui/hud/HUD";
 import type { Subtitles } from "@game/ui/subtitles/Subtitles";
 import type { MainMenu } from "@game/ui/menu/MainMenu";
 
 /**
- * Tokens de servicios especÃ­ficos del juego.
+ * Tokens de servicios especificos del juego.
  *
  * Comparten el `ServiceContainer` con los `EngineTokens`, pero su
  * registro es responsabilidad de `Game`, no del motor.
@@ -39,8 +38,7 @@ export const GameTokens = {
   TriggerSystem: new ServiceToken<TriggerSystem>("TriggerSystem"),
   HUD: new ServiceToken<HUD>("HUD"),
   MainMenu: new ServiceToken<MainMenu>("MainMenu"),
-  DebugOverlay: new ServiceToken<DebugOverlay>("DebugOverlay"),
-  NpcDebug: new ServiceToken<NpcDebugSystem>("NpcDebugSystem"),
+  DebugMenu: new ServiceToken<DebugMenu>("DebugMenu"),
   BackgroundAmbience: new ServiceToken<BackgroundAmbienceSystem>(
     "BackgroundAmbienceSystem",
   ),

@@ -1,5 +1,6 @@
 ﻿import RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3 } from "three";
+import type { Faction } from "@engine/ai/Faction";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { CharacterRangedAttackConfig } from "@engine/characters/CharacterDefinition";
 import { getWeaponDefinition } from "@game/config/weapons.config";
@@ -27,6 +28,11 @@ export interface RangedSnapshot {
   reserve: number;
   isReloading: boolean;
   isFiringBurst: boolean;
+  canStartBurst: boolean;
+  cooldownRemaining: number;
+  reloadRemaining: number;
+  burstShotsLeft: number;
+  nextShotIn: number;
 }
 
 /**
@@ -59,6 +65,7 @@ export class NpcRangedCombat {
 
   constructor(
     private readonly ownerId: string,
+    private readonly ownerFaction: Faction,
     private readonly rangedConfig: CharacterRangedAttackConfig,
     private readonly raycast: Raycast,
     private readonly eventBus: GameEventBus,
@@ -165,6 +172,11 @@ export class NpcRangedCombat {
       reserve: this.reserve,
       isReloading: this.isReloading(now),
       isFiringBurst: this.isFiringBurst(),
+      canStartBurst: this.canStartBurst(now),
+      cooldownRemaining: Math.max(0, this.cooldownUntil - now),
+      reloadRemaining: Math.max(0, this.reloadUntil - now),
+      burstShotsLeft: this.burstShotsLeft,
+      nextShotIn: Math.max(0, this.nextShotAt - now),
     };
   }
 
@@ -201,6 +213,16 @@ export class NpcRangedCombat {
       origin: rayOrigin.clone(),
       direction: spreadDir.clone(),
       range: weapon.range,
+      sourceId: this.ownerId,
+      sourceKind: "npc",
+      sourceFaction: this.ownerFaction,
+    });
+    this.eventBus.emit("world.noise", {
+      kind: "gunshot",
+      position: rayOrigin.clone(),
+      radius: Math.max(24, Math.min(weapon.range * 0.6, 55)),
+      sourceId: this.ownerId,
+      sourceFaction: this.ownerFaction,
     });
 
     if (!hit) return;
@@ -212,6 +234,9 @@ export class NpcRangedCombat {
         point: hit.point,
         normal: hit.normal,
         damage: 0,
+        sourceId: this.ownerId,
+        sourceKind: "npc",
+        sourceFaction: this.ownerFaction,
       });
       return;
     }
@@ -220,7 +245,7 @@ export class NpcRangedCombat {
     if (!damageable) return;
     const partMul = hit.metadata?.bodyPart?.damageMultiplier ?? 1;
     const damage = weapon.damage * partMul;
-    damageable.applyDamage(damage, spreadDir.clone(), hit.metadata?.bodyPart?.name);
+    damageable.applyDamage(damage, spreadDir.clone(), hit.metadata?.bodyPart?.name, this.ownerId);
     this.eventBus.emit("weapon.hit", {
       weaponName: weapon.displayName,
       targetId: hit.metadata?.id,
@@ -228,6 +253,9 @@ export class NpcRangedCombat {
       point: hit.point,
       normal: hit.normal,
       damage,
+      sourceId: this.ownerId,
+      sourceKind: "npc",
+      sourceFaction: this.ownerFaction,
     });
   }
 

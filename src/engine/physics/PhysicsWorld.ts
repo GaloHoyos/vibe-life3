@@ -2,12 +2,15 @@
 import type { Object3D, Vector3 } from 'three';
 import type { Damageable } from '@shared/types/lifecycle';
 import type { HeightField } from '@shared/math/HeightField';
+import type { Faction } from '@engine/ai/Faction';
 import { createBoxCollider } from './Colliders';
 
 export interface PhysicsMetadata {
   id: string;
   kind: 'static' | 'dynamic' | 'door' | 'npc' | 'player' | 'ragdoll' | 'weaponPickup';
   damageable?: Damageable;
+  /** Bando del actor (npc/player). Lo consumen guards de fuego amigo. */
+  faction?: Faction;
   bodyPart?: {
     name: string;
     damageMultiplier: number;
@@ -147,6 +150,17 @@ export class PhysicsWorld {
     this.world.timestep = Math.min(delta, 1 / 30);
     this.world.step();
     this.syncMeshes();
+  }
+
+  /**
+   * Fuerza la actualizaciÃ³n del broadphase / query pipeline sin avanzar la
+   * simulaciÃ³n. Necesario antes de hacer raycasts en sistemas de setup
+   * (NavSpaceBuilder, SpawnValidator) que corren **antes** del primer
+   * `step()`: hasta ese momento Rapier no tiene a los colliders en sus
+   * estructuras de aceleraciÃ³n y los queries devuelven null para todo.
+   */
+  updateQueryPipeline(): void {
+    this.world.updateSceneQueries();
   }
 
   getBodyCount(): number {

@@ -17,7 +17,10 @@ export type MaterialKey =
   | 'grass'
   | 'sand'
   | 'brick'
-  | 'roof';
+  | 'roof'
+  | 'plaster'
+  | 'concrete'
+  | 'woodDark';
 
 interface ColorMaterialDef {
   color: number;
@@ -59,6 +62,9 @@ const definitions: Record<MaterialKey, MaterialDef> = {
   sand: { textureSet: 'sand' },
   brick: { textureSet: 'brickFactory' },
   roof: { textureSet: 'roofClay' },
+  plaster: { color: 0xc9c0ad, roughness: 0.92, metalness: 0.02 },
+  concrete: { color: 0x8e9296, roughness: 0.88, metalness: 0.05 },
+  woodDark: { color: 0x57422e, roughness: 0.8, metalness: 0.02 },
 };
 
 function buildMaterial(def: MaterialDef): MeshStandardMaterial {

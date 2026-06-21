@@ -102,6 +102,26 @@ export class PlayerHealth {
     return currentHealth;
   }
 
+  /** Repone carga del traje HEV sin tocar su capacidad máxima. */
+  rechargeArmor(amount: number): number {
+    if (this.dead || amount <= 0) {
+      return this.armorCurrent;
+    }
+
+    this.armorCurrent = Math.min(this.armorMax, this.armorCurrent + amount);
+    this.emitArmorChanged();
+    return this.armorCurrent;
+  }
+
+  /** True si el vital correspondiente al pickup tiene margen para reponer. */
+  needsHealth(): boolean {
+    return !this.dead && this.health.current < this.health.max;
+  }
+
+  needsArmor(): boolean {
+    return !this.dead && this.armorCurrent < this.armorMax;
+  }
+
   reset(): void {
     this.health.reset();
     this.dead = false;

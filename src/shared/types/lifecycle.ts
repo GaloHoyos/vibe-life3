@@ -1,7 +1,13 @@
 import type { Vector3 } from 'three';
 
 export interface Damageable {
-  applyDamage(amount: number, hitDirection?: Vector3, hitPartName?: string): void;
+  /** `attackerId` permite al receptor reaccionar contra quien lo daño (aggro). */
+  applyDamage(
+    amount: number,
+    hitDirection?: Vector3,
+    hitPartName?: string,
+    attackerId?: string,
+  ): void;
   isAlive(): boolean;
 }
 

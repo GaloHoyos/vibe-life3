@@ -1,22 +1,46 @@
 ﻿import { Bone, BoxGeometry, Group, Mesh, MeshStandardMaterial, Object3D, SphereGeometry, Vector3 } from 'three';
 import type { AssetManager } from '@engine/assets/AssetManager';
-import { AlyxNpc } from '@game/npc/alyx/AlyxNpc';
-import { CombineNpc } from '@game/npc/combine/CombineNpc';
 import type { INpc } from '@game/npc/core/INpc';
-import { ZombieNpc } from '@game/npc/zombie/ZombieNpc';
 import { attachWeaponToHand } from '@game/npc/combat/NpcWeaponAttachment';
+import { Npc } from '@game/npc/Npc';
+import { NpcAnimationBridge } from '@game/npc/animation/NpcAnimationBridge';
+import { buildAlyxPreset } from '@game/npc/presets/alyxPreset';
+import { buildCombinePreset } from '@game/npc/presets/combinePreset';
+import { buildZombiePreset } from '@game/npc/presets/zombiePreset';
+import type { NpcPreset, NpcPresetOptions } from '@game/npc/presets/NpcPreset';
+import { NpcCombat } from '@game/npc/combat/NpcCombat';
+import { NpcMeleeCombat } from '@game/npc/combat/NpcMeleeCombat';
+import { NpcRangedCombat } from '@game/npc/combat/NpcRangedCombat';
+import { RealRangedCombat } from '@game/npc/combat/RealRangedCombat';
+import type { NpcCombatHandle } from '@game/npc/brain/NpcBrainContext';
 import type { ModelAssetId } from '@engine/assets/AssetManifest';
 import type { GameEventBus } from "@game/GameEvents";
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
+import { Raycast } from '@engine/physics/Raycast';
+import { CharacterMotor } from '@engine/physics/character/CharacterMotor';
+import type { NavSpace } from '@engine/ai/nav/NavSpace';
+import type { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
+import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
+import type { TacticalMap } from '@game/npc/ai/TacticalMap';
+import type { SquadDirector } from '@game/npc/ai/SquadDirector';
 import { getMaterial } from '@engine/render/material/Materials';
 import { CharacterPresets } from './CharacterPresets';
-import type { CharacterId } from '@engine/characters/CharacterDefinition';
+import type { CharacterDefinition, CharacterId } from '@engine/characters/CharacterDefinition';
+
+export interface NpcRuntimeServices {
+  navSpace: NavSpace;
+  pathQueue: PathRequestQueue;
+  buildingRegistry: BuildingRegistry;
+  raycast: Raycast;
+  tacticalMap: TacticalMap;
+  squadDirector: SquadDirector;
+}
 
 /**
- * Instancia NPCs a partir de un `CharacterId`. Dispatch por `behaviorKind`:
- *  - `zombieMelee`   → `ZombieNpc`
- *  - `combineRanged` → `CombineNpc`
- *  - `alyxAlly`      → `AlyxNpc`
+ * Instancia NPCs a partir de un `CharacterId`. El `aiProfileId` decide el
+ * preset de comportamiento (`game/npc/presets/`): `zombieMelee`,
+ * `combineSoldier` o `alyxSupport`. Todos corren sobre el runtime `Npc`
+ * unificado.
  *
  * Carga el modelo del manifest si tiene `modelId`, o cae a un humanoid
  * placeholder bone-rigged que cumple la interfaz `ProceduralCharacterAnimator`.
@@ -28,7 +52,13 @@ export class CharacterFactory {
     private readonly eventBus: GameEventBus,
   ) {}
 
-  async createNPC(characterId: CharacterId, instanceId: string, position: Vector3): Promise<INpc> {
+  async createNPC(
+    characterId: CharacterId,
+    instanceId: string,
+    position: Vector3,
+    patrolPoints: Vector3[] = [],
+    services?: NpcRuntimeServices,
+  ): Promise<INpc> {
     const definition = CharacterPresets[characterId] ?? CharacterPresets.placeholderHumanoid;
     const model = definition.modelId ? await this.assets.instantiateModel(definition.modelId) : null;
     const visualRoot = model?.root ?? createPlaceholderHumanoid();
@@ -38,13 +68,12 @@ export class CharacterFactory {
     visualRoot.position.copy(definition.visualOffset);
 
     const rangedWeaponId = definition.attack.ranged?.weaponId;
-    let weaponAttachment: import('@game/npc/combat/NpcWeaponAttachment').WeaponAttachmentHandle | null = null;
     if (rangedWeaponId) {
       try {
         const weapon = await this.assets.instantiateModel(
           rangedWeaponId as ModelAssetId,
         );
-        weaponAttachment = attachWeaponToHand(
+        attachWeaponToHand(
           visualRoot,
           weapon?.root ?? null,
           rangedWeaponId,
@@ -58,25 +87,122 @@ export class CharacterFactory {
       }
     }
 
-    const shared = {
-      id: instanceId,
-      definition,
-      position,
-      visualRoot,
-      physics: this.physics,
-      eventBus: this.eventBus,
-    };
-
-    switch (definition.behaviorKind) {
-      case "combineRanged":
-        return new CombineNpc({ ...shared, weaponAttachment });
-      case "alyxAlly":
-        return new AlyxNpc({ ...shared, weaponAttachment });
-      case "zombieMelee":
-      default:
-        return new ZombieNpc({ ...shared, hasSkeleton: model?.hasSkeleton ?? false });
+    if (!services) {
+      throw new Error(
+        `[CharacterFactory] NPC '${instanceId}' requiere NpcRuntimeServices (nivel sin cargar?)`,
+      );
     }
+    return this.buildV2Npc(instanceId, definition, position, visualRoot, services, patrolPoints);
   }
+
+  private buildV2Npc(
+    instanceId: string,
+    definition: CharacterDefinition,
+    position: Vector3,
+    visualRoot: Object3D,
+    services: NpcRuntimeServices,
+    patrolPoints: Vector3[],
+  ): Npc {
+    const preset = resolvePresetFor(definition, { hasPatrol: patrolPoints.length > 0 });
+    const visualGroup = wrapVisualRoot(visualRoot);
+    const ownerProxy: {
+      applyDamage: (amount: number, dir?: Vector3, part?: string, attackerId?: string) => void;
+      isAlive: () => boolean;
+    } = {
+      applyDamage: () => {},
+      isAlive: () => true,
+    };
+    const motor = new CharacterMotor(this.physics, {
+      id: instanceId,
+      position,
+      height: definition.collider.height,
+      radius: definition.collider.radius,
+      mass: definition.collider.mass,
+      maxSpeed: preset.movement.walkSpeed,
+      acceleration: preset.movement.acceleration,
+      turnSpeed: preset.movement.turnSpeed,
+      rotationSmoothing: definition.movement.rotationSmoothing,
+      faceTargetDeadzone: definition.movement.faceTargetDeadzone,
+      turnBeforeMoveAngle: definition.movement.turnBeforeMoveAngle,
+      minMoveFacingDot: definition.movement.minMoveFacingDot,
+      gravity: definition.movement.gravity,
+      stepOffset: preset.movement.stepOffset,
+      snapToGround: preset.movement.snapToGround,
+      debug: definition.debug,
+      metadata: { id: instanceId, kind: 'npc', damageable: ownerProxy, faction: definition.faction },
+    });
+    const animation = new NpcAnimationBridge(
+      instanceId,
+      definition,
+      visualRoot,
+      this.physics,
+      ownerProxy,
+    );
+    const ranged = definition.attack.ranged;
+    let combat: NpcCombatHandle;
+    if (ranged) {
+      const realCombat = new NpcRangedCombat(
+        instanceId,
+        definition.faction,
+        ranged,
+        services.raycast,
+        this.eventBus,
+        () => animation.notifyShot(),
+      );
+      combat = new RealRangedCombat({
+        combat: realCombat,
+        ownerBody: motor.body,
+        faction: definition.faction,
+        eyeHeight: definition.perception.eyeHeight,
+        effectiveRange: definition.ai.detectionRange,
+        rangedConfig: ranged,
+        raycast: services.raycast,
+        onReload: (duration) => animation.notifyReload(duration),
+      });
+    } else {
+      const melee = new NpcCombat(instanceId, definition, this.eventBus, services.raycast);
+      combat = new NpcMeleeCombat(melee, definition.attack.range, () => animation.notifyAttack());
+    }
+    const npc = new Npc({
+      id: instanceId,
+      faction: definition.faction,
+      position,
+      visualRoot: visualGroup,
+      motor,
+      combat,
+      preset,
+      navSpace: services.navSpace,
+      buildingRegistry: services.buildingRegistry,
+      pathQueue: services.pathQueue,
+      raycast: services.raycast,
+      eventBus: this.eventBus,
+      animation,
+      patrolRoute: patrolPoints,
+      tacticalMap: services.tacticalMap,
+      squadDirector: services.squadDirector,
+    });
+    ownerProxy.applyDamage = npc.applyDamage.bind(npc);
+    ownerProxy.isAlive = npc.isAlive.bind(npc);
+    return npc;
+  }
+}
+
+function resolvePresetFor(definition: CharacterDefinition, options: NpcPresetOptions): NpcPreset {
+  switch (definition.aiProfileId) {
+    case 'alyxSupport':
+      return buildAlyxPreset();
+    case 'zombieMelee':
+      return buildZombiePreset();
+    case 'combineSoldier':
+    default:
+      return buildCombinePreset(options);
+  }
+}
+
+function wrapVisualRoot(root: Object3D): Group {
+  const group = new Group();
+  group.add(root);
+  return group;
 }
 
 function createPlaceholderHumanoid(): Object3D {

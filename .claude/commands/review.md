@@ -1,15 +1,21 @@
 ---
 description: Code review estructurado del branch actual contra main.
+argument-hint: "[base] (default: main) — branch/commit base, o ruta para acotar scope"
 ---
 
-Sos un revisor experto en código TypeScript / three.js para vibe-life 3, un FPS 3D singleplayer en navegador. Hacé un review exhaustivo del branch actual comparado contra `main`.
+Sos un revisor experto en código TypeScript / three.js para vibe-life 3, un FPS 3D singleplayer en navegador. Hacé un review exhaustivo del branch actual.
+
+**Base de comparación:** `$ARGUMENTS` si se pasó algo; si está vacío, usá `main`. Si el argumento parece una ruta (`engine/`, `src/...`), usá `main` como base y acotá el review a esa ruta.
 
 ## Pasos
 
 1. `git rev-parse --abbrev-ref HEAD` — nombre del branch actual.
-2. `git diff main...HEAD --stat` — resumen de archivos cambiados.
-3. `git diff main...HEAD` — diff completo.
-4. Analizar los cambios y producir un review estructurado.
+2. `git merge-base <base> HEAD` — punto de divergencia. Llamalo `BASE` de acá en más.
+3. `git diff BASE --stat` y `git status --short` — resumen de archivos cambiados, **incluyendo los que están sin commitear**. El working tree es parte del review; no lo ignores.
+4. `git diff BASE` — diff completo (committeado + working tree contra el merge-base).
+5. Para cualquier archivo donde necesites juzgar lifecycle/dispose/acoplamiento, **leé el archivo entero**, no solo el hunk: el diff no muestra suficiente contexto para saber si un `dispose()` limpia todo o si un import cruza capas.
+6. **Verificá tipos de verdad, no a ojo.** Corré `npx tsc --noEmit` (o invocá `/check` para tsc + build). El veredicto de tipos/compilación se basa en este resultado, no en leer el diff. Si tsc falla, los errores son hallazgos bloqueantes con su mensaje exacto.
+7. Analizar los cambios y producir un review estructurado.
 
 ## Qué revisar
 
@@ -28,7 +34,7 @@ Sos un revisor experto en código TypeScript / three.js para vibe-life 3, un FPS
 
 ### Patrones de la arquitectura
 
-- **ServiceContainer / tokens:** servicios nuevos declarados en `engine/ServiceTokens.ts` o `game/ServiceTokens.ts` según capa. Resueltos por token tipado, no instanciados a mano.
+- **ServiceContainer / tokens:** servicios nuevos declarados en `engine/core/ServiceTokens.ts` o `game/ServiceTokens.ts` según capa. Resueltos por token tipado, no instanciados a mano.
 - **EventBus tipado:** eventos nuevos extendiendo `GameEventMap` en `src/game/GameEvents.ts`. Naming: `dominio.acción` minúsculas (`weapon.fired`, `npc.killed`). Sin camelCase ni mezclar tiempos verbales.
 - **Suscriptores:** todo `bus.on(...)` debe guardar el disposer y llamarlo en `dispose()`. Flagear leaks.
 - **Lifecycle:** widgets/sistemas con `setTimeout`, listeners DOM, o recursos Three.js (geometries/materials/textures) deben implementar `Disposable` y limpiar.
@@ -80,11 +86,18 @@ Que el código nuevo no se convierta en un cuello de botella cuando el juego cre
 - Sin secretos hardcodeados (poco probable en este stack, pero chequear).
 - Manejo de assets faltantes (GLB / textura no carga) no rompe el juego.
 
+## Reglas del review
+
+- **Solo lo que cambió.** Comentá únicamente código tocado por el diff. Si una mejora afecta código preexistente no tocado, marcala explícitamente como `(preexistente)` y dejala al final, no la mezcles con lo del branch.
+- **No rellenes.** Si una sección no tiene hallazgos, omitila. No inventes problemas para que el review se vea completo. Mejor un review corto y certero que uno largo y especulativo.
+- **Severidad explícita.** Cada hallazgo arranca con un tag: `[BLOCKER]`, `[MAJOR]`, `[MINOR]` o `[NIT]`. Ordená cada sección de mayor a menor severidad.
+- **Falsos positivos típicos a evitar:** materiales/geometrías *compartidos* (cacheados, reusados entre entidades) NO deben disponerse por entidad — no los flaguees como leak. Rutas relativas `./` entre vecinos del mismo directorio son válidas (no exijas alias ahí). Un `any` en `.d.ts` de terceros no es violación del proyecto.
+
 ## Output
 
-Empezá con un **Summary** (2-4 oraciones: qué hace el branch, calidad general).
+Empezá con un **Summary** (2-4 oraciones: qué hace el branch, calidad general, y el resultado de `tsc`/build).
 
-Luego organizá los hallazgos en secciones:
+Luego organizá los hallazgos en secciones (omití las vacías):
 
 - **Bugs / Errores de lógica** — comportamiento incorrecto.
 - **Violaciones de tipo** — `any`, `@ts-ignore`, return types implícitos.
@@ -97,10 +110,10 @@ Luego organizá los hallazgos en secciones:
 - **Sugerencias** — mejoras no bloqueantes (marcar como opcional).
 
 Por cada hallazgo:
-- Path del archivo y línea.
+- Tag de severidad (`[BLOCKER]`/`[MAJOR]`/`[MINOR]`/`[NIT]`) + path del archivo y línea.
 - Qué está mal.
-- Cómo arreglarlo.
+- Cómo arreglarlo (idealmente con el snippet corregido).
 
-Cerrá con un **Verdict**: `APPROVE`, `REQUEST CHANGES`, o `NEEDS DISCUSSION` con una línea de justificación.
+Cerrá con un **Verdict**: `APPROVE`, `REQUEST CHANGES`, o `NEEDS DISCUSSION` con una línea de justificación. Si `tsc` falla o hay algún `[BLOCKER]`, el verdict no puede ser `APPROVE`.
 
 Si el branch incluye contenido nuevo (arma, nivel, NPC, material PBR, HDRI, sonido), verificar que se siguió la receta correspondiente de la sección "Cómo extender" del `CLAUDE.md`.

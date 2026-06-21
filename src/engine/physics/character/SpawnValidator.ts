@@ -21,24 +21,29 @@ export interface SpawnValidatorOptions {
   fallbackRadius?: number;
   /** Margen sobre el suelo para colocar el NPC (evita sink). */
   groundClearance?: number;
+  /** Distancia Y maxima entre la superficie elegida y la altura pedida. */
+  maxSnapDelta?: number;
 }
 
 const tmpOrigin = new Vector3();
 const tmpDir = new Vector3(0, -1, 0);
+const tmpUp = new Vector3(0, 1, 0);
+/** Separacion entre el hit de una capa y el cast de la siguiente. */
+const LAYER_SKIP = 0.3;
+const MAX_LAYER_CASTS = 8;
+const MIN_WALKABLE_NORMAL_Y = 0.65;
 
 /**
  * Valida y corrige la posiciÃ³n de spawn de un NPC.
  *
  * Procedimiento:
- *  1. Toma la posiciÃ³n pedida y lanza un ray hacia abajo desde `castFromAbove`
- *     metros por encima.
- *  2. Si el primer hit es STATIC (terreno o caja del nivel):
- *     - Si el hit point estÃ¡ cerca de la altura pedida â†’ aceptar.
- *     - Si el hit point es muchos metros mÃ¡s bajo (techo evitado) o mÃ¡s alto
- *       (subiÃ³ por una escalera fantasma) â†’ buscar alternativas.
- *  3. Si no hay hit (out of bounds o vacÃ­o) â†’ buscar alternativas.
- *  4. BÃºsqueda alternativa: muestrea en cÃ­rculo creciente alrededor del spawn,
- *     repite el raycast en cada punto, devuelve el primero vÃ¡lido.
+ *  1. Raycastea la columna del spawn pedido de arriba hacia abajo en multiples
+ *     capas (techos, pisos intermedios, suelo) â€” soporta interiores de
+ *     edificios multi-piso.
+ *  2. Entre las superficies STATIC caminables con headroom para la cÃ¡psula,
+ *     elige la mÃ¡s cercana en Y a la altura pedida (dentro de `maxSnapDelta`).
+ *  3. Si la columna no tiene superficie vÃ¡lida â†’ muestrea en cÃ­rculo creciente
+ *     alrededor del spawn y devuelve la primera columna vÃ¡lida.
  *
  * El criterio "STATIC vÃ¡lido" rechaza explÃ­citamente colliders de tipo
  * `dynamic`, `door`, `npc`, `player`, `weaponPickup` y `ragdoll` â€” un NPC no
@@ -50,6 +55,7 @@ export class SpawnValidator {
   private readonly fallbackSamples: number;
   private readonly fallbackRadius: number;
   private readonly groundClearance: number;
+  private readonly maxSnapDelta: number;
 
   constructor(
     private readonly raycast: Raycast,
@@ -60,15 +66,29 @@ export class SpawnValidator {
     this.fallbackSamples = options.fallbackSamples ?? 12;
     this.fallbackRadius = options.fallbackRadius ?? 6;
     this.groundClearance = options.groundClearance ?? 0.15;
+    // Holgado: los mapas spawnean NPCs "unos metros arriba" y el snap baja a
+    // la superficie. La eleccion por |dy| minima ya protege el piso correcto.
+    this.maxSnapDelta = options.maxSnapDelta ?? 8;
   }
 
-  validate(requested: Vector3): SpawnValidationResult {
-    const direct = this.tryGround(requested.x, requested.z, requested.y);
+  /**
+   * @param capsuleHalfExtent Distancia del centro del body al extremo inferior
+   * de la cápsula (= height / 2 para una cápsula con `halfHeight + radius`).
+   * Se usa para que el centro del body quede por encima del suelo en vez de
+   * incrustar la mitad inferior dentro del terreno.
+   */
+  validate(requested: Vector3, capsuleHalfExtent: number): SpawnValidationResult {
+    const direct = this.tryGround(
+      requested.x,
+      requested.z,
+      requested.y,
+      capsuleHalfExtent,
+    );
     if (direct) {
       return { position: direct, valid: true, relocated: false };
     }
 
-    const fallback = this.searchAround(requested);
+    const fallback = this.searchAround(requested, capsuleHalfExtent);
     if (fallback) {
       return { position: fallback, valid: true, relocated: true };
     }
@@ -84,31 +104,46 @@ export class SpawnValidator {
     x: number,
     z: number,
     referenceY: number,
+    capsuleHalfExtent: number,
   ): Vector3 | null {
-    tmpOrigin.set(x, referenceY + this.castFromAbove, z);
-    const hit = this.raycast.cast(tmpOrigin, tmpDir, this.maxCastDistance);
-    if (!hit) return null;
-    if (hit.metadata?.kind !== "static") return null;
-
-    const hitBody = hit.collider.parent();
-    if (hitBody) {
-      const belowOrigin = hit.point.clone();
-      belowOrigin.y -= 0.2;
-      const below = this.raycast.cast(
-        belowOrigin,
-        tmpDir,
-        this.maxCastDistance,
-        hitBody,
-      );
-      if (below && below.metadata?.kind === "static") {
-        return null;
+    let fromY = referenceY + this.castFromAbove;
+    const minY = referenceY + this.castFromAbove - this.maxCastDistance;
+    let bestY: number | null = null;
+    for (let casts = 0; casts < MAX_LAYER_CASTS && fromY > minY; casts += 1) {
+      tmpOrigin.set(x, fromY, z);
+      const hit = this.raycast.cast(tmpOrigin, tmpDir, fromY - minY);
+      if (!hit) break;
+      const surfaceY = hit.point.y;
+      fromY = Math.min(fromY, surfaceY) - LAYER_SKIP;
+      if (hit.metadata?.kind !== "static") continue;
+      if ((hit.normal?.y ?? 1) < MIN_WALKABLE_NORMAL_Y) continue;
+      if (!this.capsuleFits(x, surfaceY, z, capsuleHalfExtent)) continue;
+      if (bestY === null || Math.abs(surfaceY - referenceY) < Math.abs(bestY - referenceY)) {
+        bestY = surfaceY;
       }
     }
-
-    return new Vector3(x, hit.point.y + this.groundClearance, z);
+    if (bestY === null) return null;
+    if (Math.abs(bestY - referenceY) > this.maxSnapDelta) return null;
+    return new Vector3(x, bestY + capsuleHalfExtent + this.groundClearance, z);
   }
 
-  private searchAround(requested: Vector3): Vector3 | null {
+  /** Headroom libre sobre la superficie para la cÃ¡psula completa. */
+  private capsuleFits(
+    x: number,
+    surfaceY: number,
+    z: number,
+    capsuleHalfExtent: number,
+  ): boolean {
+    tmpOrigin.set(x, surfaceY + 0.1, z);
+    const hit = this.raycast.cast(tmpOrigin, tmpUp, capsuleHalfExtent * 2 + 0.2);
+    if (!hit) return true;
+    return hit.metadata?.kind === "door";
+  }
+
+  private searchAround(
+    requested: Vector3,
+    capsuleHalfExtent: number,
+  ): Vector3 | null {
     for (let ring = 1; ring <= 3; ring += 1) {
       const radius = (this.fallbackRadius / 3) * ring;
       const samples = Math.max(6, Math.floor(this.fallbackSamples * (ring / 3)));
@@ -116,7 +151,7 @@ export class SpawnValidator {
         const angle = (i / samples) * Math.PI * 2;
         const x = requested.x + Math.cos(angle) * radius;
         const z = requested.z + Math.sin(angle) * radius;
-        const ground = this.tryGround(x, z, requested.y);
+        const ground = this.tryGround(x, z, requested.y, capsuleHalfExtent);
         if (ground) return ground;
       }
     }

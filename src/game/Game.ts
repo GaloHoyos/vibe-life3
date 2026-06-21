@@ -6,7 +6,11 @@ import type { Engine } from "@engine/core/Engine";
 import { EventBus } from "@engine/core/EventBus";
 import { EngineTokens } from "@engine/core/ServiceTokens";
 import type { Time } from "@engine/core/Time";
+import { SpawnValidator } from "@engine/physics/character/SpawnValidator";
+import { Raycast } from "@engine/physics/Raycast";
 import { CharacterFactory } from "@game/characters/CharacterFactory";
+import type { NpcRuntimeServices } from "@game/characters/CharacterFactory";
+import { CharacterPresets } from "@game/characters/CharacterPresets";
 import { FootstepsConfig } from "@game/config/audio.config";
 import { Dialogue, MenuStrings } from "@game/config/strings";
 import { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
@@ -15,30 +19,46 @@ import { UISoundSystem } from "@game/audio/UISoundSystem";
 import { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
 import type { GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
-import { NpcDebugSystem } from "@game/debug/NpcDebugSystem";
+import { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
+import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
+import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
+import { NpcsModule } from "@game/ui/overlay/debug/modules/NpcsModule";
+import { PlayerModule } from "@game/ui/overlay/debug/modules/PlayerModule";
+import { SceneModule } from "@game/ui/overlay/debug/modules/SceneModule";
+import { StatsModule } from "@game/ui/overlay/debug/modules/StatsModule";
+import { WeaponsModule } from "@game/ui/overlay/debug/modules/WeaponsModule";
 import { Controls } from "@game/gameplay/player/Controls";
 import { Player } from "@game/gameplay/player/Player";
 import { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
 import { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
-import { InteractSystem, type SlidingDoor } from "@game/gameplay/interactions";
-import type { NavGraph } from "@engine/ai/NavGraph";
-import type { CoverSystem } from "@game/levels/CoverSystem";
-import type { CombatSquadCoordinator } from "@game/npc/combat/CombatSquadCoordinator";
-import type { LevelDefinition } from "@game/levels/LevelDefinition";
+import { InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
+import type { TacticalMap } from "@game/npc/ai/TacticalMap";
+import type { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
+import type { NavSpace } from "@engine/ai/nav/NavSpace";
+import type { PathRequestQueue } from "@engine/ai/nav/PathRequestQueue";
+import type { SquadDirector } from "@game/npc/ai/SquadDirector";
+import type {
+  DynamicBoxDefinition,
+  LevelDefinition,
+  NPCDefinition,
+} from "@game/levels/LevelDefinition";
 import { LevelLoader } from "@game/levels/LevelLoader";
 import { getLevel, type LevelId } from "@game/levels/LevelRegistry";
 import { TriggerSystem } from "@game/levels/TriggerSystem";
-import type { ActorSnapshot, INpc, NpcUpdateContext } from "@game/npc/core/INpc";
+import type { ActorSnapshot, AiFrameContext, INpc } from "@game/npc/core/INpc";
+import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
 import { DialogueSystem } from "@game/narrative/DialogueSystem";
 import { LevelEvents } from "@game/narrative/LevelEvents";
 import { WeaponPickup } from "@game/gameplay/weapons/pickup/WeaponPickup";
+import { ItemPickup } from "@game/gameplay/items/ItemPickup";
 import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
-import { WeaponDefinitions } from "@game/config/weapons.config";
-import { DebugOverlay } from "@game/ui/overlay/DebugOverlay";
+import { WEAPON_ORDER, WeaponDefinitions } from "@game/config/weapons.config";
 import { HUD } from "@game/ui/hud/HUD";
 import { Subtitles } from "@game/ui/subtitles/Subtitles";
 import { MainMenu } from "@game/ui/menu/MainMenu";
 import type { GameMenuState } from "@game/ui/menu/MainMenuState";
+import { createBoxMesh } from "@engine/render/PrimitiveFactory";
+import { tupleToVector3 } from "@shared/math/VectorTuple";
 
 /**
  * Bootstrap del contenido del juego.
@@ -66,10 +86,16 @@ export class Game {
   private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
-  private coverSystem: CoverSystem | null = null;
-  private navGraph: NavGraph | null = null;
-  private squad: CombatSquadCoordinator | null = null;
+  private itemPickups: ItemPickup[] = [];
+  private chargers: Charger[] = [];
+  private tacticalMap: TacticalMap | null = null;
+  private squadDirector: SquadDirector | null = null;
+  private buildingRegistry: BuildingRegistry | null = null;
+  private navSpace: NavSpace | null = null;
+  private pathQueue: PathRequestQueue | null = null;
   private pendingExitTimeoutId: number | null = null;
+  private actionSpawnSerial = 0;
+  private readonly npcContextRadius = 90;
 
   constructor(private readonly engine: Engine, options: GameOptions = {}) {
     this.root = engine.root;
@@ -82,7 +108,7 @@ export class Game {
 
     this.engine.services
       .resolve(GameTokens.MainMenu)
-      .setDebugEnabled(this.engine.services.resolve(GameTokens.DebugOverlay).isEnabled());
+      .setDebugEnabled(this.engine.services.resolve(GameTokens.DebugMenu).isVisible());
     this.setGameState("mainMenu");
     this.bindBrowserEvents();
   }
@@ -131,8 +157,7 @@ export class Game {
     s.resolve(GameTokens.HUD).dispose();
     s.resolve(GameTokens.Subtitles).dispose();
     s.resolve(GameTokens.MainMenu).dispose();
-    s.resolve(GameTokens.DebugOverlay).dispose();
-    s.resolve(GameTokens.NpcDebug).dispose();
+    s.resolve(GameTokens.DebugMenu).dispose();
     s.resolve(GameTokens.EventBus).clear();
 
     this.engine.dispose();
@@ -176,8 +201,7 @@ export class Game {
     const positionalSounds = s.resolve(EngineTokens.PositionalSound);
     const input = s.resolve(EngineTokens.Input);
 
-    const controls = s.register(GameTokens.Controls, new Controls(input));
-    s.register(GameTokens.NpcDebug, new NpcDebugSystem(input, controls));
+    s.register(GameTokens.Controls, new Controls(input));
     s.register(
       GameTokens.Characters,
       new CharacterFactory(assets, physics, eventBus),
@@ -206,6 +230,9 @@ export class Game {
     eventBus.on("npc.weapon.dropped", (payload) => {
       void this.handleWeaponDrop(payload.npcId, payload.weaponId, payload.position);
     });
+    eventBus.on("level.action", ({ action, position }) => {
+      void this.handleLevelAction(action, position);
+    });
   }
 
   private async handleWeaponDrop(
@@ -233,17 +260,220 @@ export class Game {
     }
   }
 
+  private async handleLevelAction(
+    action: GameEventMap["level.action"]["action"],
+    position: Vector3,
+  ): Promise<void> {
+    if (!this.currentLevel) {
+      return;
+    }
+
+    switch (action) {
+      case "respawnEncounters":
+        await this.respawnLevelEncounters(this.currentLevel);
+        this.engine.services.resolve(GameTokens.EventBus).emit("dialogue.show", {
+          speaker: "Consola",
+          text: "Entidades respawneadas.",
+          duration: 2.5,
+        });
+        return;
+      case "spawnAllWeapons":
+        await this.spawnWeaponSet(position);
+        this.engine.services.resolve(GameTokens.EventBus).emit("dialogue.show", {
+          speaker: "Consola",
+          text: "Arsenal desplegado.",
+          duration: 2.5,
+        });
+        return;
+    }
+  }
+
+  private async respawnLevelEncounters(level: LevelDefinition): Promise<void> {
+    this.actionSpawnSerial += 1;
+    await this.spawnNpcs(level.npcs, `respawn-${this.actionSpawnSerial}`);
+    this.spawnDynamicBoxes(level.dynamicBoxes, `respawn-${this.actionSpawnSerial}`);
+  }
+
+  private async spawnNpcs(
+    definitions: NPCDefinition[],
+    idPrefix: string,
+  ): Promise<void> {
+    const services = this.engine.services;
+    const characters = services.resolve(GameTokens.Characters);
+    const scene = services.resolve(EngineTokens.Scene);
+    const physics = services.resolve(EngineTokens.Physics);
+    const spawnValidator = new SpawnValidator(new Raycast(physics));
+
+    const npcServices = this.buildNpcRuntimeServices(new Raycast(physics));
+    for (const definition of definitions) {
+      const requested = tupleToVector3(definition.position);
+      const preset =
+        CharacterPresets[definition.characterId] ??
+        CharacterPresets.placeholderHumanoid;
+      const halfExtent = preset.collider.height / 2;
+      const validation = spawnValidator.validate(requested, halfExtent);
+      const npc = await characters.createNPC(
+        definition.characterId,
+        `${idPrefix}-${definition.id}`,
+        validation.position,
+        definition.patrol?.map(tupleToVector3) ?? [],
+        npcServices,
+      );
+      scene.scene.add(npc.mesh);
+      this.npcs.push(npc);
+    }
+  }
+
+  /**
+   * Servicios de runtime que la factory necesita para construir NPCs v2.
+   * `undefined` si el nivel todavia no cargo (la factory cae al path legacy).
+   */
+  private buildNpcRuntimeServices(raycast: Raycast): NpcRuntimeServices | undefined {
+    if (
+      !this.navSpace ||
+      !this.pathQueue ||
+      !this.buildingRegistry ||
+      !this.tacticalMap ||
+      !this.squadDirector
+    ) {
+      return undefined;
+    }
+    return {
+      navSpace: this.navSpace,
+      pathQueue: this.pathQueue,
+      buildingRegistry: this.buildingRegistry,
+      raycast,
+      tacticalMap: this.tacticalMap,
+      squadDirector: this.squadDirector,
+    };
+  }
+
+  private spawnDynamicBoxes(
+    definitions: DynamicBoxDefinition[],
+    idPrefix: string,
+  ): void {
+    const services = this.engine.services;
+    const scene = services.resolve(EngineTokens.Scene);
+    const physics = services.resolve(EngineTokens.Physics);
+
+    definitions.forEach((definition) => {
+      const id = `${idPrefix}-${definition.id}`;
+      const mesh = createBoxMesh({
+        id,
+        position: definition.position,
+        size: definition.size,
+        material: definition.material,
+        castShadow: true,
+        receiveShadow: true,
+      });
+      scene.scene.add(mesh);
+      physics.createDynamicBox(
+        {
+          id,
+          position: tupleToVector3(definition.position),
+          size: tupleToVector3(definition.size),
+          mass: definition.mass,
+        },
+        mesh,
+      );
+    });
+  }
+
+  /**
+   * Spawn debug: lanza un raycast desde la cámara y crea un Combine en el
+   * primer impacto válido. Si el suelo está demasiado lejos o el rayo no
+   * pega nada, no hace nada (mensaje en la consola).
+   */
+  private async spawnDebugCombineAtAim(): Promise<void> {
+    if (!this.currentLevel) return;
+    const services = this.engine.services;
+    const camera = services.resolve(EngineTokens.Camera);
+    const physics = services.resolve(EngineTokens.Physics);
+    const scene = services.resolve(EngineTokens.Scene);
+    const characters = services.resolve(GameTokens.Characters);
+    const eventBus = services.resolve(GameTokens.EventBus);
+
+    const raycast = new Raycast(physics);
+    const origin = camera.camera.position;
+    const direction = camera.getForwardDirection();
+    const hit = raycast.cast(origin, direction, 100);
+    if (!hit) {
+      eventBus.emit("subtitle.show", {
+        text: "No hay superficie para spawnear Combine.",
+        duration: 1.5,
+      });
+      return;
+    }
+
+    this.actionSpawnSerial += 1;
+    const instanceId = `action-combine-${this.actionSpawnSerial}`;
+    const preset = CharacterPresets.combine ?? CharacterPresets.placeholderHumanoid;
+    const halfExtent = preset.collider.height / 2;
+    const validator = new SpawnValidator(raycast);
+    const validation = validator.validate(hit.point, halfExtent);
+
+    try {
+      const npc = await characters.createNPC(
+        "combine",
+        instanceId,
+        validation.position,
+        [],
+        this.buildNpcRuntimeServices(raycast),
+      );
+      scene.scene.add(npc.mesh);
+      this.npcs.push(npc);
+      eventBus.emit("subtitle.show", {
+        text: "Combine spawneado.",
+        duration: 1.2,
+      });
+    } catch (error) {
+      console.warn("[Game] No se pudo spawnear combine debug:", error);
+    }
+  }
+
+  private async spawnWeaponSet(origin: Vector3): Promise<void> {
+    this.actionSpawnSerial += 1;
+    const services = this.engine.services;
+    const scene = services.resolve(EngineTokens.Scene);
+    const assets = services.resolve(EngineTokens.Assets);
+    const physics = services.resolve(EngineTokens.Physics);
+    const weaponIds: WeaponId[] = [...WEAPON_ORDER, "grenade", "grenade", "grenade"];
+
+    for (let i = 0; i < weaponIds.length; i += 1) {
+      const row = Math.floor(i / 5);
+      const column = i % 5;
+      const position = origin
+        .clone()
+        .add(new Vector3((column - 2) * 1.4, 0.2, 2.6 + row * 1.4));
+      const pickup = await WeaponPickup.create(scene.scene, physics, assets, {
+        id: `action-weapon-${this.actionSpawnSerial}-${i}-${weaponIds[i]}`,
+        weaponId: weaponIds[i],
+        position,
+      });
+      this.weaponPickups.push(pickup);
+    }
+  }
+
   private registerUi(): void {
     const s = this.engine.services;
     const eventBus = s.resolve(GameTokens.EventBus);
     const audio = s.resolve(EngineTokens.Audio);
     const controls = s.resolve(GameTokens.Controls);
+    const input = s.resolve(EngineTokens.Input);
+    const scene = s.resolve(EngineTokens.Scene);
+    const raycast = s.resolve(EngineTokens.Raycast);
 
     s.register(GameTokens.HUD, new HUD(this.root, eventBus));
-    const debugOverlay = s.register(
-      GameTokens.DebugOverlay,
-      new DebugOverlay(this.root, eventBus),
-    );
+
+    const debugMenu = new DebugMenu(this.root, input, controls, eventBus);
+    debugMenu.register(new StatsModule());
+    debugMenu.register(new PlayerModule(eventBus));
+    debugMenu.register(new WeaponsModule());
+    debugMenu.register(new NpcsModule());
+    debugMenu.register(new AiViewModule(scene.scene, raycast));
+    debugMenu.register(new AiTraceModule(eventBus));
+    debugMenu.register(new SceneModule(scene.scene));
+    s.register(GameTokens.DebugMenu, debugMenu);
 
     s.register(
       GameTokens.MainMenu,
@@ -253,7 +483,7 @@ export class Game {
         },
         onResume: () => this.setGameState("playing"),
         onExitToMain: () => this.exitToMainMenu(),
-        onToggleDebug: (enabled) => debugOverlay.setEnabled(enabled),
+        onToggleDebug: (enabled) => debugMenu.setVisible(enabled),
         onVolumeChange: (bus, value) => audio.setVolume(bus, value),
         onGetVolume: (bus) => audio.getVolume(bus),
         controls,
@@ -269,13 +499,9 @@ export class Game {
     const s = this.engine.services;
     const input = s.resolve(EngineTokens.Input);
     const controls = s.resolve(GameTokens.Controls);
-    const debugOverlay = s.resolve(GameTokens.DebugOverlay);
+    const debugMenu = s.resolve(GameTokens.DebugMenu);
 
-    if (controls.wasPressed("toggleDebug")) {
-      debugOverlay.toggle();
-    }
-
-    s.resolve(GameTokens.NpcDebug).update();
+    this.tickDebug(time, debugMenu);
 
     if (input.wasKeyPressed("F2") && this.player) {
       const enabled = this.player.health.toggleGodMode();
@@ -300,6 +526,23 @@ export class Game {
     input.endFrame();
   }
 
+  private tickDebug(time: Time, debugMenu: DebugMenu): void {
+    const s = this.engine.services;
+    const physics = s.resolve(EngineTokens.Physics);
+    const renderer = s.resolve(EngineTokens.Renderer);
+    debugMenu.update({
+      delta: time.delta,
+      elapsed: time.elapsed,
+      fps: time.fps,
+      player: this.player,
+      npcs: this.npcs,
+      navSpace: this.navSpace,
+      rendererInfo: renderer.renderer.info,
+      physicsBodies: physics.getBodyCount(),
+      playerPosition: this.player?.getPosition() ?? null,
+    });
+  }
+
   /** Tick completo cuando el juego estÃ¡ activo (no en menÃº/pausa). */
   private tickPlaying(time: Time): void {
     const player = this.player!;
@@ -314,24 +557,27 @@ export class Game {
     const weaponEffects = s.resolve(GameTokens.WeaponEffects);
     const subtitles = s.resolve(GameTokens.Subtitles);
     const footsteps = s.resolve(GameTokens.Footsteps);
-    const debugOverlay = s.resolve(GameTokens.DebugOverlay);
+    const grenades = s.resolve(GameTokens.Grenades);
 
     if (input.isPointerLocked()) {
       camera.updateLook(input);
       player.update(time.delta, input, controls, camera, time.elapsed);
     }
 
-    // Render-tick del viewmodel siempre, aunque F9 haya soltado el puntero,
-    // para que los tweaks del debug tuner se apliquen en vivo.
-    player.tickRender(time.delta, camera);
+    if (controls.wasPressed("spawnDebugCombine")) {
+      void this.spawnDebugCombineAtAim();
+    }
 
     footsteps.update(time.delta, player.getMoveIntensity());
 
-    const playerPosition = player.getPosition();
+    let playerPosition = player.getPosition();
     this.weaponPickups.forEach((pickup) =>
       pickup.update(time.delta, playerPosition, player.weapons),
     );
-    if (this.coverSystem && this.navGraph && this.squad) {
+    this.itemPickups.forEach((pickup) =>
+      pickup.update(time.delta, playerPosition, player.health),
+    );
+    if (this.tacticalMap && this.navSpace && this.squadDirector) {
       const playerSnapshot: ActorSnapshot = {
         id: "player",
         position: playerPosition,
@@ -348,28 +594,36 @@ export class Game {
         isAlive: npc.isAlive(),
         radius: npc.radius,
       }));
-      const ctx: NpcUpdateContext = {
+      const npcIndex = new ActorSpatialIndex(npcSnapshots);
+      const ctx: AiFrameContext = {
         delta: time.delta,
         elapsed: time.elapsed,
+        aiLod: "near",
         player: playerSnapshot,
         npcs: [],
-        coverSystem: this.coverSystem,
-        navGraph: this.navGraph,
-        squad: this.squad,
+        tacticalMap: this.tacticalMap,
+        squadDirector: this.squadDirector,
+        eventBus: s.resolve(GameTokens.EventBus),
       };
-      this.npcs.forEach((npc, index) => {
-        ctx.npcs = npcSnapshots.filter((_, j) => j !== index);
+      this.pathQueue?.process();
+      this.npcs.forEach((npc) => {
+        ctx.aiLod = this.computeNpcAiLod(npc.position, playerPosition);
+        ctx.npcs = npcIndex.query(npc.position, this.npcContextRadius, npc.id);
         npc.update(ctx);
       });
-      this.squad.tickAssignments(time.elapsed, playerPosition);
+      this.squadDirector.tickAssignments(time.elapsed, null);
     }
     this.doors.forEach((door) => door.update(time.delta));
     physics.step(time.delta);
     this.npcs.forEach((npc) => npc.syncFromPhysics());
-    s.resolve(GameTokens.Grenades).update(time.delta, time.elapsed);
+    grenades.update(time.delta, time.elapsed);
 
+    playerPosition = player.getPosition();
     camera.syncToPosition(player.getEyePosition());
+    // Update the viewmodel after the camera follows the resolved physics pose.
+    player.tickRender(time.delta, camera);
     interactSystem.update(
+      time.delta,
       camera.camera.position,
       camera.getForwardDirection(),
       controls,
@@ -378,13 +632,17 @@ export class Game {
     subtitles.update(time.delta);
     weaponEffects.update(time.delta);
     gizmos.update(time.delta);
+  }
 
-    debugOverlay.update({
-      fps: time.fps,
-      playerPosition,
-      physicsBodies: physics.getBodyCount(),
-      npcStates: this.npcs.map((npc) => `${npc.id}:${npc.getState()}`),
-    });
+  private computeNpcAiLod(position: Vector3, playerPosition: Vector3): AiFrameContext["aiLod"] {
+    const distanceSq = position.distanceToSquared(playerPosition);
+    if (distanceSq < 55 * 55) {
+      return "near";
+    }
+    if (distanceSq < 115 * 115) {
+      return "mid";
+    }
+    return "far";
   }
 
   // ---------------------------------------------------------------------------
@@ -417,8 +675,8 @@ export class Game {
 
   private readonly handlePointerLockChange = (): void => {
     const input = this.engine.services.resolve(EngineTokens.Input);
-    const npcDebug = this.engine.services.resolve(GameTokens.NpcDebug);
-    const debugRelease = npcDebug.isDebugMouseRelease();
+    const debugMenu = this.engine.services.resolve(GameTokens.DebugMenu);
+    const debugRelease = debugMenu.isDebugMouseRelease();
     if (
       !input.isPointerLocked() &&
       this.gameState === "playing" &&
@@ -528,14 +786,20 @@ export class Game {
     );
 
     this.npcs.forEach((npc) => npc.dispose());
+    this.itemPickups.forEach((pickup) => pickup.dispose());
+    interactSystem.clear();
 
     const loaded = await loader.load(level);
     this.npcs = loaded.npcs;
     this.doors = loaded.doors;
     this.weaponPickups = loaded.weaponPickups;
-    this.coverSystem = loaded.coverSystem;
-    this.navGraph = loaded.navGraph;
-    this.squad = loaded.squad;
+    this.itemPickups = loaded.itemPickups;
+    this.chargers = loaded.chargers;
+    this.tacticalMap = loaded.tacticalMap;
+    this.squadDirector = loaded.squadDirector;
+    this.buildingRegistry = loaded.buildingRegistry;
+    this.navSpace = loaded.navSpace;
+    this.pathQueue = loaded.pathQueue;
 
     this.player = new Player(
       new Vector3(...level.playerStart),
@@ -546,6 +810,7 @@ export class Game {
       eventBus,
       services.resolve(GameTokens.Grenades),
     );
+    this.chargers.forEach((charger) => charger.bind(this.player!.health));
 
     camera.syncToPosition(this.player.getEyePosition());
     levelEvents.announceLevel(level.title);
