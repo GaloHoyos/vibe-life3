@@ -51,7 +51,9 @@
       "PowerShell(& '.\\\\scripts\\\\rewrite-imports.ps1')",
       "PowerShell(npm ls *)",
       "Bash(echo \"exit code: $?\")",
-      "Bash(powershell -Command \"npx tsc --noEmit; if \\(\\\\$?\\) { Write-Output 'OK' } else { Write-Output 'FAIL' }\")"
+      "Bash(powershell -Command \"npx tsc --noEmit; if \\(\\\\$?\\) { Write-Output 'OK' } else { Write-Output 'FAIL' }\")",
+      "Bash(echo \"exit=$?\")",
+      "PowerShell(node \"C:\\\\Users\\\\galoh\\\\AppData\\\\Local\\\\Temp\\\\verify-ai\\\\diag-bt2.cjs\")"
     ],
     "deny": [
       "PowerShell(git push --force *)",

@@ -6,11 +6,28 @@ import type {
 } from "@engine/animation/procedural/ProceduralWalk";
 import type { RagdollConfig } from "@engine/animation/ragdoll/RagdollDefinition";
 import type { Faction } from "@engine/ai/Faction";
-import type { PerceptionConfig } from "@engine/ai/Perception";
-import type { CharacterAIProfileId } from "@game/npc/ai/CharacterAIProfile";
 
 export type CharacterType = "humanoid" | "creature" | "robot" | "prop";
 export type CharacterId = string;
+
+/**
+ * Identifica la familia de comportamiento del NPC. La factory de game lo
+ * mapea a un preset v2 (`game/npc/presets/`).
+ */
+export type CharacterAIProfileId =
+  | "combineSoldier"
+  | "zombieMelee"
+  | "alyxSupport"
+  | "passiveHumanoid";
+
+/** Configuracion de sentidos declarada por el personaje. */
+export interface CharacterPerceptionConfig {
+  viewDistance: number;
+  viewConeRadians: number;
+  hearingRadius: number;
+  memoryDuration: number;
+  eyeHeight: number;
+}
 
 export interface CharacterMovementConfig {
   maxSpeed: number;
@@ -158,7 +175,7 @@ export interface CharacterDefinition {
   type: CharacterType;
   /** Bando lÃ³gico â€” controla quiÃ©n ataca a quiÃ©n. */
   faction: Faction;
-  /** Perfil data-driven que define archetype, schedules, sensores y squad. */
+  /** Familia de comportamiento — la factory lo mapea a un preset v2. */
   aiProfileId: CharacterAIProfileId;
   height: number;
   radius: number;
@@ -173,7 +190,7 @@ export interface CharacterDefinition {
   collider: CharacterColliderConfig;
   ai: CharacterAIConfig;
   /** VisiÃ³n + LOS + memoria. SÃ³lo usado por `combineRanged` y `alyxAlly`. */
-  perception: PerceptionConfig;
+  perception: CharacterPerceptionConfig;
   attack: CharacterAttackConfig;
   stumble: CharacterStumbleConfig;
   debug: boolean;

@@ -1,11 +1,13 @@
 ﻿import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { WeaponId } from '@game/gameplay/weapons/core/WeaponDefinition';
+import type { ChargerKind, ItemId } from '@game/config/items.config';
 import type { MaterialKey } from '@engine/render/material/Materials';
 import type { SkyboxId } from '@engine/render/environment/Skybox';
 import type { SunOptions } from '@engine/render/environment/LightingSystem';
 import type { HeightSource } from '@shared/math/HeightField';
 import type { LevelActionKind } from '@game/GameEvents';
+import type { BuildingArtifact } from '@game/levels/buildings/BuildingArtifact';
 
 export interface StaticBoxDefinition {
   id: string;
@@ -56,6 +58,23 @@ export interface WeaponPickupDefinition {
   id: string;
   weaponId: WeaponId;
   position: VectorTuple;
+}
+
+export interface ItemPickupDefinition {
+  id: string;
+  itemId: ItemId;
+  position: VectorTuple;
+}
+
+export interface ChargerDefinition {
+  id: string;
+  kind: ChargerKind;
+  /** Base del cargador en world space — se asienta sobre esa Y. */
+  position: VectorTuple;
+  /** Rotación Y (radianes) para orientarlo contra la pared. Default 0. */
+  rotationY?: number;
+  /** Override de la reserva total. Default según `ChargerTypes[kind]`. */
+  capacity?: number;
 }
 
 export interface TriggerDefinition {
@@ -109,10 +128,20 @@ export interface LevelDefinition {
   /** Terreno opcional. Cuando estÃ¡ definido, agrega un heightfield (mesh + collider). */
   terrain?: TerrainDefinition;
   staticBoxes: StaticBoxDefinition[];
+  /**
+   * Edificios con metadata semantica. Cada artifact aporta sus boxes (que el
+   * LevelLoader materializa junto con `staticBoxes`) mas los rooms/doorways
+   * que `BuildingRegistry` y `NavSpace` consumen para breach/sweep de la IA.
+   */
+  buildings?: BuildingArtifact[];
   dynamicBoxes: DynamicBoxDefinition[];
   doors: DoorDefinition[];
   actionButtons?: ActionButtonDefinition[];
   npcs: NPCDefinition[];
   weaponPickups: WeaponPickupDefinition[];
+  /** Pickups de vitals (botiquines, baterías HEV). Si se omite, el nivel no trae. */
+  itemPickups?: ItemPickupDefinition[];
+  /** Cargadores de pared (vida / HEV) estilo HL2. Si se omite, el nivel no trae. */
+  chargers?: ChargerDefinition[];
   triggers: TriggerDefinition[];
 }

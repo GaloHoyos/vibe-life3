@@ -52,7 +52,7 @@ src/
 | `audio/`             | `core/` (`AudioBus`, `AudioSystem`, `SoundManager`, `PositionalSoundManager`, `MusicManager`), `systems/` (`BackgroundAmbienceSystem`, `FootstepSoundSystem`), `AudioManifest` en raíz. |
 | `animation/`         | `AnimationSystem`, `AnimationInput`, `AnimationDebug`, `HitReactionAnimator` en raíz. Subcarpetas: `layers/` (capas aditivas: locomotion, aim, attack, hit, idle, lookAt, posture, reload, velocityLean), `pose/` (`BoneMapper`, `BoneRotation`, `HumanoidRestPose`, `PoseSnapshot`, `RestPoseTuning`), `procedural/` (`ProceduralCharacterAnimator`, `ProceduralWalk`, `ProceduralBalance`), `ragdoll/` (`RagdollSystem` y los `Ragdoll*`/`Physical*` helpers). |
 | `assets/`            | `AssetManager`, `AssetManifest`. Carpetas `textures/`, `hdri/`, `sounds/`. |
-| `ai/`                | `StateMachine` (genérica reutilizable), `Blackboard`, `Faction`, `NavGraph`, `Perception`. |
+| `ai/`                | `Faction` en raíz. Subcarpetas: `brain/` (`Brain` runner de schedules por prioridad + `Task` + `Condition` bitmask), `perception/` (`PerceptionSystem` — cono de visión + LOS + memoria), `locomotion/` (`NpcLocomotion` — path following + stuck detection + separación de vecinos), `nav/` (`NavSpace` celdas+portales, `NavSpaceBuilder`, `AStar`, `PathRequestQueue` presupuestada, `PathSmoother`). |
 | `characters/`        | `CharacterDefinition` (tipo de configuración).                           |
 | `debug/`             | `Gizmos` — helpers visuales para debug.                                  |
 
@@ -63,16 +63,16 @@ src/
 | `Game.ts`                    | Bootstrap. Recibe el `Engine`, registra `GameTokens`, drive del loop.       |
 | `GameEvents.ts`              | `GameEventMap` + alias `GameEventBus = EventBus<GameEventMap>`.             |
 | `ServiceTokens.ts`           | `GameTokens` — tokens de servicios específicos del juego.                   |
-| `characters/`                | `CharacterFactory` + `CharacterPresets` (dispatch por `behaviorKind`).      |
-| `npc/`                       | `core/` (`INpc`, `NpcDebugFlags`), `zombie/` (`ZombieNpc`, `ZombieNpcState`), `alyx/` (`AlyxNpc`), `combine/` (`CombineNpc`, `CombineRoleTuning`), `combat/` (`NpcCombat`, `NpcRangedCombat`, `NpcWeaponAttachment`, `WeaponAttachmentTuning`, `CombatSquadCoordinator`), `movement/` (`NpcSteering`, `NpcPathFollower`), `animation/` (`NpcAnimationBridge`), `voice/` (`NpcBarker`). |
+| `characters/`                | `CharacterFactory` (construye el `Npc` v2: motor + combat handle + preset por `aiProfileId`) + `CharacterPresets`. |
+| `npc/`                       | `Npc.ts` (runtime unificado: perception → conditions → brain → locomotion). `core/` (`INpc`, `ActorSpatialIndex`, `NpcDebugFlags`), `brain/` (`NpcBrainContext`, `NpcConditions`, `NpcSensors`, `NpcNoiseSensor`, `NpcCoverSensor`, `tasks/` con `CoreTasks` + `TacticalTasks`), `presets/` (`combinePreset`, `zombiePreset`, `alyxPreset` — schedules data-driven por arquetipo), `combat/` (`NpcCombat` melee core, `NpcMeleeCombat` y `RealRangedCombat` adapters de `NpcCombatHandle`, `NpcRangedCombat`, `NpcWeaponAttachment`, `WeaponAttachmentTuning`), `ai/` (`SquadDirector` roles de squad, `TacticalMap` cover/firing points), `animation/` (`NpcAnimationBridge`). |
 | `gameplay/`                  | `Health` (compartido Player/NPC) en raíz. `player/` (`Player`, `PlayerHealth`, `Stamina`, `Controls`). `interactions/` (`Interactable`, `InteractSystem`, `SlidingDoor`, `DoorButton`). |
 | `gameplay/weapons/`          | `core/` (`Weapon` base, `WeaponDefinition`, `WeaponController`, `WeaponFactory`, `WeaponInventory`), `types/` (`HitscanWeapon`, `MeleeWeapon`, `GravityGunWeapon`), `effects/` (`MuzzleFlash`, `Recoil`, `WeaponEffects`, `WeaponViewModel`), `pickup/` (`WeaponPickup`). |
-| `levels/`                    | `LevelDefinition`, `LevelRegistry`, `LevelLoader`, `TriggerSystem`, `CoverSystem`, `NavGraphBuilder`. Subcarpetas: `maps/` (`DemoLevel`, `SnowFieldLevel`, …), `builders/` (ej. `HouseBuilder`). |
+| `levels/`                    | `LevelDefinition`, `LevelRegistry`, `LevelLoader`, `TriggerSystem`, `CoverSystem`. Subcarpetas: `maps/` (`DemoLevel`, `SnowFieldLevel`, …), `builders/` (`MapCreator` — builder fluido `createMap()` que compone el nivel completo; `BuildingBuilder` multi-piso con fachada compuesta — ventanas auto/manuales, puertas 2.2 m con dintel y marquesina, zócalo/bandas/cornisa/parapeto/pilastras, techos flat/walkable/gable, `palette` de materiales, escaleras con zancas y baranda perimetral del hueco del stairwell, y validación de descansos (warn si una boca de escalera tiene <1.5 m libres — ideal ≥2 m); `HouseBuilder` wrapper de 1 piso, `RampBuilder`, `PropBuilder` — crates/sandbags/cover walls/watchtower/container), `buildings/` (`BuildingArtifact`, `BuildingRegistry` — rooms/doorways para nav y AI). |
 | `narrative/`                 | `DialogueSystem`, `ScriptedSequence`, `LevelEvents`.                        |
 | `ui/`                        | `hud/` (`HUD`, `HUDView`, `Crosshair`, `DamageIndicator`, `HealthArmorHUD`, `HudIcons`, `WeaponHUD`, `WeaponSelectorView`), `subtitles/` (`Subtitles`, `SubtitlesView`), `overlay/` (`InteractionPrompt`, `debug/` con `DebugMenu` + `DebugMenuView` + `DebugModule` + `widgets` y `modules/` por pestania), `menu/` (`MainMenu`, `MainMenuView`, `MainMenuState`, `PauseMenu`, `OptionsMenu`, `NewGameMenu`, `CreditsMenu`, `MenuStyles.css`). |
 | `audio/`                     | Sistemas reactivos a eventos: weapon/enemy/dialogue/UI sound.               |
 | `config/`                    | `weapons.config.ts`, `audio.config.ts`, `gameplay.config.ts`, `controls.config.ts`, `strings.ts`. |
-| `debug/`                     | Recursos puros (sin DOM ni keybinds) que consume el `DebugMenu`: `NpcAiDebugOverlay` (overlay 3D del nav graph + NPCs), `NpcAiTraceRecorder` (grabador offline) y `SceneInspector` (`window.__inspectScene`). |
+| `debug/`                     | Recursos puros (sin DOM ni keybinds) que consume el `DebugMenu`: `NpcAiDebugOverlay` (overlay 3D del `NavSpace` + NPCs), `NpcAiTraceRecorder` (grabador offline) y `SceneInspector` (`window.__inspectScene`). |
 
 ### `shared/`
 
@@ -169,13 +169,15 @@ Regla práctica: si el import cruza directorios (`..`), usar alias. Si es vecino
 
 ### Agregar un nivel
 
-1. Crear `src/game/levels/maps/MyLevel.ts` exportando un `LevelDefinition`.
+1. Crear `src/game/levels/maps/MyLevel.ts` exportando un `LevelDefinition`. **Camino recomendado:** `createMap()` de `builders/MapCreator.ts` — builder fluido que compone suelo (`.ground` con boundary opcional), terreno (`.terrain`), estructuras (`.structure` = `BuildingBuilder` multi-piso con rooms/escaleras/doorways, `.house` = `HouseBuilder`), props (`.prop` con los helpers de `PropBuilder`: `crateStack`, `sandbagLine`, `coverWall`, `pillar`, `cargoContainer`, `watchtower`), NPCs/items dentro de habitaciones (`.npcInRoom`, `.pickupInRoom`, `roomPoint()` — coords locales al room, sin calcular world a mano) y emite el `LevelDefinition` validado (ids únicos). Ver `BuildingTestLevel.ts` como referencia.
 2. Sumar el id al type `LevelId` y la entrada al mapa en `LevelRegistry`.
 3. Audio (`ambiences`, `footstepSounds`, `music`) se resuelve solo vía `LevelLoader`.
 4. (Opcional) `skybox: SkyboxId` — HDRI propio. Si se omite usa `'default'`. `background: number` queda como fallback.
 5. (Opcional) `sun: { direction, color, intensity }` — sobrescribe el sol. Sub-campos omitidos caen al default del `LightingSystem`.
 6. (Opcional) `terrain` — colinas/dunas. Ver receta abajo.
-7. (Opcional) Builders de `src/game/levels/builders/` (ej. `buildHouse`) para generar grupos de `StaticBoxDefinition`. Si la geometría va a aparecer en otro nivel, **proponer extraerla a un builder nuevo** antes de inlinearla.
+7. Navegabilidad: el `NavSpaceBuilder` deriva las celdas de la **colisión real** (scan multi-capa con headroom + clearance), así que todo lo que el builder coloca queda navegable por NPCs sin paso extra — interiores, escaleras, props como obstáculo/cover. Ojo: un id que contenga `stair`/`ramp` taguea la celda como escalera (cadena no podable); `roof`/`floor` también infieren superficie.
+8. Escaleras de `BuildingBuilder`: dejar ≥1.5 m (ideal ≥2 m) libres más allá de ambos extremos del tramo (descarga arriba, aproximación abajo) — con menos no entran celdas y los NPCs no conectan el piso (el builder avisa por consola). La boca de aproximación debe abrir hacia área conectada del piso, no hacia un rincón cercado por el hueco del otro tramo. Los puntos de `npcInRoom`/`pickupInRoom` no deben caer sobre el hueco del stairwell del piso (la columna no tiene superficie ahí y el spawn se va a otra capa).
+9. Si una geometría va a aparecer en otro nivel, **proponer extraerla a un builder nuevo** (prop en `PropBuilder` o builder propio) antes de inlinearla.
 
 ### Agregar terreno a un nivel
 
@@ -193,11 +195,11 @@ Ejemplo: `src/game/levels/maps/SnowFieldLevel.ts`.
 
 ### Agregar un NPC
 
-1. Preset en `game/characters/CharacterPresets.ts` (extiende `CharacterDefinition`).
+1. Entrada en `game/characters/CharacterPresets.ts` (extiende `CharacterDefinition`: modelo, collider, stats de ataque).
 2. Entrada en `EnemyAudio` (`audio.config.ts`) por `CharacterId`.
-3. `NPCDefinition` en `LevelDefinition.npcs`.
-4. **Si comparte un comportamiento existente** (`zombieMelee`, `combineRanged`, `alyxAlly`): solo el preset alcanza. `CharacterFactory` lo dispatchea a la clase correspondiente (`ZombieNpc`, `CombineNpc`, `AlyxNpc`).
-5. **Si necesita un NPC nuevo de "familia"** (ej. headcrab, antlion, otro ally): crear subcarpeta propia en `game/npc/<nombre>/` con la clase principal (siguiendo el patrón de `zombie/ZombieNpc.ts`, `combine/CombineNpc.ts`, `alyx/AlyxNpc.ts`), añadir `behaviorKind` y dispatch en `CharacterFactory`. La AI compone `StateMachine`s (AI + balance) + `NpcCombat` o `NpcRangedCombat` + `NpcAnimationBridge`.
+3. `NPCDefinition` en `LevelDefinition.npcs` (con `patrol?: VectorTuple[]` opcional para ruta de patrulla).
+4. **Si comparte un comportamiento existente** (`zombieMelee`, `combineSoldier`, `alyxSupport`): alcanza con el `aiProfileId` — `CharacterFactory.resolvePresetFor` lo mapea al preset v2 correspondiente.
+5. **Si necesita comportamiento nuevo** (ej. headcrab, antlion): crear `game/npc/presets/<nombre>Preset.ts` siguiendo el patrón de `zombiePreset.ts`/`combinePreset.ts` — un array de schedules (prioridad + condition masks + tasks de `CoreTasks`/`TacticalTasks`) y stats de percepción/movimiento. Sumar el `aiProfileId` al union de `CharacterDefinition` y al dispatch de `resolvePresetFor`. Tasks nuevas van en `game/npc/brain/tasks/`. No se crean clases de NPC: el runtime `Npc` es único.
 
 ### Agregar un evento del juego
 

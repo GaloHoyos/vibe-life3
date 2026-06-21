@@ -36,6 +36,7 @@ export class MeleeWeapon extends Weapon {
       this.definition.damage * damageMultiplier,
       context.direction.clone(),
       hit.metadata?.bodyPart?.name,
+      "player",
     );
 
     this.context.eventBus.emit("weapon.hit", {

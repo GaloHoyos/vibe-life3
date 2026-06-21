@@ -42,6 +42,7 @@ export class HitscanWeapon extends Weapon {
       this.definition.damage * damageMultiplier,
       direction.clone(),
       hit.metadata?.bodyPart?.name,
+      "player",
     );
 
     this.context.eventBus.emit("weapon.hit", {

@@ -85,7 +85,8 @@ export const SnowFieldLevel: LevelDefinition = {
     },
     material: 'snow',
   },
-  staticBoxes: HOUSES.flatMap(buildHouse),
+  staticBoxes: [],
+  buildings: HOUSES.map(buildHouse),
   dynamicBoxes: [
     { id: 'crate-sf-01', position: [18, 5, -8], size: [0.9, 0.9, 0.9], mass: 1.4, material: 'crate' },
     { id: 'crate-sf-02', position: [17, 5, -7], size: [0.7, 0.7, 0.7], mass: 0.8, material: 'crate' },

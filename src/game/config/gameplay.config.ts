@@ -32,7 +32,7 @@ export const PlayerConfig = {
   },
   vitals: {
     maxHealth: 100,
-    armorMax: 0,
+    armorMax: 100,
   },
   /**
    * Stamina HL2-style (`AUX power`). Drena solo cuando el sprint está

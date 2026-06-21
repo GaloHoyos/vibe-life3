@@ -150,6 +150,7 @@ export class GravityGunWeapon extends Weapon {
         damage,
         this.tmpDirection.clone(),
         hit.metadata.bodyPart?.name,
+        "player",
       );
       this.context.eventBus.emit("weapon.hit", {
         weaponName: this.name,

@@ -15,20 +15,20 @@ import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
-import type { NavGraph } from "@engine/ai/NavGraph";
+import type { NavSpace } from "@engine/ai/nav/NavSpace";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { INpc, NpcAiDebugSnapshot } from "@game/npc/core/INpc";
 import type { Disposable } from "@shared/types/lifecycle";
 
 interface NpcAiDebugFrame {
   playerPosition: Vector3 | undefined;
-  navGraph: NavGraph | null;
+  navSpace: NavSpace | null;
   npcs: readonly INpc[];
 }
 
 const REFRESH_INTERVAL = 0.35;
-const NAV_RADIUS = 70;
-const NAV_MAX_NODES = 520;
+const NAV_RADIUS = 60;
+const NAV_MAX_NODES = 2600;
 const NPC_RADIUS = 120;
 const LIFT = new Vector3(0, 0.18, 0);
 const LABEL_CACHE_MAX = 256;
@@ -116,7 +116,7 @@ export class NpcAiDebugOverlay implements Disposable {
   private rebuild(frame: NpcAiDebugFrame): void {
     this.clear();
     if (!frame.playerPosition) return;
-    this.drawNavGraph(frame, frame.playerPosition);
+    this.drawNavSpace(frame, frame.playerPosition);
 
     for (const npc of frame.npcs) {
       const snapshot = npc.getAiDebugSnapshot();
@@ -130,48 +130,65 @@ export class NpcAiDebugOverlay implements Disposable {
     }
   }
 
-  private drawNavGraph(frame: NpcAiDebugFrame, playerPosition: Vector3): void {
-    if (!frame.navGraph) {
+  private drawNavSpace(frame: NpcAiDebugFrame, playerPosition: Vector3): void {
+    if (!frame.navSpace) {
       return;
     }
 
-    const snapshot = frame.navGraph.getDebugSnapshot(
-      playerPosition,
-      NAV_RADIUS,
-      NAV_MAX_NODES,
-    );
+    const cells = frame.navSpace.getCells();
+    const edges = frame.navSpace.getEdges();
+    const radiusSq = NAV_RADIUS * NAV_RADIUS;
 
     const connectedPositions: Vector3[] = [];
     const orphanPositions: Vector3[] = [];
     const floatLineSegments: Vector3[] = [];
     const sinkLineSegments: Vector3[] = [];
     const voidLineSegments: Vector3[] = [];
+    const includedCells = new Set<number>();
     let orphanCount = 0;
     let floatingCount = 0;
     let sunkCount = 0;
     let voidCount = 0;
 
-    for (const node of snapshot.nodes) {
-      const lifted = node.position.clone().add(LIFT);
-      if (node.edgeCount === 0) {
+    // Seleccion por cercania: con cap por indice se dibujaba solo la primera
+    // banda del scan (esquina NO del mapa) y el resto parecia sin cobertura.
+    const inRange: Array<{ cell: (typeof cells)[number]; distSq: number }> = [];
+    for (const cell of cells) {
+      const dx = cell.center[0] - playerPosition.x;
+      const dz = cell.center[2] - playerPosition.z;
+      const distSq = dx * dx + dz * dz;
+      if (distSq > radiusSq) continue;
+      inRange.push({ cell, distSq });
+    }
+    if (inRange.length > NAV_MAX_NODES) {
+      inRange.sort((a, b) => a.distSq - b.distSq);
+      inRange.length = NAV_MAX_NODES;
+    }
+
+    for (const { cell } of inRange) {
+      includedCells.add(cell.index);
+
+      const position = new Vector3(cell.center[0], cell.center[1], cell.center[2]);
+      const lifted = position.clone().add(LIFT);
+      if (cell.edgeCount === 0) {
         orphanPositions.push(lifted);
         orphanCount += 1;
       } else {
         connectedPositions.push(lifted);
       }
 
-      const drop = this.measureDropToGround(node.position);
+      const drop = this.measureDropToGround(position);
       if (drop === "void") {
         voidLineSegments.push(
-          node.position.clone(),
-          node.position.clone().add(new Vector3(0, -DROP_RAY_DISTANCE, 0)),
+          position.clone(),
+          position.clone().add(new Vector3(0, -DROP_RAY_DISTANCE, 0)),
         );
         voidCount += 1;
       } else if (drop.kind === "floating") {
-        floatLineSegments.push(node.position.clone(), drop.groundPoint);
+        floatLineSegments.push(position.clone(), drop.groundPoint);
         floatingCount += 1;
       } else if (drop.kind === "sunk") {
-        sinkLineSegments.push(node.position.clone(), drop.groundPoint);
+        sinkLineSegments.push(position.clone(), drop.groundPoint);
         sunkCount += 1;
       }
     }
@@ -182,11 +199,31 @@ export class NpcAiDebugOverlay implements Disposable {
     this.addLineSegments(sinkLineSegments, 0xff4b4b, 0.95, 2);
     this.addLineSegments(voidLineSegments, 0xff00ff, 0.95, 2);
 
+    // Edges del CSR, una sola direccion (toCell mayor) para no duplicar lineas.
     const edgePoints: Vector3[] = [];
-    for (const edge of snapshot.edges) {
-      edgePoints.push(edge.from.clone().add(LIFT), edge.to.clone().add(LIFT));
+    for (const cell of cells) {
+      if (!includedCells.has(cell.index)) continue;
+      for (let e = cell.edgeStart; e < cell.edgeStart + cell.edgeCount; e += 1) {
+        const edge = edges[e];
+        if (edge.toCell <= cell.index) continue;
+        const to = cells[edge.toCell];
+        edgePoints.push(
+          new Vector3(cell.center[0], cell.center[1], cell.center[2]).add(LIFT),
+          new Vector3(to.center[0], to.center[1], to.center[2]).add(LIFT),
+        );
+      }
     }
     this.addLineSegments(edgePoints, 0x2a9dc8, 0.7, 2.5);
+
+    const portalPositions: Vector3[] = [];
+    for (const portal of frame.navSpace.getPortals()) {
+      const p = new Vector3(portal.position[0], portal.position[1], portal.position[2]);
+      const dx = p.x - playerPosition.x;
+      const dz = p.z - playerPosition.z;
+      if (dx * dx + dz * dz > radiusSq) continue;
+      portalPositions.push(p.add(LIFT));
+    }
+    this.addPoints(portalPositions, 0xffd24b, 1, 0.7);
 
     const labelPosition = playerPosition.clone().add(new Vector3(0, 3.2, 0));
     const issues: string[] = [];
@@ -196,7 +233,7 @@ export class NpcAiDebugOverlay implements Disposable {
     if (voidCount > 0) issues.push(`vacio:${voidCount}`);
     const detail = issues.length > 0 ? issues.join(" ") : "todos OK";
     this.addLabel(
-      `Nav local ${snapshot.nodes.length}/${snapshot.totalNodes}`,
+      `Nav local ${includedCells.size}/${cells.length}`,
       detail,
       labelPosition,
       "#84e9ff",

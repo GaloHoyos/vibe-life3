@@ -296,6 +296,7 @@ export class GrenadeSystem implements Disposable {
         target.damage,
         target.direction.clone(),
         target.bodyPartName,
+        grenade.sourceId,
       );
       this.eventBus.emit("weapon.hit", {
         weaponName: grenade.weaponName,

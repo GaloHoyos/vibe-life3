@@ -3,10 +3,10 @@ import type { StaticBoxDefinition } from '@game/levels/LevelDefinition';
 
 export interface RampSpec {
   /**
-   * Prefix de los ids de cada escalón. El `NavGraphBuilder` reconoce ids del
-   * formato `<prefix>-step-<n>` y trata los nodos resultantes como una escalera
-   * (cadena de edges explícita entre índices adyacentes, entry/exit solo en
-   * extremos). No usar `-step-` en otros ids.
+   * Prefix de los ids de cada escalón (`<prefix>-step-<n>`). El
+   * `NavSpaceBuilder` los cubre con su scan por raycast: cada escalón debe
+   * quedar bajo el max step height (1.0 m) del escalón siguiente para que
+   * las celdas conecten en cadena.
    */
   id: string;
   /**
@@ -31,7 +31,7 @@ export interface RampSpec {
   width: number;
   /** Cantidad de escalones. */
   steps: number;
-  /** Espesor del box de cada escalón. Default 0.4. NavGraphBuilder.isWalkableBox requiere ≤0.75. */
+  /** Espesor del box de cada escalón. Default 0.4. */
   stepThickness?: number;
   material?: MaterialKey;
 }
@@ -49,8 +49,8 @@ export const STEP_OVERLAP = 0.05;
 
 /**
  * Construye una "rampa" como secuencia de escalones planos walkables. Cada
- * escalón es una `StaticBoxDefinition` con id `<prefix>-step-<n>`, lo que
- * permite al `NavGraphBuilder` armar la cadena de nodos del staircase.
+ * escalón es una `StaticBoxDefinition` con id `<prefix>-step-<n>`; el scan
+ * del `NavSpaceBuilder` genera celdas sobre cada escalón y las conecta.
  *
  * Alineamiento garantizado:
  *  - El top del último escalón cae exactamente en `endY`. La losa de destino

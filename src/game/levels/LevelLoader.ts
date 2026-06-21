@@ -1,12 +1,14 @@
-﻿import type { Scene } from 'three';
+﻿import { Box3, Group, Mesh, MeshStandardMaterial, BoxGeometry, Vector3, type Scene } from 'three';
 import type { AssetManager } from '@engine/assets/AssetManager';
 import type { CharacterFactory } from '@game/characters/CharacterFactory';
 import { CharacterPresets } from '@game/characters/CharacterPresets';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import { tupleToVector3 } from '@shared/math/VectorTuple';
 import type { GameEventBus } from "@game/GameEvents";
-import { ActionButton, DoorButton, InteractSystem, SlidingDoor } from '@game/gameplay/interactions';
+import { ActionButton, Charger, DoorButton, InteractSystem, SlidingDoor } from '@game/gameplay/interactions';
 import { WeaponPickup } from '@game/gameplay/weapons/pickup/WeaponPickup';
+import { ItemPickup } from '@game/gameplay/items/ItemPickup';
+import { getChargerType } from '@game/config/items.config';
 import { SquadDirector } from '@game/npc/ai/SquadDirector';
 import type { INpc } from '@game/npc/core/INpc';
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
@@ -16,19 +18,26 @@ import { createBoxMesh } from '@engine/render/PrimitiveFactory';
 import { createTerrainMesh } from '@engine/render/TerrainMesh';
 import type { MaterialKey } from '@engine/render/material/Materials';
 import { generateHeightField } from '@shared/math/HeightField';
-import type { NavGraph } from '@engine/ai/NavGraph';
+import { NavSpace } from '@engine/ai/nav/NavSpace';
+import { NavSpaceBuilder } from '@engine/ai/nav/NavSpaceBuilder';
+import { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
+import type { NpcRuntimeServices } from '@game/characters/CharacterFactory';
 import { TacticalMap, TacticalMapAnalyzer } from '@game/npc/ai/TacticalMap';
+import { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
 import type { LevelDefinition } from './LevelDefinition';
-import { NavGraphBuilder } from './NavGraphBuilder';
 import type { TriggerSystem } from './TriggerSystem';
 
 export interface LoadedLevel {
   npcs: INpc[];
   doors: SlidingDoor[];
   weaponPickups: WeaponPickup[];
+  itemPickups: ItemPickup[];
+  chargers: Charger[];
   tacticalMap: TacticalMap;
-  navGraph: NavGraph;
   squadDirector: SquadDirector;
+  buildingRegistry: BuildingRegistry;
+  navSpace: NavSpace;
+  pathQueue: PathRequestQueue;
 }
 
 /**
@@ -51,6 +60,8 @@ export class LevelLoader {
     const npcs: INpc[] = [];
     const doors: SlidingDoor[] = [];
     const weaponPickups: WeaponPickup[] = [];
+    const itemPickups: ItemPickup[] = [];
+    const chargers: Charger[] = [];
     const sharedRaycast = new Raycast(this.physics);
 
     if (level.terrain) {
@@ -75,7 +86,10 @@ export class LevelLoader {
       });
     }
 
-    level.staticBoxes.forEach((definition) => {
+    const buildings = level.buildings ?? [];
+    const buildingBoxes = buildings.flatMap((b) => b.boxes);
+    const allStaticBoxes = [...level.staticBoxes, ...buildingBoxes];
+    allStaticBoxes.forEach((definition) => {
       const mesh = createLevelBox(definition.id, definition.position, definition.size, definition.material);
       this.scene.add(mesh);
       this.physics.createStaticBox({
@@ -84,6 +98,7 @@ export class LevelLoader {
         size: tupleToVector3(definition.size),
       });
     });
+    const buildingRegistry = new BuildingRegistry(buildings);
 
     level.dynamicBoxes.forEach((definition) => {
       const mesh = createLevelBox(definition.id, definition.position, definition.size, definition.material);
@@ -153,6 +168,40 @@ export class LevelLoader {
 
     this.physics.updateQueryPipeline();
     const spawnValidator = new SpawnValidator(new Raycast(this.physics));
+
+    const navSpaceBounds = computeNavSpaceBounds({
+      ...level,
+      staticBoxes: allStaticBoxes,
+    });
+    const navBuildStart = performance.now();
+    const navSpace = new NavSpaceBuilder().build(sharedRaycast, buildings, {
+      bounds: navSpaceBounds,
+      // Edificios de hasta 4 pisos + techo = 5 superficies apiladas por columna.
+      // Solo las columnas que realmente apilan pagan el costo extra del scan.
+      maxLayers: 6,
+    });
+    console.info(
+      `[LevelLoader] NavSpace: ${navSpace.cellCount()} celdas, ${navSpace.portalCount()} portales (${Math.round(performance.now() - navBuildStart)} ms)`,
+    );
+    const pathQueue = new PathRequestQueue(navSpace);
+
+    const enrichedLevel: LevelDefinition = { ...level, staticBoxes: allStaticBoxes };
+    const tacticalMap = new TacticalMapAnalyzer().analyze(
+      enrichedLevel,
+      navSpace,
+      sharedRaycast,
+    );
+    const squadDirector = new SquadDirector();
+
+    const npcServices: NpcRuntimeServices = {
+      navSpace,
+      pathQueue,
+      buildingRegistry,
+      raycast: sharedRaycast,
+      tacticalMap,
+      squadDirector,
+    };
+
     for (const definition of level.npcs) {
       const requested = tupleToVector3(definition.position);
       const preset =
@@ -174,6 +223,7 @@ export class LevelLoader {
         definition.id,
         validation.position,
         definition.patrol?.map(tupleToVector3) ?? [],
+        npcServices,
       );
       this.scene.add(npc.mesh);
       npcs.push(npc);
@@ -189,25 +239,73 @@ export class LevelLoader {
       );
     }
 
+    for (const definition of level.itemPickups ?? []) {
+      itemPickups.push(
+        await ItemPickup.create(this.scene, this.physics, this.assets, {
+          id: definition.id,
+          itemId: definition.itemId,
+          position: tupleToVector3(definition.position),
+        }),
+      );
+    }
+
+    for (const definition of level.chargers ?? []) {
+      const type = getChargerType(definition.kind);
+      const instance = await this.assets.instantiateModel(type.modelId);
+      const object = new Group();
+      object.name = definition.id;
+      object.add(instance.root ?? createChargerFallback(definition.id));
+      object.scale.setScalar(type.scale);
+      object.rotation.y = definition.rotationY ?? 0;
+      const base = tupleToVector3(definition.position);
+      object.position.copy(base);
+      object.updateMatrixWorld(true);
+      // Asienta la base del modelo sobre la Y pedida (sin depender del pivote del GLB).
+      const bounds = new Box3().setFromObject(object);
+      object.position.y += base.y - bounds.min.y;
+      object.updateMatrixWorld(true);
+      this.scene.add(object);
+
+      const solid = new Box3().setFromObject(object);
+      this.physics.createStaticBox({
+        id: `${definition.id}-body`,
+        position: solid.getCenter(new Vector3()),
+        size: solid.getSize(new Vector3()),
+      });
+
+      const charger = new Charger(definition.id, object, type, definition.capacity ?? type.capacity);
+      this.interactSystem.register(charger);
+      chargers.push(charger);
+    }
+
     level.triggers.forEach((definition) => {
       this.triggerSystem.addTrigger(definition);
     });
 
     this.physics.updateQueryPipeline();
-    const navGraph = new NavGraphBuilder().build(level, sharedRaycast);
-    console.info(
-      `[LevelLoader] NavGraph: ${navGraph.nodeCount()} nodos generados`,
-    );
 
-    const tacticalMap = new TacticalMapAnalyzer().analyze(
-      level,
-      navGraph,
-      sharedRaycast,
-    );
-    const squadDirector = new SquadDirector();
-
-    return { npcs, doors, weaponPickups, tacticalMap, navGraph, squadDirector };
+    return {
+      npcs,
+      doors,
+      weaponPickups,
+      itemPickups,
+      chargers,
+      tacticalMap,
+      squadDirector,
+      buildingRegistry,
+      navSpace,
+      pathQueue,
+    };
   }
+}
+
+function createChargerFallback(id: string): Mesh {
+  const mesh = new Mesh(
+    new BoxGeometry(1, 1.9, 0.5),
+    new MeshStandardMaterial({ color: 0x2c3138, emissive: 0x113322, emissiveIntensity: 0.3, roughness: 0.6 }),
+  );
+  mesh.name = `${id}-fallback`;
+  return mesh;
 }
 
 function createLevelBox(id: string, position: VectorTuple, size: VectorTuple, material: MaterialKey) {
@@ -219,4 +317,31 @@ function createLevelBox(id: string, position: VectorTuple, size: VectorTuple, ma
     castShadow: true,
     receiveShadow: true,
   });
+}
+
+function computeNavSpaceBounds(level: LevelDefinition): {
+  minX: number; maxX: number; minZ: number; maxZ: number;
+} {
+  if (level.terrain) {
+    const [cx, , cz] = level.terrain.position;
+    const [sx, sz] = level.terrain.size;
+    return { minX: cx - sx / 2, maxX: cx + sx / 2, minZ: cz - sz / 2, maxZ: cz + sz / 2 };
+  }
+  if (level.staticBoxes.length === 0) {
+    return { minX: -20, maxX: 20, minZ: -20, maxZ: 20 };
+  }
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const box of level.staticBoxes) {
+    const [x, , z] = box.position;
+    const [sx, , sz] = box.size;
+    minX = Math.min(minX, x - sx / 2);
+    maxX = Math.max(maxX, x + sx / 2);
+    minZ = Math.min(minZ, z - sz / 2);
+    maxZ = Math.max(maxZ, z + sz / 2);
+  }
+  const margin = 4;
+  return { minX: minX - margin, maxX: maxX + margin, minZ: minZ - margin, maxZ: maxZ + margin };
 }

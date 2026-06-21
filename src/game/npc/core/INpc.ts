@@ -1,13 +1,10 @@
 ﻿import type { Group, Vector3 } from "three";
 import type { Faction } from "@engine/ai/Faction";
-import type { NavGraph } from "@engine/ai/NavGraph";
 import type { Damageable } from "@shared/types/lifecycle";
 import type { Health } from "@game/gameplay/Health";
-import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import type { GameEventBus } from "@game/GameEvents";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
 import type { SquadDirector, SquadRole } from "@game/npc/ai/SquadDirector";
-import type { NpcPathDebugSnapshot } from "@game/npc/movement/NpcPathFollower";
 
 /**
  * Snapshot ligero de un actor del mundo (player u otro NPC) que cualquier
@@ -34,10 +31,38 @@ export interface AiFrameContext {
   player: ActorSnapshot;
   npcs: ActorSnapshot[];
   tacticalMap: TacticalMap;
-  navGraph: NavGraph;
   squadDirector: SquadDirector;
-  grenades: GrenadeSystem;
   eventBus: GameEventBus;
+}
+
+/**
+ * Estado de pathing para overlays/trace. `path` son los waypoints suavizados
+ * vivos del `NpcLocomotion`; `lastStatus` es 'pending' | 'ready' | 'none'.
+ * Los campos de node ids quedan del path follower viejo y se llenan neutros.
+ */
+export interface NpcPathDebugSnapshot {
+  path: Vector3[];
+  pathNodeIds: Array<number | null>;
+  waypointIndex: number;
+  nextWaypointNodeId: number | null;
+  nextWaypoint: Vector3 | null;
+  pathTarget: Vector3 | null;
+  pathUsed: boolean;
+  pathUseReason: string;
+  requestedDestination: Vector3 | null;
+  distanceToRequested: number | null;
+  horizontalDistanceToRequested: number | null;
+  verticalDeltaToRequested: number | null;
+  lastStatus: string;
+  lastRepathReason: string | null;
+  lastRequestAt: number | null;
+  lastProgressAt: number | null;
+  startNodeId: number | null;
+  goalNodeId: number | null;
+  startComponentId: number | null;
+  goalComponentId: number | null;
+  startNodePosition: Vector3 | null;
+  goalNodePosition: Vector3 | null;
 }
 
 export interface NpcAiDebugSnapshot {
@@ -126,10 +151,7 @@ export interface NpcAiDebugSnapshot {
   };
 }
 
-/**
- * Interfaz uniforme que consume `Game`/`LevelLoader`. `ZombieNpc`,
- * `CombineNpc` y `AlyxNpc` la implementan.
- */
+/** Interfaz uniforme que consume `Game`/`LevelLoader`. La implementa `Npc`. */
 export interface INpc {
   readonly id: string;
   readonly mesh: Group;
@@ -140,7 +162,12 @@ export interface INpc {
 
   update(ctx: AiFrameContext): void;
   syncFromPhysics(): void;
-  applyDamage(amount: number, hitDirection?: Vector3, hitPartName?: string): void;
+  applyDamage(
+    amount: number,
+    hitDirection?: Vector3,
+    hitPartName?: string,
+    attackerId?: string,
+  ): void;
   isAlive(): boolean;
   getState(): string;
   getAiDebugSnapshot(): NpcAiDebugSnapshot;

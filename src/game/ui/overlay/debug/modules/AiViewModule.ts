@@ -5,7 +5,7 @@ import type { DebugFrame, DebugModule } from "../DebugModule";
 import { buildSection } from "../widgets";
 
 /**
- * Wrapper del `NpcAiDebugOverlay` (NavGraph + grafo de paths/threats por
+ * Wrapper del `NpcAiDebugOverlay` (NavSpace + grafo de paths/threats por
  * NPC). Marcada como `heavy` -- arranca inactiva para no degradar FPS por
  * el simple hecho de abrir el menu. El usuario tiene que prenderla
  * explicitamente con el checkbox de la pestania.
@@ -41,7 +41,7 @@ export class AiViewModule implements DebugModule {
   update(frame: DebugFrame): void {
     this.overlay.update(frame.delta, {
       playerPosition: frame.playerPosition ?? undefined,
-      navGraph: frame.navGraph,
+      navSpace: frame.navSpace,
       npcs: frame.npcs,
     });
   }

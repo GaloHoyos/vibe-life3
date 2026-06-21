@@ -245,7 +245,7 @@ export class NpcRangedCombat {
     if (!damageable) return;
     const partMul = hit.metadata?.bodyPart?.damageMultiplier ?? 1;
     const damage = weapon.damage * partMul;
-    damageable.applyDamage(damage, spreadDir.clone(), hit.metadata?.bodyPart?.name);
+    damageable.applyDamage(damage, spreadDir.clone(), hit.metadata?.bodyPart?.name, this.ownerId);
     this.eventBus.emit("weapon.hit", {
       weaponName: weapon.displayName,
       targetId: hit.metadata?.id,

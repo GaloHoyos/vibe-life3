@@ -256,6 +256,7 @@ export class ShotgunWeapon extends Weapon {
         damage,
         dir.clone(),
         hit.metadata?.bodyPart?.name,
+        "player",
       );
 
       this.context.eventBus.emit("weapon.hit", {

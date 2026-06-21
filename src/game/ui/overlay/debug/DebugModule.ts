@@ -1,5 +1,5 @@
 import type { Vector3, WebGLRenderer } from "three";
-import type { NavGraph } from "@engine/ai/NavGraph";
+import type { NavSpace } from "@engine/ai/nav/NavSpace";
 import type { Player } from "@game/gameplay/player/Player";
 import type { INpc } from "@game/npc/core/INpc";
 import type { Disposable } from "@shared/types/lifecycle";
@@ -10,7 +10,7 @@ export interface DebugFrame {
   fps: number;
   player: Player | null;
   npcs: readonly INpc[];
-  navGraph: NavGraph | null;
+  navSpace: NavSpace | null;
   rendererInfo: WebGLRenderer["info"];
   physicsBodies: number;
   playerPosition: Vector3 | null;

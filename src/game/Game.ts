@@ -9,6 +9,7 @@ import type { Time } from "@engine/core/Time";
 import { SpawnValidator } from "@engine/physics/character/SpawnValidator";
 import { Raycast } from "@engine/physics/Raycast";
 import { CharacterFactory } from "@game/characters/CharacterFactory";
+import type { NpcRuntimeServices } from "@game/characters/CharacterFactory";
 import { CharacterPresets } from "@game/characters/CharacterPresets";
 import { FootstepsConfig } from "@game/config/audio.config";
 import { Dialogue, MenuStrings } from "@game/config/strings";
@@ -30,9 +31,11 @@ import { Controls } from "@game/gameplay/player/Controls";
 import { Player } from "@game/gameplay/player/Player";
 import { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
 import { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
-import { InteractSystem, type SlidingDoor } from "@game/gameplay/interactions";
-import type { NavGraph } from "@engine/ai/NavGraph";
+import { InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
+import type { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
+import type { NavSpace } from "@engine/ai/nav/NavSpace";
+import type { PathRequestQueue } from "@engine/ai/nav/PathRequestQueue";
 import type { SquadDirector } from "@game/npc/ai/SquadDirector";
 import type {
   DynamicBoxDefinition,
@@ -47,6 +50,7 @@ import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
 import { DialogueSystem } from "@game/narrative/DialogueSystem";
 import { LevelEvents } from "@game/narrative/LevelEvents";
 import { WeaponPickup } from "@game/gameplay/weapons/pickup/WeaponPickup";
+import { ItemPickup } from "@game/gameplay/items/ItemPickup";
 import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
 import { WEAPON_ORDER, WeaponDefinitions } from "@game/config/weapons.config";
 import { HUD } from "@game/ui/hud/HUD";
@@ -82,9 +86,13 @@ export class Game {
   private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
+  private itemPickups: ItemPickup[] = [];
+  private chargers: Charger[] = [];
   private tacticalMap: TacticalMap | null = null;
-  private navGraph: NavGraph | null = null;
   private squadDirector: SquadDirector | null = null;
+  private buildingRegistry: BuildingRegistry | null = null;
+  private navSpace: NavSpace | null = null;
+  private pathQueue: PathRequestQueue | null = null;
   private pendingExitTimeoutId: number | null = null;
   private actionSpawnSerial = 0;
   private readonly npcContextRadius = 90;
@@ -296,6 +304,7 @@ export class Game {
     const physics = services.resolve(EngineTokens.Physics);
     const spawnValidator = new SpawnValidator(new Raycast(physics));
 
+    const npcServices = this.buildNpcRuntimeServices(new Raycast(physics));
     for (const definition of definitions) {
       const requested = tupleToVector3(definition.position);
       const preset =
@@ -308,10 +317,35 @@ export class Game {
         `${idPrefix}-${definition.id}`,
         validation.position,
         definition.patrol?.map(tupleToVector3) ?? [],
+        npcServices,
       );
       scene.scene.add(npc.mesh);
       this.npcs.push(npc);
     }
+  }
+
+  /**
+   * Servicios de runtime que la factory necesita para construir NPCs v2.
+   * `undefined` si el nivel todavia no cargo (la factory cae al path legacy).
+   */
+  private buildNpcRuntimeServices(raycast: Raycast): NpcRuntimeServices | undefined {
+    if (
+      !this.navSpace ||
+      !this.pathQueue ||
+      !this.buildingRegistry ||
+      !this.tacticalMap ||
+      !this.squadDirector
+    ) {
+      return undefined;
+    }
+    return {
+      navSpace: this.navSpace,
+      pathQueue: this.pathQueue,
+      buildingRegistry: this.buildingRegistry,
+      raycast,
+      tacticalMap: this.tacticalMap,
+      squadDirector: this.squadDirector,
+    };
   }
 
   private spawnDynamicBoxes(
@@ -379,7 +413,13 @@ export class Game {
     const validation = validator.validate(hit.point, halfExtent);
 
     try {
-      const npc = await characters.createNPC("combine", instanceId, validation.position, []);
+      const npc = await characters.createNPC(
+        "combine",
+        instanceId,
+        validation.position,
+        [],
+        this.buildNpcRuntimeServices(raycast),
+      );
       scene.scene.add(npc.mesh);
       this.npcs.push(npc);
       eventBus.emit("subtitle.show", {
@@ -496,7 +536,7 @@ export class Game {
       fps: time.fps,
       player: this.player,
       npcs: this.npcs,
-      navGraph: this.navGraph,
+      navSpace: this.navSpace,
       rendererInfo: renderer.renderer.info,
       physicsBodies: physics.getBodyCount(),
       playerPosition: this.player?.getPosition() ?? null,
@@ -534,7 +574,10 @@ export class Game {
     this.weaponPickups.forEach((pickup) =>
       pickup.update(time.delta, playerPosition, player.weapons),
     );
-    if (this.tacticalMap && this.navGraph && this.squadDirector) {
+    this.itemPickups.forEach((pickup) =>
+      pickup.update(time.delta, playerPosition, player.health),
+    );
+    if (this.tacticalMap && this.navSpace && this.squadDirector) {
       const playerSnapshot: ActorSnapshot = {
         id: "player",
         position: playerPosition,
@@ -559,11 +602,10 @@ export class Game {
         player: playerSnapshot,
         npcs: [],
         tacticalMap: this.tacticalMap,
-        navGraph: this.navGraph,
         squadDirector: this.squadDirector,
-        grenades,
         eventBus: s.resolve(GameTokens.EventBus),
       };
+      this.pathQueue?.process();
       this.npcs.forEach((npc) => {
         ctx.aiLod = this.computeNpcAiLod(npc.position, playerPosition);
         ctx.npcs = npcIndex.query(npc.position, this.npcContextRadius, npc.id);
@@ -581,6 +623,7 @@ export class Game {
     // Update the viewmodel after the camera follows the resolved physics pose.
     player.tickRender(time.delta, camera);
     interactSystem.update(
+      time.delta,
       camera.camera.position,
       camera.getForwardDirection(),
       controls,
@@ -743,14 +786,20 @@ export class Game {
     );
 
     this.npcs.forEach((npc) => npc.dispose());
+    this.itemPickups.forEach((pickup) => pickup.dispose());
+    interactSystem.clear();
 
     const loaded = await loader.load(level);
     this.npcs = loaded.npcs;
     this.doors = loaded.doors;
     this.weaponPickups = loaded.weaponPickups;
+    this.itemPickups = loaded.itemPickups;
+    this.chargers = loaded.chargers;
     this.tacticalMap = loaded.tacticalMap;
-    this.navGraph = loaded.navGraph;
     this.squadDirector = loaded.squadDirector;
+    this.buildingRegistry = loaded.buildingRegistry;
+    this.navSpace = loaded.navSpace;
+    this.pathQueue = loaded.pathQueue;
 
     this.player = new Player(
       new Vector3(...level.playerStart),
@@ -761,6 +810,7 @@ export class Game {
       eventBus,
       services.resolve(GameTokens.Grenades),
     );
+    this.chargers.forEach((charger) => charger.bind(this.player!.health));
 
     camera.syncToPosition(this.player.getEyePosition());
     levelEvents.announceLevel(level.title);
