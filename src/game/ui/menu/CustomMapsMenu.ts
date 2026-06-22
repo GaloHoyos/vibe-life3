@@ -1,4 +1,10 @@
-import type { CustomMapEntry } from "./MainMenuState";
+import type { CustomMapEntry, CustomMapSource } from "./MainMenuState";
+
+const SOURCE_TAGS: Record<CustomMapSource, string> = {
+  folder: "INCLUIDO",
+  library: "LOCAL",
+  workshop: "WORKSHOP",
+};
 
 export interface CustomMapsMenuCallbacks {
   onPlay: (entry: CustomMapEntry) => void;
@@ -66,21 +72,33 @@ export class CustomMapsMenu {
     item.className = "hl2-chapter hl2-chapter--custom";
     item.dataset.chapterId = entry.id;
 
-    const tag = entry.source === "library" ? "LOCAL" : "INCLUIDO";
-    item.innerHTML = `
-      <div class="hl2-chapter__body">
-        <div class="hl2-chapter__title">${entry.title} <span class="hl2-chapter__tag">${tag}</span></div>
-        <div class="hl2-chapter__desc">${entry.description}</div>
-      </div>
-      <div class="hl2-chapter__buttons"></div>
-    `;
+    const body = document.createElement("div");
+    body.className = "hl2-chapter__body";
 
-    const buttons = item.querySelector(".hl2-chapter__buttons") as HTMLDivElement;
+    // textContent (no innerHTML): titulo/descripcion pueden venir de contenido
+    // remoto del Workshop y no deben interpretarse como HTML.
+    const title = document.createElement("div");
+    title.className = "hl2-chapter__title";
+    title.textContent = entry.title;
+    const tag = document.createElement("span");
+    tag.className = "hl2-chapter__tag";
+    tag.textContent = SOURCE_TAGS[entry.source];
+    title.append(" ", tag);
+
+    const desc = document.createElement("div");
+    desc.className = "hl2-chapter__desc";
+    desc.textContent = entry.description;
+    body.append(title, desc);
+
+    const buttons = document.createElement("div");
+    buttons.className = "hl2-chapter__buttons";
     buttons.append(button("JUGAR", "hl2-button--primary", () => callbacks.onPlay(entry)));
     buttons.append(button("EDITAR", "", () => callbacks.onEdit(entry)));
     if (entry.source === "library") {
       buttons.append(button("BORRAR", "hl2-button--danger", () => callbacks.onDelete(entry.id)));
     }
+
+    item.append(body, buttons);
     return item;
   }
 }

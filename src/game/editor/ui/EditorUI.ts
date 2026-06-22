@@ -60,6 +60,7 @@ export class EditorUI implements EditorUiBridge, Disposable {
         onExportJson: () => this.exportJson(),
         onExportTs: () => this.exportTs(),
         onSaveLibrary: () => this.saveLibrary(),
+        onPublish: () => this.publishWorkshop(),
         onImportFile: () => this.importFile(),
         onImportRegistry: (levelId) => this.importRegistry(levelId),
         onPlaytest: () => this.playtest(),
@@ -164,6 +165,21 @@ export class EditorUI implements EditorUiBridge, Disposable {
     }
     saveLibraryMap(doc);
     this.view.setStatus(`Guardado en biblioteca: "${doc.meta.title || doc.meta.id}".`);
+  }
+
+  private publishWorkshop(): void {
+    const doc = this.editor.getDocument();
+    try {
+      toLevelDefinition(doc); // valida ids unicos / builders antes de publicar
+    } catch (error) {
+      this.view.setStatus(`Error: ${errorMessage(error)}`);
+      return;
+    }
+    this.view.setStatus('Publicando en el Workshop...');
+    this.editor
+      .requestPublish(doc)
+      .then((message) => this.view.setStatus(message))
+      .catch((error: unknown) => this.view.setStatus(`Error: ${errorMessage(error)}`));
   }
 
   private importFile(): void {

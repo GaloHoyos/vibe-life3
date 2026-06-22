@@ -7,6 +7,7 @@ import {
 } from "./MainMenuState";
 import type { AudioBusName } from "@engine/audio/core/AudioSystem";
 import type { Controls } from "@game/gameplay/player/Controls";
+import type { WorkshopService } from "@game/workshop/WorkshopService";
 
 export interface MainMenuCallbacks {
   onStartChapter: (chapterId: string) => void;
@@ -21,6 +22,7 @@ export interface MainMenuCallbacks {
   onVolumeChange: (bus: AudioBusName, value: number) => void;
   onGetVolume: (bus: AudioBusName) => number;
   controls: Controls;
+  workshop: WorkshopService;
 }
 
 /**
@@ -56,6 +58,7 @@ export class MainMenu implements Disposable {
       onVolumeChange: callbacks.onVolumeChange,
       onGetVolume: callbacks.onGetVolume,
       controls: callbacks.controls,
+      workshop: callbacks.workshop,
     });
     this.element = this.view.element as HTMLDivElement;
     container.append(this.element);

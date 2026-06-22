@@ -1,5 +1,6 @@
 ﻿import { CreditsMenu } from "./CreditsMenu";
 import { CustomMapsMenu } from "./CustomMapsMenu";
+import { WorkshopMenu } from "./WorkshopMenu";
 import { NewGameMenu } from "./NewGameMenu";
 import { OptionsMenu } from "./OptionsMenu";
 import {
@@ -10,6 +11,7 @@ import {
 } from "./MainMenuState";
 import type { AudioBusName } from "@engine/audio/core/AudioSystem";
 import type { Controls } from "@game/gameplay/player/Controls";
+import type { WorkshopService } from "@game/workshop/WorkshopService";
 
 export interface MainMenuViewCallbacks {
   onStartChapter: (chapterId: string) => void;
@@ -26,6 +28,7 @@ export interface MainMenuViewCallbacks {
   onVolumeChange: (bus: AudioBusName, value: number) => void;
   onGetVolume: (bus: AudioBusName) => number;
   controls: Controls;
+  workshop: WorkshopService;
 }
 
 export class MainMenuView {
@@ -81,6 +84,10 @@ export class MainMenuView {
         <button class="hl2-button" data-state="customMaps" type="button">
           <span class="hl2-button__marker"></span>
           <span class="hl2-button__label">MAPAS PERSONALIZADOS</span>
+        </button>
+        <button class="hl2-button" data-state="workshop" type="button">
+          <span class="hl2-button__marker"></span>
+          <span class="hl2-button__label">WORKSHOP</span>
         </button>
         <button class="hl2-button" data-state="loadGame" type="button">
           <span class="hl2-button__marker"></span>
@@ -209,6 +216,7 @@ export class MainMenuView {
     const isSubMenu =
       state === "newGameMenu" ||
       state === "customMaps" ||
+      state === "workshop" ||
       state === "options" ||
       state === "credits" ||
       state === "loadGame";
@@ -223,6 +231,8 @@ export class MainMenuView {
       this.contentPanel.append(this.newGameMenu.element);
     } else if (state === "customMaps") {
       this.contentPanel.append(this.buildCustomMapsMenu().element);
+    } else if (state === "workshop") {
+      this.contentPanel.append(this.buildWorkshopMenu().element);
     } else if (state === "options") {
       this.contentPanel.append(this.optionsMenu.element);
     } else if (state === "credits") {
@@ -239,6 +249,24 @@ export class MainMenuView {
       onEdit: this.callbacks.onEditCustomMap,
       onDelete: this.callbacks.onDeleteLibraryMap,
       onImport: this.callbacks.onImportCustomMap,
+      onBack: this.callbacks.onBack,
+    });
+  }
+
+  /** Reconstruido cada vez: las suscripciones del Workshop cambian fuera de esta vista. */
+  private buildWorkshopMenu(): WorkshopMenu {
+    return new WorkshopMenu(this.callbacks.workshop, {
+      onPlay: (id) => {
+        const sub = this.callbacks.workshop
+          .listSubscriptions()
+          .find((s) => s.id === id);
+        this.callbacks.onStartCustomMap({
+          id,
+          title: sub?.title ?? id,
+          description: "",
+          source: "workshop",
+        });
+      },
       onBack: this.callbacks.onBack,
     });
   }

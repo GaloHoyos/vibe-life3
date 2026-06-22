@@ -73,6 +73,9 @@ import {
   saveLibraryMap,
 } from "@game/editor/mapLibrary";
 import type { EditorDocument } from "@game/editor/EditorDocument";
+import { WorkshopService } from "@game/workshop/WorkshopService";
+import { WorkshopStore } from "@game/workshop/WorkshopStore";
+import { CloudflareWorkshopBackend } from "@game/workshop/CloudflareWorkshopBackend";
 import { createBoxMesh } from "@engine/render/PrimitiveFactory";
 import { tupleToVector3 } from "@shared/math/VectorTuple";
 
@@ -119,6 +122,7 @@ export class Game {
     this.bootIntoLevel = options.bootIntoLevel;
 
     this.registerEventBus();
+    this.registerWorkshop();
     this.registerAudio();
     this.registerGameplay();
     this.registerUi();
@@ -491,11 +495,21 @@ export class Game {
     }
   }
 
+  private registerWorkshop(): void {
+    const s = this.engine.services;
+    const eventBus = s.resolve(GameTokens.EventBus);
+    s.register(
+      GameTokens.Workshop,
+      new WorkshopService(new CloudflareWorkshopBackend(), new WorkshopStore(), eventBus),
+    );
+  }
+
   private registerUi(): void {
     const s = this.engine.services;
     const eventBus = s.resolve(GameTokens.EventBus);
     const audio = s.resolve(EngineTokens.Audio);
     const controls = s.resolve(GameTokens.Controls);
+    const workshop = s.resolve(GameTokens.Workshop);
     const input = s.resolve(EngineTokens.Input);
     const scene = s.resolve(EngineTokens.Scene);
     const raycast = s.resolve(EngineTokens.Raycast);
@@ -512,7 +526,10 @@ export class Game {
         input,
         s.resolve(EngineTokens.Environment),
         s.resolve(EngineTokens.Lighting),
-        { onExit: () => this.exitEditor() },
+        {
+          onExit: () => this.exitEditor(),
+          onPublish: (doc) => this.publishFromEditor(doc),
+        },
       ),
     );
 
@@ -535,7 +552,9 @@ export class Game {
         onStartCustomMap: (entry) => {
           void this.startCustomMap(entry);
         },
-        onEditCustomMap: (entry) => this.editCustomMap(entry),
+        onEditCustomMap: (entry) => {
+          void this.editCustomMap(entry);
+        },
         onDeleteLibraryMap: (id) => this.deleteCustomMap(id),
         onImportCustomMap: () => {
           void this.importCustomMap();
@@ -547,6 +566,7 @@ export class Game {
         onVolumeChange: (bus, value) => audio.setVolume(bus, value),
         onGetVolume: (bus) => audio.getVolume(bus),
         controls,
+        workshop,
       }),
     );
   }
@@ -806,10 +826,12 @@ export class Game {
    * como draft. Los de carpeta `.ts` se abren como copia (al guardar van a la
    * biblioteca local, no se reescribe el archivo del repo).
    */
-  private editCustomMap(entry: CustomMapEntry): void {
+  private async editCustomMap(entry: CustomMapEntry): Promise<void> {
     let doc: EditorDocument | null;
     if (entry.source === "folder") {
       doc = fromLevelDefinition(getLevel(entry.id));
+    } else if (entry.source === "workshop") {
+      doc = await this.engine.services.resolve(GameTokens.Workshop).getDocument(entry.id);
     } else {
       doc = getLibraryMap(entry.id);
     }
@@ -838,6 +860,23 @@ export class Game {
     } catch (error) {
       console.warn("[Game] Import de mapa custom cancelado o invalido:", error);
     }
+  }
+
+  private async publishFromEditor(doc: EditorDocument): Promise<string> {
+    const workshop = this.engine.services.resolve(GameTokens.Workshop);
+    if (!workshop.capabilities.publish) {
+      throw new Error("Workshop no configurado (VITE_WORKSHOP_API).");
+    }
+    if (!workshop.currentUser()) {
+      await workshop.signIn();
+    }
+    const listing = await workshop.publish(doc, {
+      title: doc.meta.title,
+      description: doc.meta.description ?? "",
+      tags: [],
+      type: "map",
+    });
+    return `Publicado en el Workshop: "${listing.title}".`;
   }
 
   private exitEditor(): void {
@@ -870,9 +909,12 @@ export class Game {
       await this.startLevel(getLevel(entry.id));
       return;
     }
-    const doc = getLibraryMap(entry.id);
+    const doc =
+      entry.source === "workshop"
+        ? await this.engine.services.resolve(GameTokens.Workshop).getDocument(entry.id)
+        : getLibraryMap(entry.id);
     if (!doc) {
-      console.warn(`[Game] Mapa custom "${entry.id}" no encontrado en biblioteca.`);
+      console.warn(`[Game] Mapa custom "${entry.id}" no encontrado.`);
       return;
     }
     let level: LevelDefinition;

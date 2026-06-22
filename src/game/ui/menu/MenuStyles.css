@@ -435,6 +435,19 @@
   border-bottom-color: var(--hl2-orange);
 }
 
+.hl2-workshop__body {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.hl2-workshop__account {
+  margin: 0 0 12px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--hl2-muted);
+}
+
 .hl2-options {
   display: grid;
   gap: 12px;

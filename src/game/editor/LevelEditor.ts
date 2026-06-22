@@ -24,6 +24,8 @@ import {
 export interface LevelEditorCallbacks {
   /** Salir del editor de vuelta al menu principal. */
   onExit: () => void;
+  /** Publicar el documento actual en el Workshop; resuelve con un mensaje de estado. */
+  onPublish?: (doc: EditorDocument) => Promise<string>;
 }
 
 /** Contrato que la UI del editor expone al nucleo para reaccionar a cambios. */
@@ -237,6 +239,13 @@ export class LevelEditor implements Disposable {
 
   requestExit(): void {
     this.callbacks.onExit();
+  }
+
+  requestPublish(doc: EditorDocument): Promise<string> {
+    if (!this.callbacks.onPublish) {
+      return Promise.reject(new Error("Publicar en el Workshop no esta disponible."));
+    }
+    return this.callbacks.onPublish(doc);
   }
 
   update(time: Time): void {

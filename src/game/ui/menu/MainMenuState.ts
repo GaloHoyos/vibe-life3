@@ -3,6 +3,7 @@
   getCustomFolderLevels,
 } from "@game/levels/LevelRegistry";
 import { listLibraryMaps } from "@game/editor/mapLibrary";
+import { listWorkshopIndex } from "@game/workshop/workshopIndex";
 
 export type GameMenuState =
   | "mainMenu"
@@ -14,7 +15,8 @@ export type GameMenuState =
   | "playing"
   | "paused"
   | "loading"
-  | "editor";
+  | "editor"
+  | "workshop";
 
 export interface MenuChapter {
   id: string;
@@ -22,8 +24,8 @@ export interface MenuChapter {
   description: string;
 }
 
-/** Origen de un mapa custom: archivo `.ts` de carpeta, o doc guardado en el navegador. */
-export type CustomMapSource = "folder" | "library";
+/** Origen de un mapa custom: carpeta `.ts`, biblioteca local, o suscripcion del Workshop. */
+export type CustomMapSource = "folder" | "library" | "workshop";
 
 export interface CustomMapEntry {
   id: string;
@@ -56,5 +58,13 @@ export function buildCustomMaps(): CustomMapEntry[] {
     description: "Mapa guardado en este navegador.",
     source: "library",
   }));
-  return [...folder, ...library];
+  const workshop: CustomMapEntry[] = listWorkshopIndex()
+    .filter((sub) => sub.enabled)
+    .map((sub) => ({
+      id: sub.id,
+      title: sub.title,
+      description: "Mapa del Workshop (suscrito).",
+      source: "workshop",
+    }));
+  return [...folder, ...library, ...workshop];
 }
