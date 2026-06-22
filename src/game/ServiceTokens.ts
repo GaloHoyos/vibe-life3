@@ -19,6 +19,8 @@ import type { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
 import type { HUD } from "@game/ui/hud/HUD";
 import type { Subtitles } from "@game/ui/subtitles/Subtitles";
 import type { MainMenu } from "@game/ui/menu/MainMenu";
+import type { LevelEditor } from "@game/editor/LevelEditor";
+import type { WorkshopService } from "@game/workshop/WorkshopService";
 
 /**
  * Tokens de servicios especificos del juego.
@@ -39,6 +41,8 @@ export const GameTokens = {
   HUD: new ServiceToken<HUD>("HUD"),
   MainMenu: new ServiceToken<MainMenu>("MainMenu"),
   DebugMenu: new ServiceToken<DebugMenu>("DebugMenu"),
+  LevelEditor: new ServiceToken<LevelEditor>("LevelEditor"),
+  Workshop: new ServiceToken<WorkshopService>("WorkshopService"),
   BackgroundAmbience: new ServiceToken<BackgroundAmbienceSystem>(
     "BackgroundAmbienceSystem",
   ),

@@ -354,6 +354,39 @@
   letter-spacing: 0.18em;
 }
 
+.hl2-chapter--custom {
+  grid-template-columns: 1fr auto;
+  cursor: default;
+}
+
+.hl2-chapter--custom:hover {
+  transform: none;
+}
+
+.hl2-chapter__tag {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--hl2-muted);
+  border: 1px solid rgba(255, 138, 26, 0.35);
+  vertical-align: middle;
+}
+
+.hl2-chapter__buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.hl2-button--danger .hl2-button__label {
+  color: #ff6b5e;
+}
+
+.hl2-actions--top {
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
 .hl2-chapter--empty {
   cursor: default;
   border-color: transparent;
@@ -400,6 +433,19 @@
 .hl2-tab.is-active {
   color: var(--hl2-orange);
   border-bottom-color: var(--hl2-orange);
+}
+
+.hl2-workshop__body {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.hl2-workshop__account {
+  margin: 0 0 12px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--hl2-muted);
 }
 
 .hl2-options {

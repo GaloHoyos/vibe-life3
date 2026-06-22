@@ -1,17 +1,28 @@
 ﻿import type { Disposable } from "@shared/types/lifecycle";
 import { MainMenuView } from "./MainMenuView";
-import { buildChapters, type GameMenuState } from "./MainMenuState";
+import {
+  buildChapters,
+  type CustomMapEntry,
+  type GameMenuState,
+} from "./MainMenuState";
 import type { AudioBusName } from "@engine/audio/core/AudioSystem";
 import type { Controls } from "@game/gameplay/player/Controls";
+import type { WorkshopService } from "@game/workshop/WorkshopService";
 
 export interface MainMenuCallbacks {
   onStartChapter: (chapterId: string) => void;
+  onStartCustomMap: (entry: CustomMapEntry) => void;
+  onEditCustomMap: (entry: CustomMapEntry) => void;
+  onDeleteLibraryMap: (id: string) => void;
+  onImportCustomMap: () => void;
   onResume: () => void;
   onExitToMain: () => void;
+  onOpenEditor: () => void;
   onToggleDebug: (enabled: boolean) => void;
   onVolumeChange: (bus: AudioBusName, value: number) => void;
   onGetVolume: (bus: AudioBusName) => number;
   controls: Controls;
+  workshop: WorkshopService;
 }
 
 /**
@@ -34,14 +45,20 @@ export class MainMenu implements Disposable {
   constructor(container: HTMLElement, callbacks: MainMenuCallbacks) {
     this.view = new MainMenuView(buildChapters(), {
       onStartChapter: callbacks.onStartChapter,
+      onStartCustomMap: callbacks.onStartCustomMap,
+      onEditCustomMap: callbacks.onEditCustomMap,
+      onDeleteLibraryMap: callbacks.onDeleteLibraryMap,
+      onImportCustomMap: callbacks.onImportCustomMap,
       onOpenState: (state) => this.setState(state),
       onBack: () => this.setState(this.pauseFlow ? "paused" : "mainMenu"),
       onResume: callbacks.onResume,
       onExitToMain: callbacks.onExitToMain,
+      onOpenEditor: callbacks.onOpenEditor,
       onToggleDebug: callbacks.onToggleDebug,
       onVolumeChange: callbacks.onVolumeChange,
       onGetVolume: callbacks.onGetVolume,
       controls: callbacks.controls,
+      workshop: callbacks.workshop,
     });
     this.element = this.view.element as HTMLDivElement;
     container.append(this.element);
@@ -55,11 +72,18 @@ export class MainMenu implements Disposable {
     }
     this.state = state;
     this.view.setState(state, this.pauseFlow);
-    this.view.setVisible(state !== "playing");
+    this.view.setVisible(state !== "playing" && state !== "editor");
   }
 
   getState(): GameMenuState {
     return this.state;
+  }
+
+  /** Re-renderiza la lista de mapas custom (tras importar/borrar) si esta visible. */
+  refreshCustomMaps(): void {
+    if (this.state === "customMaps") {
+      this.view.setState("customMaps", this.pauseFlow);
+    }
   }
 
   showMain(): void {

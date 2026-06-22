@@ -2,6 +2,7 @@
 import { Game } from "@game/Game";
 import "./style.css";
 import "./game/ui/menu/MenuStyles.css";
+import "./game/editor/ui/EditorStyles.css";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 

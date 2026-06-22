@@ -1,20 +1,34 @@
 ﻿import { CreditsMenu } from "./CreditsMenu";
+import { CustomMapsMenu } from "./CustomMapsMenu";
+import { WorkshopMenu } from "./WorkshopMenu";
 import { NewGameMenu } from "./NewGameMenu";
 import { OptionsMenu } from "./OptionsMenu";
-import type { GameMenuState, MenuChapter } from "./MainMenuState";
+import {
+  buildCustomMaps,
+  type CustomMapEntry,
+  type GameMenuState,
+  type MenuChapter,
+} from "./MainMenuState";
 import type { AudioBusName } from "@engine/audio/core/AudioSystem";
 import type { Controls } from "@game/gameplay/player/Controls";
+import type { WorkshopService } from "@game/workshop/WorkshopService";
 
 export interface MainMenuViewCallbacks {
   onStartChapter: (chapterId: string) => void;
+  onStartCustomMap: (entry: CustomMapEntry) => void;
+  onEditCustomMap: (entry: CustomMapEntry) => void;
+  onDeleteLibraryMap: (id: string) => void;
+  onImportCustomMap: () => void;
   onOpenState: (state: GameMenuState) => void;
   onBack: () => void;
   onResume: () => void;
   onExitToMain: () => void;
+  onOpenEditor: () => void;
   onToggleDebug: (enabled: boolean) => void;
   onVolumeChange: (bus: AudioBusName, value: number) => void;
   onGetVolume: (bus: AudioBusName) => number;
   controls: Controls;
+  workshop: WorkshopService;
 }
 
 export class MainMenuView {
@@ -29,8 +43,10 @@ export class MainMenuView {
   private readonly newGameMenu: NewGameMenu;
   private readonly creditsMenu: CreditsMenu;
   private readonly loadPanel = document.createElement("section");
+  private readonly callbacks: MainMenuViewCallbacks;
 
   constructor(chapters: MenuChapter[], callbacks: MainMenuViewCallbacks) {
+    this.callbacks = callbacks;
     this.element.className = "hl2-menu";
     this.element.innerHTML = `
       <div class="hl2-menu__backdrop"></div>
@@ -65,6 +81,14 @@ export class MainMenuView {
           <span class="hl2-button__marker"></span>
           <span class="hl2-button__label">NUEVA PARTIDA</span>
         </button>
+        <button class="hl2-button" data-state="customMaps" type="button">
+          <span class="hl2-button__marker"></span>
+          <span class="hl2-button__label">MAPAS PERSONALIZADOS</span>
+        </button>
+        <button class="hl2-button" data-state="workshop" type="button">
+          <span class="hl2-button__marker"></span>
+          <span class="hl2-button__label">WORKSHOP</span>
+        </button>
         <button class="hl2-button" data-state="loadGame" type="button">
           <span class="hl2-button__marker"></span>
           <span class="hl2-button__label">CARGAR PARTIDA</span>
@@ -76,6 +100,10 @@ export class MainMenuView {
         <button class="hl2-button" data-state="credits" type="button">
           <span class="hl2-button__marker"></span>
           <span class="hl2-button__label">CREDITOS</span>
+        </button>
+        <button class="hl2-button" data-action="editor" type="button">
+          <span class="hl2-button__marker"></span>
+          <span class="hl2-button__label">EDITOR DE NIVELES</span>
         </button>
         <button class="hl2-button" data-action="exit" type="button">
           <span class="hl2-button__marker"></span>
@@ -166,6 +194,11 @@ export class MainMenuView {
       this.setStatus("No disponible en navegador.");
     });
 
+    const editorButton = this.mainNav.querySelector(
+      '[data-action="editor"]',
+    ) as HTMLButtonElement;
+    editorButton.addEventListener("click", callbacks.onOpenEditor);
+
     const resumeButton = this.pauseNav.querySelector(
       '[data-action="resume"]',
     ) as HTMLButtonElement;
@@ -182,6 +215,8 @@ export class MainMenuView {
     const isLoading = state === "loading";
     const isSubMenu =
       state === "newGameMenu" ||
+      state === "customMaps" ||
+      state === "workshop" ||
       state === "options" ||
       state === "credits" ||
       state === "loadGame";
@@ -194,6 +229,10 @@ export class MainMenuView {
     this.contentPanel.replaceChildren();
     if (state === "newGameMenu") {
       this.contentPanel.append(this.newGameMenu.element);
+    } else if (state === "customMaps") {
+      this.contentPanel.append(this.buildCustomMapsMenu().element);
+    } else if (state === "workshop") {
+      this.contentPanel.append(this.buildWorkshopMenu().element);
     } else if (state === "options") {
       this.contentPanel.append(this.optionsMenu.element);
     } else if (state === "credits") {
@@ -201,6 +240,35 @@ export class MainMenuView {
     } else if (state === "loadGame") {
       this.contentPanel.append(this.loadPanel);
     }
+  }
+
+  /** Reconstruido cada vez: la biblioteca local cambia (importar/borrar). */
+  private buildCustomMapsMenu(): CustomMapsMenu {
+    return new CustomMapsMenu(buildCustomMaps(), {
+      onPlay: this.callbacks.onStartCustomMap,
+      onEdit: this.callbacks.onEditCustomMap,
+      onDelete: this.callbacks.onDeleteLibraryMap,
+      onImport: this.callbacks.onImportCustomMap,
+      onBack: this.callbacks.onBack,
+    });
+  }
+
+  /** Reconstruido cada vez: las suscripciones del Workshop cambian fuera de esta vista. */
+  private buildWorkshopMenu(): WorkshopMenu {
+    return new WorkshopMenu(this.callbacks.workshop, {
+      onPlay: (id) => {
+        const sub = this.callbacks.workshop
+          .listSubscriptions()
+          .find((s) => s.id === id);
+        this.callbacks.onStartCustomMap({
+          id,
+          title: sub?.title ?? id,
+          description: "",
+          source: "workshop",
+        });
+      },
+      onBack: this.callbacks.onBack,
+    });
   }
 
   dispose(): void {

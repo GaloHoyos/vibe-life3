@@ -204,6 +204,28 @@ export interface GameEventMap {
   "debug.toggle": {
     enabled: boolean;
   };
+  "workshop.list.loaded": {
+    count: number;
+  };
+  "workshop.subscribed": {
+    id: string;
+    title: string;
+  };
+  "workshop.unsubscribed": {
+    id: string;
+  };
+  "workshop.enabled": {
+    id: string;
+    enabled: boolean;
+  };
+  "workshop.published": {
+    id: string;
+    title: string;
+  };
+  "workshop.error": {
+    action: string;
+    message: string;
+  };
 }
 
 export type GameEventBus = EventBus<GameEventMap>;

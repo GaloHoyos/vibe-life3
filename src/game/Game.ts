@@ -56,7 +56,26 @@ import { WEAPON_ORDER, WeaponDefinitions } from "@game/config/weapons.config";
 import { HUD } from "@game/ui/hud/HUD";
 import { Subtitles } from "@game/ui/subtitles/Subtitles";
 import { MainMenu } from "@game/ui/menu/MainMenu";
-import type { GameMenuState } from "@game/ui/menu/MainMenuState";
+import type { CustomMapEntry, GameMenuState } from "@game/ui/menu/MainMenuState";
+import { LevelEditor } from "@game/editor/LevelEditor";
+import {
+  getEditorMode,
+  loadDraft,
+  pickJsonFile,
+  saveDraft,
+  setEditorMode,
+} from "@game/editor/persistence";
+import { toLevelDefinition } from "@game/editor/codegen/toLevelDefinition";
+import { fromLevelDefinition } from "@game/editor/codegen/fromLevelDefinition";
+import {
+  deleteLibraryMap,
+  getLibraryMap,
+  saveLibraryMap,
+} from "@game/editor/mapLibrary";
+import type { EditorDocument } from "@game/editor/EditorDocument";
+import { WorkshopService } from "@game/workshop/WorkshopService";
+import { WorkshopStore } from "@game/workshop/WorkshopStore";
+import { CloudflareWorkshopBackend } from "@game/workshop/CloudflareWorkshopBackend";
 import { createBoxMesh } from "@engine/render/PrimitiveFactory";
 import { tupleToVector3 } from "@shared/math/VectorTuple";
 
@@ -94,6 +113,7 @@ export class Game {
   private navSpace: NavSpace | null = null;
   private pathQueue: PathRequestQueue | null = null;
   private pendingExitTimeoutId: number | null = null;
+  private playtestMode = false;
   private actionSpawnSerial = 0;
   private readonly npcContextRadius = 90;
 
@@ -102,6 +122,7 @@ export class Game {
     this.bootIntoLevel = options.bootIntoLevel;
 
     this.registerEventBus();
+    this.registerWorkshop();
     this.registerAudio();
     this.registerGameplay();
     this.registerUi();
@@ -127,6 +148,25 @@ export class Game {
 
     lighting.attach(sceneManager.scene);
     footsteps.configure(FootstepsConfig);
+
+    // El modo del editor es de un solo uso: se consume y se borra en el boot,
+    // asi un reload/reinicio posterior vuelve al menu (no al ultimo mapa).
+    const editorMode = getEditorMode();
+    if (editorMode) setEditorMode(null);
+    if (editorMode === "playtest") {
+      const draft = loadDraft();
+      if (draft) {
+        try {
+          await this.startPlaytest(toLevelDefinition(draft));
+          return;
+        } catch (error) {
+          console.warn("[Game] No se pudo probar el draft del editor:", error);
+        }
+      }
+    } else if (editorMode === "edit") {
+      this.enterEditor();
+      return;
+    }
 
     if (this.bootIntoLevel) {
       await this.startNewGame(this.bootIntoLevel);
@@ -158,6 +198,7 @@ export class Game {
     s.resolve(GameTokens.Subtitles).dispose();
     s.resolve(GameTokens.MainMenu).dispose();
     s.resolve(GameTokens.DebugMenu).dispose();
+    s.resolve(GameTokens.LevelEditor).dispose();
     s.resolve(GameTokens.EventBus).clear();
 
     this.engine.dispose();
@@ -454,16 +495,43 @@ export class Game {
     }
   }
 
+  private registerWorkshop(): void {
+    const s = this.engine.services;
+    const eventBus = s.resolve(GameTokens.EventBus);
+    s.register(
+      GameTokens.Workshop,
+      new WorkshopService(new CloudflareWorkshopBackend(), new WorkshopStore(), eventBus),
+    );
+  }
+
   private registerUi(): void {
     const s = this.engine.services;
     const eventBus = s.resolve(GameTokens.EventBus);
     const audio = s.resolve(EngineTokens.Audio);
     const controls = s.resolve(GameTokens.Controls);
+    const workshop = s.resolve(GameTokens.Workshop);
     const input = s.resolve(EngineTokens.Input);
     const scene = s.resolve(EngineTokens.Scene);
     const raycast = s.resolve(EngineTokens.Raycast);
 
     s.register(GameTokens.HUD, new HUD(this.root, eventBus));
+
+    s.register(
+      GameTokens.LevelEditor,
+      new LevelEditor(
+        this.root,
+        scene.scene,
+        s.resolve(EngineTokens.Camera),
+        s.resolve(EngineTokens.Renderer).canvas,
+        input,
+        s.resolve(EngineTokens.Environment),
+        s.resolve(EngineTokens.Lighting),
+        {
+          onExit: () => this.exitEditor(),
+          onPublish: (doc) => this.publishFromEditor(doc),
+        },
+      ),
+    );
 
     const debugMenu = new DebugMenu(this.root, input, controls, eventBus);
     debugMenu.register(new StatsModule());
@@ -481,12 +549,24 @@ export class Game {
         onStartChapter: (chapterId) => {
           void this.startNewGame(chapterId as LevelId);
         },
+        onStartCustomMap: (entry) => {
+          void this.startCustomMap(entry);
+        },
+        onEditCustomMap: (entry) => {
+          void this.editCustomMap(entry);
+        },
+        onDeleteLibraryMap: (id) => this.deleteCustomMap(id),
+        onImportCustomMap: () => {
+          void this.importCustomMap();
+        },
         onResume: () => this.setGameState("playing"),
         onExitToMain: () => this.exitToMainMenu(),
+        onOpenEditor: () => this.enterEditor(),
         onToggleDebug: (enabled) => debugMenu.setVisible(enabled),
         onVolumeChange: (bus, value) => audio.setVolume(bus, value),
         onGetVolume: (bus) => audio.getVolume(bus),
         controls,
+        workshop,
       }),
     );
   }
@@ -508,6 +588,18 @@ export class Game {
       this.engine.services
         .resolve(GameTokens.EventBus)
         .emit("subtitle.show", enabled ? Dialogue.godModeOn : Dialogue.godModeOff);
+    }
+
+    if (input.wasKeyPressed("F4")) {
+      if (this.playtestMode) this.returnToEditorFromPlaytest();
+      else this.toggleEditor();
+    }
+
+    if (this.gameState === "editor") {
+      s.resolve(GameTokens.LevelEditor).update(time);
+      this.engine.renderFrame();
+      input.endFrame();
+      return;
     }
 
     if (controls.wasPressed("pause") && this.gameState === "playing") {
@@ -718,14 +810,130 @@ export class Game {
     }
   }
 
+  /**
+   * Entrar al editor de niveles. Solo desde el menu principal: ahi la escena
+   * esta vacia (sin nivel cargado), asi que el editor agrega su propio grid +
+   * preview sin chocar con geometria de gameplay.
+   */
+  private enterEditor(): void {
+    if (this.gameState !== "mainMenu") return;
+    this.engine.services.resolve(GameTokens.LevelEditor).enter();
+    this.setGameState("editor");
+  }
+
+  /**
+   * Abre un mapa custom en el editor recargando en modo `edit` con el documento
+   * como draft. Los de carpeta `.ts` se abren como copia (al guardar van a la
+   * biblioteca local, no se reescribe el archivo del repo).
+   */
+  private async editCustomMap(entry: CustomMapEntry): Promise<void> {
+    let doc: EditorDocument | null;
+    if (entry.source === "folder") {
+      doc = fromLevelDefinition(getLevel(entry.id));
+    } else if (entry.source === "workshop") {
+      doc = await this.engine.services.resolve(GameTokens.Workshop).getDocument(entry.id);
+    } else {
+      doc = getLibraryMap(entry.id);
+    }
+    if (!doc) {
+      console.warn(`[Game] No se pudo abrir el mapa custom "${entry.id}" en el editor.`);
+      return;
+    }
+    saveDraft(doc);
+    setEditorMode("edit");
+    window.location.reload();
+  }
+
+  private deleteCustomMap(id: string): void {
+    if (!window.confirm(`¿Borrar el mapa "${id}"? Esta accion no se puede deshacer.`)) {
+      return;
+    }
+    deleteLibraryMap(id);
+    this.engine.services.resolve(GameTokens.MainMenu).refreshCustomMaps();
+  }
+
+  private async importCustomMap(): Promise<void> {
+    try {
+      const doc = await pickJsonFile();
+      saveLibraryMap(doc);
+      this.engine.services.resolve(GameTokens.MainMenu).refreshCustomMaps();
+    } catch (error) {
+      console.warn("[Game] Import de mapa custom cancelado o invalido:", error);
+    }
+  }
+
+  private async publishFromEditor(doc: EditorDocument): Promise<string> {
+    const workshop = this.engine.services.resolve(GameTokens.Workshop);
+    if (!workshop.capabilities.publish) {
+      throw new Error("Workshop no configurado (VITE_WORKSHOP_API).");
+    }
+    if (!workshop.currentUser()) {
+      await workshop.signIn();
+    }
+    const listing = await workshop.publish(doc, {
+      title: doc.meta.title,
+      description: doc.meta.description ?? "",
+      tags: [],
+      type: "map",
+    });
+    return `Publicado en el Workshop: "${listing.title}".`;
+  }
+
+  private exitEditor(): void {
+    setEditorMode(null);
+    this.engine.services.resolve(GameTokens.LevelEditor).exit();
+    this.setGameState("mainMenu");
+  }
+
+  /** Desde un playtest: vuelve al editor recargando con el draft preservado. */
+  private returnToEditorFromPlaytest(): void {
+    setEditorMode("edit");
+    window.location.reload();
+  }
+
+  private toggleEditor(): void {
+    if (this.gameState === "editor") {
+      this.exitEditor();
+    } else if (this.gameState === "mainMenu") {
+      this.enterEditor();
+    }
+  }
+
   private async startNewGame(levelId: LevelId): Promise<void> {
+    await this.startLevel(getLevel(levelId));
+  }
+
+  /** Lanza un mapa custom (carpeta `maps/custom/` o biblioteca local). */
+  private async startCustomMap(entry: CustomMapEntry): Promise<void> {
+    if (entry.source === "folder") {
+      await this.startLevel(getLevel(entry.id));
+      return;
+    }
+    const doc =
+      entry.source === "workshop"
+        ? await this.engine.services.resolve(GameTokens.Workshop).getDocument(entry.id)
+        : getLibraryMap(entry.id);
+    if (!doc) {
+      console.warn(`[Game] Mapa custom "${entry.id}" no encontrado.`);
+      return;
+    }
+    let level: LevelDefinition;
+    try {
+      level = toLevelDefinition(doc);
+    } catch (error) {
+      console.warn(`[Game] Mapa custom "${entry.id}" invalido:`, error);
+      return;
+    }
+    await this.startLevel(level);
+  }
+
+  /** Arranca cualquier `LevelDefinition` como partida normal (campaña o custom). */
+  private async startLevel(level: LevelDefinition): Promise<void> {
     const s = this.engine.services;
     const mainMenu = s.resolve(GameTokens.MainMenu);
     const audio = s.resolve(EngineTokens.Audio);
 
     audio.unlock();
-
-    const level = getLevel(levelId);
     mainMenu.showLoading(MenuStrings.loadingLevel(level.title));
 
     // Permitir que el navegador pinte la pantalla de carga antes del trabajo sÃ­ncrono.
@@ -733,7 +941,7 @@ export class Game {
       requestAnimationFrame(() => resolve()),
     );
 
-    await this.loadLevel(levelId);
+    await this.loadLevelDefinition(level);
 
     const ambience = s.resolve(GameTokens.BackgroundAmbience);
     const music = s.resolve(GameTokens.Music);
@@ -750,7 +958,35 @@ export class Game {
     this.setGameState("playing");
   }
 
-  private async loadLevel(levelId: LevelId): Promise<void> {
+  /** Carga y juega una definicion arbitraria (el draft del editor) para probarla. */
+  private async startPlaytest(level: LevelDefinition): Promise<void> {
+    const s = this.engine.services;
+    const mainMenu = s.resolve(GameTokens.MainMenu);
+    const audio = s.resolve(EngineTokens.Audio);
+
+    audio.unlock();
+    mainMenu.showLoading(MenuStrings.loadingLevel(level.title));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    await this.loadLevelDefinition(level);
+
+    const ambience = s.resolve(GameTokens.BackgroundAmbience);
+    const music = s.resolve(GameTokens.Music);
+    if (this.currentLevel) {
+      ambience.start(this.currentLevel.audio.ambiences);
+      if (this.currentLevel.audio.music) music.fadeToMusic(this.currentLevel.audio.music);
+      else music.stopMusic();
+    }
+
+    this.playtestMode = true;
+    this.setGameState("playing");
+    s.resolve(GameTokens.EventBus).emit("subtitle.show", {
+      text: "Playtest — F4 para volver al editor",
+      duration: 3,
+    });
+  }
+
+  private async loadLevelDefinition(level: LevelDefinition): Promise<void> {
     const services = this.engine.services;
     const physics = services.resolve(EngineTokens.Physics);
     const sceneManager = services.resolve(EngineTokens.Scene);
@@ -766,7 +1002,6 @@ export class Game {
     const characters = services.resolve(GameTokens.Characters);
     const footsteps = services.resolve(GameTokens.Footsteps);
 
-    const level = getLevel(levelId);
     this.currentLevel = level;
 
     await environment.applySkybox(sceneManager.scene, level.skybox ?? 'default', level.background);
@@ -829,6 +1064,11 @@ export class Game {
     const mainMenu = s.resolve(GameTokens.MainMenu);
     const ambience = s.resolve(GameTokens.BackgroundAmbience);
     const music = s.resolve(GameTokens.Music);
+
+    // Limpiar el modo del editor: si veníamos de un playtest, el flag seguiría
+    // en sessionStorage y el reload volvería a bootear directo al nivel.
+    setEditorMode(null);
+    this.playtestMode = false;
 
     ambience.stop();
     music.stopMusic();
