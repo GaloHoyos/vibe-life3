@@ -1,9 +1,9 @@
 /**
  * Todos los strings visibles al jugador en un solo lugar.
  *
- * El código emite `subtitle.show` / `dialogue.show` / `objective.updated`
- * usando estas estructuras en vez de literales inline. Si en algún
- * momento agregamos i18n, este archivo es el único punto que cambia.
+ * El código emite `subtitle.show` / `dialogue.show` usando estas
+ * estructuras en vez de literales inline. Si en algún momento agregamos
+ * i18n, este archivo es el único punto que cambia.
  *
  * Convención: los textos están en español (idioma del juego). Los
  * identificadores se mantienen en inglés siguiendo la convención del
@@ -24,7 +24,7 @@ export interface SubtitleLine {
 export const Dialogue = {
   playerDead: {
     speaker: Speakers.hev,
-    text: "CRITICAL FAILURE",
+    text: "FALLA CRITICA",
     duration: 3,
   },
   doorOpened: {
@@ -37,15 +37,20 @@ export const Dialogue = {
     text: "Puerta de laboratorio cerrada.",
     duration: 2.2,
   },
-  gravityGunPending: {
-    speaker: Speakers.hev,
-    text: "Gravity Gun functionality pending.",
-    duration: 1.6,
-  },
   npcKilled: {
     speaker: Speakers.system,
     text: "Entidad hostil neutralizada.",
     duration: 2.4,
+  },
+  godModeOn: {
+    speaker: Speakers.system,
+    text: "Modo invulnerable activado.",
+    duration: 2,
+  },
+  godModeOff: {
+    speaker: Speakers.system,
+    text: "Modo invulnerable desactivado.",
+    duration: 2,
   },
   levelLoading: (title: string): SubtitleLine => ({
     speaker: Speakers.system,
@@ -54,12 +59,19 @@ export const Dialogue = {
   }),
 } satisfies Record<string, SubtitleLine | ((...args: never[]) => SubtitleLine)>;
 
-export const Objectives = {
-  exploreFacility: "Explorar la instalacion de pruebas",
-} as const;
-
 export const MenuStrings = {
   ready: "Sistema activo. Preparado para combate.",
   loadingLevel: (title: string): string => `Cargando ${title}...`,
   loadingFallback: "Cargando nivel...",
+  exitingToMainMenu: "Volviendo al menu principal...",
+  fullscreenEnter: "ACTIVAR",
+  fullscreenExit: "SALIR",
+} as const;
+
+export const HudStrings = {
+  unarmed: "DESARMADO",
+  weaponPickedUp: (weaponName: string): string => `arma adquirida: ${weaponName}`,
+  healthPickedUp: (amount: number): string => `+${amount} vida`,
+  ammoPickedUp: (amount: number, weaponName?: string): string =>
+    `+${amount} ${weaponName ?? "munición"}`,
 } as const;

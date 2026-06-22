@@ -1,0 +1,98 @@
+﻿import type { Disposable } from "@shared/types/lifecycle";
+import {
+  WEAPON_SLOT_COUNT,
+  getWeaponDefinition,
+} from "@game/config/weapons.config";
+import type { WeaponSelectorState } from "@game/GameEvents";
+import { getWeaponIcon } from "./HudIcons";
+
+/**
+ * Selector de armas HL2-style.
+ *
+ * El layout es una fila de columnas, una por slot. Cada columna tiene su
+ * nÃºmero arriba; la columna del slot activo ademÃ¡s despliega TODAS las
+ * armas del slot como lista vertical (icon line-art por arma) con la
+ * tentativa highlighteada (mÃ¡s opacidad + outline sutil), y el nombre de
+ * la tentativa debajo de la lista â€” dentro de la misma columna, no
+ * centrado abajo, asÃ­ el bloque entero queda anclado bajo el nÃºmero del
+ * slot activo.
+ *
+ * Sin lÃ³gica propia: solo `show()` con snapshot del `WeaponController` y
+ * `hide()`. La state machine vive en el controller.
+ */
+export class WeaponSelectorView implements Disposable {
+  readonly element = document.createElement("section");
+
+  constructor() {
+    this.element.className = "hl-selector";
+    this.element.setAttribute("aria-hidden", "true");
+  }
+
+  show(state: WeaponSelectorState): void {
+    this.element.innerHTML = "";
+
+    const slotsById = new Map(state.slots.map((s) => [s.slot, s.weapons]));
+
+    for (let slot = 1; slot <= WEAPON_SLOT_COUNT; slot += 1) {
+      const column = document.createElement("div");
+      column.className = "hl-selector__column";
+      const isActive = slot === state.activeSlot;
+      const weaponsInSlot = slotsById.get(slot) ?? [];
+      const isEmpty = weaponsInSlot.length === 0;
+
+      const numEl = document.createElement("div");
+      numEl.className = "hl-selector__num";
+      numEl.textContent = `${slot}`;
+      if (isEmpty) numEl.classList.add("is-empty");
+      if (isActive) numEl.classList.add("is-active");
+      column.appendChild(numEl);
+
+      if (isActive && weaponsInSlot.length > 0) {
+        column.classList.add("is-active");
+
+        const list = document.createElement("div");
+        list.className = "hl-selector__list";
+        for (const weapon of weaponsInSlot) {
+          const item = document.createElement("div");
+          item.className = "hl-selector__item";
+          if (weapon.disabled) {
+            item.classList.add("is-disabled");
+          }
+          if (weapon.id === state.tentativeId) {
+            item.classList.add("is-highlighted");
+          }
+          item.innerHTML = getWeaponIcon(weapon.id);
+          list.appendChild(item);
+        }
+        column.appendChild(list);
+
+        const tentative = weaponsInSlot.find(
+          (weapon) => weapon.id === state.tentativeId,
+        );
+        const name = document.createElement("div");
+        name.className = "hl-selector__name";
+        if (tentative?.disabled) {
+          name.classList.add("is-disabled");
+        }
+        name.textContent = getWeaponDefinition(
+          state.tentativeId,
+        ).displayName.toUpperCase();
+        column.appendChild(name);
+      }
+
+      this.element.appendChild(column);
+    }
+
+    this.element.classList.add("is-visible");
+    this.element.setAttribute("aria-hidden", "false");
+  }
+
+  hide(): void {
+    this.element.classList.remove("is-visible");
+    this.element.setAttribute("aria-hidden", "true");
+  }
+
+  dispose(): void {
+    this.element.remove();
+  }
+}

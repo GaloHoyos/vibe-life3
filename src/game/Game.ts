@@ -1,72 +1,135 @@
-import { Vector3 } from "three";
-import { BackgroundAmbienceSystem } from "../engine/audio/BackgroundAmbienceSystem";
-import { FootstepSoundSystem } from "../engine/audio/FootstepSoundSystem";
-import { MusicManager } from "../engine/audio/MusicManager";
-import type { Engine } from "../engine/Engine";
-import { EventBus } from "../engine/EventBus";
-import { EngineTokens } from "../engine/ServiceTokens";
-import type { Time } from "../engine/Time";
-import { CharacterFactory } from "./characters/CharacterFactory";
-import { FootstepsConfig } from "./config/audio.config";
-import { MenuStrings } from "./config/strings";
-import { DialogueAudioSystem } from "./audio/DialogueAudioSystem";
-import { EnemySoundSystem } from "./audio/EnemySoundSystem";
-import { UISoundSystem } from "./audio/UISoundSystem";
-import { WeaponSoundSystem } from "./audio/WeaponSoundSystem";
+﻿import { Vector3 } from "three";
+import { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
+import { FootstepSoundSystem } from "@engine/audio/systems/FootstepSoundSystem";
+import { MusicManager } from "@engine/audio/core/MusicManager";
+import type { Engine } from "@engine/core/Engine";
+import { EventBus } from "@engine/core/EventBus";
+import { EngineTokens } from "@engine/core/ServiceTokens";
+import type { Time } from "@engine/core/Time";
+import { SpawnValidator } from "@engine/physics/character/SpawnValidator";
+import { Raycast } from "@engine/physics/Raycast";
+import { CharacterFactory } from "@game/characters/CharacterFactory";
+import type { NpcRuntimeServices } from "@game/characters/CharacterFactory";
+import { CharacterPresets } from "@game/characters/CharacterPresets";
+import { FootstepsConfig } from "@game/config/audio.config";
+import { Dialogue, MenuStrings } from "@game/config/strings";
+import { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
+import { EnemySoundSystem } from "@game/audio/EnemySoundSystem";
+import { UISoundSystem } from "@game/audio/UISoundSystem";
+import { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
 import type { GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
-import { Player } from "./gameplay/Player";
-import { WeaponEffects } from "./gameplay/weapons/WeaponEffects";
-import { InteractSystem, type SlidingDoor } from "./gameplay/interactions";
-import type { LevelDefinition } from "./levels/LevelDefinition";
-import { LevelLoader } from "./levels/LevelLoader";
-import { getLevel, type LevelId } from "./levels/LevelRegistry";
-import { TriggerSystem } from "./levels/TriggerSystem";
-import type { NPC } from "./npc/NPC";
-import { DialogueSystem } from "./narrative/DialogueSystem";
-import { LevelEvents } from "./narrative/LevelEvents";
-import type { WeaponPickup } from "./gameplay/weapons/WeaponPickup";
-import { DebugOverlay } from "./ui/DebugOverlay";
-import { HUD } from "./ui/HUD";
-import { Subtitles } from "./ui/Subtitles";
-import { MainMenu } from "./ui/menu/MainMenu";
-import type { GameMenuState } from "./ui/menu/MainMenuState";
+import { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
+import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
+import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
+import { NpcsModule } from "@game/ui/overlay/debug/modules/NpcsModule";
+import { PlayerModule } from "@game/ui/overlay/debug/modules/PlayerModule";
+import { SceneModule } from "@game/ui/overlay/debug/modules/SceneModule";
+import { StatsModule } from "@game/ui/overlay/debug/modules/StatsModule";
+import { WeaponsModule } from "@game/ui/overlay/debug/modules/WeaponsModule";
+import { Controls } from "@game/gameplay/player/Controls";
+import { Player } from "@game/gameplay/player/Player";
+import { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
+import { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import { InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
+import type { TacticalMap } from "@game/npc/ai/TacticalMap";
+import type { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
+import type { NavSpace } from "@engine/ai/nav/NavSpace";
+import type { PathRequestQueue } from "@engine/ai/nav/PathRequestQueue";
+import type { SquadDirector } from "@game/npc/ai/SquadDirector";
+import type {
+  DynamicBoxDefinition,
+  LevelDefinition,
+  NPCDefinition,
+} from "@game/levels/LevelDefinition";
+import { LevelLoader } from "@game/levels/LevelLoader";
+import { getLevel, type LevelId } from "@game/levels/LevelRegistry";
+import { TriggerSystem } from "@game/levels/TriggerSystem";
+import type { ActorSnapshot, AiFrameContext, INpc } from "@game/npc/core/INpc";
+import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
+import { DialogueSystem } from "@game/narrative/DialogueSystem";
+import { LevelEvents } from "@game/narrative/LevelEvents";
+import { WeaponPickup } from "@game/gameplay/weapons/pickup/WeaponPickup";
+import { ItemPickup } from "@game/gameplay/items/ItemPickup";
+import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
+import { WEAPON_ORDER, WeaponDefinitions } from "@game/config/weapons.config";
+import { HUD } from "@game/ui/hud/HUD";
+import { Subtitles } from "@game/ui/subtitles/Subtitles";
+import { MainMenu } from "@game/ui/menu/MainMenu";
+import type { CustomMapEntry, GameMenuState } from "@game/ui/menu/MainMenuState";
+import { LevelEditor } from "@game/editor/LevelEditor";
+import {
+  getEditorMode,
+  loadDraft,
+  pickJsonFile,
+  saveDraft,
+  setEditorMode,
+} from "@game/editor/persistence";
+import { toLevelDefinition } from "@game/editor/codegen/toLevelDefinition";
+import { fromLevelDefinition } from "@game/editor/codegen/fromLevelDefinition";
+import {
+  deleteLibraryMap,
+  getLibraryMap,
+  saveLibraryMap,
+} from "@game/editor/mapLibrary";
+import type { EditorDocument } from "@game/editor/EditorDocument";
+import { WorkshopService } from "@game/workshop/WorkshopService";
+import { WorkshopStore } from "@game/workshop/WorkshopStore";
+import { CloudflareWorkshopBackend } from "@game/workshop/CloudflareWorkshopBackend";
+import { createBoxMesh } from "@engine/render/PrimitiveFactory";
+import { tupleToVector3 } from "@shared/math/VectorTuple";
 
 /**
  * Bootstrap del contenido del juego.
  *
  * Recibe un `Engine` ya construido, registra todos los servicios
- * específicos del juego (UI, audio reactiva a eventos, gameplay,
- * narrativa) y maneja el bucle principal a través del engine.
+ * especÃ­ficos del juego (UI, audio reactiva a eventos, gameplay,
+ * narrativa) y maneja el bucle principal a travÃ©s del engine.
+ *
+ * El nivel no se carga en `init()`: solo cuando el usuario elige un mapa
+ * desde el menÃº principal (`startNewGame`). "Salir al menÃº principal"
+ * desde la pausa reinicia la pÃ¡gina para garantizar un teardown limpio.
  */
 export interface GameOptions {
-  /** Id del nivel inicial a cargar. Default: "demo". */
-  initialLevelId?: LevelId;
+  /** Opcional: bootear directamente en un nivel concreto sin pasar por el menÃº. */
+  bootIntoLevel?: LevelId;
 }
 
 export class Game {
   private readonly root: HTMLElement;
-  private readonly initialLevelId: LevelId;
+  private readonly bootIntoLevel?: LevelId;
 
   private gameState: GameMenuState = "mainMenu";
   private currentLevel: LevelDefinition | null = null;
   private player: Player | null = null;
-  private npcs: NPC[] = [];
+  private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
+  private itemPickups: ItemPickup[] = [];
+  private chargers: Charger[] = [];
+  private tacticalMap: TacticalMap | null = null;
+  private squadDirector: SquadDirector | null = null;
+  private buildingRegistry: BuildingRegistry | null = null;
+  private navSpace: NavSpace | null = null;
+  private pathQueue: PathRequestQueue | null = null;
+  private pendingExitTimeoutId: number | null = null;
+  private playtestMode = false;
+  private actionSpawnSerial = 0;
+  private readonly npcContextRadius = 90;
 
   constructor(private readonly engine: Engine, options: GameOptions = {}) {
     this.root = engine.root;
-    this.initialLevelId = options.initialLevelId ?? "demo";
+    this.bootIntoLevel = options.bootIntoLevel;
 
     this.registerEventBus();
+    this.registerWorkshop();
     this.registerAudio();
     this.registerGameplay();
     this.registerUi();
 
     this.engine.services
       .resolve(GameTokens.MainMenu)
-      .setDebugEnabled(this.engine.services.resolve(GameTokens.DebugOverlay).isEnabled());
+      .setDebugEnabled(this.engine.services.resolve(GameTokens.DebugMenu).isVisible());
     this.setGameState("mainMenu");
     this.bindBrowserEvents();
   }
@@ -79,56 +142,35 @@ export class Game {
     await this.engine.init();
 
     const services = this.engine.services;
-    const physics = services.resolve(EngineTokens.Physics);
     const sceneManager = services.resolve(EngineTokens.Scene);
     const lighting = services.resolve(EngineTokens.Lighting);
-    const resources = services.resolve(EngineTokens.Resources);
-    const assets = services.resolve(EngineTokens.Assets);
-    const raycast = services.resolve(EngineTokens.Raycast);
-    const camera = services.resolve(EngineTokens.Camera);
-    const eventBus = services.resolve(GameTokens.EventBus);
-    const interactSystem = services.resolve(GameTokens.InteractSystem);
-    const triggerSystem = services.resolve(GameTokens.TriggerSystem);
-    const characters = services.resolve(GameTokens.Characters);
-
-    const level = getLevel(this.initialLevelId);
-    this.currentLevel = level;
-
-    sceneManager.setBackground(level.background);
-    lighting.attach(sceneManager.scene);
-    resources.register(`level.${level.id}`, level);
-
     const footsteps = services.resolve(GameTokens.Footsteps);
+
+    lighting.attach(sceneManager.scene);
     footsteps.configure(FootstepsConfig);
-    footsteps.setSounds(level.audio.footstepSounds);
 
-    const levelEvents = new LevelEvents(eventBus);
-    const loader = new LevelLoader(
-      sceneManager.scene,
-      physics,
-      eventBus,
-      interactSystem,
-      triggerSystem,
-      characters,
-      assets,
-    );
+    // El modo del editor es de un solo uso: se consume y se borra en el boot,
+    // asi un reload/reinicio posterior vuelve al menu (no al ultimo mapa).
+    const editorMode = getEditorMode();
+    if (editorMode) setEditorMode(null);
+    if (editorMode === "playtest") {
+      const draft = loadDraft();
+      if (draft) {
+        try {
+          await this.startPlaytest(toLevelDefinition(draft));
+          return;
+        } catch (error) {
+          console.warn("[Game] No se pudo probar el draft del editor:", error);
+        }
+      }
+    } else if (editorMode === "edit") {
+      this.enterEditor();
+      return;
+    }
 
-    const loaded = await loader.load(level);
-    this.npcs = loaded.npcs;
-    this.doors = loaded.doors;
-    this.weaponPickups = loaded.weaponPickups;
-
-    this.player = new Player(
-      new Vector3(...level.playerStart),
-      physics,
-      raycast,
-      assets,
-      sceneManager.scene,
-      eventBus,
-    );
-
-    camera.syncToPosition(this.player.getEyePosition());
-    levelEvents.announceLevel(level.title);
+    if (this.bootIntoLevel) {
+      await this.startNewGame(this.bootIntoLevel);
+    }
   }
 
   start(): void {
@@ -139,14 +181,24 @@ export class Game {
     this.engine.stop();
     this.unbindBrowserEvents();
 
+    if (this.pendingExitTimeoutId !== null) {
+      window.clearTimeout(this.pendingExitTimeoutId);
+      this.pendingExitTimeoutId = null;
+    }
+
+    this.npcs.forEach((npc) => npc.dispose());
+    this.npcs = [];
+
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
     s.resolve(GameTokens.WeaponEffects).dispose();
+    s.resolve(GameTokens.Grenades).dispose();
     this.player?.dispose();
     s.resolve(GameTokens.HUD).dispose();
     s.resolve(GameTokens.Subtitles).dispose();
     s.resolve(GameTokens.MainMenu).dispose();
-    s.resolve(GameTokens.DebugOverlay).dispose();
+    s.resolve(GameTokens.DebugMenu).dispose();
+    s.resolve(GameTokens.LevelEditor).dispose();
     s.resolve(GameTokens.EventBus).clear();
 
     this.engine.dispose();
@@ -186,7 +238,11 @@ export class Game {
     const scene = s.resolve(EngineTokens.Scene);
     const assets = s.resolve(EngineTokens.Assets);
     const physics = s.resolve(EngineTokens.Physics);
+    const raycast = s.resolve(EngineTokens.Raycast);
+    const positionalSounds = s.resolve(EngineTokens.PositionalSound);
+    const input = s.resolve(EngineTokens.Input);
 
+    s.register(GameTokens.Controls, new Controls(input));
     s.register(
       GameTokens.Characters,
       new CharacterFactory(assets, physics, eventBus),
@@ -198,30 +254,319 @@ export class Game {
       GameTokens.WeaponEffects,
       new WeaponEffects(scene.scene, eventBus),
     );
+    s.register(
+      GameTokens.Grenades,
+      new GrenadeSystem(
+        physics,
+        scene.scene,
+        assets,
+        raycast,
+        eventBus,
+        positionalSounds,
+      ),
+    );
     s.register(GameTokens.InteractSystem, new InteractSystem(eventBus));
     s.register(GameTokens.TriggerSystem, new TriggerSystem(eventBus));
+
+    eventBus.on("npc.weapon.dropped", (payload) => {
+      void this.handleWeaponDrop(payload.npcId, payload.weaponId, payload.position);
+    });
+    eventBus.on("level.action", ({ action, position }) => {
+      void this.handleLevelAction(action, position);
+    });
+  }
+
+  private async handleWeaponDrop(
+    npcId: string,
+    weaponId: string,
+    position: Vector3,
+  ): Promise<void> {
+    if (!(weaponId in WeaponDefinitions)) {
+      console.warn(`[Game] Dropped weapon '${weaponId}' no estÃ¡ en WeaponDefinitions`);
+      return;
+    }
+    const s = this.engine.services;
+    const scene = s.resolve(EngineTokens.Scene);
+    const assets = s.resolve(EngineTokens.Assets);
+    const physics = s.resolve(EngineTokens.Physics);
+    try {
+      const pickup = await WeaponPickup.create(scene.scene, physics, assets, {
+        id: `drop-${npcId}-${Date.now()}`,
+        weaponId: weaponId as WeaponId,
+        position,
+      });
+      this.weaponPickups.push(pickup);
+    } catch (error) {
+      console.warn(`[Game] No se pudo crear pickup del weapon dropeado`, error);
+    }
+  }
+
+  private async handleLevelAction(
+    action: GameEventMap["level.action"]["action"],
+    position: Vector3,
+  ): Promise<void> {
+    if (!this.currentLevel) {
+      return;
+    }
+
+    switch (action) {
+      case "respawnEncounters":
+        await this.respawnLevelEncounters(this.currentLevel);
+        this.engine.services.resolve(GameTokens.EventBus).emit("dialogue.show", {
+          speaker: "Consola",
+          text: "Entidades respawneadas.",
+          duration: 2.5,
+        });
+        return;
+      case "spawnAllWeapons":
+        await this.spawnWeaponSet(position);
+        this.engine.services.resolve(GameTokens.EventBus).emit("dialogue.show", {
+          speaker: "Consola",
+          text: "Arsenal desplegado.",
+          duration: 2.5,
+        });
+        return;
+    }
+  }
+
+  private async respawnLevelEncounters(level: LevelDefinition): Promise<void> {
+    this.actionSpawnSerial += 1;
+    await this.spawnNpcs(level.npcs, `respawn-${this.actionSpawnSerial}`);
+    this.spawnDynamicBoxes(level.dynamicBoxes, `respawn-${this.actionSpawnSerial}`);
+  }
+
+  private async spawnNpcs(
+    definitions: NPCDefinition[],
+    idPrefix: string,
+  ): Promise<void> {
+    const services = this.engine.services;
+    const characters = services.resolve(GameTokens.Characters);
+    const scene = services.resolve(EngineTokens.Scene);
+    const physics = services.resolve(EngineTokens.Physics);
+    const spawnValidator = new SpawnValidator(new Raycast(physics));
+
+    const npcServices = this.buildNpcRuntimeServices(new Raycast(physics));
+    for (const definition of definitions) {
+      const requested = tupleToVector3(definition.position);
+      const preset =
+        CharacterPresets[definition.characterId] ??
+        CharacterPresets.placeholderHumanoid;
+      const halfExtent = preset.collider.height / 2;
+      const validation = spawnValidator.validate(requested, halfExtent);
+      const npc = await characters.createNPC(
+        definition.characterId,
+        `${idPrefix}-${definition.id}`,
+        validation.position,
+        definition.patrol?.map(tupleToVector3) ?? [],
+        npcServices,
+      );
+      scene.scene.add(npc.mesh);
+      this.npcs.push(npc);
+    }
+  }
+
+  /**
+   * Servicios de runtime que la factory necesita para construir NPCs v2.
+   * `undefined` si el nivel todavia no cargo (la factory cae al path legacy).
+   */
+  private buildNpcRuntimeServices(raycast: Raycast): NpcRuntimeServices | undefined {
+    if (
+      !this.navSpace ||
+      !this.pathQueue ||
+      !this.buildingRegistry ||
+      !this.tacticalMap ||
+      !this.squadDirector
+    ) {
+      return undefined;
+    }
+    return {
+      navSpace: this.navSpace,
+      pathQueue: this.pathQueue,
+      buildingRegistry: this.buildingRegistry,
+      raycast,
+      tacticalMap: this.tacticalMap,
+      squadDirector: this.squadDirector,
+    };
+  }
+
+  private spawnDynamicBoxes(
+    definitions: DynamicBoxDefinition[],
+    idPrefix: string,
+  ): void {
+    const services = this.engine.services;
+    const scene = services.resolve(EngineTokens.Scene);
+    const physics = services.resolve(EngineTokens.Physics);
+
+    definitions.forEach((definition) => {
+      const id = `${idPrefix}-${definition.id}`;
+      const mesh = createBoxMesh({
+        id,
+        position: definition.position,
+        size: definition.size,
+        material: definition.material,
+        castShadow: true,
+        receiveShadow: true,
+      });
+      scene.scene.add(mesh);
+      physics.createDynamicBox(
+        {
+          id,
+          position: tupleToVector3(definition.position),
+          size: tupleToVector3(definition.size),
+          mass: definition.mass,
+        },
+        mesh,
+      );
+    });
+  }
+
+  /**
+   * Spawn debug: lanza un raycast desde la cámara y crea un Combine en el
+   * primer impacto válido. Si el suelo está demasiado lejos o el rayo no
+   * pega nada, no hace nada (mensaje en la consola).
+   */
+  private async spawnDebugCombineAtAim(): Promise<void> {
+    if (!this.currentLevel) return;
+    const services = this.engine.services;
+    const camera = services.resolve(EngineTokens.Camera);
+    const physics = services.resolve(EngineTokens.Physics);
+    const scene = services.resolve(EngineTokens.Scene);
+    const characters = services.resolve(GameTokens.Characters);
+    const eventBus = services.resolve(GameTokens.EventBus);
+
+    const raycast = new Raycast(physics);
+    const origin = camera.camera.position;
+    const direction = camera.getForwardDirection();
+    const hit = raycast.cast(origin, direction, 100);
+    if (!hit) {
+      eventBus.emit("subtitle.show", {
+        text: "No hay superficie para spawnear Combine.",
+        duration: 1.5,
+      });
+      return;
+    }
+
+    this.actionSpawnSerial += 1;
+    const instanceId = `action-combine-${this.actionSpawnSerial}`;
+    const preset = CharacterPresets.combine ?? CharacterPresets.placeholderHumanoid;
+    const halfExtent = preset.collider.height / 2;
+    const validator = new SpawnValidator(raycast);
+    const validation = validator.validate(hit.point, halfExtent);
+
+    try {
+      const npc = await characters.createNPC(
+        "combine",
+        instanceId,
+        validation.position,
+        [],
+        this.buildNpcRuntimeServices(raycast),
+      );
+      scene.scene.add(npc.mesh);
+      this.npcs.push(npc);
+      eventBus.emit("subtitle.show", {
+        text: "Combine spawneado.",
+        duration: 1.2,
+      });
+    } catch (error) {
+      console.warn("[Game] No se pudo spawnear combine debug:", error);
+    }
+  }
+
+  private async spawnWeaponSet(origin: Vector3): Promise<void> {
+    this.actionSpawnSerial += 1;
+    const services = this.engine.services;
+    const scene = services.resolve(EngineTokens.Scene);
+    const assets = services.resolve(EngineTokens.Assets);
+    const physics = services.resolve(EngineTokens.Physics);
+    const weaponIds: WeaponId[] = [...WEAPON_ORDER, "grenade", "grenade", "grenade"];
+
+    for (let i = 0; i < weaponIds.length; i += 1) {
+      const row = Math.floor(i / 5);
+      const column = i % 5;
+      const position = origin
+        .clone()
+        .add(new Vector3((column - 2) * 1.4, 0.2, 2.6 + row * 1.4));
+      const pickup = await WeaponPickup.create(scene.scene, physics, assets, {
+        id: `action-weapon-${this.actionSpawnSerial}-${i}-${weaponIds[i]}`,
+        weaponId: weaponIds[i],
+        position,
+      });
+      this.weaponPickups.push(pickup);
+    }
+  }
+
+  private registerWorkshop(): void {
+    const s = this.engine.services;
+    const eventBus = s.resolve(GameTokens.EventBus);
+    s.register(
+      GameTokens.Workshop,
+      new WorkshopService(new CloudflareWorkshopBackend(), new WorkshopStore(), eventBus),
+    );
   }
 
   private registerUi(): void {
     const s = this.engine.services;
     const eventBus = s.resolve(GameTokens.EventBus);
     const audio = s.resolve(EngineTokens.Audio);
+    const controls = s.resolve(GameTokens.Controls);
+    const workshop = s.resolve(GameTokens.Workshop);
+    const input = s.resolve(EngineTokens.Input);
+    const scene = s.resolve(EngineTokens.Scene);
+    const raycast = s.resolve(EngineTokens.Raycast);
 
     s.register(GameTokens.HUD, new HUD(this.root, eventBus));
-    const debugOverlay = s.register(
-      GameTokens.DebugOverlay,
-      new DebugOverlay(this.root, eventBus),
+
+    s.register(
+      GameTokens.LevelEditor,
+      new LevelEditor(
+        this.root,
+        scene.scene,
+        s.resolve(EngineTokens.Camera),
+        s.resolve(EngineTokens.Renderer).canvas,
+        input,
+        s.resolve(EngineTokens.Environment),
+        s.resolve(EngineTokens.Lighting),
+        {
+          onExit: () => this.exitEditor(),
+          onPublish: (doc) => this.publishFromEditor(doc),
+        },
+      ),
     );
+
+    const debugMenu = new DebugMenu(this.root, input, controls, eventBus);
+    debugMenu.register(new StatsModule());
+    debugMenu.register(new PlayerModule(eventBus));
+    debugMenu.register(new WeaponsModule());
+    debugMenu.register(new NpcsModule());
+    debugMenu.register(new AiViewModule(scene.scene, raycast));
+    debugMenu.register(new AiTraceModule(eventBus));
+    debugMenu.register(new SceneModule(scene.scene));
+    s.register(GameTokens.DebugMenu, debugMenu);
 
     s.register(
       GameTokens.MainMenu,
       new MainMenu(this.root, {
-        onStartChapter: (chapterId) => this.startNewGame(chapterId),
+        onStartChapter: (chapterId) => {
+          void this.startNewGame(chapterId as LevelId);
+        },
+        onStartCustomMap: (entry) => {
+          void this.startCustomMap(entry);
+        },
+        onEditCustomMap: (entry) => {
+          void this.editCustomMap(entry);
+        },
+        onDeleteLibraryMap: (id) => this.deleteCustomMap(id),
+        onImportCustomMap: () => {
+          void this.importCustomMap();
+        },
         onResume: () => this.setGameState("playing"),
-        onReturnToMain: () => this.setGameState("mainMenu"),
-        onToggleDebug: (enabled) => debugOverlay.setEnabled(enabled),
+        onExitToMain: () => this.exitToMainMenu(),
+        onOpenEditor: () => this.enterEditor(),
+        onToggleDebug: (enabled) => debugMenu.setVisible(enabled),
         onVolumeChange: (bus, value) => audio.setVolume(bus, value),
         onGetVolume: (bus) => audio.getVolume(bus),
+        controls,
+        workshop,
       }),
     );
   }
@@ -231,23 +576,37 @@ export class Game {
   // ---------------------------------------------------------------------------
 
   private update(time: Time): void {
-    if (!this.player) {
+    const s = this.engine.services;
+    const input = s.resolve(EngineTokens.Input);
+    const controls = s.resolve(GameTokens.Controls);
+    const debugMenu = s.resolve(GameTokens.DebugMenu);
+
+    this.tickDebug(time, debugMenu);
+
+    if (input.wasKeyPressed("F2") && this.player) {
+      const enabled = this.player.health.toggleGodMode();
+      this.engine.services
+        .resolve(GameTokens.EventBus)
+        .emit("subtitle.show", enabled ? Dialogue.godModeOn : Dialogue.godModeOff);
+    }
+
+    if (input.wasKeyPressed("F4")) {
+      if (this.playtestMode) this.returnToEditorFromPlaytest();
+      else this.toggleEditor();
+    }
+
+    if (this.gameState === "editor") {
+      s.resolve(GameTokens.LevelEditor).update(time);
+      this.engine.renderFrame();
+      input.endFrame();
       return;
     }
 
-    const s = this.engine.services;
-    const input = s.resolve(EngineTokens.Input);
-    const debugOverlay = s.resolve(GameTokens.DebugOverlay);
-
-    if (input.wasKeyPressed("F3")) {
-      debugOverlay.toggle();
-    }
-
-    if (input.wasKeyPressed("Escape") && this.gameState === "playing") {
+    if (controls.wasPressed("pause") && this.gameState === "playing") {
       this.setGameState("paused");
     }
 
-    if (this.gameState !== "playing") {
+    if (this.gameState !== "playing" || !this.player) {
       this.engine.renderFrame();
       input.endFrame();
       return;
@@ -259,11 +618,29 @@ export class Game {
     input.endFrame();
   }
 
-  /** Tick completo cuando el juego está activo (no en menú/pausa). */
+  private tickDebug(time: Time, debugMenu: DebugMenu): void {
+    const s = this.engine.services;
+    const physics = s.resolve(EngineTokens.Physics);
+    const renderer = s.resolve(EngineTokens.Renderer);
+    debugMenu.update({
+      delta: time.delta,
+      elapsed: time.elapsed,
+      fps: time.fps,
+      player: this.player,
+      npcs: this.npcs,
+      navSpace: this.navSpace,
+      rendererInfo: renderer.renderer.info,
+      physicsBodies: physics.getBodyCount(),
+      playerPosition: this.player?.getPosition() ?? null,
+    });
+  }
+
+  /** Tick completo cuando el juego estÃ¡ activo (no en menÃº/pausa). */
   private tickPlaying(time: Time): void {
     const player = this.player!;
     const s = this.engine.services;
     const input = s.resolve(EngineTokens.Input);
+    const controls = s.resolve(GameTokens.Controls);
     const camera = s.resolve(EngineTokens.Camera);
     const physics = s.resolve(EngineTokens.Physics);
     const gizmos = s.resolve(EngineTokens.Gizmos);
@@ -272,41 +649,92 @@ export class Game {
     const weaponEffects = s.resolve(GameTokens.WeaponEffects);
     const subtitles = s.resolve(GameTokens.Subtitles);
     const footsteps = s.resolve(GameTokens.Footsteps);
-    const debugOverlay = s.resolve(GameTokens.DebugOverlay);
+    const grenades = s.resolve(GameTokens.Grenades);
 
     if (input.isPointerLocked()) {
       camera.updateLook(input);
-      player.update(time.delta, input, camera, time.elapsed);
+      player.update(time.delta, input, controls, camera, time.elapsed);
     }
 
-    footsteps.update(time.delta, player.getMoveIntensity(input));
+    if (controls.wasPressed("spawnDebugCombine")) {
+      void this.spawnDebugCombineAtAim();
+    }
 
-    const playerPosition = player.getPosition();
+    footsteps.update(time.delta, player.getMoveIntensity());
+
+    let playerPosition = player.getPosition();
     this.weaponPickups.forEach((pickup) =>
       pickup.update(time.delta, playerPosition, player.weapons),
     );
-    this.npcs.forEach((npc) => npc.update(time.delta, playerPosition, player));
+    this.itemPickups.forEach((pickup) =>
+      pickup.update(time.delta, playerPosition, player.health),
+    );
+    if (this.tacticalMap && this.navSpace && this.squadDirector) {
+      const playerSnapshot: ActorSnapshot = {
+        id: "player",
+        position: playerPosition,
+        faction: "player",
+        entity: player,
+        isAlive: player.isAlive(),
+        radius: 0.35,
+      };
+      const npcSnapshots: ActorSnapshot[] = this.npcs.map((npc) => ({
+        id: npc.id,
+        position: npc.position,
+        faction: npc.faction,
+        entity: npc,
+        isAlive: npc.isAlive(),
+        radius: npc.radius,
+      }));
+      const npcIndex = new ActorSpatialIndex(npcSnapshots);
+      const ctx: AiFrameContext = {
+        delta: time.delta,
+        elapsed: time.elapsed,
+        aiLod: "near",
+        player: playerSnapshot,
+        npcs: [],
+        tacticalMap: this.tacticalMap,
+        squadDirector: this.squadDirector,
+        eventBus: s.resolve(GameTokens.EventBus),
+      };
+      this.pathQueue?.process();
+      this.npcs.forEach((npc) => {
+        ctx.aiLod = this.computeNpcAiLod(npc.position, playerPosition);
+        ctx.npcs = npcIndex.query(npc.position, this.npcContextRadius, npc.id);
+        npc.update(ctx);
+      });
+      this.squadDirector.tickAssignments(time.elapsed, null);
+    }
     this.doors.forEach((door) => door.update(time.delta));
     physics.step(time.delta);
     this.npcs.forEach((npc) => npc.syncFromPhysics());
+    grenades.update(time.delta, time.elapsed);
 
+    playerPosition = player.getPosition();
     camera.syncToPosition(player.getEyePosition());
+    // Update the viewmodel after the camera follows the resolved physics pose.
+    player.tickRender(time.delta, camera);
     interactSystem.update(
+      time.delta,
       camera.camera.position,
       camera.getForwardDirection(),
-      input,
+      controls,
     );
     triggerSystem.update(playerPosition);
     subtitles.update(time.delta);
     weaponEffects.update(time.delta);
     gizmos.update(time.delta);
+  }
 
-    debugOverlay.update({
-      fps: time.fps,
-      playerPosition,
-      physicsBodies: physics.getBodyCount(),
-      npcStates: this.npcs.map((npc) => `${npc.id}:${npc.getState()}`),
-    });
+  private computeNpcAiLod(position: Vector3, playerPosition: Vector3): AiFrameContext["aiLod"] {
+    const distanceSq = position.distanceToSquared(playerPosition);
+    if (distanceSq < 55 * 55) {
+      return "near";
+    }
+    if (distanceSq < 115 * 115) {
+      return "mid";
+    }
+    return "far";
   }
 
   // ---------------------------------------------------------------------------
@@ -333,16 +761,36 @@ export class Game {
   private readonly handleCanvasClick = (): void => {
     this.engine.services.resolve(EngineTokens.Audio).unlock();
     if (this.gameState === "playing") {
-      this.engine.services.resolve(EngineTokens.Input).requestPointerLock();
+      this.enterCapture();
     }
   };
 
   private readonly handlePointerLockChange = (): void => {
     const input = this.engine.services.resolve(EngineTokens.Input);
-    if (!input.isPointerLocked() && this.gameState === "playing") {
+    const debugMenu = this.engine.services.resolve(GameTokens.DebugMenu);
+    const debugRelease = debugMenu.isDebugMouseRelease();
+    if (
+      !input.isPointerLocked() &&
+      this.gameState === "playing" &&
+      !debugRelease
+    ) {
       this.setGameState("paused");
     }
+    if (!input.isPointerLocked()) {
+      input.unlockKeyboard();
+    }
   };
+
+  /**
+   * Pointer lock + keyboard lock. El fullscreen es decisión del jugador
+   * desde Opciones → Video; sin él, lockKeyboard() no captura Ctrl+W/F11
+   * pero la API se silencia limpiamente.
+   */
+  private enterCapture(): void {
+    const input = this.engine.services.resolve(EngineTokens.Input);
+    input.requestPointerLock();
+    input.lockKeyboard();
+  }
 
   private setGameState(state: GameMenuState): void {
     this.gameState = state;
@@ -350,34 +798,153 @@ export class Game {
     const mainMenu = s.resolve(GameTokens.MainMenu);
     const hud = s.resolve(GameTokens.HUD);
     const input = s.resolve(EngineTokens.Input);
-    const ambience = s.resolve(GameTokens.BackgroundAmbience);
 
     mainMenu.setState(state);
     hud.setVisible(state === "playing");
 
     if (state === "playing") {
       mainMenu.setStatus(MenuStrings.ready);
-      input.requestPointerLock();
-    } else if (state === "mainMenu") {
-      ambience.stop();
+      this.enterCapture();
+    } else {
+      input.unlockKeyboard();
     }
   }
 
-  private startNewGame(chapterId: string): void {
-    void chapterId; // El nivel actual lo determina `currentLevel`; ver `init()`.
+  /**
+   * Entrar al editor de niveles. Solo desde el menu principal: ahi la escena
+   * esta vacia (sin nivel cargado), asi que el editor agrega su propio grid +
+   * preview sin chocar con geometria de gameplay.
+   */
+  private enterEditor(): void {
+    if (this.gameState !== "mainMenu") return;
+    this.engine.services.resolve(GameTokens.LevelEditor).enter();
+    this.setGameState("editor");
+  }
 
+  /**
+   * Abre un mapa custom en el editor recargando en modo `edit` con el documento
+   * como draft. Los de carpeta `.ts` se abren como copia (al guardar van a la
+   * biblioteca local, no se reescribe el archivo del repo).
+   */
+  private async editCustomMap(entry: CustomMapEntry): Promise<void> {
+    let doc: EditorDocument | null;
+    if (entry.source === "folder") {
+      doc = fromLevelDefinition(getLevel(entry.id));
+    } else if (entry.source === "workshop") {
+      doc = await this.engine.services.resolve(GameTokens.Workshop).getDocument(entry.id);
+    } else {
+      doc = getLibraryMap(entry.id);
+    }
+    if (!doc) {
+      console.warn(`[Game] No se pudo abrir el mapa custom "${entry.id}" en el editor.`);
+      return;
+    }
+    saveDraft(doc);
+    setEditorMode("edit");
+    window.location.reload();
+  }
+
+  private deleteCustomMap(id: string): void {
+    if (!window.confirm(`¿Borrar el mapa "${id}"? Esta accion no se puede deshacer.`)) {
+      return;
+    }
+    deleteLibraryMap(id);
+    this.engine.services.resolve(GameTokens.MainMenu).refreshCustomMaps();
+  }
+
+  private async importCustomMap(): Promise<void> {
+    try {
+      const doc = await pickJsonFile();
+      saveLibraryMap(doc);
+      this.engine.services.resolve(GameTokens.MainMenu).refreshCustomMaps();
+    } catch (error) {
+      console.warn("[Game] Import de mapa custom cancelado o invalido:", error);
+    }
+  }
+
+  private async publishFromEditor(doc: EditorDocument): Promise<string> {
+    const workshop = this.engine.services.resolve(GameTokens.Workshop);
+    if (!workshop.capabilities.publish) {
+      throw new Error("Workshop no configurado (VITE_WORKSHOP_API).");
+    }
+    if (!workshop.currentUser()) {
+      await workshop.signIn();
+    }
+    const listing = await workshop.publish(doc, {
+      title: doc.meta.title,
+      description: doc.meta.description ?? "",
+      tags: [],
+      type: "map",
+    });
+    return `Publicado en el Workshop: "${listing.title}".`;
+  }
+
+  private exitEditor(): void {
+    setEditorMode(null);
+    this.engine.services.resolve(GameTokens.LevelEditor).exit();
+    this.setGameState("mainMenu");
+  }
+
+  /** Desde un playtest: vuelve al editor recargando con el draft preservado. */
+  private returnToEditorFromPlaytest(): void {
+    setEditorMode("edit");
+    window.location.reload();
+  }
+
+  private toggleEditor(): void {
+    if (this.gameState === "editor") {
+      this.exitEditor();
+    } else if (this.gameState === "mainMenu") {
+      this.enterEditor();
+    }
+  }
+
+  private async startNewGame(levelId: LevelId): Promise<void> {
+    await this.startLevel(getLevel(levelId));
+  }
+
+  /** Lanza un mapa custom (carpeta `maps/custom/` o biblioteca local). */
+  private async startCustomMap(entry: CustomMapEntry): Promise<void> {
+    if (entry.source === "folder") {
+      await this.startLevel(getLevel(entry.id));
+      return;
+    }
+    const doc =
+      entry.source === "workshop"
+        ? await this.engine.services.resolve(GameTokens.Workshop).getDocument(entry.id)
+        : getLibraryMap(entry.id);
+    if (!doc) {
+      console.warn(`[Game] Mapa custom "${entry.id}" no encontrado.`);
+      return;
+    }
+    let level: LevelDefinition;
+    try {
+      level = toLevelDefinition(doc);
+    } catch (error) {
+      console.warn(`[Game] Mapa custom "${entry.id}" invalido:`, error);
+      return;
+    }
+    await this.startLevel(level);
+  }
+
+  /** Arranca cualquier `LevelDefinition` como partida normal (campaña o custom). */
+  private async startLevel(level: LevelDefinition): Promise<void> {
     const s = this.engine.services;
     const mainMenu = s.resolve(GameTokens.MainMenu);
     const audio = s.resolve(EngineTokens.Audio);
+
+    audio.unlock();
+    mainMenu.showLoading(MenuStrings.loadingLevel(level.title));
+
+    // Permitir que el navegador pinte la pantalla de carga antes del trabajo sÃ­ncrono.
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+
+    await this.loadLevelDefinition(level);
+
     const ambience = s.resolve(GameTokens.BackgroundAmbience);
     const music = s.resolve(GameTokens.Music);
-
-    mainMenu.setStatus(
-      this.currentLevel
-        ? MenuStrings.loadingLevel(this.currentLevel.title)
-        : MenuStrings.loadingFallback,
-    );
-    audio.unlock();
 
     if (this.currentLevel) {
       ambience.start(this.currentLevel.audio.ambiences);
@@ -389,5 +956,129 @@ export class Game {
     }
 
     this.setGameState("playing");
+  }
+
+  /** Carga y juega una definicion arbitraria (el draft del editor) para probarla. */
+  private async startPlaytest(level: LevelDefinition): Promise<void> {
+    const s = this.engine.services;
+    const mainMenu = s.resolve(GameTokens.MainMenu);
+    const audio = s.resolve(EngineTokens.Audio);
+
+    audio.unlock();
+    mainMenu.showLoading(MenuStrings.loadingLevel(level.title));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    await this.loadLevelDefinition(level);
+
+    const ambience = s.resolve(GameTokens.BackgroundAmbience);
+    const music = s.resolve(GameTokens.Music);
+    if (this.currentLevel) {
+      ambience.start(this.currentLevel.audio.ambiences);
+      if (this.currentLevel.audio.music) music.fadeToMusic(this.currentLevel.audio.music);
+      else music.stopMusic();
+    }
+
+    this.playtestMode = true;
+    this.setGameState("playing");
+    s.resolve(GameTokens.EventBus).emit("subtitle.show", {
+      text: "Playtest — F4 para volver al editor",
+      duration: 3,
+    });
+  }
+
+  private async loadLevelDefinition(level: LevelDefinition): Promise<void> {
+    const services = this.engine.services;
+    const physics = services.resolve(EngineTokens.Physics);
+    const sceneManager = services.resolve(EngineTokens.Scene);
+    const resources = services.resolve(EngineTokens.Resources);
+    const assets = services.resolve(EngineTokens.Assets);
+    const raycast = services.resolve(EngineTokens.Raycast);
+    const camera = services.resolve(EngineTokens.Camera);
+    const lighting = services.resolve(EngineTokens.Lighting);
+    const environment = services.resolve(EngineTokens.Environment);
+    const eventBus = services.resolve(GameTokens.EventBus);
+    const interactSystem = services.resolve(GameTokens.InteractSystem);
+    const triggerSystem = services.resolve(GameTokens.TriggerSystem);
+    const characters = services.resolve(GameTokens.Characters);
+    const footsteps = services.resolve(GameTokens.Footsteps);
+
+    this.currentLevel = level;
+
+    await environment.applySkybox(sceneManager.scene, level.skybox ?? 'default', level.background);
+    lighting.configureSun(level.sun);
+    resources.register(`level.${level.id}`, level);
+    footsteps.setSounds(level.audio.footstepSounds);
+
+    const levelEvents = new LevelEvents(eventBus);
+    const loader = new LevelLoader(
+      sceneManager.scene,
+      physics,
+      eventBus,
+      interactSystem,
+      triggerSystem,
+      characters,
+      assets,
+    );
+
+    this.npcs.forEach((npc) => npc.dispose());
+    this.itemPickups.forEach((pickup) => pickup.dispose());
+    interactSystem.clear();
+
+    const loaded = await loader.load(level);
+    this.npcs = loaded.npcs;
+    this.doors = loaded.doors;
+    this.weaponPickups = loaded.weaponPickups;
+    this.itemPickups = loaded.itemPickups;
+    this.chargers = loaded.chargers;
+    this.tacticalMap = loaded.tacticalMap;
+    this.squadDirector = loaded.squadDirector;
+    this.buildingRegistry = loaded.buildingRegistry;
+    this.navSpace = loaded.navSpace;
+    this.pathQueue = loaded.pathQueue;
+
+    this.player = new Player(
+      new Vector3(...level.playerStart),
+      physics,
+      raycast,
+      assets,
+      sceneManager.scene,
+      eventBus,
+      services.resolve(GameTokens.Grenades),
+    );
+    this.chargers.forEach((charger) => charger.bind(this.player!.health));
+
+    camera.syncToPosition(this.player.getEyePosition());
+    levelEvents.announceLevel(level.title);
+  }
+
+  /**
+   * Salir al menÃº principal desde la pausa.
+   *
+   * Reinicia la pÃ¡gina: es la forma mÃ¡s robusta de devolver el motor,
+   * la fÃ­sica y la escena al estado inicial. La pÃ¡gina vuelve a bootear
+   * en el menÃº principal y el usuario puede cargar cualquier mapa otra
+   * vez (incluido el que acaba de salir).
+   */
+  private exitToMainMenu(): void {
+    const s = this.engine.services;
+    const mainMenu = s.resolve(GameTokens.MainMenu);
+    const ambience = s.resolve(GameTokens.BackgroundAmbience);
+    const music = s.resolve(GameTokens.Music);
+
+    // Limpiar el modo del editor: si veníamos de un playtest, el flag seguiría
+    // en sessionStorage y el reload volvería a bootear directo al nivel.
+    setEditorMode(null);
+    this.playtestMode = false;
+
+    ambience.stop();
+    music.stopMusic();
+    mainMenu.showLoading(MenuStrings.exitingToMainMenu);
+
+    // PequeÃ±a espera para que el overlay de carga llegue a pintarse antes de
+    // que el navegador descarte la pÃ¡gina por el reload.
+    this.pendingExitTimeoutId = window.setTimeout(() => {
+      this.pendingExitTimeoutId = null;
+      window.location.reload();
+    }, 250);
   }
 }

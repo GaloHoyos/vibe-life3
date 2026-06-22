@@ -1,9 +1,18 @@
 const zombieUrl = new URL('../../models/characters/zombie/zombie.glb', import.meta.url).href;
+const alyxUrl = new URL('../../models/characters/alyx/alyx.glb', import.meta.url).href;
+const combineUrl = new URL('../../models/characters/combine-soldier/combine-soldier.glb', import.meta.url).href;
 const crowbarUrl = new URL('../../models/weapons/crowbar.glb', import.meta.url).href;
 const pistolUrl = new URL('../../models/weapons/pistol.glb', import.meta.url).href;
 const smgUrl = new URL('../../models/weapons/smg.glb', import.meta.url).href;
 const ar3Url = new URL('../../models/weapons/ar3.glb', import.meta.url).href;
 const gravityGunUrl = new URL('../../models/weapons/gravitygun.glb', import.meta.url).href;
+const shotgunUrl = new URL('../../models/weapons/shotgun.glb', import.meta.url).href;
+const grenadeUrl = new URL('../../models/weapons/grenade.glb', import.meta.url).href;
+const grenadePrimedUrl = new URL('../../models/weapons/grenade-primed.glb', import.meta.url).href;
+const medkitUrl = new URL('../../models/items/medkit.glb', import.meta.url).href;
+const hevBatteryUrl = new URL('../../models/items/hev-battery.glb', import.meta.url).href;
+const healthChargerUrl = new URL('../../models/items/health-charger.glb', import.meta.url).href;
+const hevChargerUrl = new URL('../../models/items/hev-charger.glb', import.meta.url).href;
 
 export type ModelAssetType = 'character' | 'weapon' | 'prop' | 'environment' | 'generated';
 
@@ -23,6 +32,18 @@ export const AssetManifest = {
       path: zombieUrl,
       type: 'character',
       debug: true,
+    },
+    alyx: {
+      id: 'alyx',
+      path: alyxUrl,
+      type: 'character',
+      debug: false,
+    },
+    combine: {
+      id: 'combine',
+      path: combineUrl,
+      type: 'character',
+      debug: false,
     },
     crowbar: {
       id: 'crowbar',
@@ -52,6 +73,48 @@ export const AssetManifest = {
       id: 'gravityGun',
       path: gravityGunUrl,
       type: 'weapon',
+      debug: false,
+    },
+    shotgun: {
+      id: 'shotgun',
+      path: shotgunUrl,
+      type: 'weapon',
+      debug: false,
+    },
+    grenade: {
+      id: 'grenade',
+      path: grenadeUrl,
+      type: 'weapon',
+      debug: false,
+    },
+    grenadePrimed: {
+      id: 'grenadePrimed',
+      path: grenadePrimedUrl,
+      type: 'prop',
+      debug: false,
+    },
+    medkit: {
+      id: 'medkit',
+      path: medkitUrl,
+      type: 'prop',
+      debug: false,
+    },
+    hevBattery: {
+      id: 'hevBattery',
+      path: hevBatteryUrl,
+      type: 'prop',
+      debug: false,
+    },
+    healthCharger: {
+      id: 'healthCharger',
+      path: healthChargerUrl,
+      type: 'prop',
+      debug: false,
+    },
+    hevCharger: {
+      id: 'hevCharger',
+      path: hevChargerUrl,
+      type: 'prop',
       debug: false,
     },
   },

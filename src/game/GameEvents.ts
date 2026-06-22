@@ -1,14 +1,51 @@
-import type { Vector3 } from "three";
-import type { CharacterId } from "../engine/characters/CharacterDefinition";
-import type { EventBus } from "../engine/EventBus";
+﻿import type { Vector3 } from "three";
+import type { Faction } from "@engine/ai/Faction";
+import type { CharacterId } from "@engine/characters/CharacterDefinition";
+import type { EventBus } from "@engine/core/EventBus";
+import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
+
+export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
+export type CombatEventSourceKind = "player" | "npc" | "system";
+
+/** Snapshot del estado del selector que se publica al HUD. */
+export interface WeaponSelectorItemState {
+  id: WeaponId;
+  disabled: boolean;
+}
+
+export interface WeaponSelectorState {
+  /** Por slot, las armas que el jugador tiene equipadas, en orden canÃ³nico. */
+  slots: Array<{ slot: number; weapons: WeaponSelectorItemState[] }>;
+  /** Slot actualmente abierto. */
+  activeSlot: number;
+  /** Arma tentativamente seleccionada (la que se equiparÃ¡ al confirmar). */
+  tentativeId: WeaponId;
+}
 
 export interface GameEventMap {
   "weapon.fired": {
     weaponName: string;
+    weaponType: WeaponType;
     ammo: number;
     origin: Vector3;
     direction: Vector3;
     range: number;
+    sourceId?: string;
+    sourceKind?: CombatEventSourceKind;
+    sourceFaction?: Faction;
+  };
+  /**
+   * Secundario distinto del primario (ej. lanzagranadas del SMG). El audio
+   * usa este evento para reproducir un clip aparte. Las armas cuyo
+   * secundario reusa el mismo sonido del primario emiten `weapon.fired`.
+   */
+  "weapon.alternate.fired": {
+    weaponName: string;
+    origin: Vector3;
+    direction: Vector3;
+    sourceId?: string;
+    sourceKind?: CombatEventSourceKind;
+    sourceFaction?: Faction;
   };
   "weapon.hit": {
     weaponName: string;
@@ -24,6 +61,9 @@ export interface GameEventMap {
     point: Vector3;
     normal?: Vector3;
     damage: number;
+    sourceId?: string;
+    sourceKind?: CombatEventSourceKind;
+    sourceFaction?: Faction;
   };
   "weapon.reloaded": {
     weaponName: string;
@@ -33,14 +73,35 @@ export interface GameEventMap {
   "weapon.empty": {
     weaponName: string;
   };
+  /**
+   * Sonido mecnico discreto despus de un evento (pump-action de la
+   * shotgun tras disparar y tras recargar el ltimo cartucho). El
+   * `WeaponSoundSystem` lo mapea a `WeaponAudio[name].cock`.
+   */
+  "weapon.cocked": {
+    weaponName: string;
+  };
   "weapon.ammo.changed": {
+    weaponId?: WeaponId;
     current: number;
     reserve: number;
   };
   "weapon.changed": {
+    weaponId?: WeaponId;
     weaponName: string;
     ammo: number;
     reserve: number;
+    secondaryAmmo?: number;
+  };
+  "weapon.selector.opened": WeaponSelectorState;
+  "weapon.selector.cycled": WeaponSelectorState;
+  "weapon.selector.closed": {
+    committed: boolean;
+  };
+  "level.action": {
+    id: string;
+    action: LevelActionKind;
+    position: Vector3;
   };
   "npc.damaged": {
     id: string;
@@ -51,6 +112,24 @@ export interface GameEventMap {
   "npc.alert": {
     id: string;
     characterId: CharacterId;
+  };
+  /**
+   * Un NPC vio un threat â€” broadcast a la facciÃ³n para que aliados cercanos
+   * reciban la LKP. SÃ³lo NPCs hostiles a `threatFaction` deberÃ­an reaccionar.
+   */
+  "npc.threat.spotted": {
+    spotterId: string;
+    spotterFaction: Faction;
+    threatId: string;
+    threatPosition: Vector3;
+    spotterPosition: Vector3;
+  };
+  "world.noise": {
+    kind: "gunshot" | "explosion" | "impact" | "movement";
+    position: Vector3;
+    radius: number;
+    sourceId?: string;
+    sourceFaction?: Faction;
   };
   "npc.attack": {
     id: string;
@@ -64,6 +143,12 @@ export interface GameEventMap {
   "npc.killed": {
     id: string;
     characterId: CharacterId;
+  };
+  /** El NPC dropea su arma en la posiciÃ³n indicada (tÃ­picamente al morir). */
+  "npc.weapon.dropped": {
+    npcId: string;
+    weaponId: string;
+    position: Vector3;
   };
   "door.opened": {
     id: string;
@@ -84,6 +169,11 @@ export interface GameEventMap {
   "player.armor.changed": {
     current: number;
     max: number;
+  };
+  "player.stamina.changed": {
+    current: number;
+    max: number;
+    depleted: boolean;
   };
   "player.damaged": {
     amount: number;
@@ -111,11 +201,30 @@ export interface GameEventMap {
     text: string;
     duration: number;
   };
-  "objective.updated": {
-    text: string;
-  };
   "debug.toggle": {
     enabled: boolean;
+  };
+  "workshop.list.loaded": {
+    count: number;
+  };
+  "workshop.subscribed": {
+    id: string;
+    title: string;
+  };
+  "workshop.unsubscribed": {
+    id: string;
+  };
+  "workshop.enabled": {
+    id: string;
+    enabled: boolean;
+  };
+  "workshop.published": {
+    id: string;
+    title: string;
+  };
+  "workshop.error": {
+    action: string;
+    message: string;
   };
 }
 

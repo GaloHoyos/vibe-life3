@@ -1,6 +1,6 @@
-import type { GameEventBus } from "../GameEvents";
-import type { SoundManager } from "../../engine/audio/SoundManager";
-import { WeaponAudio } from "../config/audio.config";
+﻿import type { GameEventBus } from "@game/GameEvents";
+import type { SoundManager } from "@engine/audio/core/SoundManager";
+import { WeaponAudio } from "@game/config/audio.config";
 
 /**
  * Reproduce sonidos de arma reaccionando a eventos del bus.
@@ -17,11 +17,17 @@ export class WeaponSoundSystem {
     eventBus.on("weapon.fired", ({ weaponName }) =>
       this.playSound(WeaponAudio[weaponName]?.shot),
     );
+    eventBus.on("weapon.alternate.fired", ({ weaponName }) =>
+      this.playSound(WeaponAudio[weaponName]?.altShot),
+    );
     eventBus.on("weapon.reloaded", ({ weaponName }) =>
       this.playSound(WeaponAudio[weaponName]?.reload),
     );
     eventBus.on("weapon.empty", ({ weaponName }) =>
       this.playSound(WeaponAudio[weaponName]?.empty),
+    );
+    eventBus.on("weapon.cocked", ({ weaponName }) =>
+      this.playSound(WeaponAudio[weaponName]?.cock),
     );
     eventBus.on("weapon.hit", ({ weaponName, surfaceKind }) => {
       if (!surfaceKind) {

@@ -2,49 +2,60 @@ import type { MenuChapter } from "./MainMenuState";
 
 export class NewGameMenu {
   readonly element = document.createElement("section");
-  private readonly startButton: HTMLButtonElement;
-  private readonly chapterTitle: HTMLElement;
-  private readonly chapterDescription: HTMLElement;
 
   constructor(
     chapters: MenuChapter[],
     onStart: (chapterId: string) => void,
     onBack: () => void,
   ) {
-    this.element.className = "hl3-panel hl3-panel--content";
+    this.element.className = "hl2-panel hl2-panel--content";
     this.element.innerHTML = `
-      <div class="hl3-panel__header">
-        <h2>Nueva Partida</h2>
+      <div class="hl2-panel__header">
+        <h2>NUEVA PARTIDA</h2>
         <p>Selecciona un capitulo para iniciar.</p>
       </div>
-      <div class="hl3-chapter">
-        <div class="hl3-chapter__title"></div>
-        <div class="hl3-chapter__desc"></div>
-      </div>
-      <div class="hl3-actions">
-        <button class="hl3-button hl3-button--primary" type="button">Iniciar</button>
-        <button class="hl3-button" type="button" data-action="back">Volver</button>
+      <ul class="hl2-chapters"></ul>
+      <div class="hl2-actions">
+        <button class="hl2-button" type="button" data-action="back">
+          <span class="hl2-button__marker"></span>
+          <span class="hl2-button__label">VOLVER</span>
+        </button>
       </div>
     `;
 
-    const firstChapter = chapters[0];
-    this.chapterTitle = this.element.querySelector(
-      ".hl3-chapter__title",
-    ) as HTMLElement;
-    this.chapterDescription = this.element.querySelector(
-      ".hl3-chapter__desc",
-    ) as HTMLElement;
-    this.chapterTitle.textContent = firstChapter?.title ?? "Mapa";
-    this.chapterDescription.textContent = firstChapter?.description ?? "";
+    const list = this.element.querySelector(".hl2-chapters") as HTMLUListElement;
 
-    this.startButton = this.element.querySelector(
-      ".hl3-button--primary",
-    ) as HTMLButtonElement;
-    this.startButton.addEventListener("click", () => {
-      if (firstChapter) {
-        onStart(firstChapter.id);
-      }
-    });
+    if (chapters.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "hl2-chapter hl2-chapter--empty";
+      empty.textContent = "No hay capitulos disponibles.";
+      list.append(empty);
+    } else {
+      chapters.forEach((chapter, index) => {
+        const item = document.createElement("li");
+        item.className = "hl2-chapter";
+        item.tabIndex = 0;
+        item.dataset.chapterId = chapter.id;
+        item.innerHTML = `
+          <span class="hl2-chapter__index">${String(index + 1).padStart(2, "0")}</span>
+          <div class="hl2-chapter__body">
+            <div class="hl2-chapter__title">${chapter.title}</div>
+            <div class="hl2-chapter__desc">${chapter.description}</div>
+          </div>
+          <span class="hl2-chapter__cta">JUGAR &gt;</span>
+        `;
+
+        const trigger = (): void => onStart(chapter.id);
+        item.addEventListener("click", trigger);
+        item.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            trigger();
+          }
+        });
+        list.append(item);
+      });
+    }
 
     const backButton = this.element.querySelector(
       '[data-action="back"]',

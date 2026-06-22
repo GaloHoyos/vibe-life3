@@ -1,6 +1,6 @@
-import type { GameEventBus } from "../GameEvents";
-import type { SoundManager } from "../../engine/audio/SoundManager";
-import { EnemyAudio } from "../config/audio.config";
+﻿import type { GameEventBus } from "@game/GameEvents";
+import type { SoundManager } from "@engine/audio/core/SoundManager";
+import { EnemyAudio } from "@game/config/audio.config";
 
 /**
  * Reproduce vocalizaciones / impacto de NPCs reaccionando a eventos del bus.

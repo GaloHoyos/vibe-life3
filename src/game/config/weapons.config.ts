@@ -1,12 +1,37 @@
-import { Euler, Vector3 } from "three";
-import type { WeaponDefinition, WeaponId } from "../gameplay/weapons/WeaponDefinition";
+﻿import { Euler, Vector3 } from "three";
+import type {
+  WeaponCategory,
+  WeaponDefinition,
+  WeaponId,
+} from "@game/gameplay/weapons/core/WeaponDefinition";
 
 /**
- * Configuración data-driven de todas las armas del juego.
+ * Mapa categorÃ­a â†’ nÃºmero de slot HL-style. Varias armas con la misma
+ * categorÃ­a comparten slot (la tecla del slot cicla entre ellas en
+ * `WeaponInventory.equipSlot`).
+ */
+export const SlotByCategory: Record<WeaponCategory, number> = {
+  melee: 1,
+  special: 1,
+  sidearm: 2,
+  automatic: 3,
+  heavy: 4,
+  throwable: 5,
+};
+
+/** CuÃ¡ntos slots hay en total. Usado por `WeaponController` para iterar las teclas. */
+export const WEAPON_SLOT_COUNT = 5;
+
+/**
+ * ConfiguraciÃ³n data-driven de todas las armas del juego.
  *
- * Agregar un arma nueva = añadir una entrada acá + (si su comportamiento no
+ * Agregar un arma nueva = aÃ±adir una entrada acÃ¡ + (si su comportamiento no
  * encaja en hitscan/melee/special) crear una subclase de `Weapon`.
- * El factory en `WeaponFactory.createWeapon` la instancia según `type`.
+ * El factory en `WeaponFactory.createWeapon` la instancia segÃºn `type`.
+ *
+ * El orden de declaraciÃ³n define el orden de cycling dentro de un slot â€”
+ * `smg` antes que `ar3` â‡’ presionar `3` con ambas equipadas alterna en ese
+ * orden.
  */
 export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
   crowbar: {
@@ -14,15 +39,16 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     displayName: "Crowbar",
     modelId: "crowbar",
     pickupModelId: "crowbar",
-    slot: 1,
+    category: "melee",
     type: "melee",
+    handedness: "oneHanded",
     damage: 25,
     fireRate: 2.2,
     magazineSize: 0,
     reserveAmmoMax: 0,
     ammoPerPickup: 0,
     spread: 0,
-    range: 1.6,
+    range: 1.8,
     impulse: 5,
     reloadTime: 0,
     recoil: { vertical: 0.05, horizontal: 0.02, recovery: 10 },
@@ -36,19 +62,23 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     },
     canReceiveAmmoFromDuplicatePickup: false,
     hasAmmo: false,
-    viewModelOffset: new Vector3(0.14, -0.22, -0.5),
-    viewModelRotation: new Euler(0.15, -0.35, -0.22),
+    viewModelOffset: new Vector3(0.295, -0.21, -0.365),
+    viewModelRotation: new Euler(-0.162, -0.202, -0.022),
     viewModelScale: 0.28,
     pickupScale: 0.55,
     pickupCollider: new Vector3(0.9, 0.18, 0.18),
+    attackAnimationDuration: 0.32,
+    attackAnimationPitch: 0.85,
+    attackAnimationForward: 0.22,
   },
   pistol: {
     id: "pistol",
     displayName: "9mm Pistol",
     modelId: "pistol",
     pickupModelId: "pistol",
-    slot: 2,
+    category: "sidearm",
     type: "hitscan",
+    handedness: "oneHanded",
     damage: 18,
     fireRate: 4,
     magazineSize: 18,
@@ -69,10 +99,10 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     },
     canReceiveAmmoFromDuplicatePickup: true,
     hasAmmo: true,
-    viewModelOffset: new Vector3(0.28, -0.22, -0.55),
-    viewModelRotation: new Euler(0, -0.08, 0),
+    viewModelOffset: new Vector3(0.33, -0.245, -0.55),
+    viewModelRotation: new Euler(0.028, -0.142, 0.028),
     viewModelScale: 0.22,
-    pickupScale: 0.38,
+    pickupScale: 0.185,
     pickupCollider: new Vector3(0.42, 0.22, 0.28),
   },
   smg: {
@@ -80,8 +110,9 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     displayName: "SMG",
     modelId: "smg",
     pickupModelId: "smg",
-    slot: 3,
+    category: "automatic",
     type: "hitscan",
+    handedness: "twoHanded",
     damage: 9,
     fireRate: 12,
     magazineSize: 45,
@@ -97,19 +128,25 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     muzzleFlash: { color: 0xff9a2d, intensity: 1.2, duration: 0.04, size: 0.1 },
     canReceiveAmmoFromDuplicatePickup: true,
     hasAmmo: true,
-    viewModelOffset: new Vector3(0.16, -0.22, -0.46),
-    viewModelRotation: new Euler(0.02, -0.12, 0),
-    viewModelScale: 0.28,
+    viewModelOffset: new Vector3(0.285, -0.2, -0.415),
+    viewModelRotation: new Euler(0.008, -0.082, 0.008),
+    viewModelScale: 0.295,
     pickupScale: 0.42,
     pickupCollider: new Vector3(0.72, 0.24, 0.32),
+    alternateFire: {
+      kind: "grenadeLauncher",
+      launchSpeed: 28,
+      launchLift: 4,
+    },
   },
   ar3: {
     id: "ar3",
     displayName: "AR3",
     modelId: "ar3",
     pickupModelId: "ar3",
-    slot: 4,
+    category: "automatic",
     type: "hitscan",
+    handedness: "twoHanded",
     damage: 14,
     fireRate: 8,
     magazineSize: 30,
@@ -130,19 +167,95 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     },
     canReceiveAmmoFromDuplicatePickup: true,
     hasAmmo: true,
-    viewModelOffset: new Vector3(0.17, -0.21, -0.5),
+    viewModelOffset: new Vector3(0.195, -0.135, -0.25),
     viewModelRotation: new Euler(0.02, -0.1, 0),
     viewModelScale: 0.29,
     pickupScale: 0.42,
     pickupCollider: new Vector3(0.82, 0.24, 0.32),
+  },
+  shotgun: {
+    id: "shotgun",
+    displayName: "Shotgun",
+    modelId: "shotgun",
+    pickupModelId: "shotgun",
+    category: "heavy",
+    type: "shotgun",
+    handedness: "twoHanded",
+    damage: 11,
+    fireRate: 1.1,
+    magazineSize: 6,
+    reserveAmmoMax: 24,
+    ammoPerPickup: 6,
+    spread: 0.08,
+    range: 35,
+    impulse: 7,
+    reloadTime: 0.5,
+    recoil: { vertical: 0.11, horizontal: 0.04, recovery: 11 },
+    fireMode: "semi",
+    reloadAnimationPitch: 0.48,
+    muzzleFlash: {
+      color: 0xffb24a,
+      intensity: 1.8,
+      duration: 0.07,
+      size: 0.18,
+    },
+    canReceiveAmmoFromDuplicatePickup: true,
+    hasAmmo: true,
+    viewModelOffset: new Vector3(0.175, -0.145, -0.2),
+    viewModelRotation: new Euler(-0.012, -0.082, 0),
+    viewModelScale: 0.305,
+    pickupScale: 0.44,
+    pickupCollider: new Vector3(0.88, 0.24, 0.32),
+    pelletsPerShot: 8,
+    alternateFire: {
+      kind: "doubleShot",
+      damageMultiplier: 1.15,
+      shotSpacing: 0.09,
+      shellCost: 2,
+    },
+  },
+  grenade: {
+    id: "grenade",
+    displayName: "Grenade",
+    modelId: "grenade",
+    pickupModelId: "grenade",
+    category: "throwable",
+    type: "grenade",
+    handedness: "oneHanded",
+    damage: 120,
+    fireRate: 1.4,
+    magazineSize: 0,
+    reserveAmmoMax: 5,
+    ammoPerPickup: 1,
+    spread: 0,
+    range: 4.5,
+    impulse: 18,
+    reloadTime: 0,
+    recoil: { vertical: 0.04, horizontal: 0.01, recovery: 9 },
+    fireMode: "semi",
+    reloadAnimationPitch: 0.32,
+    muzzleFlash: { color: 0x000000, intensity: 0, duration: 0, size: 0 },
+    canReceiveAmmoFromDuplicatePickup: true,
+    hasAmmo: true,
+    viewModelOffset: new Vector3(0.405, -0.265, -0.455),
+    viewModelRotation: new Euler(0.348, -0.18, 0),
+    viewModelScale: 0.095,
+    pickupScale: 0.085,
+    pickupCollider: new Vector3(0.28, 0.28, 0.28),
+    alternateFire: {
+      kind: "closeThrow",
+      throwSpeed: 11,
+      throwLift: 5,
+    },
   },
   gravityGun: {
     id: "gravityGun",
     displayName: "Gravity Gun",
     modelId: "gravityGun",
     pickupModelId: "gravityGun",
-    slot: 5,
+    category: "special",
     type: "special",
+    handedness: "twoHanded",
     damage: 0,
     fireRate: 1.5,
     magazineSize: 0,
@@ -163,30 +276,47 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     },
     canReceiveAmmoFromDuplicatePickup: false,
     hasAmmo: false,
-    viewModelOffset: new Vector3(0.14, -0.24, -0.5),
-    viewModelRotation: new Euler(0.02, -0.13, 0),
-    viewModelScale: 0.26,
+    viewModelOffset: new Vector3(0.215, -0.155, -0.395),
+    viewModelRotation: new Euler(0.038, -0.062, 0.038),
+    viewModelScale: 0.275,
     pickupScale: 0.38,
     pickupCollider: new Vector3(0.86, 0.34, 0.38),
   },
 };
+
+/**
+ * Orden canÃ³nico de las armas. Define el orden de cycling dentro de un slot
+ * y es el orden de declaraciÃ³n del `WeaponDefinitions`. Cambiar el orden acÃ¡
+ * cambia cÃ³mo cicla cada slot.
+ */
+export const WEAPON_ORDER: readonly WeaponId[] = Object.keys(
+  WeaponDefinitions,
+) as WeaponId[];
 
 export function getWeaponDefinition(id: WeaponId): WeaponDefinition {
   return WeaponDefinitions[id];
 }
 
 export function getAllWeaponDefinitions(): WeaponDefinition[] {
-  return Object.values(WeaponDefinitions).sort((a, b) => a.slot - b.slot);
+  return WEAPON_ORDER.map((id) => WeaponDefinitions[id]);
 }
 
-/** Límites globales del sistema de efectos de armas. */
+export function getSlotForCategory(category: WeaponCategory): number {
+  return SlotByCategory[category];
+}
+
+export function getSlotForWeapon(id: WeaponId): number {
+  return SlotByCategory[WeaponDefinitions[id].category];
+}
+
+/** LÃ­mites globales del sistema de efectos de armas. */
 export const WeaponEffectsConfig = {
-  /** Máximo de tracers (líneas de disparo) en escena simultáneos. */
+  /** MÃ¡ximo de tracers (lÃ­neas de disparo) en escena simultÃ¡neos. */
   maxTracers: 24,
-  /** Máximo de decals (marcas de impacto) en escena simultáneos. */
+  /** MÃ¡ximo de decals (marcas de impacto) en escena simultÃ¡neos. */
   maxDecals: 48,
-  /** Duración (s) del tracer antes de desvanecerse. */
+  /** DuraciÃ³n (s) del tracer antes de desvanecerse. */
   tracerDuration: 0.06,
-  /** Duración (s) del decal antes de desvanecerse. */
+  /** DuraciÃ³n (s) del decal antes de desvanecerse. */
   decalDuration: 16,
 } as const;

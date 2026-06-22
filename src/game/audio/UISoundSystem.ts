@@ -1,5 +1,5 @@
-import type { GameEventBus } from "../GameEvents";
-import type { SoundManager } from "../../engine/audio/SoundManager";
+﻿import type { GameEventBus } from "@game/GameEvents";
+import type { SoundManager } from "@engine/audio/core/SoundManager";
 
 export class UISoundSystem {
   constructor(
@@ -21,12 +21,6 @@ export class UISoundSystem {
     eventBus.on("player.pickup.weapon", () => {
       if (this.sounds.hasSound("weapons.pickup")) {
         this.sounds.play("weapons.pickup", { bus: "sfx" });
-      }
-    });
-
-    eventBus.on("objective.updated", () => {
-      if (this.sounds.hasSound("ui.objective")) {
-        this.sounds.play("ui.objective", { bus: "ui" });
       }
     });
 

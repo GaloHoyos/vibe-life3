@@ -1,4 +1,4 @@
-import type { AudioBusName } from "./AudioSystem";
+﻿import type { AudioBusName } from "@engine/audio/core/AudioSystem";
 
 export type AudioCategory =
   | "background"
@@ -97,6 +97,41 @@ const weaponPickup = new URL(
   import.meta.url,
 ).href;
 
+const shotgunShot = new URL(
+  "../assets/sounds/weapons/shotgun/shot.mp3",
+  import.meta.url,
+).href;
+const shotgunReload = new URL(
+  "../assets/sounds/weapons/shotgun/reload.mp3",
+  import.meta.url,
+).href;
+const shotgunCock = new URL(
+  "../assets/sounds/weapons/shotgun/cock.mp3",
+  import.meta.url,
+).href;
+const shotgunEmpty = new URL(
+  "../assets/sounds/weapons/shotgun/empty.mp3",
+  import.meta.url,
+).href;
+
+const grenadeThrow = new URL(
+  "../assets/sounds/weapons/grenade/throw.mp3",
+  import.meta.url,
+).href;
+const grenadeBeep = new URL(
+  "../assets/sounds/weapons/grenade/beep.mp3",
+  import.meta.url,
+).href;
+const grenadeExplosion = new URL(
+  "../assets/sounds/weapons/grenade/explosion.mp3",
+  import.meta.url,
+).href;
+
+const smgSecondary = new URL(
+  "../assets/sounds/weapons/smg/secondary.mp3",
+  import.meta.url,
+).href;
+
 const zombieAlert = new URL(
   "../assets/sounds/npcs/zombie/alert.mp3",
   import.meta.url,
@@ -160,6 +195,12 @@ export const AudioManifest = {
         volume: 0.6,
         bus: "weapons" as const,
       },
+      secondary: {
+        path: smgSecondary,
+        loop: false,
+        volume: 0.85,
+        bus: "weapons" as const,
+      },
     },
     ar3: {
       shot: {
@@ -192,6 +233,52 @@ export const AudioManifest = {
         path: crowbarHitFlesh,
         loop: false,
         volume: 0.7,
+        bus: "weapons" as const,
+      },
+    },
+    shotgun: {
+      shot: {
+        path: shotgunShot,
+        loop: false,
+        volume: 0.9,
+        bus: "weapons" as const,
+      },
+      reload: {
+        path: shotgunReload,
+        loop: false,
+        volume: 0.75,
+        bus: "weapons" as const,
+      },
+      cock: {
+        path: shotgunCock,
+        loop: false,
+        volume: 0.7,
+        bus: "weapons" as const,
+      },
+      empty: {
+        path: shotgunEmpty,
+        loop: false,
+        volume: 0.6,
+        bus: "weapons" as const,
+      },
+    },
+    grenade: {
+      throw: {
+        path: grenadeThrow,
+        loop: false,
+        volume: 0.7,
+        bus: "weapons" as const,
+      },
+      beep: {
+        path: grenadeBeep,
+        loop: false,
+        volume: 0.55,
+        bus: "weapons" as const,
+      },
+      explosion: {
+        path: grenadeExplosion,
+        loop: false,
+        volume: 1,
         bus: "weapons" as const,
       },
     },
@@ -358,6 +445,14 @@ export const AudioClipCatalog: Record<string, AudioClipDefinition> = {
     bus: AudioManifest.weapons.smg.empty.bus,
     category: "weapons",
   },
+  "weapons.smg.secondary": {
+    id: "weapons.smg.secondary",
+    path: AudioManifest.weapons.smg.secondary.path,
+    loop: AudioManifest.weapons.smg.secondary.loop,
+    volume: AudioManifest.weapons.smg.secondary.volume,
+    bus: AudioManifest.weapons.smg.secondary.bus,
+    category: "weapons",
+  },
   "weapons.ar3.shot": {
     id: "weapons.ar3.shot",
     path: AudioManifest.weapons.ar3.shot.path,
@@ -404,6 +499,62 @@ export const AudioClipCatalog: Record<string, AudioClipDefinition> = {
     loop: AudioManifest.weapons.pickup.loop,
     volume: AudioManifest.weapons.pickup.volume,
     bus: AudioManifest.weapons.pickup.bus,
+    category: "weapons",
+  },
+  "weapons.shotgun.shot": {
+    id: "weapons.shotgun.shot",
+    path: AudioManifest.weapons.shotgun.shot.path,
+    loop: AudioManifest.weapons.shotgun.shot.loop,
+    volume: AudioManifest.weapons.shotgun.shot.volume,
+    bus: AudioManifest.weapons.shotgun.shot.bus,
+    category: "weapons",
+  },
+  "weapons.shotgun.reload": {
+    id: "weapons.shotgun.reload",
+    path: AudioManifest.weapons.shotgun.reload.path,
+    loop: AudioManifest.weapons.shotgun.reload.loop,
+    volume: AudioManifest.weapons.shotgun.reload.volume,
+    bus: AudioManifest.weapons.shotgun.reload.bus,
+    category: "weapons",
+  },
+  "weapons.shotgun.cock": {
+    id: "weapons.shotgun.cock",
+    path: AudioManifest.weapons.shotgun.cock.path,
+    loop: AudioManifest.weapons.shotgun.cock.loop,
+    volume: AudioManifest.weapons.shotgun.cock.volume,
+    bus: AudioManifest.weapons.shotgun.cock.bus,
+    category: "weapons",
+  },
+  "weapons.shotgun.empty": {
+    id: "weapons.shotgun.empty",
+    path: AudioManifest.weapons.shotgun.empty.path,
+    loop: AudioManifest.weapons.shotgun.empty.loop,
+    volume: AudioManifest.weapons.shotgun.empty.volume,
+    bus: AudioManifest.weapons.shotgun.empty.bus,
+    category: "weapons",
+  },
+  "weapons.grenade.throw": {
+    id: "weapons.grenade.throw",
+    path: AudioManifest.weapons.grenade.throw.path,
+    loop: AudioManifest.weapons.grenade.throw.loop,
+    volume: AudioManifest.weapons.grenade.throw.volume,
+    bus: AudioManifest.weapons.grenade.throw.bus,
+    category: "weapons",
+  },
+  "weapons.grenade.beep": {
+    id: "weapons.grenade.beep",
+    path: AudioManifest.weapons.grenade.beep.path,
+    loop: AudioManifest.weapons.grenade.beep.loop,
+    volume: AudioManifest.weapons.grenade.beep.volume,
+    bus: AudioManifest.weapons.grenade.beep.bus,
+    category: "weapons",
+  },
+  "weapons.grenade.explosion": {
+    id: "weapons.grenade.explosion",
+    path: AudioManifest.weapons.grenade.explosion.path,
+    loop: AudioManifest.weapons.grenade.explosion.loop,
+    volume: AudioManifest.weapons.grenade.explosion.volume,
+    bus: AudioManifest.weapons.grenade.explosion.bus,
     category: "weapons",
   },
   "enemies.zombie.alert": {

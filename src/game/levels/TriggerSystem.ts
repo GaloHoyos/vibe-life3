@@ -1,6 +1,6 @@
 ﻿import { Box3, Vector3 } from 'three';
-import type { GameEventBus } from "../GameEvents";
-import { tupleToVector3 } from '../../shared/math/VectorTuple';
+import type { GameEventBus } from "@game/GameEvents";
+import { tupleToVector3 } from '@shared/math/VectorTuple';
 import type { TriggerDefinition } from './LevelDefinition';
 
 interface RuntimeTrigger {

@@ -1,40 +1,48 @@
-import type { EventBus } from "../engine/EventBus";
-import { ServiceToken } from "../engine/ServiceContainer";
-import type { BackgroundAmbienceSystem } from "../engine/audio/BackgroundAmbienceSystem";
-import type { FootstepSoundSystem } from "../engine/audio/FootstepSoundSystem";
-import type { MusicManager } from "../engine/audio/MusicManager";
-import type { CharacterFactory } from "./characters/CharacterFactory";
-import type { DialogueAudioSystem } from "./audio/DialogueAudioSystem";
-import type { EnemySoundSystem } from "./audio/EnemySoundSystem";
-import type { UISoundSystem } from "./audio/UISoundSystem";
-import type { WeaponSoundSystem } from "./audio/WeaponSoundSystem";
+import type { EventBus } from "@engine/core/EventBus";
+import { ServiceToken } from "@engine/core/ServiceContainer";
+import type { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
+import type { FootstepSoundSystem } from "@engine/audio/systems/FootstepSoundSystem";
+import type { MusicManager } from "@engine/audio/core/MusicManager";
+import type { CharacterFactory } from "@game/characters/CharacterFactory";
+import type { Controls } from "@game/gameplay/player/Controls";
+import type { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
+import type { EnemySoundSystem } from "@game/audio/EnemySoundSystem";
+import type { UISoundSystem } from "@game/audio/UISoundSystem";
+import type { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
 import type { GameEventMap } from "./GameEvents";
-import type { DialogueSystem } from "./narrative/DialogueSystem";
-import type { InteractSystem } from "./gameplay/interactions";
-import type { TriggerSystem } from "./levels/TriggerSystem";
-import type { WeaponEffects } from "./gameplay/weapons/WeaponEffects";
-import type { DebugOverlay } from "./ui/DebugOverlay";
-import type { HUD } from "./ui/HUD";
-import type { Subtitles } from "./ui/Subtitles";
-import type { MainMenu } from "./ui/menu/MainMenu";
+import type { DialogueSystem } from "@game/narrative/DialogueSystem";
+import type { InteractSystem } from "@game/gameplay/interactions";
+import type { TriggerSystem } from "@game/levels/TriggerSystem";
+import type { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
+import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import type { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
+import type { HUD } from "@game/ui/hud/HUD";
+import type { Subtitles } from "@game/ui/subtitles/Subtitles";
+import type { MainMenu } from "@game/ui/menu/MainMenu";
+import type { LevelEditor } from "@game/editor/LevelEditor";
+import type { WorkshopService } from "@game/workshop/WorkshopService";
 
 /**
- * Tokens de servicios específicos del juego.
+ * Tokens de servicios especificos del juego.
  *
  * Comparten el `ServiceContainer` con los `EngineTokens`, pero su
  * registro es responsabilidad de `Game`, no del motor.
  */
 export const GameTokens = {
   EventBus: new ServiceToken<EventBus<GameEventMap>>("EventBus"),
+  Controls: new ServiceToken<Controls>("Controls"),
   Characters: new ServiceToken<CharacterFactory>("CharacterFactory"),
   Subtitles: new ServiceToken<Subtitles>("Subtitles"),
   Dialogue: new ServiceToken<DialogueSystem>("DialogueSystem"),
   WeaponEffects: new ServiceToken<WeaponEffects>("WeaponEffects"),
+  Grenades: new ServiceToken<GrenadeSystem>("GrenadeSystem"),
   InteractSystem: new ServiceToken<InteractSystem>("InteractSystem"),
   TriggerSystem: new ServiceToken<TriggerSystem>("TriggerSystem"),
   HUD: new ServiceToken<HUD>("HUD"),
   MainMenu: new ServiceToken<MainMenu>("MainMenu"),
-  DebugOverlay: new ServiceToken<DebugOverlay>("DebugOverlay"),
+  DebugMenu: new ServiceToken<DebugMenu>("DebugMenu"),
+  LevelEditor: new ServiceToken<LevelEditor>("LevelEditor"),
+  Workshop: new ServiceToken<WorkshopService>("WorkshopService"),
   BackgroundAmbience: new ServiceToken<BackgroundAmbienceSystem>(
     "BackgroundAmbienceSystem",
   ),

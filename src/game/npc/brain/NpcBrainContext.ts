@@ -1,0 +1,98 @@
+import type { Vector3 } from 'three';
+import type { ConditionMask } from '@engine/ai/brain/Condition';
+import type { NavSpace } from '@engine/ai/nav/NavSpace';
+import type { GameEventBus } from '@game/GameEvents';
+import type { ActorSnapshot } from '@game/npc/core/INpc';
+import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
+import type { Faction } from '@engine/ai/Faction';
+import type { NoiseSnapshot } from '@game/npc/brain/NpcNoiseSensor';
+import type { NpcTacticalHandle } from '@game/npc/brain/NpcCoverSensor';
+import type { SquadRole } from '@game/npc/ai/SquadDirector';
+
+export interface NpcSelfSnapshot {
+  id: string;
+  position: Vector3;
+  facing: Vector3;
+  faction: Faction;
+  isAlive: boolean;
+  health: number;
+  maxHealth: number;
+  radius: number;
+}
+
+/**
+ * Interfaz minima que el brain ve de la locomotion. Mantenerla flaca permite
+ * implementar otros motores (volador, nadador) sin tocar tasks.
+ */
+export interface NpcLocomotionHandle {
+  /** Pide moverse hacia un punto. La locomotion encola un path si hace falta. */
+  moveTo(target: Vector3, options?: NpcMoveOptions): void;
+  /** Detiene el movimiento (libera el target actual). */
+  stop(): void;
+  /** Distancia 2D actual al target activo, o Infinity si no hay. */
+  distanceToTarget(): number;
+  hasPath(): boolean;
+  isStuck(): boolean;
+  /** Encara hacia un punto sin moverse. */
+  face(target: Vector3): void;
+}
+
+export interface NpcMoveOptions {
+  /** Si presente, encara a este punto mientras se mueve hacia `target`. */
+  facing?: Vector3;
+  /** 'walk' (default) | 'sprint'. */
+  gait?: 'walk' | 'sprint';
+}
+
+/** Estado del mundo que el `Npc` empuja al combat handle cada frame. */
+export interface NpcCombatTickArgs {
+  delta: number;
+  elapsed: number;
+  position: Vector3;
+  facing: Vector3;
+  threat: ActorSnapshot | null;
+}
+
+/**
+ * Interfaz minima del subsistema de combate que las tasks consumen.
+ * Implementada por `NpcMeleeCombat` o `RealRangedCombat` segun el preset.
+ */
+export interface NpcCombatHandle {
+  /** Avanza timers internos (cooldowns, rafagas, hit-windows). Lo llama el `Npc`, no las tasks. */
+  tick(args: NpcCombatTickArgs): void;
+  /** Apunta hacia el threat (solo ranged). Sin efecto en melee. */
+  aim(target: Vector3): void;
+  /** Intenta disparar una rafaga / golpe. Devuelve true si se inicio. */
+  tryFire(): boolean;
+  reload(): void;
+  isReloading(): boolean;
+  magazineEmpty(): boolean;
+  /** Distancia maxima a la que tiene sentido encarar combate. */
+  effectiveRange(): number;
+}
+
+export interface NpcBrainContext {
+  delta: number;
+  elapsed: number;
+  self: NpcSelfSnapshot;
+  /** Threat actual (player u otro NPC hostil). `null` si no hay. */
+  threat: ActorSnapshot | null;
+  /** Ultimo punto conocido del threat (memoria de perception). */
+  threatLastKnown: Vector3 | null;
+  /** Snapshot del player (puede ser aliado — no necesariamente threat). */
+  player: ActorSnapshot;
+  /** Ruta de patrol del nivel, o null si el NPC no patrulla. */
+  patrolRoute: Vector3[] | null;
+  /** Ruidos oidos recientemente (decaen solos). */
+  noise: NoiseSnapshot;
+  /** Handle de cover/flank/retreat. Null en presets sin tactica (zombies). */
+  tactical: NpcTacticalHandle | null;
+  /** Rol asignado por el SquadDirector este frame. Null sin squad. */
+  squad: { role: SquadRole; flankSide: 1 | -1 } | null;
+  conditions: ConditionMask;
+  navSpace: NavSpace;
+  buildingRegistry: BuildingRegistry;
+  locomotion: NpcLocomotionHandle;
+  combat: NpcCombatHandle;
+  eventBus: GameEventBus;
+}

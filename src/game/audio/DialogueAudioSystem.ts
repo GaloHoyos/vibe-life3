@@ -1,5 +1,5 @@
-import type { GameEventBus } from "../GameEvents";
-import type { SoundManager } from "../../engine/audio/SoundManager";
+﻿import type { GameEventBus } from "@game/GameEvents";
+import type { SoundManager } from "@engine/audio/core/SoundManager";
 
 export class DialogueAudioSystem {
   constructor(
