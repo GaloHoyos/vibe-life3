@@ -56,10 +56,23 @@ import { WEAPON_ORDER, WeaponDefinitions } from "@game/config/weapons.config";
 import { HUD } from "@game/ui/hud/HUD";
 import { Subtitles } from "@game/ui/subtitles/Subtitles";
 import { MainMenu } from "@game/ui/menu/MainMenu";
-import type { GameMenuState } from "@game/ui/menu/MainMenuState";
+import type { CustomMapEntry, GameMenuState } from "@game/ui/menu/MainMenuState";
 import { LevelEditor } from "@game/editor/LevelEditor";
-import { getEditorMode, loadDraft, setEditorMode } from "@game/editor/persistence";
+import {
+  getEditorMode,
+  loadDraft,
+  pickJsonFile,
+  saveDraft,
+  setEditorMode,
+} from "@game/editor/persistence";
 import { toLevelDefinition } from "@game/editor/codegen/toLevelDefinition";
+import { fromLevelDefinition } from "@game/editor/codegen/fromLevelDefinition";
+import {
+  deleteLibraryMap,
+  getLibraryMap,
+  saveLibraryMap,
+} from "@game/editor/mapLibrary";
+import type { EditorDocument } from "@game/editor/EditorDocument";
 import { createBoxMesh } from "@engine/render/PrimitiveFactory";
 import { tupleToVector3 } from "@shared/math/VectorTuple";
 
@@ -519,6 +532,14 @@ export class Game {
         onStartChapter: (chapterId) => {
           void this.startNewGame(chapterId as LevelId);
         },
+        onStartCustomMap: (entry) => {
+          void this.startCustomMap(entry);
+        },
+        onEditCustomMap: (entry) => this.editCustomMap(entry),
+        onDeleteLibraryMap: (id) => this.deleteCustomMap(id),
+        onImportCustomMap: () => {
+          void this.importCustomMap();
+        },
         onResume: () => this.setGameState("playing"),
         onExitToMain: () => this.exitToMainMenu(),
         onOpenEditor: () => this.enterEditor(),
@@ -780,6 +801,45 @@ export class Game {
     this.setGameState("editor");
   }
 
+  /**
+   * Abre un mapa custom en el editor recargando en modo `edit` con el documento
+   * como draft. Los de carpeta `.ts` se abren como copia (al guardar van a la
+   * biblioteca local, no se reescribe el archivo del repo).
+   */
+  private editCustomMap(entry: CustomMapEntry): void {
+    let doc: EditorDocument | null;
+    if (entry.source === "folder") {
+      doc = fromLevelDefinition(getLevel(entry.id));
+    } else {
+      doc = getLibraryMap(entry.id);
+    }
+    if (!doc) {
+      console.warn(`[Game] No se pudo abrir el mapa custom "${entry.id}" en el editor.`);
+      return;
+    }
+    saveDraft(doc);
+    setEditorMode("edit");
+    window.location.reload();
+  }
+
+  private deleteCustomMap(id: string): void {
+    if (!window.confirm(`¿Borrar el mapa "${id}"? Esta accion no se puede deshacer.`)) {
+      return;
+    }
+    deleteLibraryMap(id);
+    this.engine.services.resolve(GameTokens.MainMenu).refreshCustomMaps();
+  }
+
+  private async importCustomMap(): Promise<void> {
+    try {
+      const doc = await pickJsonFile();
+      saveLibraryMap(doc);
+      this.engine.services.resolve(GameTokens.MainMenu).refreshCustomMaps();
+    } catch (error) {
+      console.warn("[Game] Import de mapa custom cancelado o invalido:", error);
+    }
+  }
+
   private exitEditor(): void {
     setEditorMode(null);
     this.engine.services.resolve(GameTokens.LevelEditor).exit();
@@ -801,13 +861,37 @@ export class Game {
   }
 
   private async startNewGame(levelId: LevelId): Promise<void> {
+    await this.startLevel(getLevel(levelId));
+  }
+
+  /** Lanza un mapa custom (carpeta `maps/custom/` o biblioteca local). */
+  private async startCustomMap(entry: CustomMapEntry): Promise<void> {
+    if (entry.source === "folder") {
+      await this.startLevel(getLevel(entry.id));
+      return;
+    }
+    const doc = getLibraryMap(entry.id);
+    if (!doc) {
+      console.warn(`[Game] Mapa custom "${entry.id}" no encontrado en biblioteca.`);
+      return;
+    }
+    let level: LevelDefinition;
+    try {
+      level = toLevelDefinition(doc);
+    } catch (error) {
+      console.warn(`[Game] Mapa custom "${entry.id}" invalido:`, error);
+      return;
+    }
+    await this.startLevel(level);
+  }
+
+  /** Arranca cualquier `LevelDefinition` como partida normal (campaña o custom). */
+  private async startLevel(level: LevelDefinition): Promise<void> {
     const s = this.engine.services;
     const mainMenu = s.resolve(GameTokens.MainMenu);
     const audio = s.resolve(EngineTokens.Audio);
 
     audio.unlock();
-
-    const level = getLevel(levelId);
     mainMenu.showLoading(MenuStrings.loadingLevel(level.title));
 
     // Permitir que el navegador pinte la pantalla de carga antes del trabajo sÃ­ncrono.
@@ -815,7 +899,7 @@ export class Game {
       requestAnimationFrame(() => resolve()),
     );
 
-    await this.loadLevel(levelId);
+    await this.loadLevelDefinition(level);
 
     const ambience = s.resolve(GameTokens.BackgroundAmbience);
     const music = s.resolve(GameTokens.Music);
@@ -858,10 +942,6 @@ export class Game {
       text: "Playtest — F4 para volver al editor",
       duration: 3,
     });
-  }
-
-  private async loadLevel(levelId: LevelId): Promise<void> {
-    await this.loadLevelDefinition(getLevel(levelId));
   }
 
   private async loadLevelDefinition(level: LevelDefinition): Promise<void> {

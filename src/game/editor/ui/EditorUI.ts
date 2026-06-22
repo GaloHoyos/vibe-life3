@@ -8,6 +8,7 @@ import { toLevelDefinition } from '../codegen/toLevelDefinition';
 import { toTypeScript } from '../codegen/toTypeScript';
 import { fromLevelDefinition } from '../codegen/fromLevelDefinition';
 import { downloadJson, downloadText, pickJsonFile, saveDraft, setEditorMode } from '../persistence';
+import { saveLibraryMap } from '../mapLibrary';
 import { EditorUIView } from './EditorUIView';
 import { InspectorView } from './InspectorView';
 import { LevelSettingsView } from './LevelSettingsView';
@@ -58,6 +59,7 @@ export class EditorUI implements EditorUiBridge, Disposable {
         onNew: () => this.editor.loadDocument(blankDocument()),
         onExportJson: () => this.exportJson(),
         onExportTs: () => this.exportTs(),
+        onSaveLibrary: () => this.saveLibrary(),
         onImportFile: () => this.importFile(),
         onImportRegistry: (levelId) => this.importRegistry(levelId),
         onPlaytest: () => this.playtest(),
@@ -150,6 +152,18 @@ export class EditorUI implements EditorUiBridge, Disposable {
     }
     downloadText(`${doc.meta.id || 'nivel'}.ts`, toTypeScript(doc));
     this.view.setStatus('TypeScript exportado.');
+  }
+
+  private saveLibrary(): void {
+    const doc = this.editor.getDocument();
+    try {
+      toLevelDefinition(doc); // valida ids unicos antes de guardar
+    } catch (error) {
+      this.view.setStatus(`Error: ${errorMessage(error)}`);
+      return;
+    }
+    saveLibraryMap(doc);
+    this.view.setStatus(`Guardado en biblioteca: "${doc.meta.title || doc.meta.id}".`);
   }
 
   private importFile(): void {

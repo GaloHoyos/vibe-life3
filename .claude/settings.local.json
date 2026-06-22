@@ -53,7 +53,9 @@
       "Bash(echo \"exit code: $?\")",
       "Bash(powershell -Command \"npx tsc --noEmit; if \\(\\\\$?\\) { Write-Output 'OK' } else { Write-Output 'FAIL' }\")",
       "Bash(echo \"exit=$?\")",
-      "PowerShell(node \"C:\\\\Users\\\\galoh\\\\AppData\\\\Local\\\\Temp\\\\verify-ai\\\\diag-bt2.cjs\")"
+      "PowerShell(node \"C:\\\\Users\\\\galoh\\\\AppData\\\\Local\\\\Temp\\\\verify-ai\\\\diag-bt2.cjs\")",
+      "Bash(nvm ls *)",
+      "Bash(bash -lc 'nvm ls')"
     ],
     "deny": [
       "PowerShell(git push --force *)",

@@ -1,12 +1,22 @@
 ﻿import { CreditsMenu } from "./CreditsMenu";
+import { CustomMapsMenu } from "./CustomMapsMenu";
 import { NewGameMenu } from "./NewGameMenu";
 import { OptionsMenu } from "./OptionsMenu";
-import type { GameMenuState, MenuChapter } from "./MainMenuState";
+import {
+  buildCustomMaps,
+  type CustomMapEntry,
+  type GameMenuState,
+  type MenuChapter,
+} from "./MainMenuState";
 import type { AudioBusName } from "@engine/audio/core/AudioSystem";
 import type { Controls } from "@game/gameplay/player/Controls";
 
 export interface MainMenuViewCallbacks {
   onStartChapter: (chapterId: string) => void;
+  onStartCustomMap: (entry: CustomMapEntry) => void;
+  onEditCustomMap: (entry: CustomMapEntry) => void;
+  onDeleteLibraryMap: (id: string) => void;
+  onImportCustomMap: () => void;
   onOpenState: (state: GameMenuState) => void;
   onBack: () => void;
   onResume: () => void;
@@ -30,8 +40,10 @@ export class MainMenuView {
   private readonly newGameMenu: NewGameMenu;
   private readonly creditsMenu: CreditsMenu;
   private readonly loadPanel = document.createElement("section");
+  private readonly callbacks: MainMenuViewCallbacks;
 
   constructor(chapters: MenuChapter[], callbacks: MainMenuViewCallbacks) {
+    this.callbacks = callbacks;
     this.element.className = "hl2-menu";
     this.element.innerHTML = `
       <div class="hl2-menu__backdrop"></div>
@@ -65,6 +77,10 @@ export class MainMenuView {
         <button class="hl2-button" data-state="newGameMenu" type="button">
           <span class="hl2-button__marker"></span>
           <span class="hl2-button__label">NUEVA PARTIDA</span>
+        </button>
+        <button class="hl2-button" data-state="customMaps" type="button">
+          <span class="hl2-button__marker"></span>
+          <span class="hl2-button__label">MAPAS PERSONALIZADOS</span>
         </button>
         <button class="hl2-button" data-state="loadGame" type="button">
           <span class="hl2-button__marker"></span>
@@ -192,6 +208,7 @@ export class MainMenuView {
     const isLoading = state === "loading";
     const isSubMenu =
       state === "newGameMenu" ||
+      state === "customMaps" ||
       state === "options" ||
       state === "credits" ||
       state === "loadGame";
@@ -204,6 +221,8 @@ export class MainMenuView {
     this.contentPanel.replaceChildren();
     if (state === "newGameMenu") {
       this.contentPanel.append(this.newGameMenu.element);
+    } else if (state === "customMaps") {
+      this.contentPanel.append(this.buildCustomMapsMenu().element);
     } else if (state === "options") {
       this.contentPanel.append(this.optionsMenu.element);
     } else if (state === "credits") {
@@ -211,6 +230,17 @@ export class MainMenuView {
     } else if (state === "loadGame") {
       this.contentPanel.append(this.loadPanel);
     }
+  }
+
+  /** Reconstruido cada vez: la biblioteca local cambia (importar/borrar). */
+  private buildCustomMapsMenu(): CustomMapsMenu {
+    return new CustomMapsMenu(buildCustomMaps(), {
+      onPlay: this.callbacks.onStartCustomMap,
+      onEdit: this.callbacks.onEditCustomMap,
+      onDelete: this.callbacks.onDeleteLibraryMap,
+      onImport: this.callbacks.onImportCustomMap,
+      onBack: this.callbacks.onBack,
+    });
   }
 
   dispose(): void {

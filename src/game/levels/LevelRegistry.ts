@@ -1,42 +1,100 @@
-﻿import { AiTestLevel } from "@game/levels/maps/AiTestLevel";
-import { BuildingTestLevel } from "@game/levels/maps/BuildingTestLevel";
-import { DemoLevel } from "@game/levels/maps/DemoLevel";
-import { SnowFieldLevel } from "@game/levels/maps/SnowFieldLevel";
-import { SnowFactoryLevel } from "@game/levels/maps/SnowFactoryLevel";
 import type { LevelDefinition } from "./LevelDefinition";
 
-export type LevelId =
-  | "demo"
-  | "snow-field"
-  | "snow-factory"
-  | "ai-test"
-  | "building-test";
-
 /**
- * Registro central de niveles del juego.
+ * Auto-discovery de niveles estilo Source: cualquier `*.ts` bajo `maps/` que
+ * exporte un `LevelDefinition` se registra solo, sin tocar este archivo ni un
+ * union de ids. La clave del registro es el `id` del propio nivel.
  *
- * Para agregar un nivel nuevo: declarar su `LevelDefinition` en
- * `./definitions/...`, incorporar su id al tipo `LevelId` y agregar
- * la entrada en este map. El resto del juego (Game, audio, narrativa)
- * lo consume por id, sin imports puntuales.
+ * La carpeta define la categoria: `maps/campaign/` son los niveles oficiales
+ * (selector "Nueva Partida"); `maps/custom/` son mapas externos / de comunidad
+ * (seccion "Mapas Personalizados"). Para agregar un nivel: dejar el archivo en
+ * la carpeta correcta exportando un `LevelDefinition`. Nada mas.
  */
-export const LevelRegistry: Record<LevelId, LevelDefinition> = {
-  demo: DemoLevel,
-  "snow-field": SnowFieldLevel,
-  "snow-factory": SnowFactoryLevel,
-  "ai-test": AiTestLevel,
-  "building-test": BuildingTestLevel,
-};
+const campaignModules = import.meta.glob<Record<string, unknown>>(
+  "./maps/campaign/*.ts",
+  { eager: true },
+);
+const customModules = import.meta.glob<Record<string, unknown>>(
+  "./maps/custom/*.ts",
+  { eager: true },
+);
 
-export function getLevel(id: LevelId): LevelDefinition {
-  const level = LevelRegistry[id];
-  if (!level) {
-    throw new Error(`LevelRegistry: nivel "${id}" no registrado.`);
-  }
-  return level;
+/** El id de un nivel es libre: lo define cada `LevelDefinition` en `maps/`. */
+export type LevelId = string;
+
+export type LevelCategory = "campaign" | "custom";
+
+interface CatalogEntry {
+  def: LevelDefinition;
+  category: LevelCategory;
 }
 
-/** Lista todos los niveles registrados. La utiliza el menÃº para construir el selector de mapas. */
+function isLevelDefinition(value: unknown): value is LevelDefinition {
+  if (!value || typeof value !== "object") return false;
+  const def = value as Partial<LevelDefinition>;
+  return (
+    typeof def.id === "string" &&
+    typeof def.title === "string" &&
+    Array.isArray(def.playerStart) &&
+    Array.isArray(def.staticBoxes)
+  );
+}
+
+function collect(
+  catalog: Record<string, CatalogEntry>,
+  modules: Record<string, Record<string, unknown>>,
+  category: LevelCategory,
+): void {
+  for (const [path, module] of Object.entries(modules)) {
+    for (const exported of Object.values(module)) {
+      if (!isLevelDefinition(exported)) continue;
+      if (catalog[exported.id]) {
+        throw new Error(`LevelRegistry: id duplicado "${exported.id}" en ${path}.`);
+      }
+      catalog[exported.id] = { def: exported, category };
+    }
+  }
+}
+
+function buildCatalog(): Record<string, CatalogEntry> {
+  const catalog: Record<string, CatalogEntry> = {};
+  collect(catalog, campaignModules, "campaign");
+  collect(catalog, customModules, "custom");
+  return catalog;
+}
+
+const catalog = buildCatalog();
+
+/** Registro central de niveles, derivado de los archivos en `maps/`. */
+export const LevelRegistry: Record<string, LevelDefinition> = Object.fromEntries(
+  Object.entries(catalog).map(([id, entry]) => [id, entry.def]),
+);
+
+export function getLevel(id: LevelId): LevelDefinition {
+  const entry = catalog[id];
+  if (!entry) {
+    throw new Error(`LevelRegistry: nivel "${id}" no registrado.`);
+  }
+  return entry.def;
+}
+
+/** Todos los niveles registrados (campaña + carpeta custom). Lo usa el editor. */
 export function getAllLevels(): LevelDefinition[] {
-  return Object.values(LevelRegistry);
+  return Object.values(catalog).map((entry) => entry.def);
+}
+
+function levelsByCategory(category: LevelCategory): LevelDefinition[] {
+  return Object.values(catalog)
+    .filter((entry) => entry.category === category)
+    .map((entry) => entry.def);
+}
+
+/** Niveles oficiales de campaña. Lo usa el selector "Nueva Partida". */
+export function getCampaignLevels(): LevelDefinition[] {
+  return levelsByCategory("campaign");
+}
+
+/** Mapas custom servidos desde `maps/custom/` (build-time, .ts). */
+export function getCustomFolderLevels(): LevelDefinition[] {
+  return levelsByCategory("custom");
 }

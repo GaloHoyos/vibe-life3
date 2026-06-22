@@ -11,6 +11,7 @@ export interface EditorViewCallbacks {
   onNew(): void;
   onExportJson(): void;
   onExportTs(): void;
+  onSaveLibrary(): void;
   onImportFile(): void;
   onImportRegistry(levelId: string): void;
   onPlaytest(): void;
@@ -103,6 +104,7 @@ export class EditorUIView implements Disposable {
       toolbarButton('Nuevo', () => this.callbacks.onNew()),
       loadSelect,
       toolbarButton('Importar', () => this.callbacks.onImportFile()),
+      toolbarButton('Guardar en biblioteca', () => this.callbacks.onSaveLibrary()),
       toolbarButton('Exportar JSON', () => this.callbacks.onExportJson()),
       toolbarButton('Exportar TS', () => this.callbacks.onExportTs()),
     );
