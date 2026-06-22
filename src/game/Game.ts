@@ -57,6 +57,9 @@ import { HUD } from "@game/ui/hud/HUD";
 import { Subtitles } from "@game/ui/subtitles/Subtitles";
 import { MainMenu } from "@game/ui/menu/MainMenu";
 import type { GameMenuState } from "@game/ui/menu/MainMenuState";
+import { LevelEditor } from "@game/editor/LevelEditor";
+import { getEditorMode, loadDraft, setEditorMode } from "@game/editor/persistence";
+import { toLevelDefinition } from "@game/editor/codegen/toLevelDefinition";
 import { createBoxMesh } from "@engine/render/PrimitiveFactory";
 import { tupleToVector3 } from "@shared/math/VectorTuple";
 
@@ -94,6 +97,7 @@ export class Game {
   private navSpace: NavSpace | null = null;
   private pathQueue: PathRequestQueue | null = null;
   private pendingExitTimeoutId: number | null = null;
+  private playtestMode = false;
   private actionSpawnSerial = 0;
   private readonly npcContextRadius = 90;
 
@@ -128,6 +132,25 @@ export class Game {
     lighting.attach(sceneManager.scene);
     footsteps.configure(FootstepsConfig);
 
+    // El modo del editor es de un solo uso: se consume y se borra en el boot,
+    // asi un reload/reinicio posterior vuelve al menu (no al ultimo mapa).
+    const editorMode = getEditorMode();
+    if (editorMode) setEditorMode(null);
+    if (editorMode === "playtest") {
+      const draft = loadDraft();
+      if (draft) {
+        try {
+          await this.startPlaytest(toLevelDefinition(draft));
+          return;
+        } catch (error) {
+          console.warn("[Game] No se pudo probar el draft del editor:", error);
+        }
+      }
+    } else if (editorMode === "edit") {
+      this.enterEditor();
+      return;
+    }
+
     if (this.bootIntoLevel) {
       await this.startNewGame(this.bootIntoLevel);
     }
@@ -158,6 +181,7 @@ export class Game {
     s.resolve(GameTokens.Subtitles).dispose();
     s.resolve(GameTokens.MainMenu).dispose();
     s.resolve(GameTokens.DebugMenu).dispose();
+    s.resolve(GameTokens.LevelEditor).dispose();
     s.resolve(GameTokens.EventBus).clear();
 
     this.engine.dispose();
@@ -465,6 +489,20 @@ export class Game {
 
     s.register(GameTokens.HUD, new HUD(this.root, eventBus));
 
+    s.register(
+      GameTokens.LevelEditor,
+      new LevelEditor(
+        this.root,
+        scene.scene,
+        s.resolve(EngineTokens.Camera),
+        s.resolve(EngineTokens.Renderer).canvas,
+        input,
+        s.resolve(EngineTokens.Environment),
+        s.resolve(EngineTokens.Lighting),
+        { onExit: () => this.exitEditor() },
+      ),
+    );
+
     const debugMenu = new DebugMenu(this.root, input, controls, eventBus);
     debugMenu.register(new StatsModule());
     debugMenu.register(new PlayerModule(eventBus));
@@ -483,6 +521,7 @@ export class Game {
         },
         onResume: () => this.setGameState("playing"),
         onExitToMain: () => this.exitToMainMenu(),
+        onOpenEditor: () => this.enterEditor(),
         onToggleDebug: (enabled) => debugMenu.setVisible(enabled),
         onVolumeChange: (bus, value) => audio.setVolume(bus, value),
         onGetVolume: (bus) => audio.getVolume(bus),
@@ -508,6 +547,18 @@ export class Game {
       this.engine.services
         .resolve(GameTokens.EventBus)
         .emit("subtitle.show", enabled ? Dialogue.godModeOn : Dialogue.godModeOff);
+    }
+
+    if (input.wasKeyPressed("F4")) {
+      if (this.playtestMode) this.returnToEditorFromPlaytest();
+      else this.toggleEditor();
+    }
+
+    if (this.gameState === "editor") {
+      s.resolve(GameTokens.LevelEditor).update(time);
+      this.engine.renderFrame();
+      input.endFrame();
+      return;
     }
 
     if (controls.wasPressed("pause") && this.gameState === "playing") {
@@ -718,6 +769,37 @@ export class Game {
     }
   }
 
+  /**
+   * Entrar al editor de niveles. Solo desde el menu principal: ahi la escena
+   * esta vacia (sin nivel cargado), asi que el editor agrega su propio grid +
+   * preview sin chocar con geometria de gameplay.
+   */
+  private enterEditor(): void {
+    if (this.gameState !== "mainMenu") return;
+    this.engine.services.resolve(GameTokens.LevelEditor).enter();
+    this.setGameState("editor");
+  }
+
+  private exitEditor(): void {
+    setEditorMode(null);
+    this.engine.services.resolve(GameTokens.LevelEditor).exit();
+    this.setGameState("mainMenu");
+  }
+
+  /** Desde un playtest: vuelve al editor recargando con el draft preservado. */
+  private returnToEditorFromPlaytest(): void {
+    setEditorMode("edit");
+    window.location.reload();
+  }
+
+  private toggleEditor(): void {
+    if (this.gameState === "editor") {
+      this.exitEditor();
+    } else if (this.gameState === "mainMenu") {
+      this.enterEditor();
+    }
+  }
+
   private async startNewGame(levelId: LevelId): Promise<void> {
     const s = this.engine.services;
     const mainMenu = s.resolve(GameTokens.MainMenu);
@@ -750,7 +832,39 @@ export class Game {
     this.setGameState("playing");
   }
 
+  /** Carga y juega una definicion arbitraria (el draft del editor) para probarla. */
+  private async startPlaytest(level: LevelDefinition): Promise<void> {
+    const s = this.engine.services;
+    const mainMenu = s.resolve(GameTokens.MainMenu);
+    const audio = s.resolve(EngineTokens.Audio);
+
+    audio.unlock();
+    mainMenu.showLoading(MenuStrings.loadingLevel(level.title));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    await this.loadLevelDefinition(level);
+
+    const ambience = s.resolve(GameTokens.BackgroundAmbience);
+    const music = s.resolve(GameTokens.Music);
+    if (this.currentLevel) {
+      ambience.start(this.currentLevel.audio.ambiences);
+      if (this.currentLevel.audio.music) music.fadeToMusic(this.currentLevel.audio.music);
+      else music.stopMusic();
+    }
+
+    this.playtestMode = true;
+    this.setGameState("playing");
+    s.resolve(GameTokens.EventBus).emit("subtitle.show", {
+      text: "Playtest — F4 para volver al editor",
+      duration: 3,
+    });
+  }
+
   private async loadLevel(levelId: LevelId): Promise<void> {
+    await this.loadLevelDefinition(getLevel(levelId));
+  }
+
+  private async loadLevelDefinition(level: LevelDefinition): Promise<void> {
     const services = this.engine.services;
     const physics = services.resolve(EngineTokens.Physics);
     const sceneManager = services.resolve(EngineTokens.Scene);
@@ -766,7 +880,6 @@ export class Game {
     const characters = services.resolve(GameTokens.Characters);
     const footsteps = services.resolve(GameTokens.Footsteps);
 
-    const level = getLevel(levelId);
     this.currentLevel = level;
 
     await environment.applySkybox(sceneManager.scene, level.skybox ?? 'default', level.background);
@@ -829,6 +942,11 @@ export class Game {
     const mainMenu = s.resolve(GameTokens.MainMenu);
     const ambience = s.resolve(GameTokens.BackgroundAmbience);
     const music = s.resolve(GameTokens.Music);
+
+    // Limpiar el modo del editor: si veníamos de un playtest, el flag seguiría
+    // en sessionStorage y el reload volvería a bootear directo al nivel.
+    setEditorMode(null);
+    this.playtestMode = false;
 
     ambience.stop();
     music.stopMusic();

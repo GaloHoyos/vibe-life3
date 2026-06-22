@@ -8,6 +8,7 @@ export interface MainMenuCallbacks {
   onStartChapter: (chapterId: string) => void;
   onResume: () => void;
   onExitToMain: () => void;
+  onOpenEditor: () => void;
   onToggleDebug: (enabled: boolean) => void;
   onVolumeChange: (bus: AudioBusName, value: number) => void;
   onGetVolume: (bus: AudioBusName) => number;
@@ -38,6 +39,7 @@ export class MainMenu implements Disposable {
       onBack: () => this.setState(this.pauseFlow ? "paused" : "mainMenu"),
       onResume: callbacks.onResume,
       onExitToMain: callbacks.onExitToMain,
+      onOpenEditor: callbacks.onOpenEditor,
       onToggleDebug: callbacks.onToggleDebug,
       onVolumeChange: callbacks.onVolumeChange,
       onGetVolume: callbacks.onGetVolume,
@@ -55,7 +57,7 @@ export class MainMenu implements Disposable {
     }
     this.state = state;
     this.view.setState(state, this.pauseFlow);
-    this.view.setVisible(state !== "playing");
+    this.view.setVisible(state !== "playing" && state !== "editor");
   }
 
   getState(): GameMenuState {

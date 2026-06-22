@@ -11,6 +11,7 @@ export interface MainMenuViewCallbacks {
   onBack: () => void;
   onResume: () => void;
   onExitToMain: () => void;
+  onOpenEditor: () => void;
   onToggleDebug: (enabled: boolean) => void;
   onVolumeChange: (bus: AudioBusName, value: number) => void;
   onGetVolume: (bus: AudioBusName) => number;
@@ -76,6 +77,10 @@ export class MainMenuView {
         <button class="hl2-button" data-state="credits" type="button">
           <span class="hl2-button__marker"></span>
           <span class="hl2-button__label">CREDITOS</span>
+        </button>
+        <button class="hl2-button" data-action="editor" type="button">
+          <span class="hl2-button__marker"></span>
+          <span class="hl2-button__label">EDITOR DE NIVELES</span>
         </button>
         <button class="hl2-button" data-action="exit" type="button">
           <span class="hl2-button__marker"></span>
@@ -165,6 +170,11 @@ export class MainMenuView {
     exitButton.addEventListener("click", () => {
       this.setStatus("No disponible en navegador.");
     });
+
+    const editorButton = this.mainNav.querySelector(
+      '[data-action="editor"]',
+    ) as HTMLButtonElement;
+    editorButton.addEventListener("click", callbacks.onOpenEditor);
 
     const resumeButton = this.pauseNav.querySelector(
       '[data-action="resume"]',

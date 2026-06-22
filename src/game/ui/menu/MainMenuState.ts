@@ -8,7 +8,8 @@ export type GameMenuState =
   | "credits"
   | "playing"
   | "paused"
-  | "loading";
+  | "loading"
+  | "editor";
 
 export interface MenuChapter {
   id: string;
