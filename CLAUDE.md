@@ -2,7 +2,9 @@
 
 FPS 3D singleplayer en navegador. Fan project de Half-Life 3.
 
-**Stack:** TypeScript estricto · Vite · Three.js 0.164 · Rapier3D-compat 0.14 · Node 18+
+**Stack:** TypeScript estricto · Vite · Three.js 0.164 · Rapier3D-compat 0.14 · Node 20+
+
+**Online:** juego en [vibe-life3.pages.dev](https://vibe-life3.pages.dev) (Cloudflare Pages) · backend del Workshop en un Cloudflare Worker. Ver §Deploy.
 
 ## Comandos
 
@@ -68,8 +70,10 @@ src/
 | `gameplay/`                  | `Health` (compartido Player/NPC) en raíz. `player/` (`Player`, `PlayerHealth`, `Stamina`, `Controls`). `interactions/` (`Interactable`, `InteractSystem`, `SlidingDoor`, `DoorButton`). |
 | `gameplay/weapons/`          | `core/` (`Weapon` base, `WeaponDefinition`, `WeaponController`, `WeaponFactory`, `WeaponInventory`), `types/` (`HitscanWeapon`, `MeleeWeapon`, `GravityGunWeapon`), `effects/` (`MuzzleFlash`, `Recoil`, `WeaponEffects`, `WeaponViewModel`), `pickup/` (`WeaponPickup`). |
 | `levels/`                    | `LevelDefinition`, `LevelRegistry`, `LevelLoader`, `TriggerSystem`, `CoverSystem`. Subcarpetas: `maps/` (`DemoLevel`, `SnowFieldLevel`, …), `builders/` (`MapCreator` — builder fluido `createMap()` que compone el nivel completo; `BuildingBuilder` multi-piso con fachada compuesta — ventanas auto/manuales, puertas 2.2 m con dintel y marquesina, zócalo/bandas/cornisa/parapeto/pilastras, techos flat/walkable/gable, `palette` de materiales, escaleras con zancas y baranda perimetral del hueco del stairwell, y validación de descansos (warn si una boca de escalera tiene <1.5 m libres — ideal ≥2 m); `HouseBuilder` wrapper de 1 piso, `RampBuilder`, `PropBuilder` — crates/sandbags/cover walls/watchtower/container), `buildings/` (`BuildingArtifact`, `BuildingRegistry` — rooms/doorways para nav y AI). |
+| `editor/`                    | Editor de niveles visual (estado `"editor"` del juego, entra con **F4** o botón del menú). `EditorDocument` (formato nativo serializable a JSON), `LevelEditor` (núcleo) + `ui/` (Component+View: paleta/outliner/inspector/settings), `codegen/` (`toLevelDefinition` corre los builders y valida ids; `fromLevelDefinition`; `toTypeScript`), `persistence.ts` (draft + import/export JSON), `mapLibrary.ts` (biblioteca de mapas en `localStorage`), `TranslateGizmo` hand-rolled. Ver §Editor + Workshop. |
+| `workshop/`                  | Cliente del Workshop de mapas. `WorkshopBackend` (interfaz = punto de modularidad), `CloudflareWorkshopBackend` (fetch al Worker vía `VITE_WORKSHOP_API`), `WorkshopStore` (docs en IndexedDB) + `workshopIndex.ts` (índice sync en `localStorage`), `WorkshopService` (`GameTokens.Workshop`), `sanitizeDocument`. UI en `ui/menu/WorkshopMenu.ts`. Ver §Editor + Workshop. |
 | `narrative/`                 | `DialogueSystem`, `ScriptedSequence`, `LevelEvents`.                        |
-| `ui/`                        | `hud/` (`HUD`, `HUDView`, `Crosshair`, `DamageIndicator`, `HealthArmorHUD`, `HudIcons`, `WeaponHUD`, `WeaponSelectorView`), `subtitles/` (`Subtitles`, `SubtitlesView`), `overlay/` (`InteractionPrompt`, `debug/` con `DebugMenu` + `DebugMenuView` + `DebugModule` + `widgets` y `modules/` por pestania), `menu/` (`MainMenu`, `MainMenuView`, `MainMenuState`, `PauseMenu`, `OptionsMenu`, `NewGameMenu`, `CreditsMenu`, `MenuStyles.css`). |
+| `ui/`                        | `hud/` (`HUD`, `HUDView`, `Crosshair`, `DamageIndicator`, `HealthArmorHUD`, `HudIcons`, `WeaponHUD`, `WeaponSelectorView`), `subtitles/` (`Subtitles`, `SubtitlesView`), `overlay/` (`InteractionPrompt`, `debug/` con `DebugMenu` + `DebugMenuView` + `DebugModule` + `widgets` y `modules/` por pestania), `menu/` (`MainMenu`/`MainMenuView`/`MainMenuState`, `PauseMenu`, `OptionsMenu`, `NewGameMenu`, `CustomMapsMenu`, `WorkshopMenu`, `CreditsMenu`, `MenuStyles.css`). |
 | `audio/`                     | Sistemas reactivos a eventos: weapon/enemy/dialogue/UI sound.               |
 | `config/`                    | `weapons.config.ts`, `audio.config.ts`, `gameplay.config.ts`, `controls.config.ts`, `strings.ts`. |
 | `debug/`                     | Recursos puros (sin DOM ni keybinds) que consume el `DebugMenu`: `NpcAiDebugOverlay` (overlay 3D del `NavSpace` + NPCs), `NpcAiTraceRecorder` (grabador offline) y `SceneInspector` (`window.__inspectScene`). |
@@ -164,7 +168,7 @@ Regla práctica: si el import cruza directorios (`..`), usar alias. Si es vecino
    - Subclase de `Weapon` (de `game/gameplay/weapons/core/Weapon.ts`) en `game/gameplay/weapons/types/`.
    - Mapearla en `WeaponFactory.createWeapon()` (`game/gameplay/weapons/core/WeaponFactory.ts`).
 3. Clips en `engine/audio/AudioManifest.ts`, mapeados en `WeaponAudio` (`audio.config.ts`).
-4. Drop del GLB en `src/models/weapons/`.
+4. Drop del GLB en `src/models/weapons/`. **Comprimirlo si pesa** (Pages rechaza archivos >25 MiB — ver §Deploy: `gltf-transform` resize 2K + WebP).
 5. Entrada en `LevelDefinition.weaponPickups` del nivel.
 
 ### Agregar un nivel
@@ -262,6 +266,52 @@ Materials data-driven: cada `MaterialKey` apunta a una def de color sólido o un
 4. Usar en un nivel: `skybox: 'miCielo'`. Si se omite, usa `'default'`.
 
 El `EnvironmentSystem` aplica el HDRI como `scene.background` y como `scene.environment` (IBL — los `MeshStandardMaterial` lo usan automáticamente para reflejos y ambient). Por eso `LightingSystem` mantiene ambient/hemisphere bajos: el IBL provee el fill.
+
+---
+
+## Editor de niveles + Workshop
+
+Pipeline de contenido custom: el jugador **crea** mapas con el editor y los **comparte** por el Workshop. Lo importante es que el contenido es **datos, no código** (`EditorDocument` JSON), así que se puede cargar de fuentes no confiables sin ejecutar nada.
+
+### Editor (`src/game/editor/`)
+
+Estado dedicado del juego (`"editor"`, entra con **F4** o botón del menú). Compone un `EditorDocument` — formato JSON serializable donde los smart-objects (`building`/`house`/`ramp`/`prop`) retienen su **spec** (no la geometría aplanada). Autosave a `localStorage` (draft único); **"Guardar en biblioteca"** → `mapLibrary` (varios mapas nombrados en `localStorage`, alimentan "Mapas Personalizados"). `toLevelDefinition(doc)` (`codegen/`) corre los builders de `MapCreator` y valida ids únicos → el nivel se juega con `Game.startLevel(...)`, **el mismo pipe que la campaña**. "Probar" recarga la página en modo playtest.
+
+### Workshop (`src/game/workshop/` + backend aparte)
+
+Capa de sincronización remota sobre el editor. **Dos deployables desacoplados** que solo se hablan por HTTP (cero imports cruzados):
+
+- **Cliente** (repo del juego): depende solo de la interfaz `WorkshopBackend` (`list`/`fetchDocument`/`publish`/`signIn`). Hoy `CloudflareWorkshopBackend`. El `WorkshopStore` guarda los mapas suscritos en **IndexedDB** + un índice liviano sync en `localStorage` (`workshopIndex`, lo lee `buildCustomMaps`). Las suscripciones **activas** aparecen en "Mapas Personalizados" y se juegan vía `toLevelDefinition → startLevel`. Registrado en `Game.registerWorkshop()` bajo `GameTokens.Workshop`; emite eventos `workshop.*`.
+- **Servidor**: Cloudflare Worker en la carpeta hermana **`vibe-life 3 workshop backend/`** (Worker + D1 catálogo + R2 blobs JSON + GitHub OAuth, sesión HMAC stateless). Proyecto Wrangler propio. **Ver su `README.md`** para setup/deploy.
+- **Validación**: el **servidor es la autoridad** (`validateDocument` revalida toda subida — estructura + límites de tamaño/entidades/strings); el cliente hace un chequeo best-effort (`sanitizeDocument`) para fallar rápido. Nunca se ejecuta código subido.
+- **Solo assets built-in** en Fase 1: el `AssetManifest` es compile-time, no hay carga dinámica de GLB. Assets custom = fase futura.
+
+**Publicar desde el editor:** botón "Publicar en Workshop" (`editor/ui/EditorUIView.ts` → `LevelEditor.requestPublish` → `Game.publishFromEditor` → `WorkshopService.publish`). El editor **no conoce** el Workshop; recibe un callback opcional `onPublish` que devuelve un mensaje de estado.
+
+### Escalar / cambiar el backend
+
+1. **Otro proveedor**: implementar `WorkshopBackend` (`src/game/workshop/WorkshopBackend.ts`) en una clase nueva y cambiar el registro en `Game.registerWorkshop()`. Nada más del cliente toca.
+2. **Nuevos tipos de contenido** (armas, skins): `WorkshopListing.type` (`WorkshopTypes.ts`) ya está previsto; extender el union + el validador del servidor.
+3. **Endpoints / D1 / R2 / OAuth**: todo en la carpeta del backend (`src/index.ts` router, `src/maps.ts`, `src/auth.ts`, `schema.sql`). El cliente y el server **no comparten código** — definen sus tipos de contrato por separado.
+4. **Pendientes Fase 2** (no hechos): ratings (columnas ya en D1), Turnstile (hook documentado), `state`/CSRF en el callback OAuth, assets custom.
+
+---
+
+## Deploy
+
+### Juego → Cloudflare Pages
+
+Auto-deploy de la rama **`main`** (repo `GaloHoyos/vibe-life3`). Build command `npm run build`, output dir `dist`. URL: **https://vibe-life3.pages.dev** (la `<hash>.vibe-life3.pages.dev` es de cada deploy puntual; la estable es sin hash).
+
+- **`package-lock.json` NO se versiona** (está en `.gitignore`, sacado con `git rm --cached`). Un lockfile generado en Windows rompe el `npm ci` de Pages (Linux) por el bug de optional deps de npm (falta `@rollup/rollup-linux-x64-gnu`). Sin lockfile, Pages corre `npm install` y resuelve en su propio Linux. **Corolario:** "Retry deployment" reusa el commit viejo — para deployar un fix hay que **pushear un commit nuevo** (un `git commit --allow-empty` sirve para forzar build).
+- **Límite de 25 MiB por archivo.** Los GLB de `src/models/` pesan por texturas 4K embebidas (pistol/shotgun llegaban a ~40 MB). Comprimir con `npx @gltf-transform/cli resize <in> <out> --width 2048 --height 2048` seguido de `npx @gltf-transform/cli webp <in> <out>` (Three.js 0.164 carga WebP nativo vía `EXT_texture_webp`, **sin DRACOLoader**). Bajan ~90%. Re-aplicar al sumar modelos nuevos pesados.
+- **`VITE_WORKSHOP_API`** (Settings → Environment variables de Pages) = URL del Worker. Sin ella, el Workshop muestra "no disponible" y el juego anda offline. Se **hornea en build** → cambiarla requiere re-deploy.
+
+### Backend → Cloudflare Worker
+
+Carpeta hermana **`vibe-life 3 workshop backend/`** (proyecto Wrangler propio). URL: **https://vibe-life-workshop.vibelife3.workers.dev**. Setup completo (crear D1/R2, schema, OAuth App, secrets, deploy) en su `README.md`. Recordatorios:
+- Las **vars** del `wrangler.toml` se aplican con `npx wrangler deploy`; los **secrets** con `npx wrangler secret put <NAME>` (persisten entre deploys, no van al toml).
+- `ALLOWED_ORIGIN` debe ser el origen del juego (la URL de Pages) — lo usa CORS **y** el `postMessage` del callback de OAuth.
 
 ---
 
