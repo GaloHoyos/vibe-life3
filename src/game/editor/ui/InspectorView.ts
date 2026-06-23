@@ -1,4 +1,5 @@
 import type { Disposable } from '@shared/types/lifecycle';
+import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { MaterialKey } from '@engine/render/material/Materials';
 import type {
   BuildingDoor,
@@ -15,10 +16,12 @@ import { entityKindLabel, entityLevelId } from '../EditorDocument';
 import {
   editablePayload,
   getPosition,
+  getRotation,
   getRotationY,
   getSize,
   setLevelId,
   setPosition,
+  setRotation,
   setRotationY,
   setSize,
 } from '../EditorEntityOps';
@@ -67,6 +70,7 @@ export class InspectorView implements Disposable {
   private entity: EditorEntity | null = null;
   private posField: Field<[number, number, number]> | null = null;
   private sizeField: Field<[number, number, number]> | null = null;
+  private rotField: Field<[number, number, number]> | null = null;
 
   /** Pisos con su `<details>` desplegado, para preservar el estado al re-render. */
   private readonly openStories = new Set<number>([0]);
@@ -88,6 +92,7 @@ export class InspectorView implements Disposable {
     this.entity = null;
     this.posField = null;
     this.sizeField = null;
+    this.rotField = null;
     this.body.replaceChildren(empty('Nada seleccionado.'));
   }
 
@@ -95,6 +100,7 @@ export class InspectorView implements Disposable {
     this.mode = 'player';
     this.entity = null;
     this.sizeField = null;
+    this.rotField = null;
     this.body.replaceChildren();
     this.body.append(header(iconSpan('person'), 'Spawn del jugador', 'playerStart'));
     const doc = this.callbacks.getDocument();
@@ -135,6 +141,17 @@ export class InspectorView implements Disposable {
       this.sizeField = null;
     }
 
+    // El charger usa su propio campo Y; el prebuilt rotea destructivamente (gizmo).
+    if (entity.kind !== 'charger' && entity.kind !== 'prebuiltBuilding') {
+      this.rotField = vec3Field('Rotacion (°)', degTuple(getRotation(entity)), (v) => {
+        setRotation(entity, [degToRad(v[0]), degToRad(v[1]), degToRad(v[2])]);
+        this.commit();
+      }, 5);
+      this.body.append(this.rotField.element);
+    } else {
+      this.rotField = null;
+    }
+
     this.appendKindFields(entity);
 
     const advanced = document.createElement('details');
@@ -163,6 +180,7 @@ export class InspectorView implements Disposable {
       this.posField?.set(getPosition(this.entity));
       const size = getSize(this.entity);
       if (size) this.sizeField?.set(size);
+      if (this.rotField) this.rotField.set(degTuple(getRotation(this.entity)));
     }
   }
 
@@ -310,6 +328,7 @@ export class InspectorView implements Disposable {
     }, 1));
     this.append(selectField('Techo', spec.roof ?? 'flat', ROOFS, (v) => { spec.roof = v as BuildingRoof; this.commit(); }));
     this.append(checkboxField('Pilastras', spec.pilasters ?? spec.stories.length >= 2, (v) => { spec.pilasters = v; this.commit(); }));
+    this.append(checkboxField('Losa de planta baja', spec.groundSlab ?? false, (v) => { spec.groundSlab = v; this.commit(); }));
     this.append(selectField('Mat. base', spec.palette?.base ?? 'concrete', MATERIAL_KEYS, (v) => { spec.palette = { ...spec.palette, base: v as MaterialKey }; this.commit(); }));
     this.append(selectField('Mat. trim', spec.palette?.trim ?? 'trim', MATERIAL_KEYS, (v) => { spec.palette = { ...spec.palette, trim: v as MaterialKey }; this.commit(); }));
     this.append(selectField('Mat. techo', spec.palette?.roof ?? 'roof', MATERIAL_KEYS, (v) => { spec.palette = { ...spec.palette, roof: v as MaterialKey }; this.commit(); }));
@@ -426,6 +445,7 @@ export class InspectorView implements Disposable {
     this.append(numberField('Profundidad', spec.depth, (v) => { spec.depth = v; this.commit(); }, 0.5));
     this.append(numberField('Alto', spec.height, (v) => { spec.height = v; this.commit(); }, 0.25));
     this.append(checkboxField('Techo a dos aguas', spec.roof ?? true, (v) => { spec.roof = v; this.commit(); }));
+    this.append(checkboxField('Losa de planta baja', spec.groundSlab ?? false, (v) => { spec.groundSlab = v; this.commit(); }));
     this.append(selectField('Puerta lado', spec.door?.side ?? NO_DOOR, [NO_DOOR, ...SIDES], (v) => {
       spec.door = v === NO_DOOR ? undefined : { side: v as HouseSide, width: spec.door?.width ?? 1.4 };
       this.commit();
@@ -534,6 +554,18 @@ function empty(text: string): HTMLElement {
   el.className = 'editor-empty';
   el.textContent = text;
   return el;
+}
+
+function degTuple(rad: VectorTuple): [number, number, number] {
+  return [radToDeg(rad[0]), radToDeg(rad[1]), radToDeg(rad[2])];
+}
+
+function radToDeg(r: number): number {
+  return r * (180 / Math.PI);
+}
+
+function degToRad(d: number): number {
+  return d * (Math.PI / 180);
 }
 
 function subheading(text: string): HTMLElement {

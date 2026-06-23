@@ -1,6 +1,7 @@
 import type { Disposable } from '@shared/types/lifecycle';
 import { getLevel, type LevelId } from '@game/levels/LevelRegistry';
 import type { EditorUiBridge, LevelEditor } from '../LevelEditor';
+import type { TransformMode } from '../EditorSelection';
 import { PLAYER_START_EID } from '../EditorScene';
 import { blankDocument, type PropKind } from '../EditorDocument';
 import { createEntity, createProp, type PaletteKind } from '../editorFactory';
@@ -74,6 +75,7 @@ export class EditorUI implements EditorUiBridge, Disposable {
       onToggleGrid: (visible) => this.editor.setGridVisible(visible),
       onToggleAxes: (visible) => this.editor.setAxesVisible(visible),
       onSnapChange: (step) => this.editor.setSnap(step),
+      onTransformMode: (mode) => this.applyTransformMode(mode),
       onOpenSettings: () => this.settings.open(),
       onValidate: () => this.validate(),
       onPlaytest: () => this.playtest(),
@@ -137,11 +139,25 @@ export class EditorUI implements EditorUiBridge, Disposable {
   }
 
   private addEntity(kind: PaletteKind): void {
-    this.editor.addEntity(createEntity(kind, this.editor.getFocusPoint()));
+    const place = this.editor.getPlacement();
+    const entity = createEntity(kind, place.point);
+    // Sin apoyo debajo (edificio elevado), la planta baja necesita losa propia
+    // para que el NavSpace la cubra — apoyado sobre el suelo, la losa sobraria
+    // (z-fighting con el suelo) y se omite.
+    if (!place.grounded && (entity.kind === 'building' || entity.kind === 'house')) {
+      entity.spec.groundSlab = true;
+    }
+    this.editor.addEntity(entity);
   }
 
   private addProp(prop: PropKind): void {
-    this.editor.addEntity(createProp(prop, this.editor.getFocusPoint()));
+    this.editor.addEntity(createProp(prop, this.editor.getPlacement().point));
+  }
+
+  /** Cambia el modo de transformacion (gizmo) y lo refleja en el toggle de la barra. */
+  private applyTransformMode(mode: TransformMode): void {
+    this.editor.setTransformMode(mode);
+    this.view.setTransformMode(mode);
   }
 
   private toggleHidden(eid: string): void {
@@ -317,6 +333,10 @@ export class EditorUI implements EditorUiBridge, Disposable {
       this.deleteSelected();
     } else if (event.code === 'KeyF') {
       this.editor.focusSelection();
+    } else if (event.code === 'KeyG' && !event.ctrlKey && !event.metaKey) {
+      this.applyTransformMode('translate');
+    } else if (event.code === 'KeyR' && !event.ctrlKey && !event.metaKey) {
+      this.applyTransformMode('rotate');
     } else if (event.code === 'KeyN' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       this.newDocument();

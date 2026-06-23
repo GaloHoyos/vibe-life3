@@ -1,4 +1,5 @@
 import type { Disposable } from '@shared/types/lifecycle';
+import type { TransformMode } from '../EditorSelection';
 import { EditorMenuBar, type EditorMenuCallbacks } from './EditorMenuBar';
 import { iconSpan } from './editorIcons';
 
@@ -39,7 +40,7 @@ export class EditorUIView implements Disposable {
     rightDock.append(panels.outliner, panels.inspector, panels.settings);
 
     this.status.className = 'editor-status';
-    this.statusText.textContent = 'RMB: orbitar/volar · Rueda: zoom · LMB: seleccionar/mover';
+    this.statusText.textContent = 'RMB: orbitar/volar · Rueda: zoom · LMB: seleccionar · G: mover · R: rotar';
     this.status.append(this.statusText);
 
     this.toasts.className = 'editor-toasts';
@@ -50,6 +51,11 @@ export class EditorUIView implements Disposable {
 
   setStatus(text: string): void {
     this.statusText.textContent = text;
+  }
+
+  /** Refleja el modo de transformacion en el toggle de la barra (G/R). */
+  setTransformMode(mode: TransformMode): void {
+    this.menuBar.reflectMode(mode);
   }
 
   toast(message: string, kind: ToastKind = 'info'): void {

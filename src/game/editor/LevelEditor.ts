@@ -10,7 +10,7 @@ import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { Disposable } from '@shared/types/lifecycle';
 import { EditorCamera } from './EditorCamera';
 import { EditorScene, PLAYER_START_EID } from './EditorScene';
-import { EditorSelection } from './EditorSelection';
+import { EditorSelection, type TransformMode } from './EditorSelection';
 import { getPosition, translateEntity } from './EditorEntityOps';
 import { cloneEntity } from './editorFactory';
 import { EditorUI } from './ui/EditorUI';
@@ -116,6 +116,14 @@ export class LevelEditor implements Disposable {
     this.selection.setSnap(step);
   }
 
+  setTransformMode(mode: TransformMode): void {
+    this.selection.setMode(mode);
+  }
+
+  getTransformMode(): TransformMode {
+    return this.selection.getMode();
+  }
+
   setGridVisible(visible: boolean): void {
     this.grid.visible = visible;
   }
@@ -128,6 +136,27 @@ export class LevelEditor implements Disposable {
   getFocusPoint(): VectorTuple {
     const t = this.editorCamera.getTarget();
     return [t.x, t.y, t.z];
+  }
+
+  /**
+   * Punto de colocacion para entidades nuevas: el foco de camara con la Y
+   * asentada sobre la superficie (staticBox, p.ej. el suelo) que haya bajo el
+   * cursor. `grounded` indica si encontro apoyo — el caller lo usa para decidir
+   * si un edificio necesita losa propia (queda flotando = sin apoyo).
+   */
+  getPlacement(): { point: VectorTuple; grounded: boolean } {
+    const [x, fy, z] = this.getFocusPoint();
+    let top = -Infinity;
+    for (const e of this.doc.entities) {
+      if (e.kind !== 'staticBox') continue;
+      const [px, py, pz] = e.def.position;
+      const [sx, sy, sz] = e.def.size;
+      if (Math.abs(x - px) > sx / 2 || Math.abs(z - pz) > sz / 2) continue;
+      const surfaceY = py + sy / 2;
+      if (surfaceY <= fy + 0.5 && surfaceY > top) top = surfaceY;
+    }
+    if (top === -Infinity) return { point: [x, fy, z], grounded: false };
+    return { point: [x, top, z], grounded: true };
   }
 
   selectedEntity(): EditorEntity | undefined {

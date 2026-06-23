@@ -1,4 +1,5 @@
 import type { MaterialKey } from '@engine/render/material/Materials';
+import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { BuildingArtifact } from '@game/levels/buildings/BuildingArtifact';
 import {
   buildBuilding,
@@ -29,6 +30,14 @@ export interface HouseSpec {
   removeWall?: HouseSide;
   /** Por default `true` → techo a dos aguas. Pasa `false` para shell sin techo. */
   roof?: boolean;
+  /**
+   * Genera una losa de piso propia a `floorY`. Necesario cuando la casa no
+   * descansa sobre un suelo/terreno del nivel (queda elevada): sin ella, la
+   * planta baja no tiene superficie física y el NavSpace no la cubre.
+   */
+  groundSlab?: boolean;
+  /** Rotacion Euler XYZ (radianes) alrededor de `[center, floorY]`. Ver `BuildingSpec.rotation`. */
+  rotation?: VectorTuple;
   /** Ventanas: 'auto' (default) | 'none' | posiciones explícitas. */
   windows?: BuildingWindow[] | 'auto' | 'none';
   palette?: Partial<BuildingPalette>;
@@ -48,6 +57,8 @@ export function buildHouse(spec: HouseSpec): BuildingArtifact {
     id: spec.id,
     center: spec.center,
     groundY: spec.floorY,
+    groundSlab: spec.groundSlab,
+    rotation: spec.rotation,
     width: spec.width,
     depth: spec.depth,
     storyHeight: spec.height,

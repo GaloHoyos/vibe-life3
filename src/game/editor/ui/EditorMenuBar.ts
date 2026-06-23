@@ -1,6 +1,7 @@
 import type { Disposable } from '@shared/types/lifecycle';
 import { getAllLevels } from '@game/levels/LevelRegistry';
 import { listLibraryMaps } from '../mapLibrary';
+import type { TransformMode } from '../EditorSelection';
 import type { PaletteKind } from '../editorFactory';
 import type { PropKind } from '../EditorDocument';
 import { iconSpan, type EditorIconName } from './editorIcons';
@@ -28,6 +29,7 @@ export interface EditorMenuCallbacks {
   onToggleGrid(visible: boolean): void;
   onToggleAxes(visible: boolean): void;
   onSnapChange(step: number | null): void;
+  onTransformMode(mode: TransformMode): void;
   onOpenSettings(): void;
   onValidate(): void;
   onPlaytest(): void;
@@ -47,6 +49,8 @@ export class EditorMenuBar implements Disposable {
   private readonly gridToggle = document.createElement('button');
   private readonly snapToggle = document.createElement('input');
   private readonly snapInput = document.createElement('input');
+  private readonly moveBtn = document.createElement('button');
+  private readonly rotateBtn = document.createElement('button');
 
   private gridOn = true;
   private axesOn = true;
@@ -215,9 +219,41 @@ export class EditorMenuBar implements Disposable {
 
     const sep = document.createElement('span');
     sep.className = 'editor-actionbar__sep';
+    const sep2 = document.createElement('span');
+    sep2.className = 'editor-actionbar__sep';
 
-    actions.append(this.gridToggle, snap, sep, this.actionButton('Probar', 'play', 'primary', () => this.cb.onPlaytest()), this.actionButton('Salir', 'close', 'ghost', () => this.cb.onExit()));
+    actions.append(this.buildModeToggle(), sep2, this.gridToggle, snap, sep, this.actionButton('Probar', 'play', 'primary', () => this.cb.onPlaytest()), this.actionButton('Salir', 'close', 'ghost', () => this.cb.onExit()));
     return actions;
+  }
+
+  /** Toggle Mover/Rotar (espejo de las teclas G/R). */
+  private buildModeToggle(): HTMLElement {
+    const group = document.createElement('div');
+    group.className = 'editor-actionbar__modes';
+    this.initModeButton(this.moveBtn, 'target', 'Mover', 'translate');
+    this.initModeButton(this.rotateBtn, 'redo', 'Rotar', 'rotate');
+    group.append(this.moveBtn, this.rotateBtn);
+    this.reflectMode('translate');
+    return group;
+  }
+
+  private initModeButton(button: HTMLButtonElement, icon: EditorIconName, label: string, mode: TransformMode): void {
+    button.type = 'button';
+    button.className = 'editor-actionbar__toggle';
+    button.append(iconSpan(icon));
+    const text = document.createElement('span');
+    text.textContent = label;
+    button.append(text);
+    button.addEventListener('click', () => {
+      this.reflectMode(mode);
+      this.cb.onTransformMode(mode);
+    });
+  }
+
+  /** Actualiza solo el resaltado (lo llaman tanto el click como las teclas G/R). */
+  reflectMode(mode: TransformMode): void {
+    this.moveBtn.classList.toggle('is-on', mode === 'translate');
+    this.rotateBtn.classList.toggle('is-on', mode === 'rotate');
   }
 
   private actionButton(

@@ -5,6 +5,22 @@ import type {
   StaticBoxDefinition,
 } from '@game/levels/LevelDefinition';
 import { buildRamp, suggestStepCount } from './RampBuilder';
+import { rotateBoxesAbout } from './transform';
+
+/** Campos comunes a todos los props (rotacion opcional alrededor de su ancla). */
+interface PropBase {
+  /** Rotacion Euler XYZ (radianes) alrededor del ancla del prop. */
+  rotation?: VectorTuple;
+}
+
+/** Hornea la rotacion del prop (si la hay) en sus cajas, alrededor del `pivot`. */
+function finishProp(artifact: PropArtifact, pivot: VectorTuple, rotation: VectorTuple | undefined): PropArtifact {
+  if (!rotation) return artifact;
+  return {
+    staticBoxes: rotateBoxesAbout(artifact.staticBoxes, pivot, rotation),
+    dynamicBoxes: rotateBoxesAbout(artifact.dynamicBoxes, pivot, rotation),
+  };
+}
 
 /**
  * Salida comun de todos los prop builders. El `MapBuilder` la mergea con
@@ -33,7 +49,7 @@ function makeRand(seed: number): () => number {
   };
 }
 
-export interface CrateSpec {
+export interface CrateSpec extends PropBase {
   id: string;
   /** Centro de la base [x, y, z]: y es el APOYO (cara inferior), no el centro. */
   at: VectorTuple;
@@ -48,16 +64,13 @@ export function crate(spec: CrateSpec): PropArtifact {
   const s = spec.size ?? 0.9;
   const material = spec.material ?? 'crate';
   const position: VectorTuple = [spec.at[0], spec.at[1] + s / 2, spec.at[2]];
-  if (spec.dynamic) {
-    return {
-      staticBoxes: [],
-      dynamicBoxes: [{ id: spec.id, position, size: [s, s, s], mass: spec.mass ?? 18, material }],
-    };
-  }
-  return staticOnly([{ id: spec.id, position, size: [s, s, s], material }]);
+  const artifact = spec.dynamic
+    ? { staticBoxes: [], dynamicBoxes: [{ id: spec.id, position, size: [s, s, s] as VectorTuple, mass: spec.mass ?? 18, material }] }
+    : staticOnly([{ id: spec.id, position, size: [s, s, s], material }]);
+  return finishProp(artifact, [...spec.at], spec.rotation);
 }
 
-export interface CrateStackSpec {
+export interface CrateStackSpec extends PropBase {
   id: string;
   /** Centro XZ de la pila. */
   at: [number, number];
@@ -108,10 +121,10 @@ export function crateStack(spec: CrateStackSpec): PropArtifact {
       }
     }
   }
-  return staticOnly(boxes);
+  return finishProp(staticOnly(boxes), [spec.at[0], spec.baseY ?? 0, spec.at[1]], spec.rotation);
 }
 
-export interface SandbagLineSpec {
+export interface SandbagLineSpec extends PropBase {
   id: string;
   /** Extremos XZ. Debe ser axis-aligned: se usa el eje dominante. */
   from: [number, number];
@@ -136,17 +149,21 @@ export function sandbagLine(spec: SandbagLineSpec): PropArtifact {
   const length = Math.max(Math.abs(alongX ? dx : dz), thickness);
   const cx = (spec.from[0] + spec.to[0]) / 2;
   const cz = (spec.from[1] + spec.to[1]) / 2;
-  return staticOnly([
-    {
-      id: spec.id,
-      position: [cx, y, cz],
-      size: alongX ? [length, height, thickness] : [thickness, height, length],
-      material,
-    },
-  ]);
+  return finishProp(
+    staticOnly([
+      {
+        id: spec.id,
+        position: [cx, y, cz],
+        size: alongX ? [length, height, thickness] : [thickness, height, length],
+        material,
+      },
+    ]),
+    [cx, spec.y ?? 0, cz],
+    spec.rotation,
+  );
 }
 
-export interface CoverWallSpec {
+export interface CoverWallSpec extends PropBase {
   id: string;
   /** Centro XZ. */
   at: [number, number];
@@ -165,17 +182,21 @@ export function coverWall(spec: CoverWallSpec): PropArtifact {
   const thickness = spec.thickness ?? 0.4;
   const material = spec.material ?? 'brick';
   const y = (spec.y ?? 0) + height / 2;
-  return staticOnly([
-    {
-      id: spec.id,
-      position: [spec.at[0], y, spec.at[1]],
-      size: spec.axis === 'x' ? [spec.length, height, thickness] : [thickness, height, spec.length],
-      material,
-    },
-  ]);
+  return finishProp(
+    staticOnly([
+      {
+        id: spec.id,
+        position: [spec.at[0], y, spec.at[1]],
+        size: spec.axis === 'x' ? [spec.length, height, thickness] : [thickness, height, spec.length],
+        material,
+      },
+    ]),
+    [spec.at[0], spec.y ?? 0, spec.at[1]],
+    spec.rotation,
+  );
 }
 
-export interface PillarSpec {
+export interface PillarSpec extends PropBase {
   id: string;
   at: [number, number];
   height?: number;
@@ -190,12 +211,16 @@ export function pillar(spec: PillarSpec): PropArtifact {
   const side = spec.side ?? 0.8;
   const material = spec.material ?? 'brick';
   const y = (spec.y ?? 0) + height / 2;
-  return staticOnly([
-    { id: spec.id, position: [spec.at[0], y, spec.at[1]], size: [side, height, side], material },
-  ]);
+  return finishProp(
+    staticOnly([
+      { id: spec.id, position: [spec.at[0], y, spec.at[1]], size: [side, height, side], material },
+    ]),
+    [spec.at[0], spec.y ?? 0, spec.at[1]],
+    spec.rotation,
+  );
 }
 
-export interface ContainerSpec {
+export interface ContainerSpec extends PropBase {
   id: string;
   at: [number, number];
   axis: 'x' | 'z';
@@ -207,17 +232,21 @@ export interface ContainerSpec {
 export function cargoContainer(spec: ContainerSpec): PropArtifact {
   const material = spec.material ?? 'trim';
   const y = (spec.y ?? 0) + 1.25;
-  return staticOnly([
-    {
-      id: spec.id,
-      position: [spec.at[0], y, spec.at[1]],
-      size: spec.axis === 'x' ? [6, 2.5, 2.4] : [2.4, 2.5, 6],
-      material,
-    },
-  ]);
+  return finishProp(
+    staticOnly([
+      {
+        id: spec.id,
+        position: [spec.at[0], y, spec.at[1]],
+        size: spec.axis === 'x' ? [6, 2.5, 2.4] : [2.4, 2.5, 6],
+        material,
+      },
+    ]),
+    [spec.at[0], spec.y ?? 0, spec.at[1]],
+    spec.rotation,
+  );
 }
 
-export interface WatchtowerSpec {
+export interface WatchtowerSpec extends PropBase {
   id: string;
   /** Centro XZ de la plataforma. */
   at: [number, number];
@@ -327,7 +356,7 @@ export function watchtower(spec: WatchtowerSpec): PropArtifact {
     }),
   );
 
-  return staticOnly(boxes);
+  return finishProp(staticOnly(boxes), [cx, baseY, cz], spec.rotation);
 }
 
 /** Combina varios props en uno (para definir presets compuestos). */

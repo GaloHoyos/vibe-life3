@@ -9,11 +9,15 @@ import type { HeightSource } from '@shared/math/HeightField';
 import type { LevelActionKind } from '@game/GameEvents';
 import type { BuildingArtifact } from '@game/levels/buildings/BuildingArtifact';
 
+/** Rotacion Euler XYZ en radianes. Omitida = alineado a los ejes. */
+type RotationTuple = VectorTuple;
+
 export interface StaticBoxDefinition {
   id: string;
   position: VectorTuple;
   size: VectorTuple;
   material: MaterialKey;
+  rotation?: RotationTuple;
 }
 
 export interface DynamicBoxDefinition {
@@ -22,6 +26,7 @@ export interface DynamicBoxDefinition {
   size: VectorTuple;
   mass: number;
   material: MaterialKey;
+  rotation?: RotationTuple;
 }
 
 export interface DoorDefinition {
@@ -31,6 +36,7 @@ export interface DoorDefinition {
   openOffset: VectorTuple;
   speed: number;
   material: MaterialKey;
+  rotation?: RotationTuple;
   button: {
     id: string;
     label: string;
@@ -45,6 +51,7 @@ export interface ActionButtonDefinition {
   action: LevelActionKind;
   position: VectorTuple;
   size: VectorTuple;
+  rotation?: RotationTuple;
 }
 
 export interface NPCDefinition {
@@ -52,18 +59,21 @@ export interface NPCDefinition {
   position: VectorTuple;
   characterId: CharacterId;
   patrol?: VectorTuple[];
+  rotation?: RotationTuple;
 }
 
 export interface WeaponPickupDefinition {
   id: string;
   weaponId: WeaponId;
   position: VectorTuple;
+  rotation?: RotationTuple;
 }
 
 export interface ItemPickupDefinition {
   id: string;
   itemId: ItemId;
   position: VectorTuple;
+  rotation?: RotationTuple;
 }
 
 export interface ChargerDefinition {
@@ -81,6 +91,7 @@ export interface TriggerDefinition {
   id: string;
   position: VectorTuple;
   size: VectorTuple;
+  rotation?: RotationTuple;
   once: boolean;
   dialogue: {
     speaker?: string;
