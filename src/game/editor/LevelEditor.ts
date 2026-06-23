@@ -5,6 +5,7 @@ import type { CameraSystem } from '@engine/render/CameraSystem';
 import type { EnvironmentSystem } from '@engine/render/environment/EnvironmentSystem';
 import type { LightingSystem } from '@engine/render/environment/LightingSystem';
 import type { TerrainDefinition } from '@game/levels/LevelDefinition';
+import type { PublishMeta } from '@game/workshop/WorkshopTypes';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { Disposable } from '@shared/types/lifecycle';
 import { EditorCamera } from './EditorCamera';
@@ -25,7 +26,9 @@ export interface LevelEditorCallbacks {
   /** Salir del editor de vuelta al menu principal. */
   onExit: () => void;
   /** Publicar el documento actual en el Workshop; resuelve con un mensaje de estado. */
-  onPublish?: (doc: EditorDocument) => Promise<string>;
+  onPublish?: (doc: EditorDocument, meta: PublishMeta) => Promise<string>;
+  /** Si el backend del Workshop esta configurado (habilita el form de publicar). */
+  canPublish?: () => boolean;
 }
 
 /** Contrato que la UI del editor expone al nucleo para reaccionar a cambios. */
@@ -43,6 +46,8 @@ export interface EditorUiBridge extends Disposable {
  */
 export class LevelEditor implements Disposable {
   private active = false;
+  /** Hubo cambios en esta sesion sin guardar a biblioteca/exportar/publicar. */
+  private dirty = false;
   private doc: EditorDocument = blankDocument();
   private readonly undoStack: EditorDocument[] = [];
   private readonly redoStack: EditorDocument[] = [];
@@ -85,6 +90,16 @@ export class LevelEditor implements Disposable {
     return this.active;
   }
 
+  /** Si hay cambios sin persistir (para confirmar antes de descartar). */
+  isDirty(): boolean {
+    return this.dirty;
+  }
+
+  /** Marca el documento como guardado (tras exportar/guardar/publicar). */
+  markSaved(): void {
+    this.dirty = false;
+  }
+
   getDocument(): EditorDocument {
     return this.doc;
   }
@@ -103,6 +118,9 @@ export class LevelEditor implements Disposable {
 
   setGridVisible(visible: boolean): void {
     this.grid.visible = visible;
+  }
+
+  setAxesVisible(visible: boolean): void {
     this.axes.visible = visible;
   }
 
@@ -204,6 +222,7 @@ export class LevelEditor implements Disposable {
     const next = doc ?? loadDraft();
     if (next) this.doc = next;
     this.resetHistory();
+    this.dirty = false;
 
     this.scene.add(this.grid, this.axes);
     this.editorCamera.attach();
@@ -228,6 +247,7 @@ export class LevelEditor implements Disposable {
   loadDocument(doc: EditorDocument): void {
     this.doc = doc;
     this.resetHistory();
+    this.dirty = false;
     saveDraft(this.doc);
     if (this.active) {
       this.applyEnvironment();
@@ -241,11 +261,15 @@ export class LevelEditor implements Disposable {
     this.callbacks.onExit();
   }
 
-  requestPublish(doc: EditorDocument): Promise<string> {
+  canPublish(): boolean {
+    return this.callbacks.canPublish?.() ?? false;
+  }
+
+  requestPublish(doc: EditorDocument, meta: PublishMeta): Promise<string> {
     if (!this.callbacks.onPublish) {
       return Promise.reject(new Error("Publicar en el Workshop no esta disponible."));
     }
-    return this.callbacks.onPublish(doc);
+    return this.callbacks.onPublish(doc, meta);
   }
 
   update(time: Time): void {
@@ -256,6 +280,7 @@ export class LevelEditor implements Disposable {
 
   /** Persiste el draft, registra el snapshot de undo y notifica a la UI. */
   private changed(): void {
+    this.dirty = true;
     this.recordHistory();
     saveDraft(this.doc);
     this.ui.onDocumentChange();
@@ -277,6 +302,7 @@ export class LevelEditor implements Disposable {
   private applySnapshot(snapshot: EditorDocument): void {
     this.doc = cloneDocument(snapshot);
     this.previous = cloneDocument(this.doc);
+    this.dirty = true;
     saveDraft(this.doc);
     if (this.active) {
       this.applyEnvironment();

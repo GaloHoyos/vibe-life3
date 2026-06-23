@@ -2,6 +2,7 @@ import type { Disposable } from '@shared/types/lifecycle';
 import type { EditorDocument } from '../EditorDocument';
 import { entityKindLabel, entityLevelId } from '../EditorDocument';
 import { PLAYER_START_EID } from '../EditorScene';
+import { entityIcon, iconSpan } from './editorIcons';
 
 export interface OutlinerCallbacks {
   onSelect(eid: string): void;
@@ -16,24 +17,41 @@ export class OutlinerView implements Disposable {
 
   constructor(private readonly callbacks: OutlinerCallbacks) {
     this.element.className = 'editor-panel editor-outliner';
+
     const title = document.createElement('h2');
     title.className = 'editor-panel__title';
-    title.textContent = 'Jerarquia';
+    title.append(iconSpan('folder'));
+    const titleText = document.createElement('span');
+    titleText.textContent = 'Jerarquia';
+    title.append(titleText);
+
+    const body = document.createElement('div');
+    body.className = 'editor-panel__body';
     this.list.className = 'editor-outliner__list';
-    this.element.append(title, this.list);
+    body.append(this.list);
+
+    this.element.append(title, body);
   }
 
   render(doc: EditorDocument, selectedEid: string | null): void {
     this.list.replaceChildren();
 
     this.list.append(
-      this.row(PLAYER_START_EID, 'Spawn del jugador', 'jugador', selectedEid === PLAYER_START_EID, false),
+      this.row(
+        PLAYER_START_EID,
+        iconSpan('person'),
+        'Spawn del jugador',
+        'jugador',
+        selectedEid === PLAYER_START_EID,
+        false,
+      ),
     );
 
     for (const entity of doc.entities) {
       this.list.append(
         this.row(
           entity.eid,
+          entityIcon(entity.kind),
           entityLevelId(entity),
           entityKindLabel(entity.kind),
           selectedEid === entity.eid,
@@ -50,6 +68,7 @@ export class OutlinerView implements Disposable {
 
   private row(
     eid: string,
+    icon: HTMLElement,
     label: string,
     tag: string,
     selected: boolean,
@@ -63,18 +82,23 @@ export class OutlinerView implements Disposable {
     const name = document.createElement('button');
     name.type = 'button';
     name.className = 'editor-outliner__name';
+    const labelEl = document.createElement('span');
+    labelEl.className = 'editor-outliner__label';
+    labelEl.textContent = label;
+    name.append(icon, labelEl);
+    name.addEventListener('click', () => this.callbacks.onSelect(eid));
+    row.append(name);
+
     const tagEl = document.createElement('span');
     tagEl.className = 'editor-outliner__tag';
     tagEl.textContent = tag;
-    name.append(tagEl, document.createTextNode(` ${label}`));
-    name.addEventListener('click', () => this.callbacks.onSelect(eid));
-    row.append(name);
+    row.append(tagEl);
 
     if (deletable) {
       const eye = document.createElement('button');
       eye.type = 'button';
-      eye.className = 'editor-outliner__icon';
-      eye.textContent = hidden ? 'O' : '*';
+      eye.className = `editor-outliner__icon${hidden ? ' is-active' : ''}`;
+      eye.append(iconSpan(hidden ? 'eyeOff' : 'eye'));
       eye.title = hidden ? 'Mostrar' : 'Ocultar';
       eye.addEventListener('click', () => this.callbacks.onToggleHidden(eid));
       row.append(eye);
@@ -82,7 +106,7 @@ export class OutlinerView implements Disposable {
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'editor-outliner__icon editor-outliner__icon--danger';
-      del.textContent = 'X';
+      del.append(iconSpan('trash'));
       del.title = 'Borrar';
       del.addEventListener('click', () => this.callbacks.onDelete(eid));
       row.append(del);

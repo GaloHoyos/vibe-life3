@@ -40,6 +40,7 @@ import {
   vec3Field,
   type Field,
 } from './editorFields';
+import { entityIcon, iconSpan } from './editorIcons';
 
 const SIDES: readonly string[] = ['north', 'south', 'east', 'west'];
 const ROOFS: readonly string[] = ['flat', 'walkable', 'gable', 'none'];
@@ -60,6 +61,7 @@ export interface InspectorCallbacks {
  */
 export class InspectorView implements Disposable {
   readonly element = document.createElement('div');
+  private readonly body = document.createElement('div');
 
   private mode: 'entity' | 'player' | null = null;
   private entity: EditorEntity | null = null;
@@ -71,6 +73,13 @@ export class InspectorView implements Disposable {
 
   constructor(private readonly callbacks: InspectorCallbacks) {
     this.element.className = 'editor-panel editor-inspector';
+    const title = document.createElement('h2');
+    title.className = 'editor-panel__title';
+    const titleText = document.createElement('span');
+    titleText.textContent = 'Inspector';
+    title.append(titleText);
+    this.body.className = 'editor-panel__body';
+    this.element.append(title, this.body);
     this.clear();
   }
 
@@ -79,30 +88,30 @@ export class InspectorView implements Disposable {
     this.entity = null;
     this.posField = null;
     this.sizeField = null;
-    this.element.replaceChildren(empty('Nada seleccionado.'));
+    this.body.replaceChildren(empty('Nada seleccionado.'));
   }
 
   showPlayerStart(): void {
     this.mode = 'player';
     this.entity = null;
     this.sizeField = null;
-    this.element.replaceChildren();
-    this.element.append(header('Spawn del jugador', 'playerStart'));
+    this.body.replaceChildren();
+    this.body.append(header(iconSpan('person'), 'Spawn del jugador', 'playerStart'));
     const doc = this.callbacks.getDocument();
     this.posField = vec3Field('Posicion', doc.meta.playerStart, (v) => {
       doc.meta.playerStart = v;
       this.callbacks.onPlayerStartChanged();
     });
-    this.element.append(this.posField.element);
+    this.body.append(this.posField.element);
   }
 
   showEntity(entity: EditorEntity): void {
     this.mode = 'entity';
     this.entity = entity;
-    this.element.replaceChildren();
-    this.element.append(header(entityKindLabel(entity.kind), entityLevelId(entity)));
+    this.body.replaceChildren();
+    this.body.append(header(entityIcon(entity.kind), entityKindLabel(entity.kind), entityLevelId(entity)));
 
-    this.element.append(
+    this.body.append(
       textField('Id', entityLevelId(entity), (v) => {
         if (v) setLevelId(entity, v);
         this.commit();
@@ -113,7 +122,7 @@ export class InspectorView implements Disposable {
       setPosition(entity, v);
       this.commit();
     });
-    this.element.append(this.posField.element);
+    this.body.append(this.posField.element);
 
     const size = getSize(entity);
     if (size) {
@@ -121,7 +130,7 @@ export class InspectorView implements Disposable {
         setSize(entity, v);
         this.commit();
       });
-      this.element.append(this.sizeField.element);
+      this.body.append(this.sizeField.element);
     } else {
       this.sizeField = null;
     }
@@ -141,7 +150,7 @@ export class InspectorView implements Disposable {
         }
       }).element,
     );
-    this.element.append(advanced);
+    this.body.append(advanced);
   }
 
   /** Refresca posicion/tamano mostrados (durante un arrastre del gizmo). */
@@ -158,7 +167,7 @@ export class InspectorView implements Disposable {
   }
 
   dispose(): void {
-    this.element.replaceChildren();
+    this.body.replaceChildren();
   }
 
   // ---------------------------------------------------------------------------
@@ -310,7 +319,7 @@ export class InspectorView implements Disposable {
     stack.className = 'editor-substack';
     stack.append(subheading('Pisos: puertas y escaleras'));
     spec.stories.forEach((story, i) => stack.append(this.storyEditor(spec, story, i)));
-    this.element.append(stack);
+    this.body.append(stack);
   }
 
   private storyEditor(spec: BuildingSpec, story: BuildingStorySpec, index: number): HTMLElement {
@@ -502,18 +511,21 @@ export class InspectorView implements Disposable {
   }
 
   private append(field: { element: HTMLElement }): void {
-    this.element.append(field.element);
+    this.body.append(field.element);
   }
 }
 
-function header(title: string, subtitle: string): HTMLElement {
+function header(icon: HTMLElement, title: string, subtitle: string): HTMLElement {
   const el = document.createElement('div');
   el.className = 'editor-inspector__header';
+  const text = document.createElement('div');
+  text.className = 'editor-inspector__header-text';
   const h = document.createElement('h3');
   h.textContent = title;
   const sub = document.createElement('span');
   sub.textContent = subtitle;
-  el.append(h, sub);
+  text.append(h, sub);
+  el.append(icon, text);
   return el;
 }
 

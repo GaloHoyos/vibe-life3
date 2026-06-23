@@ -16,6 +16,28 @@ function row(label: string, control: HTMLElement): HTMLDivElement {
   return element;
 }
 
+/** Variante con el label arriba del control (para textareas anchas). */
+function stackRow(label: string, control: HTMLElement): HTMLDivElement {
+  const element = document.createElement('div');
+  element.className = 'editor-field editor-field--stack';
+  if (label) {
+    const labelEl = document.createElement('label');
+    labelEl.className = 'editor-field__label';
+    labelEl.textContent = label;
+    element.append(labelEl);
+  }
+  element.append(control);
+  return element;
+}
+
+/** Parte una lista coma-separada en items no vacios y trimmeados. */
+export function splitList(value: string): string[] {
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
 function fmt(value: number): string {
   return String(Number(value.toFixed(3)));
 }
@@ -110,6 +132,21 @@ export function textField(
   input.value = value;
   input.addEventListener('change', () => onChange(input.value.trim()));
   return { element: row(label, input), set: (v) => (input.value = v) };
+}
+
+export function textareaField(
+  label: string,
+  value: string,
+  onChange: (value: string) => void,
+  rows = 3,
+): Field<string> {
+  const textarea = document.createElement('textarea');
+  textarea.className = 'editor-input editor-textarea';
+  textarea.rows = rows;
+  textarea.value = value;
+  textarea.style.fontFamily = 'inherit';
+  textarea.addEventListener('input', () => onChange(textarea.value));
+  return { element: stackRow(label, textarea), set: (v) => (textarea.value = v) };
 }
 
 export function selectField(
