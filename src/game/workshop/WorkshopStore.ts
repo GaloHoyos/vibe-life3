@@ -74,6 +74,11 @@ export class WorkshopStore {
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error ?? new Error("IndexedDB no disponible"));
       });
+      // No cachear una promesa rechazada: si la apertura falla (transitorio),
+      // permitir que el proximo intento la vuelva a abrir.
+      this.dbPromise.catch(() => {
+        this.dbPromise = null;
+      });
     }
     return this.dbPromise;
   }

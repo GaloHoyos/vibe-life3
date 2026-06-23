@@ -67,7 +67,11 @@ export class CloudflareWorkshopBackend implements WorkshopBackend {
     const base = this.requireBase();
     const origin = new URL(base).origin;
     return new Promise<WorkshopUser>((resolve, reject) => {
-      const popup = window.open(`${base}/auth/github`, "vibe-workshop-auth", "width=600,height=720");
+      const popup = window.open(
+        `${base}/auth/github?origin=${encodeURIComponent(window.location.origin)}`,
+        "vibe-workshop-auth",
+        "width=600,height=720",
+      );
       if (!popup) {
         reject(new Error("No se pudo abrir la ventana de inicio de sesion (popup bloqueado)."));
         return;
