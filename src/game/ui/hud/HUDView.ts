@@ -2,6 +2,7 @@
 import { Crosshair } from './Crosshair';
 import { DamageIndicator } from './DamageIndicator';
 import { HealthArmorHUD } from './HealthArmorHUD';
+import { ObjectiveHUD } from './ObjectiveHUD';
 import { InteractionPrompt } from '@game/ui/overlay/InteractionPrompt';
 import { WeaponHUD } from './WeaponHUD';
 import { WeaponSelectorView } from './WeaponSelectorView';
@@ -21,6 +22,7 @@ export class HUDView implements Disposable {
   readonly damage = new DamageIndicator();
   readonly interaction = new InteractionPrompt();
   readonly weaponSelector = new WeaponSelectorView();
+  readonly objective: ObjectiveHUD;
 
   private readonly feed = document.createElement('div');
   private readonly pendingNotificationTimers: number[] = [];
@@ -29,6 +31,7 @@ export class HUDView implements Disposable {
     container.querySelectorAll(':scope > .hud').forEach((existing) => existing.remove());
     this.element.className = 'hud hev-hud';
     this.feed.className = 'hev-feed';
+    this.objective = new ObjectiveHUD(this.element);
     this.element.append(
       this.damage.element,
       this.weaponSelector.element,
@@ -36,6 +39,7 @@ export class HUDView implements Disposable {
       this.interaction.element,
       this.healthArmor.element,
       this.weapon.element,
+      this.objective.element,
       this.feed,
     );
     container.append(this.element);
@@ -59,6 +63,7 @@ export class HUDView implements Disposable {
     this.damage.dispose();
     this.weapon.dispose();
     this.weaponSelector.dispose();
+    this.objective.dispose();
     this.element.remove();
   }
 }

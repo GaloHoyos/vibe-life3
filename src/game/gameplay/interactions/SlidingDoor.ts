@@ -23,6 +23,10 @@ export class SlidingDoor {
     return this.open;
   }
 
+  setOpen(open: boolean): void {
+    this.open = open;
+  }
+
   isOpen(): boolean {
     return this.open;
   }

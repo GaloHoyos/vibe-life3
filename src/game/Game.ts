@@ -29,6 +29,9 @@ import { StatsModule } from "@game/ui/overlay/debug/modules/StatsModule";
 import { WeaponsModule } from "@game/ui/overlay/debug/modules/WeaponsModule";
 import { Controls } from "@game/gameplay/player/Controls";
 import { Player } from "@game/gameplay/player/Player";
+import { DeathSequence } from "@game/gameplay/player/DeathSequence";
+import { DeathScreen } from "@game/ui/overlay/DeathScreen";
+import { TransitionOverlay } from "@game/ui/overlay/TransitionOverlay";
 import { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
 import { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import { InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
@@ -41,10 +44,12 @@ import type {
   DynamicBoxDefinition,
   LevelDefinition,
   NPCDefinition,
+  TriggerAction,
 } from "@game/levels/LevelDefinition";
 import { LevelLoader } from "@game/levels/LevelLoader";
-import { getLevel, type LevelId } from "@game/levels/LevelRegistry";
+import { getLevel, LevelRegistry, type LevelId } from "@game/levels/LevelRegistry";
 import { TriggerSystem } from "@game/levels/TriggerSystem";
+import { CheckpointSystem, type CheckpointSnapshot } from "@game/levels/CheckpointSystem";
 import type { ActorSnapshot, AiFrameContext, INpc } from "@game/npc/core/INpc";
 import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
 import { DialogueSystem } from "@game/narrative/DialogueSystem";
@@ -65,6 +70,11 @@ import {
   saveDraft,
   setEditorMode,
 } from "@game/editor/persistence";
+import {
+  clearRespawnRequest,
+  getRespawnRequest,
+  setRespawnRequest,
+} from "@game/gameplay/player/respawnRequest";
 import { toLevelDefinition } from "@game/editor/codegen/toLevelDefinition";
 import { fromLevelDefinition } from "@game/editor/codegen/fromLevelDefinition";
 import {
@@ -78,7 +88,7 @@ import { WorkshopService } from "@game/workshop/WorkshopService";
 import { WorkshopStore } from "@game/workshop/WorkshopStore";
 import { CloudflareWorkshopBackend } from "@game/workshop/CloudflareWorkshopBackend";
 import { createBoxMesh } from "@engine/render/PrimitiveFactory";
-import { tupleToVector3 } from "@shared/math/VectorTuple";
+import { tupleToVector3, type VectorTuple } from "@shared/math/VectorTuple";
 
 /**
  * Bootstrap del contenido del juego.
@@ -115,6 +125,15 @@ export class Game {
   private pathQueue: PathRequestQueue | null = null;
   private pendingExitTimeoutId: number | null = null;
   private playtestMode = false;
+  /** Cargando el siguiente nivel encadenado: congela `tickPlaying` mientras dura. */
+  private transitioning = false;
+  /** Último checkpoint cruzado en el nivel actual (snapshot para respawn). null = inicio del nivel. */
+  private lastCheckpoint: CheckpointSnapshot | null = null;
+  private readonly deathSequence = new DeathSequence();
+  private deathScreen: DeathScreen | null = null;
+  private transitionOverlay: TransitionOverlay | null = null;
+  /** True durante la caída de cámara post-muerte (antes de mostrar el prompt). */
+  private dying = false;
   private actionSpawnSerial = 0;
   private readonly npcContextRadius = 90;
 
@@ -169,6 +188,21 @@ export class Game {
       return;
     }
 
+    // Respawn estilo HL: el reload tras "Reintentar" deja un request en
+    // sessionStorage. Recargamos el nivel reapareciendo en el checkpoint.
+    const respawn = getRespawnRequest();
+    if (respawn && respawn.levelId in LevelRegistry) {
+      clearRespawnRequest();
+      try {
+        await this.startLevel(getLevel(respawn.levelId), respawn.snapshot ?? undefined);
+        return;
+      } catch (error) {
+        console.warn("[Game] No se pudo respawnear; volviendo al menú:", error);
+      }
+    } else if (respawn) {
+      clearRespawnRequest();
+    }
+
     if (this.bootIntoLevel) {
       await this.startNewGame(this.bootIntoLevel);
     }
@@ -195,6 +229,8 @@ export class Game {
     s.resolve(GameTokens.WeaponEffects).dispose();
     s.resolve(GameTokens.Grenades).dispose();
     this.player?.dispose();
+    this.deathScreen?.dispose();
+    this.transitionOverlay?.dispose();
     s.resolve(GameTokens.HUD).dispose();
     s.resolve(GameTokens.Subtitles).dispose();
     s.resolve(GameTokens.MainMenu).dispose();
@@ -268,6 +304,7 @@ export class Game {
     );
     s.register(GameTokens.InteractSystem, new InteractSystem(eventBus));
     s.register(GameTokens.TriggerSystem, new TriggerSystem(eventBus));
+    s.register(GameTokens.CheckpointSystem, new CheckpointSystem(eventBus));
 
     eventBus.on("npc.weapon.dropped", (payload) => {
       void this.handleWeaponDrop(payload.npcId, payload.weaponId, payload.position);
@@ -275,6 +312,75 @@ export class Game {
     eventBus.on("level.action", ({ action, position }) => {
       void this.handleLevelAction(action, position);
     });
+    eventBus.on("trigger.action", ({ action, position }) => {
+      void this.runTriggerAction(action, position);
+    });
+    eventBus.on("checkpoint.reached", ({ position }) => {
+      this.captureCheckpoint(position);
+    });
+    eventBus.on("player.dead", () => {
+      this.beginDeath();
+    });
+  }
+
+  /**
+   * Arranca la secuencia de muerte estilo HL: la cámara cae al piso (con el
+   * arma) y el tinte rojo sube mientras el mundo sigue simulando. Mantiene
+   * `gameState` en "playing" para que `tickPlaying` anime la caída; al terminar
+   * pasa a "gameOver" y muestra el prompt del traje H.E.V.
+   */
+  private beginDeath(): void {
+    if (this.gameState !== "playing" || this.dying) {
+      return;
+    }
+    const camera = this.engine.services.resolve(EngineTokens.Camera);
+    this.dying = true;
+    this.deathSequence.start(camera.camera, camera.getYaw(), camera.getPitch());
+    this.deathScreen?.begin();
+    // Reusar el HUD real (salud/traje en 0) en vez de vitales aparte.
+    this.engine.services.resolve(GameTokens.HUD).setDeathMode(true);
+  }
+
+  /** Captura el estado del jugador en un checkpoint para un eventual respawn. */
+  private captureCheckpoint(position: Vector3): void {
+    if (!this.player || !this.player.isAlive()) {
+      return;
+    }
+    const loadout = this.player.weapons.captureLoadout();
+    this.lastCheckpoint = {
+      position: [position.x, position.y, position.z],
+      health: this.player.health.current,
+      armor: this.player.health.armor,
+      weapons: loadout.entries,
+      activeWeaponId: loadout.activeId,
+    };
+    this.engine.services
+      .resolve(GameTokens.EventBus)
+      .emit("subtitle.show", Dialogue.checkpointReached);
+  }
+
+  /**
+   * Respawn estilo HL: persiste el snapshot del último checkpoint y recarga la
+   * página para teardown limpio del nivel (igual que "Salir al menú"). El boot
+   * detecta el request y recarga el nivel reapareciendo en el checkpoint. Solo
+   * para niveles resolubles por id (campaña + carpeta custom).
+   */
+  private requestRespawn(): void {
+    if (!this.currentLevel || !(this.currentLevel.id in LevelRegistry)) {
+      return;
+    }
+    setRespawnRequest({
+      levelId: this.currentLevel.id,
+      snapshot: this.lastCheckpoint,
+    });
+    this.deathScreen?.hide();
+    this.engine.services
+      .resolve(GameTokens.MainMenu)
+      .showLoading(MenuStrings.loadingFallback);
+    this.pendingExitTimeoutId = window.setTimeout(() => {
+      this.pendingExitTimeoutId = null;
+      window.location.reload();
+    }, 250);
   }
 
   private async handleWeaponDrop(
@@ -328,6 +434,148 @@ export class Game {
         });
         return;
     }
+  }
+
+  /** Ejecuta una acción disparada por un trigger (ya pasó su `delay`). */
+  private async runTriggerAction(
+    action: TriggerAction,
+    position: Vector3,
+  ): Promise<void> {
+    if (!this.currentLevel) {
+      return;
+    }
+    switch (action.kind) {
+      case "dialogue":
+        this.engine.services.resolve(GameTokens.EventBus).emit("dialogue.show", {
+          speaker: action.speaker,
+          text: action.text,
+          duration: action.duration,
+        });
+        return;
+      case "spawnNpcs": {
+        this.actionSpawnSerial += 1;
+        await this.spawnNpcs(action.npcs, `trigger-${this.actionSpawnSerial}`);
+        return;
+      }
+      case "door":
+        this.setDoorOpen(action.doorId, action.open);
+        return;
+      case "levelAction":
+        await this.handleLevelAction(action.action, position);
+        return;
+      case "objective":
+        this.engine.services.resolve(GameTokens.EventBus).emit("objective.updated", {
+          text: action.text,
+          completed: action.completed,
+          marker: action.marker ? tupleToVector3(action.marker) : null,
+        });
+        return;
+      case "endLevel":
+        void this.goToNextLevel(action.landmark, position);
+        return;
+    }
+  }
+
+  /**
+   * Transición estilo Half-Life 2 al `nextLevel`: carga in-place (sin recargar
+   * la página) con un overlay translúcido sobre el frame congelado, conservando
+   * loadout, vida y orientación. El spawn es relativo al landmark (ver
+   * `computeTransitionSpawn`), así parece un mundo continuo. Sin `nextLevel`
+   * resoluble → fin de campaña (menú, vía reload). En playtest no navega.
+   */
+  private async goToNextLevel(
+    landmark: VectorTuple | undefined,
+    triggerPos: Vector3,
+  ): Promise<void> {
+    if (this.transitioning || !this.currentLevel || !this.player) {
+      return;
+    }
+    if (this.playtestMode) {
+      this.engine.services.resolve(GameTokens.EventBus).emit("subtitle.show", {
+        text: "Salida de nivel alcanzada (playtest).",
+        duration: 3,
+      });
+      return;
+    }
+    const nextId = this.currentLevel.nextLevel;
+    if (!nextId || !(nextId in LevelRegistry)) {
+      this.exitToMainMenu();
+      return;
+    }
+
+    this.transitioning = true;
+    const s = this.engine.services;
+    const next = getLevel(nextId);
+    const spawn = this.computeTransitionSpawn(landmark, triggerPos, next);
+    this.transitionOverlay?.show(next.title);
+    // Dejar que el overlay pinte sobre el frame congelado antes del trabajo síncrono.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    try {
+      await this.loadLevelDefinition(next, spawn ?? undefined);
+      const ambience = s.resolve(GameTokens.BackgroundAmbience);
+      const music = s.resolve(GameTokens.Music);
+      ambience.start(next.audio.ambiences);
+      if (next.audio.music) music.fadeToMusic(next.audio.music);
+      else music.stopMusic();
+      this.transitionOverlay?.hide();
+      this.transitioning = false;
+    } catch (error) {
+      // Carga a medio armar: caer al menú (reload) es la salida segura.
+      console.error("[Game] Falló la transición de nivel; volviendo al menú:", error);
+      this.transitionOverlay?.hide();
+      this.transitioning = false;
+      this.exitToMainMenu();
+    }
+  }
+
+  /**
+   * Calcula el spawn del nivel siguiente conservando el loadout/vitales y la
+   * posición RELATIVA al landmark (estilo `info_landmark` de HL2): el offset del
+   * jugador respecto del landmark de salida se aplica al `entryLandmark` del
+   * destino. Sin `entryLandmark`, cae al `playerStart`. El yaw también cruza.
+   */
+  private computeTransitionSpawn(
+    landmark: VectorTuple | undefined,
+    triggerPos: Vector3,
+    next: LevelDefinition,
+  ): CheckpointSnapshot | null {
+    if (!this.player) {
+      return null;
+    }
+    const camera = this.engine.services.resolve(EngineTokens.Camera);
+    const loadout = this.player.weapons.captureLoadout();
+
+    let position: VectorTuple;
+    if (next.entryLandmark) {
+      const ref = landmark ? tupleToVector3(landmark) : triggerPos;
+      const offset = this.player.getPosition().clone().sub(ref);
+      const dest = tupleToVector3(next.entryLandmark).add(offset);
+      position = [dest.x, dest.y, dest.z];
+    } else {
+      position = [next.playerStart[0], next.playerStart[1], next.playerStart[2]];
+    }
+
+    return {
+      position,
+      yaw: camera.getYaw(),
+      health: this.player.health.current,
+      armor: this.player.health.armor,
+      weapons: loadout.entries,
+      activeWeaponId: loadout.activeId,
+    };
+  }
+
+  private setDoorOpen(doorId: string, open: boolean): void {
+    const door = this.doors.find((d) => d.id === doorId);
+    if (!door) {
+      console.warn(`[Game] Trigger: puerta '${doorId}' no existe`);
+      return;
+    }
+    door.setOpen(open);
+    this.engine.services
+      .resolve(GameTokens.EventBus)
+      .emit("door.opened", { id: doorId, open });
   }
 
   private async respawnLevelEncounters(level: LevelDefinition): Promise<void> {
@@ -572,6 +820,12 @@ export class Game {
         workshop,
       }),
     );
+
+    this.deathScreen = new DeathScreen(this.root, {
+      onRespawn: () => this.requestRespawn(),
+      onExit: () => this.exitToMainMenu(),
+    });
+    this.transitionOverlay = new TransitionOverlay(this.root);
   }
 
   // ---------------------------------------------------------------------------
@@ -605,12 +859,17 @@ export class Game {
       return;
     }
 
-    if (controls.wasPressed("pause") && this.gameState === "playing") {
+    if (controls.wasPressed("pause") && this.gameState === "playing" && !this.dying) {
       this.setGameState("paused");
     }
 
-    if (this.gameState !== "playing" || !this.player) {
-      this.engine.renderFrame();
+    if (this.gameState !== "playing" || !this.player || this.transitioning) {
+      // Durante la transición de nivel NO renderizamos: el canvas conserva el
+      // último frame (congelado) bajo el overlay translúcido mientras se arma
+      // el nivel nuevo, sin mostrar la escena a medio desmontar.
+      if (!this.transitioning) {
+        this.engine.renderFrame();
+      }
       input.endFrame();
       return;
     }
@@ -649,12 +908,15 @@ export class Game {
     const gizmos = s.resolve(EngineTokens.Gizmos);
     const interactSystem = s.resolve(GameTokens.InteractSystem);
     const triggerSystem = s.resolve(GameTokens.TriggerSystem);
+    const checkpointSystem = s.resolve(GameTokens.CheckpointSystem);
     const weaponEffects = s.resolve(GameTokens.WeaponEffects);
     const subtitles = s.resolve(GameTokens.Subtitles);
     const footsteps = s.resolve(GameTokens.Footsteps);
     const grenades = s.resolve(GameTokens.Grenades);
 
-    if (input.isPointerLocked()) {
+    if (this.dying) {
+      this.updateDeath(time.delta);
+    } else if (input.isPointerLocked()) {
       camera.updateLook(input);
       player.update(time.delta, input, controls, camera, time.elapsed);
     }
@@ -714,19 +976,44 @@ export class Game {
     grenades.update(time.delta, time.elapsed);
 
     playerPosition = player.getPosition();
-    camera.syncToPosition(player.getEyePosition());
+    // Mientras la cámara cae (muerte) no la re-anclamos a los ojos del jugador.
+    if (!this.dying) {
+      camera.syncToPosition(player.getEyePosition());
+    }
     // Update the viewmodel after the camera follows the resolved physics pose.
     player.tickRender(time.delta, camera);
-    interactSystem.update(
-      time.delta,
-      camera.camera.position,
-      camera.getForwardDirection(),
-      controls,
-    );
-    triggerSystem.update(playerPosition);
+    if (!this.dying) {
+      interactSystem.update(
+        time.delta,
+        camera.camera.position,
+        camera.getForwardDirection(),
+        controls,
+      );
+    }
+    triggerSystem.update(playerPosition, time.delta);
+    checkpointSystem.update(playerPosition);
+    s.resolve(GameTokens.HUD).updateObjective(camera.camera);
     subtitles.update(time.delta);
     weaponEffects.update(time.delta);
     gizmos.update(time.delta);
+  }
+
+  /**
+   * Anima la caída de la cámara durante la muerte y, al completarse, pasa a
+   * "gameOver" mostrando el prompt del traje H.E.V. Mantiene `this.dying` en
+   * true (tickPlaying no vuelve a correr en "gameOver", así la cámara queda
+   * congelada en el piso).
+   */
+  private updateDeath(delta: number): void {
+    const camera = this.engine.services.resolve(EngineTokens.Camera);
+    this.deathSequence.update(delta, camera.camera);
+    this.deathScreen?.setIntensity(this.deathSequence.progress);
+    if (this.deathSequence.isComplete() && this.gameState === "playing") {
+      this.setGameState("gameOver");
+      const canRespawn =
+        this.currentLevel !== null && this.currentLevel.id in LevelRegistry;
+      this.deathScreen?.showPrompt(canRespawn);
+    }
   }
 
   private computeNpcAiLod(position: Vector3, playerPosition: Vector3): AiFrameContext["aiLod"] {
@@ -775,7 +1062,8 @@ export class Game {
     if (
       !input.isPointerLocked() &&
       this.gameState === "playing" &&
-      !debugRelease
+      !debugRelease &&
+      !this.dying
     ) {
       this.setGameState("paused");
     }
@@ -803,12 +1091,19 @@ export class Game {
     const input = s.resolve(EngineTokens.Input);
 
     mainMenu.setState(state);
-    hud.setVisible(state === "playing");
+    // El HUD queda visible en "gameOver" para mostrar los vitales reales bajo
+    // el terminal H.E.V.; el DeathScreen ya oscurece el resto.
+    hud.setVisible(state === "playing" || state === "gameOver");
 
     if (state === "playing") {
+      hud.setDeathMode(false);
       mainMenu.setStatus(MenuStrings.ready);
       this.enterCapture();
     } else {
+      // El Game Over se entra programáticamente con el puntero aún capturado
+      // (la pausa, en cambio, llega tras soltarlo con Esc). Liberarlo siempre
+      // para que el menú sea clickeable.
+      input.exitPointerLock();
       input.unlockKeyboard();
     }
   }
@@ -926,7 +1221,10 @@ export class Game {
   }
 
   /** Arranca cualquier `LevelDefinition` como partida normal (campaña o custom). */
-  private async startLevel(level: LevelDefinition): Promise<void> {
+  private async startLevel(
+    level: LevelDefinition,
+    spawn?: CheckpointSnapshot,
+  ): Promise<void> {
     const s = this.engine.services;
     const mainMenu = s.resolve(GameTokens.MainMenu);
     const audio = s.resolve(EngineTokens.Audio);
@@ -939,7 +1237,7 @@ export class Game {
       requestAnimationFrame(() => resolve()),
     );
 
-    await this.loadLevelDefinition(level);
+    await this.loadLevelDefinition(level, spawn);
 
     const ambience = s.resolve(GameTokens.BackgroundAmbience);
     const music = s.resolve(GameTokens.Music);
@@ -984,7 +1282,10 @@ export class Game {
     });
   }
 
-  private async loadLevelDefinition(level: LevelDefinition): Promise<void> {
+  private async loadLevelDefinition(
+    level: LevelDefinition,
+    spawn?: CheckpointSnapshot,
+  ): Promise<void> {
     const services = this.engine.services;
     const physics = services.resolve(EngineTokens.Physics);
     const sceneManager = services.resolve(EngineTokens.Scene);
@@ -997,6 +1298,7 @@ export class Game {
     const eventBus = services.resolve(GameTokens.EventBus);
     const interactSystem = services.resolve(GameTokens.InteractSystem);
     const triggerSystem = services.resolve(GameTokens.TriggerSystem);
+    const checkpointSystem = services.resolve(GameTokens.CheckpointSystem);
     const characters = services.resolve(GameTokens.Characters);
     const footsteps = services.resolve(GameTokens.Footsteps);
 
@@ -1014,13 +1316,28 @@ export class Game {
       eventBus,
       interactSystem,
       triggerSystem,
+      checkpointSystem,
       characters,
       assets,
     );
 
+    // Teardown completo del nivel anterior para cargar in-place (transición
+    // estilo HL2, sin recargar la página). Orden: disponer entidades y limpiar
+    // sistemas SOBRE el mundo de física aún válido → reset de física (borra
+    // todos los bodies) → limpiar la escena (preservando las luces) → cargar.
+    // En el primer load (menú/boot) todo está vacío, así que es no-op.
     this.npcs.forEach((npc) => npc.dispose());
+    this.weaponPickups.forEach((pickup) => pickup.dispose());
     this.itemPickups.forEach((pickup) => pickup.dispose());
+    this.player?.dispose();
+    services.resolve(GameTokens.WeaponEffects).clear();
+    services.resolve(GameTokens.Grenades).clear();
+    services.resolve(EngineTokens.PositionalSound).clear();
     interactSystem.clear();
+    triggerSystem.clear();
+    checkpointSystem.clear();
+    physics.reset();
+    sceneManager.clearLevel(lighting.getLights());
 
     const loaded = await loader.load(level);
     this.npcs = loaded.npcs;
@@ -1035,7 +1352,7 @@ export class Game {
     this.pathQueue = loaded.pathQueue;
 
     this.player = new Player(
-      new Vector3(...level.playerStart),
+      spawn ? new Vector3(...spawn.position) : new Vector3(...level.playerStart),
       physics,
       raycast,
       assets,
@@ -1043,10 +1360,30 @@ export class Game {
       eventBus,
       services.resolve(GameTokens.Grenades),
     );
+    if (spawn) {
+      this.player.health.restore(spawn.health, spawn.armor);
+      this.player.weapons.restoreLoadout(spawn.weapons, spawn.activeWeaponId);
+    }
     this.chargers.forEach((charger) => charger.bind(this.player!.health));
 
+    // Reaparecer en este checkpoint si el jugador muere antes de cruzar otro.
+    this.lastCheckpoint = spawn ?? null;
+    this.dying = false;
+    this.deathSequence.reset();
+    this.deathScreen?.hide();
+    services.resolve(GameTokens.HUD).setDeathMode(false);
+
     camera.syncToPosition(this.player.getEyePosition());
+    if (spawn?.yaw !== undefined) {
+      camera.setYaw(spawn.yaw);
+    }
     levelEvents.announceLevel(level.title);
+
+    // Objetivo inicial del nivel (vacío lo oculta y limpia la brújula).
+    eventBus.emit("objective.updated", {
+      text: level.objective?.text ?? "",
+      marker: level.objective?.marker ? tupleToVector3(level.objective.marker) : null,
+    });
   }
 
   /**
@@ -1067,6 +1404,8 @@ export class Game {
     // en sessionStorage y el reload volvería a bootear directo al nivel.
     setEditorMode(null);
     this.playtestMode = false;
+    this.dying = false;
+    this.deathScreen?.hide();
 
     ambience.stop();
     music.stopMusic();

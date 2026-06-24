@@ -130,6 +130,18 @@ export class PlayerHealth {
     this.emitArmorChanged();
   }
 
+  /**
+   * Restaura vida y armadura a valores exactos (respawn desde un checkpoint).
+   * Limpia el flag `dead` para que el jugador vuelva a recibir input/daño.
+   */
+  restore(health: number, armor: number): void {
+    this.health.set(health);
+    this.dead = false;
+    this.armorCurrent = Math.max(0, Math.min(armor, this.armorMax));
+    this.emitHealthChanged();
+    this.emitArmorChanged();
+  }
+
   setArmor(current: number, max = current): void {
     this.armorMax = Math.max(0, max);
     this.armorCurrent = Math.max(0, Math.min(current, this.armorMax));

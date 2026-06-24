@@ -4,7 +4,7 @@ import type { Input } from "@engine/input/Input";
 import type { CameraSystem } from "@engine/render/CameraSystem";
 import type { Raycast } from "@engine/physics/Raycast";
 import { Quaternion, Vector3, type Scene } from "three";
-import { WEAPON_SLOT_COUNT } from "@game/config/weapons.config";
+import { WEAPON_ORDER, WEAPON_SLOT_COUNT } from "@game/config/weapons.config";
 import { HudStrings } from "@game/config/strings";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { GameAction } from "@game/config/controls.config";
@@ -15,6 +15,13 @@ import { WeaponInventory } from "./WeaponInventory";
 import { createWeapon, getWeapon } from "./WeaponFactory";
 import { WeaponViewModel } from "@game/gameplay/weapons/effects/WeaponViewModel";
 import type { WeaponId } from "./WeaponDefinition";
+
+/** Entrada de loadout para snapshot/restauración de checkpoint (serializable). */
+export interface WeaponLoadoutEntry {
+  id: WeaponId;
+  magazine: number;
+  reserve: number;
+}
 
 /** Tiempo (s) sin input antes de que el selector auto-confirme la tentativa. */
 const SELECTOR_TIMEOUT = 2.0;
@@ -194,12 +201,7 @@ export class WeaponController {
       return false;
     }
 
-    const weapon = createWeapon(id, {
-      eventBus: this.eventBus,
-      raycast: this.raycast,
-      grenades: this.grenades,
-      getInventory: () => this.inventory,
-    });
+    const weapon = this.instantiateWeapon(id);
     const shouldEquip = this.inventory.isEmpty();
     this.inventory.addWeapon(weapon);
     this.eventBus.emit("weapon.ammo.changed", {
@@ -214,6 +216,54 @@ export class WeaponController {
       void this.viewModel.equip(weapon.definition);
     }
     return true;
+  }
+
+  /** Snapshot del inventario para un checkpoint: armas poseídas + munición + activa. */
+  captureLoadout(): { entries: WeaponLoadoutEntry[]; activeId: WeaponId | null } {
+    const entries: WeaponLoadoutEntry[] = [];
+    for (const id of WEAPON_ORDER) {
+      const weapon = this.inventory.getWeapon(id);
+      if (weapon) {
+        entries.push({
+          id,
+          magazine: weapon.getAmmo(),
+          reserve: weapon.getReserveAmmo(),
+        });
+      }
+    }
+    return { entries, activeId: this.inventory.getActiveWeaponId() };
+  }
+
+  /**
+   * Reconstruye el inventario desde un snapshot (respawn). Otorga cada arma con
+   * su munición exacta y equipa la que estaba activa. No emite `player.pickup.*`
+   * (evita spamear HUD/audio en el respawn).
+   */
+  restoreLoadout(entries: WeaponLoadoutEntry[], activeId: WeaponId | null): void {
+    for (const entry of entries) {
+      if (this.inventory.hasWeapon(entry.id)) {
+        continue;
+      }
+      const weapon = this.instantiateWeapon(entry.id);
+      this.inventory.addWeapon(weapon);
+      weapon.restoreAmmo(entry.magazine, entry.reserve);
+    }
+    const equipped =
+      activeId && this.inventory.isWeaponSelectable(activeId)
+        ? this.inventory.equipWeapon(activeId)
+        : this.inventory.getActiveWeapon();
+    if (equipped) {
+      void this.viewModel.equip(equipped.definition);
+    }
+  }
+
+  private instantiateWeapon(id: WeaponId): Weapon {
+    return createWeapon(id, {
+      eventBus: this.eventBus,
+      raycast: this.raycast,
+      grenades: this.grenades,
+      getInventory: () => this.inventory,
+    });
   }
 
   dispose(): void {

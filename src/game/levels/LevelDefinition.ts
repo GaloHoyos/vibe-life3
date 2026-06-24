@@ -8,6 +8,8 @@ import type { SunOptions } from '@engine/render/environment/LightingSystem';
 import type { HeightSource } from '@shared/math/HeightField';
 import type { LevelActionKind } from '@game/GameEvents';
 import type { BuildingArtifact } from '@game/levels/buildings/BuildingArtifact';
+import type { CheckpointDefinition } from '@game/levels/CheckpointSystem';
+import type { LevelId } from '@game/levels/LevelRegistry';
 
 /** Rotacion Euler XYZ en radianes. Omitida = alineado a los ejes. */
 type RotationTuple = VectorTuple;
@@ -87,13 +89,47 @@ export interface ChargerDefinition {
   capacity?: number;
 }
 
+/**
+ * Acción que un trigger ejecuta al cruzarlo. Todo serializable (datos, no
+ * código): por eso un "scripted sequence" se modela como acciones con `delay`,
+ * no como closures. `delay` = segundos tras entrar al volumen (0 = inmediato).
+ */
+export type TriggerAction =
+  | { kind: 'dialogue'; speaker?: string; text: string; duration: number; delay?: number }
+  | { kind: 'spawnNpcs'; npcs: NPCDefinition[]; delay?: number }
+  | { kind: 'door'; doorId: string; open: boolean; delay?: number }
+  | { kind: 'levelAction'; action: LevelActionKind; delay?: number }
+  /** Actualiza el objetivo del HUD. `completed` lo marca cumplido; `marker` mueve la brújula. */
+  | { kind: 'objective'; text: string; completed?: boolean; marker?: VectorTuple; delay?: number }
+  /**
+   * Salida del nivel: encadena a `LevelDefinition.nextLevel` (o termina la
+   * campaña si no hay). `landmark` = punto de referencia en ESTE nivel (estilo
+   * `info_landmark` de HL2); el jugador reaparece en el nivel siguiente
+   * conservando su offset relativo a este punto. Default = centro del trigger.
+   */
+  | { kind: 'endLevel'; landmark?: VectorTuple; delay?: number };
+
+/** Objetivo inicial de un nivel. El HUD lo muestra al cargar. */
+export interface ObjectiveDefinition {
+  text: string;
+  /** Waypoint world-space opcional para la brújula. */
+  marker?: VectorTuple;
+}
+
 export interface TriggerDefinition {
   id: string;
   position: VectorTuple;
   size: VectorTuple;
   rotation?: RotationTuple;
   once: boolean;
-  dialogue: {
+  /** Acciones que dispara al cruzarlo. */
+  actions?: TriggerAction[];
+  /**
+   * @deprecated Forma vieja: un único diálogo. Se mantiene para documentos
+   * serializados (biblioteca/Workshop) anteriores a `actions`. El
+   * `TriggerSystem` lo normaliza a una acción `dialogue` si `actions` falta.
+   */
+  dialogue?: {
     speaker?: string;
     text: string;
     duration: number;
@@ -128,6 +164,22 @@ export interface LevelDefinition {
   title: string;
   /** Texto corto que se muestra en el selector de mapas del menÃº. */
   description?: string;
+  /**
+   * Id del nivel que se carga al cruzar un trigger con acción `endLevel` (sin
+   * pasar por el menú). Si se omite, ese trigger termina la campaña → menú.
+   * Debe ser un id registrado en `LevelRegistry`.
+   */
+  nextLevel?: LevelId;
+  /**
+   * Punto de referencia de ENTRADA (estilo `info_landmark` de HL2). Cuando se
+   * llega desde un trigger `endLevel`, el jugador reaparece en
+   * `entryLandmark + offset`, donde `offset` es su posición relativa al landmark
+   * del nivel anterior — así la transición conserva la posición relativa. Si se
+   * omite, reaparece en `playerStart`.
+   */
+  entryLandmark?: VectorTuple;
+  /** Objetivo que el HUD muestra al cargar el nivel. */
+  objective?: ObjectiveDefinition;
   /** Color de fondo de fallback (cuando no hay skybox o el HDRI falla). */
   background: number;
   /** HDRI a usar como cielo + IBL. Si se omite, usa `'default'`. */
@@ -155,4 +207,6 @@ export interface LevelDefinition {
   /** Cargadores de pared (vida / HEV) estilo HL2. Si se omite, el nivel no trae. */
   chargers?: ChargerDefinition[];
   triggers: TriggerDefinition[];
+  /** Puntos de control para respawn. Si se omite, el nivel solo reaparece en `playerStart`. */
+  checkpoints?: CheckpointDefinition[];
 }

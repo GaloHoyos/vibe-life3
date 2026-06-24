@@ -63,6 +63,12 @@ export class WeaponEffects {
     this.clearEffects(this.decals);
   }
 
+  /** Limpia tracers/decals vivos sin desuscribir del bus (recarga de nivel in-place). */
+  clear(): void {
+    this.clearEffects(this.traces);
+    this.clearEffects(this.decals);
+  }
+
   private createTracer(
     origin: Vector3,
     direction: Vector3,

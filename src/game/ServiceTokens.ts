@@ -13,6 +13,7 @@ import type { GameEventMap } from "./GameEvents";
 import type { DialogueSystem } from "@game/narrative/DialogueSystem";
 import type { InteractSystem } from "@game/gameplay/interactions";
 import type { TriggerSystem } from "@game/levels/TriggerSystem";
+import type { CheckpointSystem } from "@game/levels/CheckpointSystem";
 import type { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import type { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
@@ -38,6 +39,7 @@ export const GameTokens = {
   Grenades: new ServiceToken<GrenadeSystem>("GrenadeSystem"),
   InteractSystem: new ServiceToken<InteractSystem>("InteractSystem"),
   TriggerSystem: new ServiceToken<TriggerSystem>("TriggerSystem"),
+  CheckpointSystem: new ServiceToken<CheckpointSystem>("CheckpointSystem"),
   HUD: new ServiceToken<HUD>("HUD"),
   MainMenu: new ServiceToken<MainMenu>("MainMenu"),
   DebugMenu: new ServiceToken<DebugMenu>("DebugMenu"),

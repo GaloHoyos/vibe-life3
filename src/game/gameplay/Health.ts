@@ -22,6 +22,13 @@ export class Health {
     return this.current;
   }
 
+  /** Fija la vida a un valor exacto (clampeado a [0, max]) y recomputa `depleted`. */
+  set(value: number): number {
+    this.current = Math.max(0, Math.min(this.max, value));
+    this.depleted = this.current <= 0;
+    return this.current;
+  }
+
   reset(): void {
     this.current = this.max;
     this.depleted = false;

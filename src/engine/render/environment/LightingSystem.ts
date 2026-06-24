@@ -1,4 +1,5 @@
 ﻿import { AmbientLight, DirectionalLight, HemisphereLight, Scene, Vector3 } from 'three';
+import type { Object3D } from 'three';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 
 export interface SunOptions {
@@ -49,6 +50,15 @@ export class LightingSystem {
 
     this.applySunDirection(DEFAULT_SUN.direction);
     scene.add(this.lights.ambient, this.lights.hemisphere, sun);
+  }
+
+  /**
+   * Las luces persistentes (se agregan a la escena una sola vez). El teardown
+   * de nivel las preserva al limpiar la escena. El `sun.target` no es hijo de
+   * la escena (su matriz se actualiza a mano), así que no hace falta preservarlo.
+   */
+  getLights(): Object3D[] {
+    return [this.lights.ambient, this.lights.hemisphere, this.lights.sun];
   }
 
   /** Configura el sol del nivel actual. Cualquier campo no provisto cae al default. */

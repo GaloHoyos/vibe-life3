@@ -51,6 +51,12 @@ export class Input {
     this.target.requestPointerLock();
   }
 
+  exitPointerLock(): void {
+    if (document.pointerLockElement === this.target) {
+      document.exitPointerLock();
+    }
+  }
+
   isPointerLocked(): boolean {
     return document.pointerLockElement === this.target;
   }
