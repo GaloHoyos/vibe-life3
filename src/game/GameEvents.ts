@@ -222,6 +222,13 @@ export interface GameEventMap {
     id: string;
     title: string;
   };
+  "workshop.rated": {
+    id: string;
+    rating: number;
+  };
+  "workshop.commented": {
+    id: string;
+  };
   "workshop.error": {
     action: string;
     message: string;

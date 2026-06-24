@@ -1,6 +1,7 @@
 import type { WorkshopBackend, WorkshopCapabilities } from "./WorkshopBackend";
 import type {
   PublishMeta,
+  WorkshopComment,
   WorkshopListing,
   WorkshopQuery,
   WorkshopUser,
@@ -45,9 +46,44 @@ export class CloudflareWorkshopBackend implements WorkshopBackend {
     return body.map(toListing).filter((l): l is WorkshopListing => l !== null);
   }
 
+  async fetchListing(id: string): Promise<WorkshopListing> {
+    const body = await this.requestJson(`/api/maps/${encodeURIComponent(id)}`);
+    const listing = toListing(body);
+    if (!listing) throw new Error("El servidor devolvio un listing invalido.");
+    return listing;
+  }
+
   async fetchDocument(id: string, revision?: string): Promise<unknown> {
     const suffix = revision ? `?rev=${encodeURIComponent(revision)}` : "";
     return this.requestJson(`/api/maps/${encodeURIComponent(id)}/document${suffix}`);
+  }
+
+  async rate(id: string, value: number): Promise<WorkshopListing> {
+    const body = await this.requestJson(`/api/maps/${encodeURIComponent(id)}/rating`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value }),
+    });
+    const listing = toListing(body);
+    if (!listing) throw new Error("El servidor devolvio una respuesta de rating invalida.");
+    return listing;
+  }
+
+  async listComments(id: string): Promise<WorkshopComment[]> {
+    const body = await this.requestJson(`/api/maps/${encodeURIComponent(id)}/comments`);
+    if (!Array.isArray(body)) return [];
+    return body.map(toComment).filter((c): c is WorkshopComment => c !== null);
+  }
+
+  async postComment(id: string, commentBody: string): Promise<WorkshopComment> {
+    const body = await this.requestJson(`/api/maps/${encodeURIComponent(id)}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: commentBody }),
+    });
+    const comment = toComment(body);
+    if (!comment) throw new Error("El servidor devolvio un comentario invalido.");
+    return comment;
   }
 
   async publish(document: unknown, meta: PublishMeta): Promise<WorkshopListing> {
@@ -176,8 +212,22 @@ function toListing(value: unknown): WorkshopListing | null {
     updatedAt: typeof v.updatedAt === "string" ? v.updatedAt : "",
     downloads: typeof v.downloads === "number" ? v.downloads : 0,
     rating: typeof v.rating === "number" ? v.rating : 0,
+    ratingCount: typeof v.ratingCount === "number" ? v.ratingCount : 0,
+    myRating: typeof v.myRating === "number" ? v.myRating : null,
     tags: Array.isArray(v.tags) ? v.tags.filter((t): t is string => typeof t === "string") : [],
     type: "map",
+  };
+}
+
+function toComment(value: unknown): WorkshopComment | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.id !== "string" || typeof v.body !== "string") return null;
+  return {
+    id: v.id,
+    author: typeof v.author === "string" ? v.author : "anonimo",
+    body: v.body,
+    createdAt: typeof v.createdAt === "string" ? v.createdAt : "",
   };
 }
 

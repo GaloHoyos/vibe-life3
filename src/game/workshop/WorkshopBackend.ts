@@ -1,5 +1,6 @@
 import type {
   PublishMeta,
+  WorkshopComment,
   WorkshopListing,
   WorkshopQuery,
   WorkshopUser,
@@ -24,8 +25,15 @@ export interface WorkshopBackend {
   readonly id: string;
   readonly capabilities: WorkshopCapabilities;
   list(query?: WorkshopQuery): Promise<WorkshopListing[]>;
+  /** Refresca un unico listing (incluye `myRating` si hay sesion). */
+  fetchListing(id: string): Promise<WorkshopListing>;
   fetchDocument(id: string, revision?: string): Promise<unknown>;
   publish(document: unknown, meta: PublishMeta): Promise<WorkshopListing>;
+  /** Punta el mapa (1..5). Requiere sesion. Devuelve el listing actualizado. */
+  rate(id: string, value: number): Promise<WorkshopListing>;
+  listComments(id: string): Promise<WorkshopComment[]>;
+  /** Publica un comentario. Requiere sesion. Devuelve el comentario creado. */
+  postComment(id: string, body: string): Promise<WorkshopComment>;
   signIn(): Promise<WorkshopUser>;
   signOut(): void;
   currentUser(): WorkshopUser | null;

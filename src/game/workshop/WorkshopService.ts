@@ -6,6 +6,7 @@ import type { WorkshopStore } from "./WorkshopStore";
 import type { WorkshopSubscription } from "./workshopIndex";
 import type {
   PublishMeta,
+  WorkshopComment,
   WorkshopListing,
   WorkshopQuery,
   WorkshopUser,
@@ -96,6 +97,37 @@ export class WorkshopService {
     const listing = await this.backend.publish(result.document, meta);
     this.eventBus.emit("workshop.published", { id: listing.id, title: listing.title });
     return listing;
+  }
+
+  /** Refresca un listing del catalogo (incluye `myRating` si hay sesion). */
+  fetchListing(id: string): Promise<WorkshopListing> {
+    return this.backend.fetchListing(id);
+  }
+
+  listComments(id: string): Promise<WorkshopComment[]> {
+    return this.backend.listComments(id);
+  }
+
+  /** Punta un mapa (1..5). Requiere sesion: la inicia si hace falta. */
+  async rate(id: string, value: number): Promise<WorkshopListing> {
+    await this.ensureSignedIn();
+    const listing = await this.backend.rate(id, value);
+    this.eventBus.emit("workshop.rated", { id, rating: listing.rating });
+    return listing;
+  }
+
+  /** Publica un comentario. Requiere sesion: la inicia si hace falta. */
+  async postComment(id: string, body: string): Promise<WorkshopComment> {
+    await this.ensureSignedIn();
+    const comment = await this.backend.postComment(id, body);
+    this.eventBus.emit("workshop.commented", { id });
+    return comment;
+  }
+
+  private async ensureSignedIn(): Promise<void> {
+    if (!this.backend.currentUser()) {
+      await this.backend.signIn();
+    }
   }
 
   private fail(action: string, message: string): void {
