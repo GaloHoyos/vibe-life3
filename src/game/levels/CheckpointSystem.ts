@@ -27,6 +27,9 @@ export interface CheckpointSnapshot {
   armor: number;
   weapons: WeaponLoadoutEntry[];
   activeWeaponId: WeaponId | null;
+  /** Orientación (yaw, rad) a restaurar. Lo usa la transición de niveles para
+   *  conservar hacia dónde mirabas. Opcional: los checkpoints no lo capturan. */
+  yaw?: number;
 }
 
 interface RuntimeCheckpoint {

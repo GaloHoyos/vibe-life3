@@ -24,13 +24,34 @@ Half-Life completo. Ordenado por impacto. Marcá cada ítem al cerrarlo.
   - **Limitaciones / pendientes:** respawn solo para niveles del registro (campaña +
     `maps/custom/`); mapas de biblioteca/Workshop solo ofrecen "Salir al menú". El editor de
     niveles todavía no expone checkpoints. La vida se restaura tal cual se capturó (sin piso mínimo).
-- [ ] **Triggers con acción** — hoy `TriggerSystem` solo dispara diálogo. Generalizar a
-  acciones (spawnear NPCs, abrir puertas, fin de nivel, iniciar `ScriptedSequence`) para
-  construir encuentros/ritmo.
-- [ ] **Encadenar niveles** — `nextLevel?: LevelId` + trigger de salida → `startLevel(next)`
-  sin pasar por el menú. Convierte "Nueva Partida" en una campaña real.
-- [ ] **Sistema de objetivos** — HUD de objetivo actual + marcador/brújula. (`objective.updated`
-  está documentado en CLAUDE.md pero no existe aún en `GameEvents`.)
+- [x] **Triggers con acción** *(hecho)* — `TriggerDefinition` ahora lleva `actions: TriggerAction[]`
+  (union serializable: `dialogue` | `spawnNpcs` | `door` | `levelAction`), cada una con `delay?`
+  opcional para dar ritmo tipo scripted sequence sin código. El `TriggerSystem` dispara al
+  **entrar** al volumen (flanco, ya no cada frame), encola las acciones con delay y emite
+  `trigger.action`; `Game.runTriggerAction` las ejecuta (spawn de NPCs, abrir/cerrar puertas vía
+  `SlidingDoor.setOpen`, reusar `level.action`). La forma vieja `dialogue` queda como legacy y se
+  normaliza (compat con mapas serializados de biblioteca/Workshop). Editado en el editor: lista de
+  acciones por trigger en el inspector (el editor migra `dialogue`→`actions` al tocarlo).
+  **Pendiente:** acción de fin de nivel se cubre con "Encadenar niveles" (abajo).
+- [x] **Encadenar niveles** *(hecho — transición seamless estilo HL2)* — `LevelDefinition.nextLevel`
+  + acción de trigger `endLevel`. Al cruzar la salida, `Game.goToNextLevel` hace una transición
+  **in-place (sin recargar la página)**: overlay translúcido "Cargando" sobre el frame congelado
+  (render freezado) mientras `loadLevelDefinition` desmonta el nivel viejo y arma el nuevo.
+  Teardown completo: `PhysicsWorld.reset()` (recrea el mundo Rapier → borra todos los bodies),
+  `SceneManager.clearLevel()` (preserva las luces; remove-only para no romper la caché de assets),
+  `clear()` de la cola larga (`WeaponEffects`/`GrenadeSystem`/`PositionalSoundManager`) + dispose
+  de player/pickups. **Continuidad estilo `info_landmark`**: el jugador reaparece en
+  `entryLandmark + offset` (offset relativo al `landmark` de salida) conservando loadout, vida y
+  **yaw** — parece un mundo continuo. Sin `nextLevel` → fin de campaña (menú). En playtest no navega.
+  Editable: "Nivel siguiente" + "Landmark de entrada" en config. del nivel, `landmark` en la acción
+  `endLevel`; todo viaja por el codegen. **Pendiente:** sin pantalla de victoria al terminar la
+  campaña; chaining solo a niveles del registro; landmarks sin rotación (mapas alineados al mismo eje).
+- [x] **Sistema de objetivos** *(hecho)* — evento `objective.updated` (`{ text, completed?, marker? }`)
+  + widget `ObjectiveHUD` (panel arriba-centro con el objetivo actual + brújula: un waypoint
+  world-space que se proyecta a pantalla cada frame, clamped a los bordes cuando queda fuera de
+  cuadro, con distancia en metros). Objetivo inicial por nivel (`LevelDefinition.objective`) y
+  acción de trigger `objective` para actualizar/cumplir/mover el marcador. Editable: campo en
+  config. del nivel + acción en el inspector de triggers; viaja por el codegen (`MapMeta`).
 
 ## Tier 2 — Profundidad de combate y contenido
 

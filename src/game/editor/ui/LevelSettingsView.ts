@@ -2,7 +2,7 @@ import type { Disposable } from '@shared/types/lifecycle';
 import type { TerrainDefinition } from '@game/levels/LevelDefinition';
 import type { SkyboxId } from '@engine/render/environment/Skybox';
 import type { EditorDocument } from '../EditorDocument';
-import { MATERIAL_KEYS, SKYBOX_IDS } from '../editorOptions';
+import { LEVEL_IDS, MATERIAL_KEYS, SKYBOX_IDS } from '../editorOptions';
 import { iconSpan } from './editorIcons';
 import {
   checkboxField,
@@ -22,6 +22,7 @@ export interface SettingsCallbacks {
 }
 
 const DEFAULT_SUN_DIR: [number, number, number] = [0.4, 1, 0.3];
+const NO_NEXT = '(ninguno)';
 
 function defaultTerrain(): TerrainDefinition {
   return {
@@ -73,8 +74,43 @@ export class LevelSettingsView implements Disposable {
       textField('Descripcion', meta.description ?? '', (v) => { meta.description = v || undefined; changed(); }).element,
       colorField('Fondo', meta.background, (v) => { meta.background = v; changed(); }).element,
       selectField('Skybox', meta.skybox ?? 'default', SKYBOX_IDS, (v) => { meta.skybox = v as SkyboxId; changed(); }).element,
+      selectField('Nivel siguiente', meta.nextLevel ?? NO_NEXT, [NO_NEXT, ...LEVEL_IDS], (v) => {
+        meta.nextLevel = v === NO_NEXT ? undefined : v;
+        changed();
+        this.refresh();
+      }).element,
+      textField('Objetivo inicial', meta.objective?.text ?? '', (v) => {
+        meta.objective = v ? { text: v, marker: meta.objective?.marker } : undefined;
+        changed();
+        this.refresh();
+      }).element,
       vec3Field('Spawn', meta.playerStart, (v) => { meta.playerStart = v; changed(); }).element,
     );
+
+    if (meta.objective) {
+      this.body.append(
+        vec3Field('Objetivo: marcador', meta.objective.marker ?? [0, 0, 0], (v) => {
+          if (meta.objective) meta.objective.marker = v;
+          changed();
+        }).element,
+      );
+    }
+
+    this.body.append(
+      checkboxField('Landmark de entrada', meta.entryLandmark !== undefined, (on) => {
+        meta.entryLandmark = on ? (meta.entryLandmark ?? [...meta.playerStart]) : undefined;
+        changed();
+        this.refresh();
+      }).element,
+    );
+    if (meta.entryLandmark) {
+      this.body.append(
+        vec3Field('Landmark (transicion relativa)', meta.entryLandmark, (v) => {
+          meta.entryLandmark = v;
+          changed();
+        }).element,
+      );
+    }
 
     const sun = meta.sun ?? {};
     this.body.append(

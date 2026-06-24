@@ -585,6 +585,135 @@ body {
 }
 
 /* ============================================================
+ * Objective panel (arriba-centro) + brújula
+ * ============================================================ */
+
+.hev-objective {
+  position: absolute;
+  left: 50%;
+  top: 28px;
+  transform: translate(-50%, -8px);
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  max-width: min(560px, calc(100% - 80px));
+  padding: 8px 18px;
+  border-top: 1px solid var(--hl-amber-faint);
+  border-bottom: 1px solid var(--hl-amber-faint);
+  background: linear-gradient(rgba(8, 12, 16, 0.55), rgba(8, 12, 16, 0.25));
+  opacity: 0;
+  transition:
+    opacity 200ms ease,
+    transform 200ms ease;
+}
+
+.hev-objective.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.hev-objective__label {
+  font-size: 10px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--hl-amber-dim);
+}
+
+.hev-objective__text {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-shadow: var(--hl-glow-soft);
+}
+
+.hev-objective.is-completed .hev-objective__text {
+  text-decoration: line-through;
+  color: var(--hl-amber-dim);
+}
+
+.hev-objective__marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 1.5px solid var(--hl-amber);
+  box-shadow: var(--hl-glow);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.hev-objective__marker.is-visible {
+  opacity: 0.95;
+}
+
+.hev-objective__marker.is-edge {
+  background: var(--hl-amber-faint);
+}
+
+.hev-objective__marker-distance {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%) rotate(-45deg);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--hl-amber);
+  text-shadow: var(--hl-glow-soft);
+  white-space: nowrap;
+}
+
+/* ============================================================
+ * Transición entre niveles (velo translúcido + spinner, estilo HL2)
+ * ============================================================ */
+
+.hev-transition {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: rgba(6, 9, 13, 0.55);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 320ms ease;
+  font-family: inherit;
+}
+
+.hev-transition.is-visible {
+  opacity: 1;
+}
+
+.hev-transition__spinner {
+  width: 34px;
+  height: 34px;
+  border: 2px solid rgba(220, 185, 0, 0.25);
+  border-top-color: rgba(220, 185, 0, 0.95);
+  border-radius: 50%;
+  animation: hev-transition-spin 0.8s linear infinite;
+}
+
+.hev-transition__label {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.24em;
+  color: rgba(220, 185, 0, 0.95);
+  text-shadow: 0 0 6px rgba(220, 185, 0, 0.4);
+}
+
+@keyframes hev-transition-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================
  * Damage flash (full-screen edge vignette)
  * ============================================================ */
 

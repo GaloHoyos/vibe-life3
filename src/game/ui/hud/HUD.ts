@@ -1,4 +1,5 @@
-﻿import type { Disposable } from "@shared/types/lifecycle";
+﻿import type { PerspectiveCamera } from "three";
+import type { Disposable } from "@shared/types/lifecycle";
 import { HudStrings } from "@game/config/strings";
 import type { GameEventBus } from "@game/GameEvents";
 import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
@@ -97,7 +98,16 @@ export class HUD implements Disposable {
       eventBus.on("player.pickup.weapon", ({ weaponName }) =>
         this.view.notify(HudStrings.weaponPickedUp(weaponName), "pickup"),
       ),
+      eventBus.on("objective.updated", ({ text, completed, marker }) => {
+        this.view.objective.setObjective(text, completed ?? false);
+        if (marker !== undefined) this.view.objective.setMarker(marker);
+      }),
     );
+  }
+
+  /** Reproyecta el waypoint del objetivo a pantalla. Llamar cada frame jugando. */
+  updateObjective(camera: PerspectiveCamera): void {
+    this.view.objective.update(camera);
   }
 
   setHealth(current: number, max: number): void {

@@ -3,6 +3,7 @@ import type { SkyboxId } from '@engine/render/environment/Skybox';
 import type { SunOptions } from '@engine/render/environment/LightingSystem';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { BuildingArtifact } from '@game/levels/buildings/BuildingArtifact';
+import type { LevelId } from '@game/levels/LevelRegistry';
 import type {
   ActionButtonDefinition,
   ChargerDefinition,
@@ -12,6 +13,7 @@ import type {
   LevelAudioDefinition,
   LevelDefinition,
   NPCDefinition,
+  ObjectiveDefinition,
   StaticBoxDefinition,
   TerrainDefinition,
   TriggerDefinition,
@@ -26,6 +28,12 @@ export interface MapMeta {
   id: string;
   title: string;
   description?: string;
+  /** Nivel a encadenar vía trigger `endLevel`. Ver `LevelDefinition.nextLevel`. */
+  nextLevel?: LevelId;
+  /** Landmark de entrada para transiciones relativas. Ver `LevelDefinition.entryLandmark`. */
+  entryLandmark?: VectorTuple;
+  /** Objetivo inicial que muestra el HUD al cargar. */
+  objective?: ObjectiveDefinition;
   background: number;
   skybox?: SkyboxId;
   sun?: SunOptions;
@@ -270,6 +278,9 @@ export class MapBuilder {
       id: this.meta.id,
       title: this.meta.title,
       description: this.meta.description,
+      nextLevel: this.meta.nextLevel,
+      entryLandmark: this.meta.entryLandmark,
+      objective: this.meta.objective,
       background: this.meta.background,
       skybox: this.meta.skybox,
       sun: this.meta.sun,

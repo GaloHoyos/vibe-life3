@@ -65,6 +65,17 @@ export class PositionalSoundManager {
     });
   }
 
+  /** Frena y desacopla todos los sonidos atachados (recarga de nivel in-place). */
+  clear(): void {
+    this.attached.forEach((entries) => {
+      entries.forEach((entry) => {
+        entry.audio.stop();
+        entry.object.remove(entry.audio);
+      });
+    });
+    this.attached.clear();
+  }
+
   stopAttached(object: Object3D): void {
     const entries = this.attached.get(object);
     if (!entries) {
