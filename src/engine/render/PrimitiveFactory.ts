@@ -8,6 +8,8 @@ export interface BoxMeshOptions {
   position: VectorTuple;
   size: VectorTuple;
   material: MaterialKey;
+  /** Rotacion Euler XYZ en radianes. Si se omite, queda alineado a los ejes. */
+  rotation?: VectorTuple;
   castShadow?: boolean;
   receiveShadow?: boolean;
 }
@@ -21,6 +23,7 @@ export function createBoxMesh(options: BoxMeshOptions): Mesh {
   const mesh = new Mesh(geometry, getMaterial(options.material));
   mesh.name = options.id;
   mesh.position.copy(tupleToVector3(options.position));
+  if (options.rotation) mesh.rotation.set(options.rotation[0], options.rotation[1], options.rotation[2]);
   mesh.castShadow = options.castShadow ?? false;
   mesh.receiveShadow = options.receiveShadow ?? false;
   return mesh;

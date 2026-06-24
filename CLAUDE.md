@@ -293,7 +293,7 @@ Capa de sincronización remota sobre el editor. **Dos deployables desacoplados**
 1. **Otro proveedor**: implementar `WorkshopBackend` (`src/game/workshop/WorkshopBackend.ts`) en una clase nueva y cambiar el registro en `Game.registerWorkshop()`. Nada más del cliente toca.
 2. **Nuevos tipos de contenido** (armas, skins): `WorkshopListing.type` (`WorkshopTypes.ts`) ya está previsto; extender el union + el validador del servidor.
 3. **Endpoints / D1 / R2 / OAuth**: todo en la carpeta del backend (`src/index.ts` router, `src/maps.ts`, `src/auth.ts`, `schema.sql`). El cliente y el server **no comparten código** — definen sus tipos de contrato por separado.
-4. **Pendientes Fase 2** (no hechos): ratings (columnas ya en D1), Turnstile (hook documentado), `state`/CSRF en el callback OAuth, assets custom.
+4. **Pendientes Fase 2** (no hechos): ratings (columnas ya en D1), Turnstile + rate-limit (anti-abuso), paginación real (`page` se ignora en `listMaps`), assets custom. *(El `state`/CSRF del OAuth ya está implementado — `auth.ts:createOAuthState`/`verifyOAuthState`.)*
 
 ---
 

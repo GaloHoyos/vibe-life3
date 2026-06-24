@@ -1,5 +1,7 @@
 import type { MaterialKey } from '@engine/render/material/Materials';
+import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { StaticBoxDefinition } from '@game/levels/LevelDefinition';
+import { rotateBoxesAbout } from './transform';
 
 export interface RampSpec {
   /**
@@ -34,6 +36,8 @@ export interface RampSpec {
   /** Espesor del box de cada escalón. Default 0.4. */
   stepThickness?: number;
   material?: MaterialKey;
+  /** Rotacion Euler XYZ (radianes) alrededor del punto medio de `[start, end]` a `startY`. */
+  rotation?: VectorTuple;
 }
 
 const DEFAULT_THICKNESS = 0.4;
@@ -85,7 +89,13 @@ export function buildRamp(spec: RampSpec): StaticBoxDefinition[] {
       material,
     });
   }
-  return out;
+  if (!spec.rotation) return out;
+  const pivot: VectorTuple = [
+    (spec.start[0] + spec.end[0]) / 2,
+    spec.startY,
+    (spec.start[1] + spec.end[1]) / 2,
+  ];
+  return rotateBoxesAbout(out, pivot, spec.rotation);
 }
 
 /** Sugerencia de cantidad de escalones para mantener la subida por escalón ≤ maxRise. */

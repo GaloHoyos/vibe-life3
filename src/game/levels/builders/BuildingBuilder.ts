@@ -1,4 +1,5 @@
 import type { MaterialKey } from '@engine/render/material/Materials';
+import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { StaticBoxDefinition } from '@game/levels/LevelDefinition';
 import type {
   BuildingArtifact,
@@ -8,6 +9,7 @@ import type {
 } from '@game/levels/buildings/BuildingArtifact';
 import { normalForSide } from '@game/levels/buildings/BuildingArtifact';
 import { buildRamp, STEP_OVERLAP, suggestStepCount } from './RampBuilder';
+import { rotateArtifact } from './transform';
 
 export type HouseSide = 'north' | 'south' | 'east' | 'west';
 
@@ -135,10 +137,24 @@ export interface BuildingSpec {
   gableRidgeAxis?: 'x' | 'z';
   /** Pilastras en las esquinas. Default true con 2+ pisos. */
   pilasters?: boolean;
+  /**
+   * Rotacion Euler XYZ (radianes) alrededor del pivote `[center, groundY]`. Se
+   * hornea en las cajas y la metadata. Ojo: la metadata de IA (rooms/doorways)
+   * es AABB — en angulos libres (fuera de 0/90/180/270) degrada (sigue
+   * caminable por colision, pero portales/tagging pueden fallar).
+   */
+  rotation?: VectorTuple;
 }
 
 const SIDES: HouseSide[] = ['north', 'south', 'east', 'west'];
 const DEFAULT_STAIR_CUTOUT_PADDING = 0.35;
+/**
+ * Las losas (piso/techo) abarcan todo el footprint `w x d`, así que sus caras
+ * laterales quedan coplanares con la cara exterior de las paredes y el GPU las
+ * "pelea" (z-fighting / shimmering). Se achica el footprint de la losa 1 mm de
+ * diámetro para meter su borde detrás de la pared y evitar la coincidencia.
+ */
+const SLAB_INSET = 0.001;
 const DEFAULT_PALETTE: BuildingPalette = {
   base: 'brick',
   upper: 'plaster',
@@ -224,7 +240,7 @@ export function buildBuilding(spec: BuildingSpec): BuildingArtifact {
     out.push({
       id: `${spec.id}-floor-0`,
       position: [cx, spec.groundY - slabT / 2, cz],
-      size: [w, slabT, d],
+      size: [w - SLAB_INSET, slabT, d - SLAB_INSET],
       material: palette.floor,
     });
   }
@@ -483,7 +499,10 @@ export function buildBuilding(spec: BuildingSpec): BuildingArtifact {
     max: [cx + w / 2, envelopeTopY, cz + d / 2],
   };
 
-  return { id: spec.id, boxes: out, doorways, rooms, envelope };
+  const artifact: BuildingArtifact = { id: spec.id, boxes: out, doorways, rooms, envelope };
+  return spec.rotation
+    ? rotateArtifact(artifact, [cx, spec.groundY, cz], spec.rotation)
+    : artifact;
 }
 
 function sideLength(side: HouseSide, w: number, d: number, wallT: number): number {
@@ -908,6 +927,9 @@ function buildSlabWithCutout(
   material: MaterialKey,
   cutout: { x: [number, number]; z: [number, number] } | null,
 ): StaticBoxDefinition[] {
+  // Achica el footprint para evitar z-fighting con las paredes (caras coplanares).
+  w -= SLAB_INSET;
+  d -= SLAB_INSET;
   if (!cutout) {
     return [{ id, position: [cx, centerY, cz], size: [w, thickness, d], material }];
   }
@@ -1034,20 +1056,23 @@ function buildInternalStair(
     material,
   });
 
-  // Zancas laterales en el 80% superior del tramo: evitan caer (o salirse) por
-  // el costado a media altura — el NPC queda en un borde sin celdas y se traba.
-  // El 20% inferior queda abierto: ahí los escalones son bajos (dy <= 0.5,
-  // transitables) y sirven de entrada lateral natural. Quedan dentro del
-  // cutout (padding >= 0.35 > grosor), sin chocar la losa.
+  // Zancas laterales que evitan caer (o salirse) por el costado a media altura
+  // — sin ellas el NPC queda en un borde sin celdas y se traba. Cubren casi todo
+  // el tramo y solo dejan una boca de entrada lateral corta y fija (`SIDE_OPEN`)
+  // en el extremo bajo, donde los escalones son bajos (dy <= 0.5, transitables).
+  // Antes cubrían un 80% fijo: en tramos largos el ~20% abierto dejaba un borde
+  // sin pared donde los NPCs se trababan. Quedan dentro del cutout (padding >=
+  // 0.35 > grosor), sin chocar la losa.
   const stringerT = 0.15;
   const stringerTop = toY + 0.9;
   const stringerH = stringerTop - fromY;
   const stringerY = fromY + stringerH / 2;
   const travelAlongZ = spec.topAt === 'north' || spec.topAt === 'south';
-  const coverage = 0.8;
+  const SIDE_OPEN = 0.6;
+  const coveredLen = (run: number): number => Math.max(run * 0.5, run - SIDE_OPEN);
   if (travelAlongZ) {
     const run = fpMaxZ - fpMinZ;
-    const len = run * coverage;
+    const len = coveredLen(run);
     const centerZ = spec.topAt === 'north' ? fpMinZ + len / 2 : fpMaxZ - len / 2;
     boxes.push(
       {
@@ -1065,7 +1090,7 @@ function buildInternalStair(
     );
   } else {
     const run = fpMaxX - fpMinX;
-    const len = run * coverage;
+    const len = coveredLen(run);
     const centerX = spec.topAt === 'west' ? fpMinX + len / 2 : fpMaxX - len / 2;
     boxes.push(
       {

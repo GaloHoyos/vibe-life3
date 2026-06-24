@@ -24,6 +24,7 @@ import { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
 import type { NpcRuntimeServices } from '@game/characters/CharacterFactory';
 import { TacticalMap, TacticalMapAnalyzer } from '@game/npc/ai/TacticalMap';
 import { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
+import { quatFromEuler } from '@game/levels/builders/transform';
 import type { LevelDefinition } from './LevelDefinition';
 import type { TriggerSystem } from './TriggerSystem';
 
@@ -90,24 +91,26 @@ export class LevelLoader {
     const buildingBoxes = buildings.flatMap((b) => b.boxes);
     const allStaticBoxes = [...level.staticBoxes, ...buildingBoxes];
     allStaticBoxes.forEach((definition) => {
-      const mesh = createLevelBox(definition.id, definition.position, definition.size, definition.material);
+      const mesh = createLevelBox(definition.id, definition.position, definition.size, definition.material, definition.rotation);
       this.scene.add(mesh);
       this.physics.createStaticBox({
         id: definition.id,
         position: tupleToVector3(definition.position),
         size: tupleToVector3(definition.size),
+        rotation: definition.rotation ? quatFromEuler(definition.rotation) : undefined,
       });
     });
     const buildingRegistry = new BuildingRegistry(buildings);
 
     level.dynamicBoxes.forEach((definition) => {
-      const mesh = createLevelBox(definition.id, definition.position, definition.size, definition.material);
+      const mesh = createLevelBox(definition.id, definition.position, definition.size, definition.material, definition.rotation);
       this.scene.add(mesh);
       this.physics.createDynamicBox(
         {
           id: definition.id,
           position: tupleToVector3(definition.position),
           size: tupleToVector3(definition.size),
+          rotation: definition.rotation ? quatFromEuler(definition.rotation) : undefined,
           mass: definition.mass,
         },
         mesh,
@@ -115,29 +118,33 @@ export class LevelLoader {
     });
 
     level.doors.forEach((definition) => {
-      const mesh = createLevelBox(definition.id, definition.position, definition.size, definition.material);
+      const quat = definition.rotation ? quatFromEuler(definition.rotation) : undefined;
+      const mesh = createLevelBox(definition.id, definition.position, definition.size, definition.material, definition.rotation);
       this.scene.add(mesh);
 
       const body = this.physics.createKinematicBox({
         id: definition.id,
         position: tupleToVector3(definition.position),
         size: tupleToVector3(definition.size),
+        rotation: quat,
         metadata: { kind: 'door' },
       });
-      const door = new SlidingDoor(
-        definition.id,
-        mesh,
-        body,
-        tupleToVector3(definition.openOffset),
-        definition.speed,
-      );
+      // openOffset es local al marco de la puerta: lo rotamos para que el
+      // deslizamiento siga la orientacion (una puerta girada desliza girado).
+      const openOffset = tupleToVector3(definition.openOffset);
+      if (quat) openOffset.applyQuaternion(quat);
+      const door = new SlidingDoor(definition.id, mesh, body, openOffset, definition.speed);
       doors.push(door);
 
+      const doorPos = tupleToVector3(definition.position);
+      const buttonPos = tupleToVector3(definition.button.position);
+      if (quat) buttonPos.sub(doorPos).applyQuaternion(quat).add(doorPos);
       const button = createBoxMesh({
         id: definition.button.id,
-        position: definition.button.position,
+        position: [buttonPos.x, buttonPos.y, buttonPos.z],
         size: definition.button.size,
         material: 'button',
+        rotation: definition.rotation,
         castShadow: true,
       });
       this.scene.add(button);
@@ -152,6 +159,7 @@ export class LevelLoader {
         position: definition.position,
         size: definition.size,
         material: 'button',
+        rotation: definition.rotation,
         castShadow: true,
       });
       this.scene.add(button);
@@ -308,12 +316,19 @@ function createChargerFallback(id: string): Mesh {
   return mesh;
 }
 
-function createLevelBox(id: string, position: VectorTuple, size: VectorTuple, material: MaterialKey) {
+function createLevelBox(
+  id: string,
+  position: VectorTuple,
+  size: VectorTuple,
+  material: MaterialKey,
+  rotation?: VectorTuple,
+) {
   return createBoxMesh({
     id,
     position,
     size,
     material,
+    rotation,
     castShadow: true,
     receiveShadow: true,
   });

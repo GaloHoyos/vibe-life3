@@ -22,14 +22,24 @@ export type MaterialKey =
   | 'concrete'
   | 'woodDark';
 
-interface ColorMaterialDef {
+interface CommonMaterialDef {
+  /**
+   * Renderiza el material levemente "al frente" (polygon offset) para ganar el
+   * z-fight contra superficies coplanares. Para trim decorativo embebido en la
+   * pared/techo (sills, bandas, cornisa, zócalo): caras exactamente coplanares
+   * que ni el depth buffer logarítmico separa.
+   */
+  polygonOffset?: boolean;
+}
+
+interface ColorMaterialDef extends CommonMaterialDef {
   color: number;
   roughness?: number;
   metalness?: number;
   emissive?: number;
 }
 
-interface PbrMaterialDef {
+interface PbrMaterialDef extends CommonMaterialDef {
   textureSet: TextureSetId;
   /** Tint multiplicado sobre el albedo. Default 0xffffff (sin tint). */
   color?: number;
@@ -48,7 +58,7 @@ function isPbr(def: MaterialDef): def is PbrMaterialDef {
 const definitions: Record<MaterialKey, MaterialDef> = {
   floor: { color: 0x28323a, roughness: 0.9, metalness: 0.15 },
   wall: { color: 0x33424a, roughness: 0.82, metalness: 0.2 },
-  trim: { color: 0x668899, roughness: 0.55, metalness: 0.3 },
+  trim: { color: 0x668899, roughness: 0.55, metalness: 0.3, polygonOffset: true },
   crate: { color: 0x56616a, roughness: 0.8, metalness: 0.1 },
   dynamic: { color: 0x9bb7c2, roughness: 0.65, metalness: 0.15 },
   door: { color: 0x40525d, roughness: 0.55, metalness: 0.45 },
@@ -68,14 +78,21 @@ const definitions: Record<MaterialKey, MaterialDef> = {
 };
 
 function buildMaterial(def: MaterialDef): MeshStandardMaterial {
-  if (!isPbr(def)) {
-    return new MeshStandardMaterial({
-      color: def.color,
-      roughness: def.roughness ?? 1,
-      metalness: def.metalness ?? 0,
-      emissive: def.emissive ?? 0x000000,
-    });
+  const material = isPbr(def) ? buildPbrMaterial(def) : new MeshStandardMaterial({
+    color: def.color,
+    roughness: def.roughness ?? 1,
+    metalness: def.metalness ?? 0,
+    emissive: def.emissive ?? 0x000000,
+  });
+  if (def.polygonOffset) {
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = -1;
+    material.polygonOffsetUnits = -1;
   }
+  return material;
+}
+
+function buildPbrMaterial(def: PbrMaterialDef): MeshStandardMaterial {
   const set = getTextureSet(def.textureSet);
   const params: MeshStandardMaterialParameters = {
     map: set.albedo,

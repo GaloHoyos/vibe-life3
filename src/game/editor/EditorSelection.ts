@@ -8,8 +8,11 @@ import {
 } from 'three';
 import type { EditorDocument, EditorEntity } from './EditorDocument';
 import { EditorScene, PLAYER_START_EID } from './EditorScene';
-import { getPosition, translateEntity } from './EditorEntityOps';
+import { getPosition, rotateEntity, translateEntity } from './EditorEntityOps';
 import { TranslateGizmo } from './TranslateGizmo';
+import { RotateGizmo } from './RotateGizmo';
+
+export type TransformMode = 'translate' | 'rotate';
 
 /** Puente del seleccionador hacia el documento y el resto del editor. */
 export interface SelectionHost {
@@ -32,6 +35,8 @@ export interface SelectionHost {
 export class EditorSelection {
   private readonly raycaster = new Raycaster();
   private readonly gizmo = new TranslateGizmo();
+  private readonly rotateGizmo = new RotateGizmo();
+  private mode: TransformMode = 'translate';
   private selectedEid: string | null = null;
   private highlight: BoxHelper | null = null;
   private dragLast: Vector3 | null = null;
@@ -46,6 +51,7 @@ export class EditorSelection {
 
   attach(): void {
     this.gizmo.attach(this.scene);
+    this.rotateGizmo.attach(this.scene);
     this.canvas.addEventListener('pointerdown', this.onPointerDown);
   }
 
@@ -53,7 +59,9 @@ export class EditorSelection {
     this.selectedEid = null;
     this.clearHighlight();
     this.gizmo.setTarget(null);
+    this.rotateGizmo.setTarget(null);
     this.gizmo.detach(this.scene);
+    this.rotateGizmo.detach(this.scene);
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     window.removeEventListener('pointermove', this.onPointerMove);
     window.removeEventListener('pointerup', this.onPointerUp);
@@ -67,9 +75,25 @@ export class EditorSelection {
     this.gizmo.setSnap(step);
   }
 
+  getMode(): TransformMode {
+    return this.mode;
+  }
+
+  setMode(mode: TransformMode): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    this.refresh();
+  }
+
+  /** Gizmo del modo activo (rotacion no aplica al spawn del jugador). */
+  private activeGizmo(): TranslateGizmo | RotateGizmo {
+    return this.mode === 'rotate' ? this.rotateGizmo : this.gizmo;
+  }
+
   /** Por frame: tamano del gizmo + caja de seleccion. */
   update(): void {
     this.gizmo.update(this.camera);
+    this.rotateGizmo.update(this.camera);
     this.highlight?.update();
   }
 
@@ -87,9 +111,13 @@ export class EditorSelection {
     const obj = this.selectedEid ? this.editorScene.getObject(this.selectedEid) : undefined;
     if (!pos || !obj) {
       this.gizmo.setTarget(null);
+      this.rotateGizmo.setTarget(null);
       return;
     }
-    this.gizmo.setTarget(pos);
+    // La rotacion no aplica al spawn del jugador (solo posicion).
+    const canRotate = this.mode === 'rotate' && this.selectedEid !== PLAYER_START_EID;
+    this.gizmo.setTarget(canRotate ? null : pos);
+    this.rotateGizmo.setTarget(canRotate ? pos : null);
     this.highlight = new BoxHelper(obj, 0x37d67a);
     this.highlight.renderOrder = 998;
     this.scene.add(this.highlight);
@@ -98,6 +126,7 @@ export class EditorSelection {
   dispose(): void {
     this.clearHighlight();
     this.gizmo.dispose();
+    this.rotateGizmo.dispose();
   }
 
   // ---------------------------------------------------------------------------
@@ -134,7 +163,7 @@ export class EditorSelection {
     if (event.button !== 0) return;
     this.setRayFromEvent(event);
 
-    if (this.selectedEid && this.gizmo.beginDrag(this.raycaster)) {
+    if (this.selectedEid && this.activeGizmo().beginDrag(this.raycaster)) {
       this.dragLast = this.selectionPosition();
       this.host.onTransformStart();
       window.addEventListener('pointermove', this.onPointerMove);
@@ -154,8 +183,17 @@ export class EditorSelection {
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
-    if (!this.gizmo.isDragging() || !this.selectedEid || !this.dragLast) return;
+    if (!this.selectedEid) return;
     this.setRayFromEvent(event);
+    if (this.mode === 'rotate') {
+      this.dragRotate();
+    } else {
+      this.dragTranslate();
+    }
+  };
+
+  private dragTranslate(): void {
+    if (!this.gizmo.isDragging() || !this.selectedEid || !this.dragLast) return;
     const next = this.gizmo.dragTo(this.raycaster);
     if (!next) return;
 
@@ -176,11 +214,31 @@ export class EditorSelection {
     }
     this.highlight?.update();
     this.host.onTransformLive();
-  };
+  }
+
+  private dragRotate(): void {
+    if (!this.rotateGizmo.isDragging() || !this.selectedEid || this.selectedEid === PLAYER_START_EID) return;
+    const delta = this.rotateGizmo.dragTo(this.raycaster);
+    if (!delta) return;
+    const entity = this.host.getEntity(this.selectedEid);
+    if (!entity) return;
+
+    rotateEntity(entity, delta);
+    // Pivote estable: rotar alrededor del centro deja getPosition() invariante.
+    const pivot = this.selectionPosition();
+    const obj = this.editorScene.getObject(this.selectedEid);
+    if (pivot && obj) {
+      obj.position.sub(pivot).applyQuaternion(delta).add(pivot);
+      obj.quaternion.premultiply(delta);
+    }
+    this.highlight?.update();
+    this.host.onTransformLive();
+  }
 
   private readonly onPointerUp = (event: PointerEvent): void => {
-    if (event.button !== 0 || !this.gizmo.isDragging()) return;
-    this.gizmo.endDrag();
+    const active = this.activeGizmo();
+    if (event.button !== 0 || !active.isDragging()) return;
+    active.endDrag();
     window.removeEventListener('pointermove', this.onPointerMove);
     window.removeEventListener('pointerup', this.onPointerUp);
     this.dragLast = null;
