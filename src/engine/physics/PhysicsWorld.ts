@@ -1,5 +1,5 @@
 ﻿import RAPIER from '@dimforge/rapier3d-compat';
-import type { Object3D, Vector3 } from 'three';
+import type { Object3D, Quaternion, Vector3 } from 'three';
 import type { Damageable } from '@shared/types/lifecycle';
 import type { HeightField } from '@shared/math/HeightField';
 import type { Faction } from '@engine/ai/Faction';
@@ -26,6 +26,8 @@ export interface PhysicsBoxOptions {
   id: string;
   position: Vector3;
   size: Vector3;
+  /** Orientacion del cuerpo. Si se omite, queda alineado a los ejes. */
+  rotation?: Quaternion;
   mass?: number;
   metadata?: Partial<PhysicsMetadata>;
 }
@@ -67,7 +69,10 @@ export class PhysicsWorld {
 
   createStaticBox(options: PhysicsBoxOptions): RAPIER.RigidBody {
     const rigidBody = this.world.createRigidBody(
-      RAPIER.RigidBodyDesc.fixed().setTranslation(options.position.x, options.position.y, options.position.z),
+      applyRotation(
+        RAPIER.RigidBodyDesc.fixed().setTranslation(options.position.x, options.position.y, options.position.z),
+        options.rotation,
+      ),
     );
     const collider = this.world.createCollider(createBoxCollider(options.size), rigidBody);
     this.registerCollider(collider, {
@@ -80,7 +85,10 @@ export class PhysicsWorld {
 
   createDynamicBox(options: PhysicsBoxOptions, mesh: Object3D): RAPIER.RigidBody {
     const rigidBody = this.world.createRigidBody(
-      RAPIER.RigidBodyDesc.dynamic().setTranslation(options.position.x, options.position.y, options.position.z),
+      applyRotation(
+        RAPIER.RigidBodyDesc.dynamic().setTranslation(options.position.x, options.position.y, options.position.z),
+        options.rotation,
+      ),
     );
     const volume = Math.max(options.size.x * options.size.y * options.size.z, 0.001);
     const density = (options.mass ?? 1) / volume;
@@ -119,10 +127,13 @@ export class PhysicsWorld {
 
   createKinematicBox(options: PhysicsBoxOptions): RAPIER.RigidBody {
     const rigidBody = this.world.createRigidBody(
-      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
-        options.position.x,
-        options.position.y,
-        options.position.z,
+      applyRotation(
+        RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
+          options.position.x,
+          options.position.y,
+          options.position.z,
+        ),
+        options.rotation,
       ),
     );
     const collider = this.world.createCollider(createBoxCollider(options.size), rigidBody);
@@ -175,6 +186,11 @@ export class PhysicsWorld {
       mesh.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
     });
   }
+}
+
+function applyRotation(desc: RAPIER.RigidBodyDesc, rotation: Quaternion | undefined): RAPIER.RigidBodyDesc {
+  if (!rotation) return desc;
+  return desc.setRotation({ x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w });
 }
 
 function buildTerrainTrimesh(

@@ -73,6 +73,7 @@ import {
   saveLibraryMap,
 } from "@game/editor/mapLibrary";
 import type { EditorDocument } from "@game/editor/EditorDocument";
+import type { PublishMeta } from "@game/workshop/WorkshopTypes";
 import { WorkshopService } from "@game/workshop/WorkshopService";
 import { WorkshopStore } from "@game/workshop/WorkshopStore";
 import { CloudflareWorkshopBackend } from "@game/workshop/CloudflareWorkshopBackend";
@@ -528,7 +529,9 @@ export class Game {
         s.resolve(EngineTokens.Lighting),
         {
           onExit: () => this.exitEditor(),
-          onPublish: (doc) => this.publishFromEditor(doc),
+          onPublish: (doc, meta) => this.publishFromEditor(doc, meta),
+          canPublish: () =>
+            this.engine.services.resolve(GameTokens.Workshop).capabilities.publish,
         },
       ),
     );
@@ -862,7 +865,7 @@ export class Game {
     }
   }
 
-  private async publishFromEditor(doc: EditorDocument): Promise<string> {
+  private async publishFromEditor(doc: EditorDocument, meta: PublishMeta): Promise<string> {
     const workshop = this.engine.services.resolve(GameTokens.Workshop);
     if (!workshop.capabilities.publish) {
       throw new Error("Workshop no configurado (VITE_WORKSHOP_API).");
@@ -870,12 +873,7 @@ export class Game {
     if (!workshop.currentUser()) {
       await workshop.signIn();
     }
-    const listing = await workshop.publish(doc, {
-      title: doc.meta.title,
-      description: doc.meta.description ?? "",
-      tags: [],
-      type: "map",
-    });
+    const listing = await workshop.publish(doc, meta);
     return `Publicado en el Workshop: "${listing.title}".`;
   }
 

@@ -19,9 +19,23 @@ export interface WorkshopListing {
   revision: string;
   updatedAt: string;
   downloads: number;
+  /** Promedio de puntuaciones (0 si no hay votos). */
   rating: number;
+  /** Cantidad de votos que componen el promedio. */
+  ratingCount: number;
+  /** Voto del usuario actual (1..5) si esta logueado y voto; `null` si no. */
+  myRating?: number | null;
   tags: string[];
   type: WorkshopContentType;
+}
+
+/** Comentario de un mapa del Workshop. Contenido no confiable: render con `textContent`. */
+export interface WorkshopComment {
+  id: string;
+  author: string;
+  body: string;
+  /** ISO timestamp de creacion. */
+  createdAt: string;
 }
 
 export type WorkshopSort = "recent" | "popular" | "rating";

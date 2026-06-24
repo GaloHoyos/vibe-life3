@@ -1,4 +1,6 @@
+import { Euler, Quaternion } from 'three';
 import type { VectorTuple } from '@shared/math/VectorTuple';
+import { rotateArtifact } from '@game/levels/builders/transform';
 import type { EditorEntity, PropEntitySpec } from './EditorDocument';
 
 /**
@@ -130,6 +132,84 @@ export function getRotationY(entity: EditorEntity): number | null {
 
 export function setRotationY(entity: EditorEntity, radians: number): void {
   if (entity.kind === 'charger') entity.def.rotationY = radians;
+}
+
+/** Rotacion Euler XYZ (radianes) de la entidad. `[0,0,0]` si no rota o no aplica. */
+export function getRotation(entity: EditorEntity): VectorTuple {
+  switch (entity.kind) {
+    case 'staticBox':
+    case 'dynamicBox':
+    case 'door':
+    case 'actionButton':
+    case 'trigger':
+    case 'npc':
+    case 'weaponPickup':
+    case 'itemPickup':
+      return entity.def.rotation ? [...entity.def.rotation] : [0, 0, 0];
+    case 'charger':
+      return [0, entity.def.rotationY ?? 0, 0];
+    case 'building':
+    case 'house':
+    case 'ramp':
+      return entity.spec.rotation ? [...entity.spec.rotation] : [0, 0, 0];
+    case 'prop':
+      return entity.prop.spec.rotation ? [...entity.prop.spec.rotation] : [0, 0, 0];
+    case 'prebuiltBuilding':
+      // La rotacion se hornea en la geometria (no hay angulo almacenado).
+      return [0, 0, 0];
+  }
+}
+
+/** Setea la rotacion absoluta (para el inspector). El charger solo usa Y. */
+export function setRotation(entity: EditorEntity, euler: VectorTuple): void {
+  const value = isZeroRotation(euler) ? undefined : ([...euler] as VectorTuple);
+  switch (entity.kind) {
+    case 'staticBox':
+    case 'dynamicBox':
+    case 'door':
+    case 'actionButton':
+    case 'trigger':
+    case 'npc':
+    case 'weaponPickup':
+    case 'itemPickup':
+      entity.def.rotation = value;
+      return;
+    case 'charger':
+      entity.def.rotationY = euler[1] || undefined;
+      return;
+    case 'building':
+    case 'house':
+    case 'ramp':
+      entity.spec.rotation = value;
+      return;
+    case 'prop':
+      entity.prop.spec.rotation = value;
+      return;
+    case 'prebuiltBuilding':
+      return; // se rota destructivamente via `rotateEntity`
+  }
+}
+
+/**
+ * Aplica un delta de rotacion (cuaternion) alrededor del pivote de la entidad.
+ * Para entidades con rotacion almacenada, compone y guarda el Euler resultante;
+ * para el `prebuiltBuilding` (geometria horneada) rota el artifact en sitio.
+ */
+export function rotateEntity(entity: EditorEntity, delta: Quaternion): void {
+  if (entity.kind === 'prebuiltBuilding') {
+    const e = new Euler().setFromQuaternion(delta);
+    Object.assign(entity.artifact, rotateArtifact(entity.artifact, getPosition(entity), [e.x, e.y, e.z]));
+    return;
+  }
+  const current = getRotation(entity);
+  const q = new Quaternion().setFromEuler(new Euler(current[0], current[1], current[2]));
+  q.premultiply(delta);
+  const e = new Euler().setFromQuaternion(q);
+  setRotation(entity, [e.x, e.y, e.z]);
+}
+
+function isZeroRotation(euler: VectorTuple): boolean {
+  return euler[0] === 0 && euler[1] === 0 && euler[2] === 0;
 }
 
 export function setLevelId(entity: EditorEntity, id: string): void {

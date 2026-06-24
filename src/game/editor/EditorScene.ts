@@ -14,6 +14,7 @@ import { generateHeightField } from '@shared/math/HeightField';
 import { buildBuilding } from '@game/levels/builders/BuildingBuilder';
 import { buildHouse } from '@game/levels/builders/HouseBuilder';
 import { buildRamp } from '@game/levels/builders/RampBuilder';
+import { quatFromEuler } from '@game/levels/builders/transform';
 import type {
   DynamicBoxDefinition,
   StaticBoxDefinition,
@@ -180,7 +181,18 @@ export class EditorScene {
         return boxMesh(entity.def);
       case 'door': {
         const group = new Group();
-        group.add(boxMesh(entity.def));
+        // Panel + boton se rotan como conjunto alrededor del pivote de la puerta
+        // (no por caja, para no duplicar la rotacion del panel).
+        group.add(
+          createBoxMesh({
+            id: entity.def.id,
+            position: entity.def.position,
+            size: entity.def.size,
+            material: entity.def.material,
+            castShadow: true,
+            receiveShadow: true,
+          }),
+        );
         group.add(
           createBoxMesh({
             id: entity.def.button.id,
@@ -190,6 +202,7 @@ export class EditorScene {
             castShadow: true,
           }),
         );
+        rotateGroupAbout(group, entity.def.position, entity.def.rotation);
         return group;
       }
       case 'actionButton':
@@ -198,18 +211,19 @@ export class EditorScene {
           position: entity.def.position,
           size: entity.def.size,
           material: 'button',
+          rotation: entity.def.rotation,
           castShadow: true,
         });
       case 'trigger':
-        return triggerMesh(entity.def.id, entity.def.position, entity.def.size);
+        return triggerMesh(entity.def.id, entity.def.position, entity.def.size, entity.def.rotation);
       case 'npc':
-        return placeholder(entity.def.position, [0.6, 1.7, 0.6], 'npc');
+        return placeholder(entity.def.position, [0.6, 1.7, 0.6], 'npc', entity.def.rotation);
       case 'weaponPickup':
-        return placeholder(entity.def.position, [0.5, 0.3, 0.5], 'hazard');
+        return placeholder(entity.def.position, [0.5, 0.3, 0.5], 'hazard', entity.def.rotation);
       case 'itemPickup':
-        return placeholder(entity.def.position, [0.45, 0.45, 0.45], 'button');
+        return placeholder(entity.def.position, [0.45, 0.45, 0.45], 'button', entity.def.rotation);
       case 'charger':
-        return placeholder(entity.def.position, [0.8, 1.6, 0.4], 'trim', entity.def.rotationY ?? 0);
+        return placeholder(entity.def.position, [0.8, 1.6, 0.4], 'trim', [0, entity.def.rotationY ?? 0, 0]);
       case 'building':
         return groupFromBoxes(buildBuilding(entity.spec).boxes);
       case 'house':
@@ -232,13 +246,14 @@ function boxMesh(def: StaticBoxDefinition | DynamicBoxDefinition): Mesh {
     position: def.position,
     size: def.size,
     material: def.material,
+    rotation: def.rotation,
     castShadow: true,
     receiveShadow: true,
   });
 }
 
-function triggerMesh(id: string, position: VectorTuple, size: VectorTuple): Mesh {
-  const mesh = createBoxMesh({ id, position, size, material: 'hazard' });
+function triggerMesh(id: string, position: VectorTuple, size: VectorTuple, rotation?: VectorTuple): Mesh {
+  const mesh = createBoxMesh({ id, position, size, material: 'hazard', rotation });
   const mat = mesh.material;
   if (mat instanceof MeshStandardMaterial) {
     mat.transparent = true;
@@ -252,11 +267,11 @@ function placeholder(
   position: VectorTuple,
   size: VectorTuple,
   material: Parameters<typeof createBoxMesh>[0]['material'],
-  rotationY = 0,
+  rotation?: VectorTuple,
 ): Object3D {
   const group = new Group();
   group.position.set(position[0], position[1], position[2]);
-  group.rotation.y = rotationY;
+  if (rotation) group.rotation.set(rotation[0], rotation[1], rotation[2]);
   group.add(
     createBoxMesh({
       id: 'placeholder',
@@ -273,6 +288,15 @@ function groupFromBoxes(boxes: StaticBoxDefinition[]): Group {
   const group = new Group();
   for (const box of boxes) group.add(boxMesh(box));
   return group;
+}
+
+/** Rota un objeto (mesh o grupo con hijos absolutos) alrededor de un pivote mundial. */
+function rotateGroupAbout(obj: Object3D, pivot: VectorTuple, rotation: VectorTuple | undefined): void {
+  if (!rotation || (rotation[0] === 0 && rotation[1] === 0 && rotation[2] === 0)) return;
+  const quat = quatFromEuler(rotation);
+  const p = new Vector3(pivot[0], pivot[1], pivot[2]);
+  obj.position.sub(p).applyQuaternion(quat).add(p);
+  obj.quaternion.premultiply(quat);
 }
 
 function disposeObject(obj: Object3D): void {

@@ -1,4 +1,4 @@
-﻿import { CreditsMenu } from "./CreditsMenu";
+import { CreditsMenu } from "./CreditsMenu";
 import { CustomMapsMenu } from "./CustomMapsMenu";
 import { WorkshopMenu } from "./WorkshopMenu";
 import { NewGameMenu } from "./NewGameMenu";
@@ -9,6 +9,8 @@ import {
   type GameMenuState,
   type MenuChapter,
 } from "./MainMenuState";
+import { MenuStrings } from "@game/config/strings";
+import { MenuAtmosphere } from "./MenuAtmosphere";
 import type { AudioBusName } from "@engine/audio/core/AudioSystem";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { WorkshopService } from "@game/workshop/WorkshopService";
@@ -31,6 +33,13 @@ export interface MainMenuViewCallbacks {
   workshop: WorkshopService;
 }
 
+/**
+ * Vista del menu principal/pausa. Composicion estilo Half-Life 2 con toque
+ * moderno: marca arriba-izquierda, nav anclada abajo-izquierda sobre un backdrop
+ * cinematico con parallax sutil, y submenus como tarjeta esmerilada centrada.
+ * En el flujo de pausa el backdrop se vuelve transparente para dejar ver el
+ * juego congelado a traves de un blur (clase `is-pause`).
+ */
 export class MainMenuView {
   readonly element = document.createElement("div");
   private readonly mainNav = document.createElement("section");
@@ -44,13 +53,22 @@ export class MainMenuView {
   private readonly creditsMenu: CreditsMenu;
   private readonly loadPanel = document.createElement("section");
   private readonly callbacks: MainMenuViewCallbacks;
+  private readonly atmosphere: MenuAtmosphere;
+  private visible = false;
+  private paused = false;
 
   constructor(chapters: MenuChapter[], callbacks: MainMenuViewCallbacks) {
     this.callbacks = callbacks;
     this.element.className = "hl2-menu";
     this.element.innerHTML = `
-      <div class="hl2-menu__backdrop"></div>
-      <div class="hl2-menu__scanlines"></div>
+      <div class="hl2-menu__backdrop">
+        <div class="hl2-menu__glow"></div>
+        <div class="hl2-menu__vignette"></div>
+      </div>
+      <canvas class="hl2-menu__particles" aria-hidden="true"></canvas>
+      <div class="hl2-menu__grain" aria-hidden="true"></div>
+      <div class="hl2-menu__scanlines" aria-hidden="true"></div>
+      <div class="hl2-menu__scrim" aria-hidden="true"></div>
       <div class="hl2-menu__frame">
         <header class="hl2-brand">
           <div class="hl2-brand__lambda" aria-hidden="true">
@@ -131,12 +149,19 @@ export class MainMenuView {
       </nav>
     `;
 
-    this.contentPanel.className = "hl2-panel hl2-panel--content is-hidden";
+    this.contentPanel.className = "hl2-menu__content is-hidden";
 
     this.statusLine.className = "hl2-status";
-    this.statusLine.textContent = "Selecciona una opcion.";
+    this.statusLine.textContent = MenuStrings.selectOption;
 
-    frame.append(this.mainNav, this.pauseNav, this.contentPanel, this.statusLine);
+    const bottom = document.createElement("div");
+    bottom.className = "hl2-menu__bottom";
+    bottom.append(this.mainNav, this.pauseNav, this.buildFooter());
+    frame.append(bottom);
+
+    // El panel de contenido vive fuera del frame para pintar por encima del
+    // scrim sin pelear contextos de apilamiento.
+    this.element.append(this.contentPanel);
 
     this.loadingOverlay = this.element.querySelector(
       ".hl2-menu__loading",
@@ -208,6 +233,11 @@ export class MainMenuView {
       '[data-action="exitToMain"]',
     ) as HTMLButtonElement;
     exitToMainButton.addEventListener("click", callbacks.onExitToMain);
+
+    const canvas = this.element.querySelector(
+      ".hl2-menu__particles",
+    ) as HTMLCanvasElement;
+    this.atmosphere = new MenuAtmosphere(this.element, canvas);
   }
 
   setState(state: GameMenuState, pauseFlow: boolean): void {
@@ -221,6 +251,10 @@ export class MainMenuView {
       state === "credits" ||
       state === "loadGame";
 
+    this.paused = pauseFlow && !isLoading;
+    this.element.classList.toggle("is-pause", this.paused);
+    this.element.classList.toggle("has-panel", isSubMenu);
+    this.updateAtmosphere();
     this.loadingOverlay.classList.toggle("is-visible", isLoading);
     this.mainNav.classList.toggle("is-hidden", isLoading || pauseFlow);
     this.pauseNav.classList.toggle("is-hidden", isLoading || !pauseFlow);
@@ -240,6 +274,30 @@ export class MainMenuView {
     } else if (state === "loadGame") {
       this.contentPanel.append(this.loadPanel);
     }
+  }
+
+  private buildFooter(): HTMLDivElement {
+    const footer = document.createElement("div");
+    footer.className = "hl2-footer";
+
+    const build = document.createElement("span");
+    build.className = "hl2-footer__build";
+    build.textContent = MenuStrings.buildLabel;
+
+    const online = this.callbacks.workshop.capabilities.auth;
+    const net = document.createElement("span");
+    net.className = `hl2-footer__net${online ? " is-online" : ""}`;
+    net.textContent = online
+      ? MenuStrings.workshopOnline
+      : MenuStrings.workshopOffline;
+
+    footer.append(build, this.statusLine, net);
+    return footer;
+  }
+
+  /** La atmosfera (partículas + parallax) solo corre con el menu visible y sin pausa. */
+  private updateAtmosphere(): void {
+    this.atmosphere.setActive(this.visible && !this.paused);
   }
 
   /** Reconstruido cada vez: la biblioteca local cambia (importar/borrar). */
@@ -272,11 +330,14 @@ export class MainMenuView {
   }
 
   dispose(): void {
+    this.atmosphere.dispose();
     this.optionsMenu.dispose();
   }
 
   setVisible(visible: boolean): void {
+    this.visible = visible;
     this.element.classList.toggle("is-hidden", !visible);
+    this.updateAtmosphere();
   }
 
   setStatus(message: string): void {

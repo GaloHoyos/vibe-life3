@@ -3,12 +3,14 @@ import type { TerrainDefinition } from '@game/levels/LevelDefinition';
 import type { SkyboxId } from '@engine/render/environment/Skybox';
 import type { EditorDocument } from '../EditorDocument';
 import { MATERIAL_KEYS, SKYBOX_IDS } from '../editorOptions';
+import { iconSpan } from './editorIcons';
 import {
   checkboxField,
   colorField,
   jsonField,
   numberField,
   selectField,
+  splitList,
   textField,
   vec3Field,
 } from './editorFields';
@@ -37,16 +39,26 @@ function defaultTerrain(): TerrainDefinition {
 export class LevelSettingsView implements Disposable {
   readonly element = document.createElement('div');
   private readonly body = document.createElement('div');
+  private readonly details = document.createElement('details');
 
   constructor(private readonly callbacks: SettingsCallbacks) {
     this.element.className = 'editor-panel editor-settings';
-    const details = document.createElement('details');
     const summary = document.createElement('summary');
     summary.className = 'editor-panel__title';
-    summary.textContent = 'Nivel';
-    details.append(summary, this.body);
-    this.element.append(details);
+    summary.append(iconSpan('gear'));
+    const label = document.createElement('span');
+    label.textContent = 'Nivel';
+    summary.append(label);
+    this.details.append(summary, this.body);
+    this.body.className = 'editor-panel__body';
+    this.element.append(this.details);
     this.refresh();
+  }
+
+  /** Despliega el panel y lo trae a la vista (menu "Configuracion del nivel"). */
+  open(): void {
+    this.details.open = true;
+    this.element.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   refresh(): void {
@@ -99,6 +111,7 @@ export class LevelSettingsView implements Disposable {
   }
 
   dispose(): void {
+    this.details.replaceChildren();
     this.element.replaceChildren();
   }
 
@@ -132,11 +145,4 @@ export class LevelSettingsView implements Disposable {
     );
     return wrap;
   }
-}
-
-function splitList(value: string): string[] {
-  return value
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
 }

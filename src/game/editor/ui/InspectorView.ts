@@ -1,4 +1,5 @@
 import type { Disposable } from '@shared/types/lifecycle';
+import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { MaterialKey } from '@engine/render/material/Materials';
 import type {
   BuildingDoor,
@@ -15,10 +16,12 @@ import { entityKindLabel, entityLevelId } from '../EditorDocument';
 import {
   editablePayload,
   getPosition,
+  getRotation,
   getRotationY,
   getSize,
   setLevelId,
   setPosition,
+  setRotation,
   setRotationY,
   setSize,
 } from '../EditorEntityOps';
@@ -40,6 +43,7 @@ import {
   vec3Field,
   type Field,
 } from './editorFields';
+import { entityIcon, iconSpan } from './editorIcons';
 
 const SIDES: readonly string[] = ['north', 'south', 'east', 'west'];
 const ROOFS: readonly string[] = ['flat', 'walkable', 'gable', 'none'];
@@ -60,17 +64,26 @@ export interface InspectorCallbacks {
  */
 export class InspectorView implements Disposable {
   readonly element = document.createElement('div');
+  private readonly body = document.createElement('div');
 
   private mode: 'entity' | 'player' | null = null;
   private entity: EditorEntity | null = null;
   private posField: Field<[number, number, number]> | null = null;
   private sizeField: Field<[number, number, number]> | null = null;
+  private rotField: Field<[number, number, number]> | null = null;
 
   /** Pisos con su `<details>` desplegado, para preservar el estado al re-render. */
   private readonly openStories = new Set<number>([0]);
 
   constructor(private readonly callbacks: InspectorCallbacks) {
     this.element.className = 'editor-panel editor-inspector';
+    const title = document.createElement('h2');
+    title.className = 'editor-panel__title';
+    const titleText = document.createElement('span');
+    titleText.textContent = 'Inspector';
+    title.append(titleText);
+    this.body.className = 'editor-panel__body';
+    this.element.append(title, this.body);
     this.clear();
   }
 
@@ -79,30 +92,32 @@ export class InspectorView implements Disposable {
     this.entity = null;
     this.posField = null;
     this.sizeField = null;
-    this.element.replaceChildren(empty('Nada seleccionado.'));
+    this.rotField = null;
+    this.body.replaceChildren(empty('Nada seleccionado.'));
   }
 
   showPlayerStart(): void {
     this.mode = 'player';
     this.entity = null;
     this.sizeField = null;
-    this.element.replaceChildren();
-    this.element.append(header('Spawn del jugador', 'playerStart'));
+    this.rotField = null;
+    this.body.replaceChildren();
+    this.body.append(header(iconSpan('person'), 'Spawn del jugador', 'playerStart'));
     const doc = this.callbacks.getDocument();
     this.posField = vec3Field('Posicion', doc.meta.playerStart, (v) => {
       doc.meta.playerStart = v;
       this.callbacks.onPlayerStartChanged();
     });
-    this.element.append(this.posField.element);
+    this.body.append(this.posField.element);
   }
 
   showEntity(entity: EditorEntity): void {
     this.mode = 'entity';
     this.entity = entity;
-    this.element.replaceChildren();
-    this.element.append(header(entityKindLabel(entity.kind), entityLevelId(entity)));
+    this.body.replaceChildren();
+    this.body.append(header(entityIcon(entity.kind), entityKindLabel(entity.kind), entityLevelId(entity)));
 
-    this.element.append(
+    this.body.append(
       textField('Id', entityLevelId(entity), (v) => {
         if (v) setLevelId(entity, v);
         this.commit();
@@ -113,7 +128,7 @@ export class InspectorView implements Disposable {
       setPosition(entity, v);
       this.commit();
     });
-    this.element.append(this.posField.element);
+    this.body.append(this.posField.element);
 
     const size = getSize(entity);
     if (size) {
@@ -121,9 +136,20 @@ export class InspectorView implements Disposable {
         setSize(entity, v);
         this.commit();
       });
-      this.element.append(this.sizeField.element);
+      this.body.append(this.sizeField.element);
     } else {
       this.sizeField = null;
+    }
+
+    // El charger usa su propio campo Y; el prebuilt rotea destructivamente (gizmo).
+    if (entity.kind !== 'charger' && entity.kind !== 'prebuiltBuilding') {
+      this.rotField = vec3Field('Rotacion (°)', degTuple(getRotation(entity)), (v) => {
+        setRotation(entity, [degToRad(v[0]), degToRad(v[1]), degToRad(v[2])]);
+        this.commit();
+      }, 5);
+      this.body.append(this.rotField.element);
+    } else {
+      this.rotField = null;
     }
 
     this.appendKindFields(entity);
@@ -141,7 +167,7 @@ export class InspectorView implements Disposable {
         }
       }).element,
     );
-    this.element.append(advanced);
+    this.body.append(advanced);
   }
 
   /** Refresca posicion/tamano mostrados (durante un arrastre del gizmo). */
@@ -154,11 +180,12 @@ export class InspectorView implements Disposable {
       this.posField?.set(getPosition(this.entity));
       const size = getSize(this.entity);
       if (size) this.sizeField?.set(size);
+      if (this.rotField) this.rotField.set(degTuple(getRotation(this.entity)));
     }
   }
 
   dispose(): void {
-    this.element.replaceChildren();
+    this.body.replaceChildren();
   }
 
   // ---------------------------------------------------------------------------
@@ -301,6 +328,7 @@ export class InspectorView implements Disposable {
     }, 1));
     this.append(selectField('Techo', spec.roof ?? 'flat', ROOFS, (v) => { spec.roof = v as BuildingRoof; this.commit(); }));
     this.append(checkboxField('Pilastras', spec.pilasters ?? spec.stories.length >= 2, (v) => { spec.pilasters = v; this.commit(); }));
+    this.append(checkboxField('Losa de planta baja', spec.groundSlab ?? false, (v) => { spec.groundSlab = v; this.commit(); }));
     this.append(selectField('Mat. base', spec.palette?.base ?? 'concrete', MATERIAL_KEYS, (v) => { spec.palette = { ...spec.palette, base: v as MaterialKey }; this.commit(); }));
     this.append(selectField('Mat. trim', spec.palette?.trim ?? 'trim', MATERIAL_KEYS, (v) => { spec.palette = { ...spec.palette, trim: v as MaterialKey }; this.commit(); }));
     this.append(selectField('Mat. techo', spec.palette?.roof ?? 'roof', MATERIAL_KEYS, (v) => { spec.palette = { ...spec.palette, roof: v as MaterialKey }; this.commit(); }));
@@ -310,7 +338,7 @@ export class InspectorView implements Disposable {
     stack.className = 'editor-substack';
     stack.append(subheading('Pisos: puertas y escaleras'));
     spec.stories.forEach((story, i) => stack.append(this.storyEditor(spec, story, i)));
-    this.element.append(stack);
+    this.body.append(stack);
   }
 
   private storyEditor(spec: BuildingSpec, story: BuildingStorySpec, index: number): HTMLElement {
@@ -417,6 +445,7 @@ export class InspectorView implements Disposable {
     this.append(numberField('Profundidad', spec.depth, (v) => { spec.depth = v; this.commit(); }, 0.5));
     this.append(numberField('Alto', spec.height, (v) => { spec.height = v; this.commit(); }, 0.25));
     this.append(checkboxField('Techo a dos aguas', spec.roof ?? true, (v) => { spec.roof = v; this.commit(); }));
+    this.append(checkboxField('Losa de planta baja', spec.groundSlab ?? false, (v) => { spec.groundSlab = v; this.commit(); }));
     this.append(selectField('Puerta lado', spec.door?.side ?? NO_DOOR, [NO_DOOR, ...SIDES], (v) => {
       spec.door = v === NO_DOOR ? undefined : { side: v as HouseSide, width: spec.door?.width ?? 1.4 };
       this.commit();
@@ -502,18 +531,21 @@ export class InspectorView implements Disposable {
   }
 
   private append(field: { element: HTMLElement }): void {
-    this.element.append(field.element);
+    this.body.append(field.element);
   }
 }
 
-function header(title: string, subtitle: string): HTMLElement {
+function header(icon: HTMLElement, title: string, subtitle: string): HTMLElement {
   const el = document.createElement('div');
   el.className = 'editor-inspector__header';
+  const text = document.createElement('div');
+  text.className = 'editor-inspector__header-text';
   const h = document.createElement('h3');
   h.textContent = title;
   const sub = document.createElement('span');
   sub.textContent = subtitle;
-  el.append(h, sub);
+  text.append(h, sub);
+  el.append(icon, text);
   return el;
 }
 
@@ -522,6 +554,18 @@ function empty(text: string): HTMLElement {
   el.className = 'editor-empty';
   el.textContent = text;
   return el;
+}
+
+function degTuple(rad: VectorTuple): [number, number, number] {
+  return [radToDeg(rad[0]), radToDeg(rad[1]), radToDeg(rad[2])];
+}
+
+function radToDeg(r: number): number {
+  return r * (180 / Math.PI);
+}
+
+function degToRad(d: number): number {
+  return d * (Math.PI / 180);
 }
 
 function subheading(text: string): HTMLElement {

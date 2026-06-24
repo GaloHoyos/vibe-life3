@@ -10,7 +10,11 @@ export class Renderer {
   readonly canvas: HTMLCanvasElement;
 
   constructor(container: HTMLElement) {
-    this.renderer = new WebGLRenderer({ antialias: true });
+    // `logarithmicDepthBuffer`: la fachada tiene mucha geometria casi coplanar
+    // (losas vs paredes, sills/bandas/zocalo/cornisa embebidos) que con el depth
+    // buffer lineal (near 0.05 / far 350) hace z-fighting a la distancia. El
+    // buffer logaritmico reparte la precision y lo elimina globalmente.
+    this.renderer = new WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.shadowMap.enabled = true;

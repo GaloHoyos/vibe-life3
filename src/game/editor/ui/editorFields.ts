@@ -16,6 +16,28 @@ function row(label: string, control: HTMLElement): HTMLDivElement {
   return element;
 }
 
+/** Variante con el label arriba del control (para textareas anchas). */
+function stackRow(label: string, control: HTMLElement): HTMLDivElement {
+  const element = document.createElement('div');
+  element.className = 'editor-field editor-field--stack';
+  if (label) {
+    const labelEl = document.createElement('label');
+    labelEl.className = 'editor-field__label';
+    labelEl.textContent = label;
+    element.append(labelEl);
+  }
+  element.append(control);
+  return element;
+}
+
+/** Parte una lista coma-separada en items no vacios y trimmeados. */
+export function splitList(value: string): string[] {
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
 function fmt(value: number): string {
   return String(Number(value.toFixed(3)));
 }
@@ -112,6 +134,21 @@ export function textField(
   return { element: row(label, input), set: (v) => (input.value = v) };
 }
 
+export function textareaField(
+  label: string,
+  value: string,
+  onChange: (value: string) => void,
+  rows = 3,
+): Field<string> {
+  const textarea = document.createElement('textarea');
+  textarea.className = 'editor-input editor-textarea';
+  textarea.rows = rows;
+  textarea.value = value;
+  textarea.style.fontFamily = 'inherit';
+  textarea.addEventListener('input', () => onChange(textarea.value));
+  return { element: stackRow(label, textarea), set: (v) => (textarea.value = v) };
+}
+
 export function selectField(
   label: string,
   value: string,
@@ -144,33 +181,53 @@ export function checkboxField(
   return { element: row(label, input), set: (v) => (input.checked = v) };
 }
 
+/**
+ * Fila de inputs numericos por eje (label arriba, controles a ancho completo
+ * con su letra X/Y/Z). Cada input es scrubbable y emite `onChange` en vivo.
+ */
+function vecField(
+  label: string,
+  axes: readonly string[],
+  values: readonly number[],
+  onChange: (values: number[]) => void,
+  step: number,
+): Field<readonly number[]> {
+  const wrap = document.createElement('div');
+  wrap.className = 'editor-vec';
+  const inputs = axes.map((axis, i) => {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = String(step);
+    input.className = 'editor-input editor-input--vec';
+    input.value = fmt(values[i]);
+    const cell = document.createElement('div');
+    cell.className = 'editor-vec__cell';
+    const tag = document.createElement('span');
+    tag.className = 'editor-vec__axis';
+    tag.textContent = axis;
+    cell.append(tag, input);
+    wrap.append(cell);
+    return input;
+  });
+  const emit = (): void => onChange(inputs.map(readNumber));
+  inputs.forEach((input) => {
+    input.addEventListener('change', emit);
+    makeScrubbable(input, step, emit);
+  });
+  return {
+    element: stackRow(label, wrap),
+    set: (v) => inputs.forEach((input, i) => (input.value = fmt(v[i]))),
+  };
+}
+
 export function vec3Field(
   label: string,
   value: VectorTuple,
   onChange: (value: VectorTuple) => void,
   step = 0.1,
 ): Field<VectorTuple> {
-  const wrap = document.createElement('div');
-  wrap.className = 'editor-vec3';
-  const inputs = [0, 1, 2].map((i) => {
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.step = String(step);
-    input.className = 'editor-input editor-input--vec';
-    input.value = fmt(value[i]);
-    return input;
-  });
-  const emit = (): void =>
-    onChange([readNumber(inputs[0]), readNumber(inputs[1]), readNumber(inputs[2])]);
-  inputs.forEach((input) => {
-    input.addEventListener('change', emit);
-    makeScrubbable(input, step, emit);
-  });
-  wrap.append(...inputs);
-  return {
-    element: row(label, wrap),
-    set: (v) => inputs.forEach((input, i) => (input.value = fmt(v[i]))),
-  };
+  const field = vecField(label, ['X', 'Y', 'Z'], value, (v) => onChange([v[0], v[1], v[2]]), step);
+  return { element: field.element, set: field.set };
 }
 
 export function vec2Field(
@@ -179,26 +236,8 @@ export function vec2Field(
   onChange: (value: [number, number]) => void,
   step = 0.1,
 ): Field<[number, number]> {
-  const wrap = document.createElement('div');
-  wrap.className = 'editor-vec3';
-  const inputs = [0, 1].map((i) => {
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.step = String(step);
-    input.className = 'editor-input editor-input--vec';
-    input.value = fmt(value[i]);
-    return input;
-  });
-  const emit = (): void => onChange([readNumber(inputs[0]), readNumber(inputs[1])]);
-  inputs.forEach((input) => {
-    input.addEventListener('change', emit);
-    makeScrubbable(input, step, emit);
-  });
-  wrap.append(...inputs);
-  return {
-    element: row(label, wrap),
-    set: (v) => inputs.forEach((input, i) => (input.value = fmt(v[i]))),
-  };
+  const field = vecField(label, ['X', 'Z'], value, (v) => onChange([v[0], v[1]]), step);
+  return { element: field.element, set: field.set };
 }
 
 export function colorField(

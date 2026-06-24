@@ -66,6 +66,25 @@ export const MenuStrings = {
   exitingToMainMenu: "Volviendo al menu principal...",
   fullscreenEnter: "ACTIVAR",
   fullscreenExit: "SALIR",
+  selectOption: "Selecciona una opcion.",
+  buildLabel: "BUILD 0.1 · FAN PROJECT",
+  workshopOnline: "WORKSHOP EN LINEA",
+  workshopOffline: "WORKSHOP OFFLINE",
+} as const;
+
+/** Strings del panel de detalle del Workshop (rating + comentarios). */
+export const WorkshopStrings = {
+  details: "DETALLES",
+  rateHeading: "TU PUNTUACION",
+  commentsHeading: "COMENTARIOS",
+  comment: "COMENTAR",
+  commentPlaceholder: "Escribe un comentario...",
+  signInToRate: "Inicia sesion para puntuar este mapa.",
+  signInToComment: "Inicia sesion para comentar.",
+  noComments: "Todavia no hay comentarios. Se el primero.",
+  loadingComments: "Cargando comentarios...",
+  ratingSummary: (avg: number, count: number): string =>
+    count > 0 ? `${avg.toFixed(1)} / 5 (${count} ${count === 1 ? "voto" : "votos"})` : "Sin votos",
 } as const;
 
 export const HudStrings = {
