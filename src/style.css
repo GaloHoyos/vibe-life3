@@ -59,6 +59,21 @@ body {
   pointer-events: none;
 }
 
+/* Modo muerte: el HUD sigue visible pero solo los vitales (salud/traje), por
+   encima del oscurecido del DeathScreen (de ahi el z-index). Reusa el HUD real
+   en vez de dibujar vitales aparte. */
+.hud.is-death {
+  z-index: 55;
+}
+
+.hud.is-death > :not(.hl-vitals) {
+  display: none;
+}
+
+.hud.is-death .hl-aux {
+  display: none;
+}
+
 .hev-hud {
   --hl-amber: rgba(220, 185, 0, 0.95);
   --hl-amber-strong: rgba(220, 185, 0, 1);

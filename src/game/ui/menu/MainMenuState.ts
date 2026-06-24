@@ -16,7 +16,8 @@ export type GameMenuState =
   | "paused"
   | "loading"
   | "editor"
-  | "workshop";
+  | "workshop"
+  | "gameOver";
 
 export interface MenuChapter {
   id: string;

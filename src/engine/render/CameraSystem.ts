@@ -54,6 +54,10 @@ export class CameraSystem {
     return this.yaw;
   }
 
+  getPitch(): number {
+    return this.pitch;
+  }
+
   getForwardDirection(): Vector3 {
     this.camera.getWorldDirection(this.forward);
     return this.forward.clone().normalize();

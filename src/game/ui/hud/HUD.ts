@@ -160,6 +160,15 @@ export class HUD implements Disposable {
     this.element.classList.toggle("is-hidden", !visible);
   }
 
+  /**
+   * Modo muerte: deja solo los vitales (salud/traje) y los eleva por encima del
+   * oscurecido del DeathScreen, ocultando crosshair/arma/feed. El HUD sigue
+   * siendo el mismo, así la transición vivo→muerto no tiene salto visual.
+   */
+  setDeathMode(enabled: boolean): void {
+    this.element.classList.toggle("is-death", enabled);
+  }
+
   private render(): void {
     this.view.healthArmor.setHealth(this.state.health);
     this.view.healthArmor.setArmor(this.state.armor, this.state.armorEnabled);

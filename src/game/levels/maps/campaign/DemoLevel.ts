@@ -79,4 +79,18 @@ export const DemoLevel: LevelDefinition = {
       },
     },
   ],
+  checkpoints: [
+    {
+      id: 'checkpoint-lab-entry',
+      position: [0, 1.2, 3.5],
+      size: [11, 3, 2],
+      respawn: [0, 1.2, 6],
+    },
+    {
+      id: 'checkpoint-lab-deep',
+      position: [0, 1.2, -8],
+      size: [11, 3, 2],
+      respawn: [0, 1.2, -6],
+    },
+  ],
 };

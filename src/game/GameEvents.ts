@@ -157,6 +157,11 @@ export interface GameEventMap {
   "trigger.entered": {
     id: string;
   };
+  /** El jugador cruzó un volumen de checkpoint. `position` = punto de reaparición. */
+  "checkpoint.reached": {
+    id: string;
+    position: Vector3;
+  };
   "dialogue.show": {
     speaker?: string;
     text: string;

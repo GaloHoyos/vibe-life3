@@ -19,6 +19,10 @@ export class TriggerSystem {
 
   constructor(private readonly eventBus: GameEventBus) {}
 
+  clear(): void {
+    this.triggers.length = 0;
+  }
+
   addTrigger(definition: TriggerDefinition): void {
     const position = tupleToVector3(definition.position);
     const size = tupleToVector3(definition.size);

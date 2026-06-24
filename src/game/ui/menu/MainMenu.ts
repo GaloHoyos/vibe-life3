@@ -67,12 +67,15 @@ export class MainMenu implements Disposable {
   setState(state: GameMenuState): void {
     if (state === "paused") {
       this.pauseFlow = true;
-    } else if (state === "mainMenu" || state === "playing") {
+    } else if (state === "mainMenu" || state === "playing" || state === "gameOver") {
       this.pauseFlow = false;
     }
     this.state = state;
     this.view.setState(state, this.pauseFlow);
-    this.view.setVisible(state !== "playing" && state !== "editor");
+    // El Game Over usa su propio overlay (DeathScreen); el menú queda oculto.
+    this.view.setVisible(
+      state !== "playing" && state !== "editor" && state !== "gameOver",
+    );
   }
 
   getState(): GameMenuState {

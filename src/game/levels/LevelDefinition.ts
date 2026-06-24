@@ -8,6 +8,7 @@ import type { SunOptions } from '@engine/render/environment/LightingSystem';
 import type { HeightSource } from '@shared/math/HeightField';
 import type { LevelActionKind } from '@game/GameEvents';
 import type { BuildingArtifact } from '@game/levels/buildings/BuildingArtifact';
+import type { CheckpointDefinition } from '@game/levels/CheckpointSystem';
 
 /** Rotacion Euler XYZ en radianes. Omitida = alineado a los ejes. */
 type RotationTuple = VectorTuple;
@@ -155,4 +156,6 @@ export interface LevelDefinition {
   /** Cargadores de pared (vida / HEV) estilo HL2. Si se omite, el nivel no trae. */
   chargers?: ChargerDefinition[];
   triggers: TriggerDefinition[];
+  /** Puntos de control para respawn. Si se omite, el nivel solo reaparece en `playerStart`. */
+  checkpoints?: CheckpointDefinition[];
 }
