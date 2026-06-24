@@ -42,6 +42,11 @@ export const Dialogue = {
     text: "Entidad hostil neutralizada.",
     duration: 2.4,
   },
+  checkpointReached: {
+    speaker: Speakers.system,
+    text: "Punto de control alcanzado.",
+    duration: 2,
+  },
   godModeOn: {
     speaker: Speakers.system,
     text: "Modo invulnerable activado.",
@@ -70,6 +75,30 @@ export const MenuStrings = {
   buildLabel: "BUILD 0.1 · FAN PROJECT",
   workshopOnline: "WORKSHOP EN LINEA",
   workshopOffline: "WORKSHOP OFFLINE",
+} as const;
+
+/**
+ * Pantalla de muerte con estetica del arranque del traje H.E.V. de Black Mesa:
+ * terminal ambar con diagnostico de sistemas, ID de usuario y esquema del traje,
+ * pero reportando fallo total en vez de "READY".
+ */
+export const GameOverStrings = {
+  userId: "USUARIO ID# 4179 - FREEMAN, GORDON",
+  header: "DIAGNOSTICO DE EMERGENCIA H.E.V.",
+  systems: [
+    { label: "MONITOREO BIOMETRICO", status: "SIN SEÑAL" },
+    { label: "SISTEMA CARDIOVASCULAR", status: "PARO" },
+    { label: "ADMIN. DE MORFINA", status: "SIN RESPUESTA" },
+    { label: "ADMIN. DE ANTITOXINA", status: "OFFLINE" },
+    { label: "SIGNOS VITALES", status: "NULOS" },
+  ],
+  height: "ALTURA: 5FT. 11.986 IN",
+  weight: "PESO: 192.73 LB",
+  fitLine: "RECALCULANDO AJUSTE...",
+  fitDone: "USUARIO FALLECIDO",
+  respawnHint: "CLIC o cualquier TECLA — reiniciar protocolo de reanimacion",
+  noRespawnHint: "SIN PUNTO DE CONTROL — ESC para volver al menu",
+  exitHint: "ESC — abandonar al menu principal",
 } as const;
 
 /** Strings del panel de detalle del Workshop (rating + comentarios). */

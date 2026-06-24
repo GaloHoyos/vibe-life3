@@ -98,6 +98,18 @@ export abstract class Weapon {
     return this.reserve - before;
   }
 
+  /**
+   * Fija munición de cargador y reserva a valores exactos (restauración de
+   * loadout en respawn). No emite: el `WeaponController` emite al equipar.
+   */
+  restoreAmmo(magazine: number, reserve: number): void {
+    if (!this.definition.hasAmmo) {
+      return;
+    }
+    this.magazine = Math.max(0, Math.min(magazine, this.definition.magazineSize));
+    this.reserve = Math.max(0, Math.min(reserve, this.definition.reserveAmmoMax));
+  }
+
   canFire(now: number): boolean {
     if (now < this.reloadingUntil) {
       return false;

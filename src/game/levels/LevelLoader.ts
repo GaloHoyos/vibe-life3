@@ -27,6 +27,7 @@ import { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
 import { quatFromEuler } from '@game/levels/builders/transform';
 import type { LevelDefinition } from './LevelDefinition';
 import type { TriggerSystem } from './TriggerSystem';
+import type { CheckpointSystem } from './CheckpointSystem';
 
 export interface LoadedLevel {
   npcs: INpc[];
@@ -53,6 +54,7 @@ export class LevelLoader {
     private readonly eventBus: GameEventBus,
     private readonly interactSystem: InteractSystem,
     private readonly triggerSystem: TriggerSystem,
+    private readonly checkpointSystem: CheckpointSystem,
     private readonly characters: CharacterFactory,
     private readonly assets: AssetManager,
   ) {}
@@ -288,6 +290,10 @@ export class LevelLoader {
 
     level.triggers.forEach((definition) => {
       this.triggerSystem.addTrigger(definition);
+    });
+
+    (level.checkpoints ?? []).forEach((definition) => {
+      this.checkpointSystem.addCheckpoint(definition);
     });
 
     this.physics.updateQueryPipeline();

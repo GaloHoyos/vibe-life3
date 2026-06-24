@@ -147,6 +147,14 @@ export class GrenadeSystem implements Disposable {
   }
 
   dispose(): void {
+    this.clear();
+  }
+
+  /**
+   * Remueve las granadas vivas (mesh + body) sin desuscribir. Llamar ANTES de
+   * `PhysicsWorld.reset()`: `removeQuietly` toca el mundo de física actual.
+   */
+  clear(): void {
     this.grenades.forEach((grenade) => this.removeQuietly(grenade));
     this.grenades.length = 0;
   }

@@ -1,5 +1,5 @@
 import type { Disposable } from '@shared/types/lifecycle';
-import { getAllLevels } from '@game/levels/LevelRegistry';
+import { getCampaignLevels, getCustomFolderLevels } from '@game/levels/LevelRegistry';
 import { listLibraryMaps } from '../mapLibrary';
 import type { TransformMode } from '../EditorSelection';
 import type { PaletteKind } from '../editorFactory';
@@ -100,10 +100,12 @@ export class EditorMenuBar implements Disposable {
   }
 
   private fileItems(): MenuItem[] {
-    const campaign: MenuItem[] = getAllLevels().map((level) => ({
+    const toRegistryItem = (level: { id: string; title: string }): MenuItem => ({
       label: level.title,
       onClick: () => this.cb.onOpenRegistry(level.id),
-    }));
+    });
+    const campaign: MenuItem[] = getCampaignLevels().map(toRegistryItem);
+    const customFolder: MenuItem[] = getCustomFolderLevels().map(toRegistryItem);
     const library = listLibraryMaps().map((info) => ({
       label: info.title || info.id,
       onClick: () => this.cb.onOpenLibrary(info.id),
@@ -115,6 +117,7 @@ export class EditorMenuBar implements Disposable {
         icon: 'folder',
         submenu: [
           { label: 'Campaña', icon: 'folder', submenu: orEmpty(campaign, 'Sin niveles') },
+          { label: 'Mapas custom', icon: 'folder', submenu: orEmpty(customFolder, 'Sin mapas') },
           { label: 'Biblioteca', icon: 'folder', submenu: orEmpty(library, 'Sin mapas guardados') },
         ],
       },

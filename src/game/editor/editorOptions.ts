@@ -12,6 +12,8 @@ import {
 import { CharacterPresets } from '@game/characters/CharacterPresets';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { LevelActionKind } from '@game/GameEvents';
+import type { TriggerAction } from '@game/levels/LevelDefinition';
+import { getAllLevels } from '@game/levels/LevelRegistry';
 import type { PropKind } from './EditorDocument';
 
 export const MATERIAL_KEYS: readonly MaterialKey[] = [
@@ -25,6 +27,12 @@ export const ITEM_IDS: readonly ItemId[] = Object.keys(ItemDefinitions) as ItemI
 export const CHARGER_KINDS: readonly ChargerKind[] = Object.keys(ChargerTypes) as ChargerKind[];
 export const SKYBOX_IDS: readonly SkyboxId[] = Object.keys(SkyboxManifest) as SkyboxId[];
 export const LEVEL_ACTIONS: readonly LevelActionKind[] = ['respawnEncounters', 'spawnAllWeapons'];
+export const TRIGGER_ACTION_KINDS: readonly TriggerAction['kind'][] = [
+  'dialogue', 'spawnNpcs', 'door', 'levelAction', 'objective', 'endLevel',
+];
+
+/** Niveles registrados (campaña + custom). Para encadenar vía `nextLevel`. */
+export const LEVEL_IDS: readonly string[] = getAllLevels().map((l) => l.id);
 
 export const PROP_KINDS: readonly PropKind[] = [
   'crate', 'crateStack', 'sandbagLine', 'coverWall', 'pillar', 'cargoContainer', 'watchtower',

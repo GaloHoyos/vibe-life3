@@ -3,6 +3,7 @@ import type { Faction } from "@engine/ai/Faction";
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { EventBus } from "@engine/core/EventBus";
 import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
+import type { TriggerAction } from "@game/levels/LevelDefinition";
 
 export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
 export type CombatEventSourceKind = "player" | "npc" | "system";
@@ -157,10 +158,34 @@ export interface GameEventMap {
   "trigger.entered": {
     id: string;
   };
+  /**
+   * Una acción de un trigger quedó lista para ejecutarse (ya pasó su `delay`).
+   * `Game` la despacha; el `TriggerSystem` no conoce la lógica del juego.
+   */
+  "trigger.action": {
+    triggerId: string;
+    action: TriggerAction;
+    position: Vector3;
+  };
+  /** El jugador cruzó un volumen de checkpoint. `position` = punto de reaparición. */
+  "checkpoint.reached": {
+    id: string;
+    position: Vector3;
+  };
   "dialogue.show": {
     speaker?: string;
     text: string;
     duration: number;
+  };
+  /**
+   * Objetivo actual del jugador. `text` vacío oculta el panel. `completed`
+   * marca el objetivo como cumplido (flash + fade). `marker` ubica un waypoint
+   * world-space para la brújula del HUD; `null` lo limpia.
+   */
+  "objective.updated": {
+    text: string;
+    completed?: boolean;
+    marker?: Vector3 | null;
   };
   "player.health.changed": {
     current: number;

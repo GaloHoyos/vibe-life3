@@ -5,6 +5,8 @@ import type { HeightField } from '@shared/math/HeightField';
 import type { Faction } from '@engine/ai/Faction';
 import { createBoxCollider } from './Colliders';
 
+const GRAVITY = { x: 0, y: -20.5, z: 0 } as const;
+
 export interface PhysicsMetadata {
   id: string;
   kind: 'static' | 'dynamic' | 'door' | 'npc' | 'player' | 'ragdoll' | 'weaponPickup';
@@ -63,8 +65,21 @@ export class PhysicsWorld {
     }
 
     await RAPIER.init();
-    this.world = new RAPIER.World({ x: 0, y: -20.5, z: 0 });
+    this.world = new RAPIER.World(GRAVITY);
     this.initialized = true;
+  }
+
+  /**
+   * Descarta TODOS los bodies/colliders recreando el `World` de Rapier (barato
+   * post-`init()`). Lo usa la transición in-place de niveles para limpiar la
+   * física del nivel viejo de una. No libera el mundo anterior con `free()`
+   * (evita crashes por refs colgadas a bodies); el GC lo recoge (leak menor de
+   * WASM por transición, aceptable para la frecuencia de cambios de nivel).
+   */
+  reset(): void {
+    this.world = new RAPIER.World(GRAVITY);
+    this.bindings.length = 0;
+    this.metadataByCollider.clear();
   }
 
   createStaticBox(options: PhysicsBoxOptions): RAPIER.RigidBody {

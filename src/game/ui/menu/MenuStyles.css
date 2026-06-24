@@ -471,6 +471,152 @@
   padding: 6px 4px;
 }
 
+/* ------------------------------------------------------- Death screen (HEV) */
+
+/* Oscurecido de pantalla — layer aparte (z bajo, debajo del HUD) para no tapar
+ * los vitales reales que se reusan en la muerte. La opacidad la maneja JS. */
+.hev-death-tint {
+  position: fixed;
+  inset: 0;
+  z-index: 52;
+  opacity: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(130% 100% at 50% 50%, rgba(20, 6, 4, 0.55), rgba(2, 1, 0, 0.92)),
+    rgba(60, 6, 4, 0.32);
+  transition: opacity 140ms linear;
+}
+
+/* Terminal H.E.V. — por encima del HUD; aparece recién con el prompt. */
+.hev-death {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 360ms ease 120ms;
+  color: #ffb24a;
+  font-family: "Share Tech Mono", "Consolas", "Courier New", monospace;
+  text-transform: uppercase;
+}
+.hev-death.is-prompt {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.hev-death__hud {
+  position: absolute;
+  inset: 0;
+  text-shadow: 0 0 10px rgba(255, 150, 40, 0.45);
+  letter-spacing: 0.08em;
+}
+
+.hev-death__user {
+  position: absolute;
+  top: clamp(18px, 5vh, 48px);
+  right: clamp(20px, 5vw, 64px);
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.18em;
+}
+
+.hev-death__diag {
+  position: absolute;
+  top: clamp(70px, 18vh, 150px);
+  left: clamp(20px, 5vw, 70px);
+  max-width: 46vw;
+}
+.hev-death__head {
+  margin: 0 0 18px;
+  font-size: 15px;
+  letter-spacing: 0.16em;
+  color: #ff5436;
+  text-shadow: 0 0 12px rgba(255, 60, 40, 0.5);
+}
+.hev-death__systems { list-style: none; margin: 0; padding: 0; }
+
+.hev-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 12px;
+  font-size: 14px;
+  opacity: 0;
+}
+.hev-line__dots {
+  flex: 1;
+  border-bottom: 1px dotted rgba(255, 178, 74, 0.4);
+  transform: translateY(-4px);
+}
+.hev-line__status { color: #ff5436; letter-spacing: 0.12em; }
+
+/* Revelado escalonado de las líneas al mostrar el prompt. */
+.hev-death.is-prompt .hev-line {
+  animation: hev-line-in 260ms ease forwards;
+}
+.hev-death.is-prompt .hev-line:nth-child(1) { animation-delay: 120ms; }
+.hev-death.is-prompt .hev-line:nth-child(2) { animation-delay: 260ms; }
+.hev-death.is-prompt .hev-line:nth-child(3) { animation-delay: 400ms; }
+.hev-death.is-prompt .hev-line:nth-child(4) { animation-delay: 540ms; }
+.hev-death.is-prompt .hev-line:nth-child(5) { animation-delay: 680ms; }
+
+@keyframes hev-line-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.hev-death__suit {
+  position: absolute;
+  top: 50%;
+  right: clamp(24px, 7vw, 110px);
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.hev-death__figure {
+  width: clamp(110px, 13vw, 180px);
+  height: auto;
+  filter: drop-shadow(0 0 8px rgba(255, 150, 40, 0.5));
+  opacity: 0.92;
+}
+.hev-death__bio {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  line-height: 1.7;
+}
+.hev-death__bio p { margin: 0; }
+.hev-death__dead {
+  color: #ff5436;
+  text-shadow: 0 0 12px rgba(255, 60, 40, 0.5);
+}
+
+.hev-death__prompt {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: clamp(20px, 6vh, 56px);
+  text-align: center;
+}
+.hev-death__hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: rgba(255, 178, 74, 0.6);
+}
+.hev-death__hint--primary {
+  color: #ffce8a;
+  font-size: 13px;
+  animation: hev-hint-blink 1.5s ease-in-out infinite;
+}
+
+@keyframes hev-hint-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 /* --------------------------------------------------------------- Chapters */
 
 .hl2-chapters {

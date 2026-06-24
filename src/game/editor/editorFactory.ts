@@ -51,7 +51,7 @@ export function createEntity(kind: PaletteKind, at: VectorTuple): EditorEntity {
     case 'charger':
       return { eid: newEid(kind), kind, def: { id: lid('charger'), kind: CHARGER_KINDS[0], position: [x, y, z], rotationY: 0 } };
     case 'trigger':
-      return { eid: newEid(kind), kind, def: { id: lid('trigger'), position: [x, y + 1, z], size: [3, 2, 3], once: true, dialogue: { text: 'Texto del trigger', duration: 3 } } };
+      return { eid: newEid(kind), kind, def: { id: lid('trigger'), position: [x, y + 1, z], size: [3, 2, 3], once: true, actions: [{ kind: 'dialogue', text: 'Texto del trigger', duration: 3 }] } };
     case 'building':
       return {
         eid: newEid(kind),

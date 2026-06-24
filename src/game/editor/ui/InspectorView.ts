@@ -11,6 +11,9 @@ import type {
 } from '@game/levels/builders/BuildingBuilder';
 import type { HouseSpec } from '@game/levels/builders/HouseBuilder';
 import type { RampSpec } from '@game/levels/builders/RampBuilder';
+import type { NPCDefinition, TriggerAction, TriggerDefinition } from '@game/levels/LevelDefinition';
+import type { CharacterId } from '@engine/characters/CharacterDefinition';
+import type { LevelActionKind } from '@game/GameEvents';
 import type { EditorDocument, EditorEntity, PropEntitySpec } from '../EditorDocument';
 import { entityKindLabel, entityLevelId } from '../EditorDocument';
 import {
@@ -31,6 +34,7 @@ import {
   ITEM_IDS,
   LEVEL_ACTIONS,
   MATERIAL_KEYS,
+  TRIGGER_ACTION_KINDS,
   WEAPON_IDS,
 } from '../editorOptions';
 import {
@@ -281,22 +285,7 @@ export class InspectorView implements Disposable {
         return;
       }
       case 'trigger':
-        this.append(checkboxField('Una sola vez', entity.def.once, (v) => {
-          entity.def.once = v;
-          this.commit();
-        }));
-        this.append(textField('Hablante', entity.def.dialogue.speaker ?? '', (v) => {
-          entity.def.dialogue.speaker = v || undefined;
-          this.commit();
-        }));
-        this.append(textField('Texto', entity.def.dialogue.text, (v) => {
-          entity.def.dialogue.text = v;
-          this.commit();
-        }));
-        this.append(numberField('Duracion (s)', entity.def.dialogue.duration, (v) => {
-          entity.def.dialogue.duration = v;
-          this.commit();
-        }, 0.5));
+        this.triggerFields(entity.def);
         return;
       case 'building':
         this.buildingFields(entity.spec);
@@ -339,6 +328,140 @@ export class InspectorView implements Disposable {
     stack.append(subheading('Pisos: puertas y escaleras'));
     spec.stories.forEach((story, i) => stack.append(this.storyEditor(spec, story, i)));
     this.body.append(stack);
+  }
+
+  private triggerFields(def: TriggerDefinition): void {
+    this.append(checkboxField('Una sola vez', def.once, (v) => {
+      def.once = v;
+      this.commit();
+    }));
+
+    const actions = ensureTriggerActions(def);
+    actions.forEach((action, i) =>
+      this.body.append(this.triggerActionEditor(actions, action, i)),
+    );
+    this.body.append(
+      miniButton('+ Accion', () => {
+        ensureTriggerActions(def).push({ kind: 'dialogue', text: '', duration: 3 });
+        this.commitAndRerender();
+      }),
+    );
+  }
+
+  private triggerActionEditor(
+    actions: TriggerAction[],
+    action: TriggerAction,
+    i: number,
+  ): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'editor-subitem';
+    item.append(
+      subitemHeader(`Accion ${i}`, () => {
+        actions.splice(i, 1);
+        this.commitAndRerender();
+      }),
+      selectField('Tipo', action.kind, TRIGGER_ACTION_KINDS, (v) => {
+        actions[i] = defaultTriggerAction(v as TriggerAction['kind'], action.delay);
+        this.commitAndRerender();
+      }).element,
+      numberField('Retardo (s)', action.delay ?? 0, (v) => {
+        action.delay = v > 0 ? v : undefined;
+        this.commit();
+      }, 0.25).element,
+    );
+    this.appendTriggerActionFields(item, action);
+    return item;
+  }
+
+  private appendTriggerActionFields(item: HTMLElement, action: TriggerAction): void {
+    switch (action.kind) {
+      case 'dialogue':
+        item.append(
+          textField('Hablante', action.speaker ?? '', (v) => {
+            action.speaker = v || undefined;
+            this.commit();
+          }).element,
+          textField('Texto', action.text, (v) => { action.text = v; this.commit(); }).element,
+          numberField('Duracion (s)', action.duration, (v) => {
+            action.duration = v;
+            this.commit();
+          }, 0.5).element,
+        );
+        return;
+      case 'door':
+        item.append(
+          textField('Puerta (id)', action.doorId, (v) => { action.doorId = v; this.commit(); }).element,
+          checkboxField('Abrir', action.open, (v) => { action.open = v; this.commit(); }).element,
+        );
+        return;
+      case 'levelAction':
+        item.append(
+          selectField('Accion de nivel', action.action, LEVEL_ACTIONS, (v) => {
+            action.action = v as LevelActionKind;
+            this.commit();
+          }).element,
+        );
+        return;
+      case 'objective':
+        item.append(
+          textField('Texto', action.text, (v) => { action.text = v; this.commit(); }).element,
+          checkboxField('Cumplido', action.completed ?? false, (v) => {
+            action.completed = v || undefined;
+            this.commit();
+          }).element,
+          vec3Field('Marcador', action.marker ?? [0, 0, 0], (v) => {
+            action.marker = v;
+            this.commit();
+          }).element,
+        );
+        return;
+      case 'spawnNpcs':
+        action.npcs.forEach((npc, ni) => item.append(this.spawnNpcEditor(action.npcs, npc, ni)));
+        item.append(
+          miniButton('+ NPC', () => {
+            action.npcs.push({
+              id: `npc-${Date.now().toString(36)}`,
+              characterId: CHARACTER_IDS[0],
+              position: [0, 1, 0],
+            });
+            this.commitAndRerender();
+          }),
+        );
+        return;
+      case 'endLevel': {
+        const note = document.createElement('p');
+        note.className = 'editor-note';
+        note.textContent = 'Encadena a "Nivel siguiente" (config. del nivel) o termina la campaña. ' +
+          'El landmark (default = centro del trigger) fija el punto de referencia para la transición relativa.';
+        item.append(note);
+        item.append(
+          checkboxField('Landmark propio', action.landmark !== undefined, (on) => {
+            action.landmark = on ? (action.landmark ?? [0, 0, 0]) : undefined;
+            this.commitAndRerender();
+          }).element,
+        );
+        if (action.landmark) {
+          item.append(
+            vec3Field('Landmark', action.landmark, (v) => { action.landmark = v; this.commit(); }).element,
+          );
+        }
+        return;
+      }
+    }
+  }
+
+  private spawnNpcEditor(npcs: NPCDefinition[], npc: NPCDefinition, ni: number): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'editor-subitem';
+    item.append(
+      subitemHeader(`NPC ${ni}`, () => { npcs.splice(ni, 1); this.commitAndRerender(); }),
+      selectField('Personaje', npc.characterId, CHARACTER_IDS, (v) => {
+        npc.characterId = v as CharacterId;
+        this.commit();
+      }).element,
+      vec3Field('Posicion', npc.position, (v) => { npc.position = v; this.commit(); }).element,
+    );
+    return item;
   }
 
   private storyEditor(spec: BuildingSpec, story: BuildingStorySpec, index: number): HTMLElement {
@@ -598,6 +721,32 @@ function subitemHeader(title: string, onRemove: () => void): HTMLElement {
   remove.addEventListener('click', onRemove);
   head.append(label, remove);
   return head;
+}
+
+/** Migra la forma legacy (`dialogue`) a `actions` la primera vez que se edita. */
+function ensureTriggerActions(def: TriggerDefinition): TriggerAction[] {
+  if (!def.actions) {
+    def.actions = def.dialogue ? [{ kind: 'dialogue', ...def.dialogue }] : [];
+    def.dialogue = undefined;
+  }
+  return def.actions;
+}
+
+function defaultTriggerAction(kind: TriggerAction['kind'], delay?: number): TriggerAction {
+  switch (kind) {
+    case 'dialogue':
+      return { kind, text: '', duration: 3, delay };
+    case 'spawnNpcs':
+      return { kind, npcs: [], delay };
+    case 'door':
+      return { kind, doorId: '', open: true, delay };
+    case 'levelAction':
+      return { kind, action: LEVEL_ACTIONS[0], delay };
+    case 'objective':
+      return { kind, text: '', delay };
+    case 'endLevel':
+      return { kind, delay };
+  }
 }
 
 /** Escalera por defecto: un hueco centrado en X que recorre la profundidad. */
