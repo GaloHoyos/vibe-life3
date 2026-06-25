@@ -11,6 +11,8 @@ import type {
   TriggerDefinition,
   WeaponPickupDefinition,
 } from '@game/levels/LevelDefinition';
+import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
+import type { ExplosiveBarrelDefinition } from '@game/gameplay/hazards/ExplosiveBarrel';
 import type { BuildingSpec } from '@game/levels/builders/BuildingBuilder';
 import type { HouseSpec } from '@game/levels/builders/HouseBuilder';
 import type { RampSpec } from '@game/levels/builders/RampBuilder';
@@ -64,6 +66,8 @@ export type EditorEntity = EditorEntityBase &
     | { kind: 'itemPickup'; def: ItemPickupDefinition }
     | { kind: 'charger'; def: ChargerDefinition }
     | { kind: 'trigger'; def: TriggerDefinition }
+    | { kind: 'explosiveBarrel'; def: ExplosiveBarrelDefinition }
+    | { kind: 'hazardVolume'; def: HazardVolumeDefinition }
     | { kind: 'building'; spec: BuildingSpec }
     | { kind: 'house'; spec: HouseSpec }
     | { kind: 'ramp'; spec: RampSpec }
@@ -138,6 +142,8 @@ const KIND_LABELS: Record<EditorEntityKind, string> = {
   itemPickup: 'Item',
   charger: 'Cargador',
   trigger: 'Trigger',
+  explosiveBarrel: 'Barril explosivo',
+  hazardVolume: 'Kill-volume',
   building: 'Edificio',
   house: 'Casa',
   ramp: 'Rampa',

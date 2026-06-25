@@ -10,6 +10,8 @@
  * proyecto.
  */
 
+import type { HazardKind } from "@game/levels/HazardVolumeSystem";
+
 export const Speakers = {
   hev: "HEV",
   system: "Sistema",
@@ -123,3 +125,11 @@ export const HudStrings = {
   ammoPickedUp: (amount: number, weaponName?: string): string =>
     `+${amount} ${weaponName ?? "munición"}`,
 } as const;
+
+/** Anuncio del traje H.E.V. por tipo de peligro ambiental (estilo HL2). */
+export const HazardStrings: Record<HazardKind, { title: string; detail: string }> = {
+  toxic: { title: "Advertencia", detail: "Bioriesgo detectado" },
+  fire: { title: "Advertencia", detail: "Temperatura crítica" },
+  electric: { title: "Advertencia", detail: "Descarga eléctrica" },
+  void: { title: "Peligro", detail: "Zona letal" },
+};

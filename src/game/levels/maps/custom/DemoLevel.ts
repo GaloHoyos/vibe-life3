@@ -93,4 +93,12 @@ export const DemoLevel: LevelDefinition = {
       respawn: [0, 1.2, -6],
     },
   ],
+  explosiveBarrels: [
+    { id: 'barrel-1', position: [3.6, 0, 0.4] },
+    { id: 'barrel-2', position: [4.5, 0, -0.3] },
+    { id: 'barrel-3', position: [-3.2, 0, -2.4] },
+  ],
+  hazardVolumes: [
+    { id: 'toxic-pool', position: [0, 0.8, -14.5], size: [6, 1.6, 3], kind: 'toxic', damagePerSecond: 18 },
+  ],
 };

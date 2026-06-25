@@ -31,6 +31,7 @@ import {
 import {
   CHARACTER_IDS,
   CHARGER_KINDS,
+  HAZARD_KINDS,
   ITEM_IDS,
   LEVEL_ACTIONS,
   MATERIAL_KEYS,
@@ -145,8 +146,13 @@ export class InspectorView implements Disposable {
       this.sizeField = null;
     }
 
-    // El charger usa su propio campo Y; el prebuilt rotea destructivamente (gizmo).
-    if (entity.kind !== 'charger' && entity.kind !== 'prebuiltBuilding') {
+    // El charger usa su propio campo Y; el prebuilt rotea destructivamente (gizmo);
+    // el kill-volume es un AABB sin rotación.
+    if (
+      entity.kind !== 'charger' &&
+      entity.kind !== 'prebuiltBuilding' &&
+      entity.kind !== 'hazardVolume'
+    ) {
       this.rotField = vec3Field('Rotacion (°)', degTuple(getRotation(entity)), (v) => {
         setRotation(entity, [degToRad(v[0]), degToRad(v[1]), degToRad(v[2])]);
         this.commit();
@@ -286,6 +292,43 @@ export class InspectorView implements Disposable {
       }
       case 'trigger':
         this.triggerFields(entity.def);
+        return;
+      case 'explosiveBarrel':
+        this.append(numberField('Vida', entity.def.health ?? 25, (v) => {
+          entity.def.health = v;
+          this.commit();
+        }, 1));
+        this.append(numberField('Daño', entity.def.damage ?? 90, (v) => {
+          entity.def.damage = v;
+          this.commit();
+        }, 1));
+        this.append(numberField('Radio (m)', entity.def.radius ?? 4.5, (v) => {
+          entity.def.radius = v;
+          this.commit();
+        }, 0.25));
+        this.append(numberField('Impulso', entity.def.impulse ?? 14, (v) => {
+          entity.def.impulse = v;
+          this.commit();
+        }, 1));
+        return;
+      case 'hazardVolume':
+        this.append(selectField('Tipo', entity.def.kind, HAZARD_KINDS, (v) => {
+          entity.def.kind = v as typeof entity.def.kind;
+          this.commit();
+        }));
+        this.append(numberField('Daño/seg', entity.def.damagePerSecond, (v) => {
+          entity.def.damagePerSecond = v;
+          this.commit();
+        }, 1));
+        this.append(checkboxField('Muerte instantánea', entity.def.instantKill ?? false, (v) => {
+          entity.def.instantKill = v || undefined;
+          this.commit();
+        }));
+        this.append(checkboxField('Efecto visual', entity.def.showEffect ?? true, (v) => {
+          // Default true: se guarda solo el opt-out explícito (JSON limpio).
+          entity.def.showEffect = v ? undefined : false;
+          this.commit();
+        }));
         return;
       case 'building':
         this.buildingFields(entity.spec);

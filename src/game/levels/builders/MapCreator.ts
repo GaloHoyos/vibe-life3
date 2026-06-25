@@ -19,6 +19,8 @@ import type {
   TriggerDefinition,
   WeaponPickupDefinition,
 } from '@game/levels/LevelDefinition';
+import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
+import type { ExplosiveBarrelDefinition } from '@game/gameplay/hazards/ExplosiveBarrel';
 import { buildBuilding, type BuildingSpec } from './BuildingBuilder';
 import { buildHouse, type HouseSpec } from './HouseBuilder';
 import { buildRamp, type RampSpec } from './RampBuilder';
@@ -89,6 +91,8 @@ export class MapBuilder {
   private readonly itemPickupList: ItemPickupDefinition[] = [];
   private readonly chargerList: ChargerDefinition[] = [];
   private readonly triggerList: TriggerDefinition[] = [];
+  private readonly barrelList: ExplosiveBarrelDefinition[] = [];
+  private readonly hazardList: HazardVolumeDefinition[] = [];
   private terrainDef: TerrainDefinition | undefined;
 
   constructor(private readonly meta: MapMeta) {}
@@ -248,6 +252,18 @@ export class MapBuilder {
     return this;
   }
 
+  /** Barril explosivo (prop dañable que explota al morir). */
+  explosiveBarrel(def: ExplosiveBarrelDefinition): this {
+    this.barrelList.push(def);
+    return this;
+  }
+
+  /** Volumen de peligro (kill-volume) que daña al jugador mientras está adentro. */
+  hazardVolume(def: HazardVolumeDefinition): this {
+    this.hazardList.push(def);
+    return this;
+  }
+
   /**
    * Punto world-space dentro de un room ya agregado. `local` es el offset XZ
    * desde el centro del room, clampeado a su AABB con 0.6 m de margen de
@@ -297,6 +313,8 @@ export class MapBuilder {
       itemPickups: this.itemPickupList.length > 0 ? this.itemPickupList : undefined,
       chargers: this.chargerList.length > 0 ? this.chargerList : undefined,
       triggers: this.triggerList,
+      explosiveBarrels: this.barrelList.length > 0 ? this.barrelList : undefined,
+      hazardVolumes: this.hazardList.length > 0 ? this.hazardList : undefined,
     };
   }
 
@@ -321,6 +339,8 @@ export class MapBuilder {
     this.itemPickupList.forEach((p) => check(p.id));
     this.chargerList.forEach((c) => { check(c.id); check(`${c.id}-body`); });
     this.triggerList.forEach((t) => check(t.id));
+    this.barrelList.forEach((b) => check(b.id));
+    this.hazardList.forEach((h) => check(h.id));
     if (dupes.size > 0) {
       throw new Error(
         `MapBuilder('${this.meta.id}'): ids duplicados: ${[...dupes].join(', ')}`,

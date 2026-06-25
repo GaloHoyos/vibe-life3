@@ -39,6 +39,27 @@ export interface GrenadeSpawnOptions {
   now: number;
 }
 
+/**
+ * Parámetros de una explosión genérica (sin granada). Lo consume
+ * `GrenadeSystem.detonate` para que cualquier fuente (granadas, barriles
+ * explosivos, etc.) genere la misma explosión radial.
+ */
+export interface ExplosionParams {
+  /** Daño máximo (al centro). Cae linealmente con la distancia. */
+  damage: number;
+  /** Radio en metros. */
+  radius: number;
+  /** Impulso aplicado a dynamic bodies en el radio. */
+  impulse: number;
+  ownerKind: GrenadeOwnerKind;
+  sourceId?: string;
+  sourceFaction?: Faction;
+  /** Nombre del arma para el `weapon.hit` emitido por cada víctima. */
+  weaponName: string;
+  /** Cuerpo a excluir del impulso (p. ej. la propia granada). */
+  ignoreBody?: RAPIER.RigidBody;
+}
+
 export interface ActiveGrenade {
   id: string;
   mode: GrenadeMode;

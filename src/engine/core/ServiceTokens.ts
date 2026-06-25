@@ -8,6 +8,7 @@ import type { Raycast } from "@engine/physics/Raycast";
 import type { CameraSystem } from "@engine/render/CameraSystem";
 import type { EnvironmentSystem } from "@engine/render/environment/EnvironmentSystem";
 import type { LightingSystem } from "@engine/render/environment/LightingSystem";
+import type { VfxSystem } from "@engine/render/effects/VfxSystem";
 import type { Renderer } from "@engine/render/Renderer";
 import type { Input } from "@engine/input/Input";
 import type { ResourceManager } from "./ResourceManager";
@@ -27,6 +28,7 @@ export const EngineTokens = {
   Scene: new ServiceToken<SceneManager>("SceneManager"),
   Renderer: new ServiceToken<Renderer>("Renderer"),
   Camera: new ServiceToken<CameraSystem>("CameraSystem"),
+  Vfx: new ServiceToken<VfxSystem>("VfxSystem"),
   Lighting: new ServiceToken<LightingSystem>("LightingSystem"),
   Environment: new ServiceToken<EnvironmentSystem>("EnvironmentSystem"),
   Physics: new ServiceToken<PhysicsWorld>("PhysicsWorld"),
