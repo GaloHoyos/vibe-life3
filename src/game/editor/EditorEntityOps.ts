@@ -21,6 +21,8 @@ export function getPosition(entity: EditorEntity): VectorTuple {
     case 'itemPickup':
     case 'charger':
     case 'trigger':
+    case 'explosiveBarrel':
+    case 'hazardVolume':
       return [...entity.def.position];
     case 'building':
       return [entity.spec.center[0], entity.spec.groundY, entity.spec.center[1]];
@@ -61,6 +63,8 @@ export function translateEntity(entity: EditorEntity, dx: number, dy: number, dz
     case 'itemPickup':
     case 'charger':
     case 'trigger':
+    case 'explosiveBarrel':
+    case 'hazardVolume':
       entity.def.position = add3(entity.def.position, dx, dy, dz);
       return;
     case 'building':
@@ -106,6 +110,7 @@ export function getSize(entity: EditorEntity): VectorTuple | null {
     case 'door':
     case 'actionButton':
     case 'trigger':
+    case 'hazardVolume':
       return [...entity.def.size];
     default:
       return null;
@@ -119,6 +124,7 @@ export function setSize(entity: EditorEntity, size: VectorTuple): void {
     case 'door':
     case 'actionButton':
     case 'trigger':
+    case 'hazardVolume':
       entity.def.size = [...size];
       return;
     default:
@@ -145,6 +151,7 @@ export function getRotation(entity: EditorEntity): VectorTuple {
     case 'npc':
     case 'weaponPickup':
     case 'itemPickup':
+    case 'explosiveBarrel':
       return entity.def.rotation ? [...entity.def.rotation] : [0, 0, 0];
     case 'charger':
       return [0, entity.def.rotationY ?? 0, 0];
@@ -154,6 +161,9 @@ export function getRotation(entity: EditorEntity): VectorTuple {
       return entity.spec.rotation ? [...entity.spec.rotation] : [0, 0, 0];
     case 'prop':
       return entity.prop.spec.rotation ? [...entity.prop.spec.rotation] : [0, 0, 0];
+    case 'hazardVolume':
+      // Kill-volume es un AABB (sin rotación de colisión).
+      return [0, 0, 0];
     case 'prebuiltBuilding':
       // La rotacion se hornea en la geometria (no hay angulo almacenado).
       return [0, 0, 0];
@@ -172,6 +182,7 @@ export function setRotation(entity: EditorEntity, euler: VectorTuple): void {
     case 'npc':
     case 'weaponPickup':
     case 'itemPickup':
+    case 'explosiveBarrel':
       entity.def.rotation = value;
       return;
     case 'charger':
@@ -185,6 +196,8 @@ export function setRotation(entity: EditorEntity, euler: VectorTuple): void {
     case 'prop':
       entity.prop.spec.rotation = value;
       return;
+    case 'hazardVolume':
+      return; // AABB sin rotación
     case 'prebuiltBuilding':
       return; // se rota destructivamente via `rotateEntity`
   }

@@ -41,6 +41,12 @@ export function toTypeScript(doc: EditorDocument): string {
       case 'trigger':
         lines.push(`  .trigger(${lit(entity.def)})`);
         break;
+      case 'explosiveBarrel':
+        lines.push(`  .explosiveBarrel(${lit(entity.def)})`);
+        break;
+      case 'hazardVolume':
+        lines.push(`  .hazardVolume(${lit(entity.def)})`);
+        break;
       case 'building':
         lines.push(`  .structure(${lit(entity.spec)})`);
         break;

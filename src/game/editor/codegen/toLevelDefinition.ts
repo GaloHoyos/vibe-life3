@@ -41,6 +41,12 @@ export function toLevelDefinition(doc: EditorDocument): LevelDefinition {
       case 'trigger':
         map.trigger(entity.def);
         break;
+      case 'explosiveBarrel':
+        map.explosiveBarrel(entity.def);
+        break;
+      case 'hazardVolume':
+        map.hazardVolume(entity.def);
+        break;
       case 'building':
         map.structure(entity.spec);
         break;

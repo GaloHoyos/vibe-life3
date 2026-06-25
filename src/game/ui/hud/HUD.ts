@@ -59,6 +59,9 @@ export class HUD implements Disposable {
       eventBus.on("player.damaged", ({ amount }) =>
         this.view.damage.flash(amount),
       ),
+      eventBus.on("player.hazard", ({ kind }) =>
+        this.view.hazardWarning.show(kind),
+      ),
       eventBus.on(
         "weapon.changed",
         ({ weaponId, weaponName, ammo, reserve, secondaryAmmo }) =>

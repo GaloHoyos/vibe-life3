@@ -35,6 +35,17 @@ export const PlayerConfig = {
     armorMax: 100,
   },
   /**
+   * Daño por caída estilo HL2. Por debajo de `safeSpeed` (m/s de impacto) no
+   * hay daño — un salto normal aterriza a ~9.2 m/s. Entre `safeSpeed` y
+   * `fatalSpeed` el daño escala lineal hasta `fatalDamage`; arriba de
+   * `fatalSpeed` se capea a `fatalDamage`. ~10 m de caída ≈ 24 m/s.
+   */
+  fallDamage: {
+    safeSpeed: 12,
+    fatalSpeed: 26,
+    fatalDamage: 100,
+  },
+  /**
    * Stamina HL2-style (`AUX power`). Drena solo cuando el sprint está
    * efectivamente activo (sprint key + grounded + moving). Si llega a 0,
    * queda `depleted` y bloquea el sprint hasta que recargue al menos

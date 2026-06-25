@@ -28,6 +28,8 @@ import { quatFromEuler } from '@game/levels/builders/transform';
 import type { LevelDefinition } from './LevelDefinition';
 import type { TriggerSystem } from './TriggerSystem';
 import type { CheckpointSystem } from './CheckpointSystem';
+import type { HazardVolumeSystem } from './HazardVolumeSystem';
+import type { ExplosiveBarrelSystem } from '@game/gameplay/hazards/ExplosiveBarrelSystem';
 
 export interface LoadedLevel {
   npcs: INpc[];
@@ -55,6 +57,8 @@ export class LevelLoader {
     private readonly interactSystem: InteractSystem,
     private readonly triggerSystem: TriggerSystem,
     private readonly checkpointSystem: CheckpointSystem,
+    private readonly hazardVolumes: HazardVolumeSystem,
+    private readonly explosiveBarrels: ExplosiveBarrelSystem,
     private readonly characters: CharacterFactory,
     private readonly assets: AssetManager,
   ) {}
@@ -294,6 +298,14 @@ export class LevelLoader {
 
     (level.checkpoints ?? []).forEach((definition) => {
       this.checkpointSystem.addCheckpoint(definition);
+    });
+
+    (level.explosiveBarrels ?? []).forEach((definition) => {
+      this.explosiveBarrels.spawn(definition);
+    });
+
+    (level.hazardVolumes ?? []).forEach((definition) => {
+      this.hazardVolumes.addVolume(definition);
     });
 
     this.physics.updateQueryPipeline();

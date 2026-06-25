@@ -4,6 +4,7 @@ import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { EventBus } from "@engine/core/EventBus";
 import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
 import type { TriggerAction } from "@game/levels/LevelDefinition";
+import type { HazardKind } from "@game/levels/HazardVolumeSystem";
 
 export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
 export type CombatEventSourceKind = "player" | "npc" | "system";
@@ -206,6 +207,16 @@ export interface GameEventMap {
   };
   "player.dead": {
     reason: string;
+  };
+  /**
+   * Daño de un volumen de peligro (kill-volume). `HazardVolumeSystem` lo emite
+   * en ticks mientras el jugador está adentro; `Game` lo aplica a la vida.
+   * `instant` = letal inmediato (vacío).
+   */
+  "player.hazard": {
+    amount: number;
+    kind: HazardKind;
+    instant: boolean;
   };
   "player.pickup.health": {
     amount: number;

@@ -13,6 +13,7 @@ import { CharacterPresets } from '@game/characters/CharacterPresets';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { LevelActionKind } from '@game/GameEvents';
 import type { TriggerAction } from '@game/levels/LevelDefinition';
+import type { HazardKind } from '@game/levels/HazardVolumeSystem';
 import { getAllLevels } from '@game/levels/LevelRegistry';
 import type { PropKind } from './EditorDocument';
 
@@ -30,6 +31,7 @@ export const LEVEL_ACTIONS: readonly LevelActionKind[] = ['respawnEncounters', '
 export const TRIGGER_ACTION_KINDS: readonly TriggerAction['kind'][] = [
   'dialogue', 'spawnNpcs', 'door', 'levelAction', 'objective', 'endLevel',
 ];
+export const HAZARD_KINDS: readonly HazardKind[] = ['toxic', 'fire', 'electric', 'void'];
 
 /** Niveles registrados (campaña + custom). Para encadenar vía `nextLevel`. */
 export const LEVEL_IDS: readonly string[] = getAllLevels().map((l) => l.id);

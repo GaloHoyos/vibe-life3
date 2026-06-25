@@ -59,6 +59,8 @@ export class CharacterController extends KinematicCharacterBase {
   private wantsCrouch = false;
   private wantsSprint = false;
   private moveState: MoveState = "walk";
+  /** Velocidad de impacto del frame en que aterrizó (m/s), 0 si no aterrizó. */
+  private landingImpact = 0;
   private readonly tmpEye = new Vector3();
   private readonly tmpWishDir = new Vector3();
   private readonly tmpImpulse = new Vector3();
@@ -105,7 +107,20 @@ export class CharacterController extends KinematicCharacterBase {
 
     this.velocity.y += -PlayerGravity * delta;
 
+    // `stepMovement` zera `velocity.y` al tocar suelo, así que la velocidad de
+    // impacto se captura ANTES; el flanco aire→suelo lo da el cambio de `grounded`.
+    const wasGrounded = this.grounded;
+    const fallSpeed = -this.velocity.y;
     this.stepMovement(delta);
+    this.landingImpact =
+      !wasGrounded && this.grounded && fallSpeed > 0 ? fallSpeed : 0;
+  }
+
+  /** Velocidad de impacto si el jugador aterrizó este frame; 0 si no. Limpia tras leer. */
+  consumeLandingImpact(): number {
+    const impact = this.landingImpact;
+    this.landingImpact = 0;
+    return impact;
   }
 
   getEyePosition(): Vector3 {

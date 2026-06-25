@@ -14,8 +14,10 @@ import type { DialogueSystem } from "@game/narrative/DialogueSystem";
 import type { InteractSystem } from "@game/gameplay/interactions";
 import type { TriggerSystem } from "@game/levels/TriggerSystem";
 import type { CheckpointSystem } from "@game/levels/CheckpointSystem";
+import type { HazardVolumeSystem } from "@game/levels/HazardVolumeSystem";
 import type { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import type { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
 import type { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
 import type { HUD } from "@game/ui/hud/HUD";
 import type { Subtitles } from "@game/ui/subtitles/Subtitles";
@@ -37,9 +39,11 @@ export const GameTokens = {
   Dialogue: new ServiceToken<DialogueSystem>("DialogueSystem"),
   WeaponEffects: new ServiceToken<WeaponEffects>("WeaponEffects"),
   Grenades: new ServiceToken<GrenadeSystem>("GrenadeSystem"),
+  ExplosiveBarrels: new ServiceToken<ExplosiveBarrelSystem>("ExplosiveBarrelSystem"),
   InteractSystem: new ServiceToken<InteractSystem>("InteractSystem"),
   TriggerSystem: new ServiceToken<TriggerSystem>("TriggerSystem"),
   CheckpointSystem: new ServiceToken<CheckpointSystem>("CheckpointSystem"),
+  HazardVolumes: new ServiceToken<HazardVolumeSystem>("HazardVolumeSystem"),
   HUD: new ServiceToken<HUD>("HUD"),
   MainMenu: new ServiceToken<MainMenu>("MainMenu"),
   DebugMenu: new ServiceToken<DebugMenu>("DebugMenu"),

@@ -50,6 +50,8 @@ import { LevelLoader } from "@game/levels/LevelLoader";
 import { getLevel, LevelRegistry, type LevelId } from "@game/levels/LevelRegistry";
 import { TriggerSystem } from "@game/levels/TriggerSystem";
 import { CheckpointSystem, type CheckpointSnapshot } from "@game/levels/CheckpointSystem";
+import { HazardVolumeSystem } from "@game/levels/HazardVolumeSystem";
+import { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
 import type { ActorSnapshot, AiFrameContext, INpc } from "@game/npc/core/INpc";
 import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
 import { DialogueSystem } from "@game/narrative/DialogueSystem";
@@ -291,20 +293,25 @@ export class Game {
       GameTokens.WeaponEffects,
       new WeaponEffects(scene.scene, eventBus),
     );
+    const vfx = s.resolve(EngineTokens.Vfx);
+    const grenades = new GrenadeSystem(
+      physics,
+      scene.scene,
+      assets,
+      raycast,
+      eventBus,
+      positionalSounds,
+      vfx,
+    );
+    s.register(GameTokens.Grenades, grenades);
     s.register(
-      GameTokens.Grenades,
-      new GrenadeSystem(
-        physics,
-        scene.scene,
-        assets,
-        raycast,
-        eventBus,
-        positionalSounds,
-      ),
+      GameTokens.ExplosiveBarrels,
+      new ExplosiveBarrelSystem(physics, scene.scene, grenades),
     );
     s.register(GameTokens.InteractSystem, new InteractSystem(eventBus));
     s.register(GameTokens.TriggerSystem, new TriggerSystem(eventBus));
     s.register(GameTokens.CheckpointSystem, new CheckpointSystem(eventBus));
+    s.register(GameTokens.HazardVolumes, new HazardVolumeSystem(eventBus, vfx));
 
     eventBus.on("npc.weapon.dropped", (payload) => {
       void this.handleWeaponDrop(payload.npcId, payload.weaponId, payload.position);
@@ -320,6 +327,9 @@ export class Game {
     });
     eventBus.on("player.dead", () => {
       this.beginDeath();
+    });
+    eventBus.on("player.hazard", ({ amount, kind }) => {
+      this.player?.health.takeDamage(amount, kind);
     });
   }
 
@@ -909,10 +919,13 @@ export class Game {
     const interactSystem = s.resolve(GameTokens.InteractSystem);
     const triggerSystem = s.resolve(GameTokens.TriggerSystem);
     const checkpointSystem = s.resolve(GameTokens.CheckpointSystem);
+    const hazardVolumes = s.resolve(GameTokens.HazardVolumes);
     const weaponEffects = s.resolve(GameTokens.WeaponEffects);
     const subtitles = s.resolve(GameTokens.Subtitles);
     const footsteps = s.resolve(GameTokens.Footsteps);
     const grenades = s.resolve(GameTokens.Grenades);
+    const explosiveBarrels = s.resolve(GameTokens.ExplosiveBarrels);
+    const vfx = s.resolve(EngineTokens.Vfx);
 
     if (this.dying) {
       this.updateDeath(time.delta);
@@ -974,6 +987,7 @@ export class Game {
     physics.step(time.delta);
     this.npcs.forEach((npc) => npc.syncFromPhysics());
     grenades.update(time.delta, time.elapsed);
+    explosiveBarrels.update();
 
     playerPosition = player.getPosition();
     // Mientras la cámara cae (muerte) no la re-anclamos a los ojos del jugador.
@@ -992,9 +1006,11 @@ export class Game {
     }
     triggerSystem.update(playerPosition, time.delta);
     checkpointSystem.update(playerPosition);
+    hazardVolumes.update(playerPosition, time.delta);
     s.resolve(GameTokens.HUD).updateObjective(camera.camera);
     subtitles.update(time.delta);
     weaponEffects.update(time.delta);
+    vfx.update(time.delta);
     gizmos.update(time.delta);
   }
 
@@ -1295,10 +1311,13 @@ export class Game {
     const camera = services.resolve(EngineTokens.Camera);
     const lighting = services.resolve(EngineTokens.Lighting);
     const environment = services.resolve(EngineTokens.Environment);
+    const vfx = services.resolve(EngineTokens.Vfx);
     const eventBus = services.resolve(GameTokens.EventBus);
     const interactSystem = services.resolve(GameTokens.InteractSystem);
     const triggerSystem = services.resolve(GameTokens.TriggerSystem);
     const checkpointSystem = services.resolve(GameTokens.CheckpointSystem);
+    const hazardVolumes = services.resolve(GameTokens.HazardVolumes);
+    const explosiveBarrels = services.resolve(GameTokens.ExplosiveBarrels);
     const characters = services.resolve(GameTokens.Characters);
     const footsteps = services.resolve(GameTokens.Footsteps);
 
@@ -1317,6 +1336,8 @@ export class Game {
       interactSystem,
       triggerSystem,
       checkpointSystem,
+      hazardVolumes,
+      explosiveBarrels,
       characters,
       assets,
     );
@@ -1332,12 +1353,15 @@ export class Game {
     this.player?.dispose();
     services.resolve(GameTokens.WeaponEffects).clear();
     services.resolve(GameTokens.Grenades).clear();
+    explosiveBarrels.clear();
+    vfx.clear();
     services.resolve(EngineTokens.PositionalSound).clear();
     interactSystem.clear();
     triggerSystem.clear();
     checkpointSystem.clear();
+    hazardVolumes.clear();
     physics.reset();
-    sceneManager.clearLevel(lighting.getLights());
+    sceneManager.clearLevel([...lighting.getLights(), ...vfx.getPersistentObjects()]);
 
     const loaded = await loader.load(level);
     this.npcs = loaded.npcs;
