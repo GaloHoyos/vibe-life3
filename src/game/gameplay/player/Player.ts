@@ -80,6 +80,7 @@ export class Player implements Damageable {
       readMovement(controls, this.stamina),
       cameraSystem,
     );
+    this.applyFallDamage();
     this.weapons.update(
       delta,
       input,
@@ -115,6 +116,20 @@ export class Player implements Damageable {
 
   dispose(): void {
     this.weapons.dispose();
+  }
+
+  /** Aplica daño por caída si el controller registró un aterrizaje fuerte este frame. */
+  private applyFallDamage(): void {
+    const impact = this.controller.consumeLandingImpact();
+    const fall = PlayerConfig.fallDamage;
+    if (impact <= fall.safeSpeed) {
+      return;
+    }
+    const t = Math.min(
+      1,
+      (impact - fall.safeSpeed) / (fall.fatalSpeed - fall.safeSpeed),
+    );
+    this.health.takeDamage(Math.round(t * fall.fatalDamage), "fall");
   }
 
   applyDamage(amount: number, hitDirection?: Vector3): void {

@@ -193,6 +193,23 @@ export class PhysicsWorld {
     return this.world.bodies.len();
   }
 
+  /**
+   * Remueve un cuerpo dinámico creado con `createDynamicBox` junto con su binding
+   * de mesh y la metadata de sus colliders. Necesario para destruir entidades en
+   * caliente (p. ej. un barril que explota): `world.removeRigidBody` por sí solo
+   * deja el binding colgado y el próximo `syncMeshes` toca un body liberado.
+   */
+  removeDynamicBody(body: RAPIER.RigidBody): void {
+    const index = this.bindings.findIndex((b) => b.rigidBody === body);
+    if (index >= 0) {
+      this.bindings.splice(index, 1);
+    }
+    for (let i = 0; i < body.numColliders(); i += 1) {
+      this.metadataByCollider.delete(body.collider(i).handle);
+    }
+    this.world.removeRigidBody(body);
+  }
+
   private syncMeshes(): void {
     this.bindings.forEach(({ mesh, rigidBody }) => {
       const position = rigidBody.translation();

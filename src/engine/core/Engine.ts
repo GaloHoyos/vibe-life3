@@ -8,6 +8,7 @@ import { Raycast } from "@engine/physics/Raycast";
 import { CameraSystem } from "@engine/render/CameraSystem";
 import { EnvironmentSystem } from "@engine/render/environment/EnvironmentSystem";
 import { LightingSystem } from "@engine/render/environment/LightingSystem";
+import { VfxSystem } from "@engine/render/effects/VfxSystem";
 import { Renderer } from "@engine/render/Renderer";
 import { GameLoop } from "./GameLoop";
 import { Input } from "@engine/input/Input";
@@ -68,6 +69,7 @@ export class Engine {
   dispose(): void {
     this.loop.stop();
     this.services.resolve(EngineTokens.Input).dispose();
+    this.services.resolve(EngineTokens.Vfx).dispose();
     this.services.resolve(EngineTokens.Environment).dispose();
     this.services.resolve(EngineTokens.Renderer).dispose();
     this.services.resolve(EngineTokens.Camera).dispose();
@@ -87,6 +89,7 @@ export class Engine {
     const scene = c.register(EngineTokens.Scene, new SceneManager());
     const renderer = c.register(EngineTokens.Renderer, new Renderer(this.root));
     const camera = c.register(EngineTokens.Camera, new CameraSystem(this.root));
+    c.register(EngineTokens.Vfx, new VfxSystem(scene.scene, renderer.renderer));
     c.register(EngineTokens.Lighting, new LightingSystem());
     c.register(EngineTokens.Environment, new EnvironmentSystem(renderer.renderer));
 

@@ -9,6 +9,8 @@ import type { HeightSource } from '@shared/math/HeightField';
 import type { LevelActionKind } from '@game/GameEvents';
 import type { BuildingArtifact } from '@game/levels/buildings/BuildingArtifact';
 import type { CheckpointDefinition } from '@game/levels/CheckpointSystem';
+import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
+import type { ExplosiveBarrelDefinition } from '@game/gameplay/hazards/ExplosiveBarrel';
 import type { LevelId } from '@game/levels/LevelRegistry';
 
 /** Rotacion Euler XYZ en radianes. Omitida = alineado a los ejes. */
@@ -209,4 +211,8 @@ export interface LevelDefinition {
   triggers: TriggerDefinition[];
   /** Puntos de control para respawn. Si se omite, el nivel solo reaparece en `playerStart`. */
   checkpoints?: CheckpointDefinition[];
+  /** Barriles explosivos (props dañables que explotan al morir). */
+  explosiveBarrels?: ExplosiveBarrelDefinition[];
+  /** Volúmenes de peligro que dañan al jugador mientras está adentro. */
+  hazardVolumes?: HazardVolumeDefinition[];
 }

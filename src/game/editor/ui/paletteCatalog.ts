@@ -55,6 +55,14 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
     ],
   },
   {
+    title: 'Peligros',
+    icon: 'bolt',
+    items: [
+      { label: 'Barril explosivo', icon: 'cube', kind: 'explosiveBarrel' },
+      { label: 'Kill-volume', icon: 'warning', kind: 'hazardVolume' },
+    ],
+  },
+  {
     title: 'Props (cover)',
     icon: 'cube',
     items: [

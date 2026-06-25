@@ -1,6 +1,7 @@
 ﻿import type { Disposable } from '@shared/types/lifecycle';
 import { Crosshair } from './Crosshair';
 import { DamageIndicator } from './DamageIndicator';
+import { HazardWarning } from './HazardWarning';
 import { HealthArmorHUD } from './HealthArmorHUD';
 import { ObjectiveHUD } from './ObjectiveHUD';
 import { InteractionPrompt } from '@game/ui/overlay/InteractionPrompt';
@@ -20,6 +21,7 @@ export class HUDView implements Disposable {
   readonly weapon = new WeaponHUD();
   readonly crosshair = new Crosshair();
   readonly damage = new DamageIndicator();
+  readonly hazardWarning = new HazardWarning();
   readonly interaction = new InteractionPrompt();
   readonly weaponSelector = new WeaponSelectorView();
   readonly objective: ObjectiveHUD;
@@ -40,6 +42,7 @@ export class HUDView implements Disposable {
       this.healthArmor.element,
       this.weapon.element,
       this.objective.element,
+      this.hazardWarning.element,
       this.feed,
     );
     container.append(this.element);
@@ -61,6 +64,7 @@ export class HUDView implements Disposable {
     this.pendingNotificationTimers.length = 0;
     this.crosshair.dispose();
     this.damage.dispose();
+    this.hazardWarning.dispose();
     this.weapon.dispose();
     this.weaponSelector.dispose();
     this.objective.dispose();

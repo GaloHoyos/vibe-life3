@@ -11,9 +11,10 @@ import type { AssetManager } from "@engine/assets/AssetManager";
 import type { PositionalSoundManager } from "@engine/audio/core/PositionalSoundManager";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
+import type { VfxSystem } from "@engine/render/effects/VfxSystem";
 import type { Damageable, Disposable } from "@shared/types/lifecycle";
 import type { GameEventBus } from "@game/GameEvents";
-import type { ActiveGrenade, GrenadeSpawnOptions } from "./Grenade";
+import type { ActiveGrenade, ExplosionParams, GrenadeSpawnOptions } from "./Grenade";
 import { GrenadeRenderTuning } from "./GrenadeRenderTuning";
 
 const DEFAULT_FUSE_SECONDS = 3.5;
@@ -72,6 +73,7 @@ export class GrenadeSystem implements Disposable {
     private readonly raycast: Raycast,
     private readonly eventBus: GameEventBus,
     private readonly positionalSounds: PositionalSoundManager,
+    private readonly vfx: VfxSystem,
   ) {
     void this.assets.loadModel("grenadePrimed");
   }
@@ -213,30 +215,31 @@ export class GrenadeSystem implements Disposable {
     this.explode(grenade, hit.point);
   }
 
-  private explode(grenade: ActiveGrenade, point: Vector3): void {
-    if (grenade.exploded) {
-      return;
-    }
-    grenade.exploded = true;
-
+  /**
+   * Explosión genérica en un punto: sonido posicional + ruido de percepción +
+   * impulso a dynamics + daño radial con falloff a todo `Damageable` en el
+   * radio. Reusable por cualquier fuente (granadas, barriles explosivos, etc.).
+   */
+  detonate(point: Vector3, params: ExplosionParams): void {
     this.positionalSounds.playAt(SOUND_EXPLOSION, point.clone(), {
       refDistance: 6,
       maxDistance: 60,
       rolloffFactor: 1.1,
       volume: 1,
     });
+    this.vfx.explosion(point, { scale: params.radius });
     this.eventBus.emit("world.noise", {
       kind: "explosion",
       position: point.clone(),
-      radius: Math.max(24, grenade.radius * 12),
+      radius: Math.max(24, params.radius * 12),
       sourceId:
-        grenade.sourceId ?? (grenade.ownerKind === "player" ? "player" : undefined),
+        params.sourceId ?? (params.ownerKind === "player" ? "player" : undefined),
       sourceFaction:
-        grenade.sourceFaction ??
-        (grenade.ownerKind === "player" ? "player" : undefined),
+        params.sourceFaction ??
+        (params.ownerKind === "player" ? "player" : undefined),
     });
 
-    const sphere = new RAPIER.Ball(grenade.radius);
+    const sphere = new RAPIER.Ball(params.radius);
     const seenColliders = new Set<number>();
     const impulseBodies = new Map<number, RAPIER.RigidBody>();
     const damageTargets = new Map<Damageable, ExplosionDamageTarget>();
@@ -253,7 +256,7 @@ export class GrenadeSystem implements Disposable {
         const metadata = this.physics.getColliderMetadata(collider);
         const parent = collider.parent();
 
-        if (parent && parent.isDynamic() && parent !== grenade.body) {
+        if (parent && parent.isDynamic() && parent !== params.ignoreBody) {
           impulseBodies.set(parent.handle, parent);
         }
 
@@ -272,9 +275,9 @@ export class GrenadeSystem implements Disposable {
         );
         const distance = tmpOffset.length();
         const damage = this.computeRadialDamage(
-          grenade.damage,
+          params.damage,
           distance,
-          grenade.radius,
+          params.radius,
         );
         if (damage <= 0) {
           return true;
@@ -296,7 +299,7 @@ export class GrenadeSystem implements Disposable {
     );
 
     impulseBodies.forEach((body) => {
-      this.applyExplosionImpulse(body, point, grenade.impulse);
+      this.applyExplosionImpulse(body, point, params.impulse);
     });
 
     damageTargets.forEach((target) => {
@@ -304,21 +307,37 @@ export class GrenadeSystem implements Disposable {
         target.damage,
         target.direction.clone(),
         target.bodyPartName,
-        grenade.sourceId,
+        params.sourceId,
       );
       this.eventBus.emit("weapon.hit", {
-        weaponName: grenade.weaponName,
+        weaponName: params.weaponName,
         targetId: target.targetId,
         surfaceKind: target.surfaceKind,
         point: point.clone(),
         normal: target.direction.clone(),
         damage: target.damage,
-        sourceId: grenade.sourceId,
-        sourceKind: grenade.ownerKind,
-        sourceFaction: grenade.sourceFaction,
+        sourceId: params.sourceId,
+        sourceKind: params.ownerKind,
+        sourceFaction: params.sourceFaction,
       });
     });
+  }
 
+  private explode(grenade: ActiveGrenade, point: Vector3): void {
+    if (grenade.exploded) {
+      return;
+    }
+    grenade.exploded = true;
+    this.detonate(point, {
+      damage: grenade.damage,
+      radius: grenade.radius,
+      impulse: grenade.impulse,
+      ownerKind: grenade.ownerKind,
+      sourceId: grenade.sourceId,
+      sourceFaction: grenade.sourceFaction,
+      weaponName: grenade.weaponName,
+      ignoreBody: grenade.body,
+    });
     this.removeQuietly(grenade);
   }
 

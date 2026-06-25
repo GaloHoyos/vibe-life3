@@ -585,6 +585,89 @@ body {
 }
 
 /* ============================================================
+ * Anuncio de peligro ambiental (costado izquierdo) — estilo H.E.V.
+ * ============================================================ */
+
+.hev-hazard {
+  --hazard-color: var(--hl-amber);
+  position: absolute;
+  left: 35px;
+  top: 44%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 16px 9px 13px;
+  border-left: 3px solid var(--hazard-color);
+  background: linear-gradient(
+    90deg,
+    rgb(0 0 0 / 0.5),
+    rgb(0 0 0 / 0.12) 70%,
+    transparent
+  );
+  opacity: 0;
+  transform: translate(-14px, -50%);
+  pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.hev-hazard.is-active {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+.hev-hazard__icon {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  color: var(--hazard-color);
+  filter: drop-shadow(0 0 6px var(--hazard-color));
+}
+
+/* El icono titila como una luz de advertencia mientras el anuncio está activo. */
+.hev-hazard.is-active .hev-hazard__icon {
+  animation: hev-hazard-blink 0.85s steps(1, end) infinite;
+}
+
+.hev-hazard__icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.hev-hazard__title {
+  font-size: 15px;
+  letter-spacing: 0.2em;
+  line-height: 1.15;
+  color: var(--hazard-color);
+  text-shadow: 0 0 6px var(--hazard-color);
+}
+
+.hev-hazard__detail {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--hl-amber-dim);
+}
+
+@keyframes hev-hazard-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0.32;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hev-hazard.is-active .hev-hazard__icon {
+    animation: none;
+  }
+}
+
+/* ============================================================
  * Objective panel (arriba-centro) + brújula
  * ============================================================ */
 

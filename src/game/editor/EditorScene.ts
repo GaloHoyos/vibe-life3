@@ -1,6 +1,7 @@
 import {
   CapsuleGeometry,
   ConeGeometry,
+  CylinderGeometry,
   Group,
   Mesh,
   MeshStandardMaterial,
@@ -9,6 +10,7 @@ import {
   Vector3,
 } from 'three';
 import { createBoxMesh } from '@engine/render/PrimitiveFactory';
+import { getMaterial } from '@engine/render/material/Materials';
 import { createTerrainMesh } from '@engine/render/TerrainMesh';
 import { generateHeightField } from '@shared/math/HeightField';
 import { buildBuilding } from '@game/levels/builders/BuildingBuilder';
@@ -216,6 +218,10 @@ export class EditorScene {
         });
       case 'trigger':
         return triggerMesh(entity.def.id, entity.def.position, entity.def.size, entity.def.rotation);
+      case 'explosiveBarrel':
+        return barrelMesh(entity.def.id, entity.def.position, entity.def.rotation);
+      case 'hazardVolume':
+        return triggerMesh(entity.def.id, entity.def.position, entity.def.size);
       case 'npc':
         return placeholder(entity.def.position, [0.6, 1.7, 0.6], 'npc', entity.def.rotation);
       case 'weaponPickup':
@@ -260,6 +266,17 @@ function triggerMesh(id: string, position: VectorTuple, size: VectorTuple, rotat
     mat.opacity = 0.22;
     mat.depthWrite = false;
   }
+  return mesh;
+}
+
+function barrelMesh(id: string, position: VectorTuple, rotation?: VectorTuple): Mesh {
+  const radius = 0.28;
+  const height = 0.95;
+  const mesh = new Mesh(new CylinderGeometry(radius, radius, height, 16), getMaterial('hazard'));
+  mesh.name = id;
+  mesh.position.set(position[0], position[1] + height / 2, position[2]);
+  if (rotation) mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+  mesh.castShadow = true;
   return mesh;
 }
 

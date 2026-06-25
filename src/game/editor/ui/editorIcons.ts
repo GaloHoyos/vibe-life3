@@ -62,6 +62,8 @@ const KIND_ICONS: Record<EditorEntityKind, EditorIconName> = {
   itemPickup: 'item',
   charger: 'bolt',
   trigger: 'target',
+  explosiveBarrel: 'cube',
+  hazardVolume: 'warning',
   building: 'building',
   house: 'house',
   ramp: 'stairs',

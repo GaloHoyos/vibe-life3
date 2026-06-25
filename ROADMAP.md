@@ -57,8 +57,26 @@ Half-Life completo. Ordenado por impacto. Marcá cada ítem al cerrarlo.
 
 - [ ] **Más enemigos** (data-driven vía `CharacterPresets` + `aiProfileId`): headcrab/fast
   zombie, manhack (drone aéreo), turret Combine, variedad Combine (shotgunner/elite).
-- [ ] **Peligros ambientales:** daño por caída (no existe), barriles explosivos, kill-volumes
-  (tóxico/fuego/eléctrico/vacío).
+- [x] **Peligros ambientales** *(hecho)*
+  - **Daño por caída:** `CharacterController` captura la velocidad de impacto en el flanco
+    aire→suelo (`consumeLandingImpact`); `Player` la mapea a daño vía `PlayerConfig.fallDamage`
+    (`safeSpeed`/`fatalSpeed`/`fatalDamage`). Respeta godMode y dispara la secuencia de muerte HL.
+  - **Barriles explosivos:** `ExplosiveBarrel` (`Damageable` dinámico) + `ExplosiveBarrelSystem`.
+    Reusan `GrenadeSystem.detonate()` (extraído como primitiva de explosión genérica: daño radial
+    con falloff + impulso + ruido + `weapon.hit`). Disparables, encadenan barril a barril
+    (explosión diferida al `update` → cadena escalonada), y atribuyen el kill a quien los detonó.
+  - **Kill-volumes:** `HazardVolumeSystem` (espeja `CheckpointSystem` pero continuo) — daño por
+    segundo en ticks mientras el jugador está dentro, `instantKill` para `void`. Tipos
+    tóxico/fuego/eléctrico/vacío. Emite `player.hazard`; `Game` lo aplica.
+  - **Efectos visuales:** `VfxSystem` (engine, `render/effects/`) — pool de partículas GPU
+    (`ParticleField`, shader propio) + luces de destello + onda expansiva. Primitiva genérica
+    `explosion()` (bola de fuego + chispas balísticas + humo + flash) que reusan granadas y
+    barriles vía `detonate()`, y emisores continuos `createEmitter()` para el ambiente de los
+    kill-volumes (humo tóxico / llamas + brasas / arcos eléctricos). El efecto ambiente es
+    **toggleable por volumen** (`HazardVolumeDefinition.showEffect`, default on; `void` nunca dibuja).
+  - **Editor:** barril y kill-volume cableados de punta a punta (paleta "Peligros", inspector con
+    toggle "Efecto visual", preview, codegen `to`/`from`/`toTypeScript`). *Pendiente para publicar
+    por Workshop: ampliar el `validateDocument` del backend (repo hermano) a los campos nuevos.*
 - [ ] **Encuentro con jefe** (gunship / mini-strider): preset de mucha vida + ataque ranged fuerte.
 
 ## Tier 3 — Armas (huecos del arsenal clásico)

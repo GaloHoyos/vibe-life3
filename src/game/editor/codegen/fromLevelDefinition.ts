@@ -37,6 +37,8 @@ export function fromLevelDefinition(level: LevelDefinition): EditorDocument {
   for (const def of level.itemPickups ?? []) entities.push({ eid: newEid('itemPickup'), kind: 'itemPickup', def: clone(def) });
   for (const def of level.chargers ?? []) entities.push({ eid: newEid('charger'), kind: 'charger', def: clone(def) });
   for (const def of level.triggers) entities.push({ eid: newEid('trigger'), kind: 'trigger', def: clone(def) });
+  for (const def of level.explosiveBarrels ?? []) entities.push({ eid: newEid('explosiveBarrel'), kind: 'explosiveBarrel', def: clone(def) });
+  for (const def of level.hazardVolumes ?? []) entities.push({ eid: newEid('hazardVolume'), kind: 'hazardVolume', def: clone(def) });
 
   return {
     meta,
