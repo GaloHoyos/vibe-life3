@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import type { CharacterMotor } from '@engine/physics/character/CharacterMotor';
+import type { NpcMotor } from '@engine/physics/character/NpcMotor';
 import type { Raycast } from '@engine/physics/Raycast';
 import type { NavSpace } from '@engine/ai/nav/NavSpace';
 import type { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
@@ -25,6 +25,19 @@ export interface NpcLocomotionOptions {
   bodyRadius?: number;
   /** LOS fisico para la poda de waypoints del PathSmoother. */
   raycast?: Raycast;
+  /**
+   * Vuelo: no pide paths al NavSpace; steerea directo al goal en 3D (con
+   * `hoverHeight` sumado en Y). La separacion de vecinos sigue activa (plano).
+   */
+  flying?: boolean;
+  /** Altura (m) sobre el goal a la que flota el flyer. Solo con `flying`. */
+  hoverHeight?: number;
+  /**
+   * Separacion anti-clumping de vecinos. Default true. Los manhacks la apagan a
+   * proposito: queremos que se choquen entre ellos y reboten (torpes, HL2), no
+   * que mantengan distancia.
+   */
+  separation?: boolean;
 }
 
 /** Vecino para separacion local. Datos planos: la capa game los provee. */
@@ -88,6 +101,7 @@ export class NpcLocomotion {
     raycast?: Raycast;
   };
   private readonly tmpFacing = new Vector3();
+  private readonly tmpFlyAim = new Vector3();
   private readonly tmpLast = new Vector3();
   private readonly tmpPos = new Vector3();
   private readonly tmpSeparation = new Vector3();
@@ -110,7 +124,7 @@ export class NpcLocomotion {
   private wantsMove = false;
 
   constructor(
-    private readonly motor: CharacterMotor,
+    private readonly motor: NpcMotor,
     private readonly navSpace: NavSpace,
     private readonly pathQueue: PathRequestQueue,
     private readonly ownerId: string,
@@ -124,6 +138,9 @@ export class NpcLocomotion {
       stuckHoldTime: options.stuckHoldTime ?? 1.0,
       priority: options.priority ?? 2,
       bodyRadius: options.bodyRadius ?? 0.45,
+      flying: options.flying ?? false,
+      hoverHeight: options.hoverHeight ?? 0,
+      separation: options.separation ?? true,
       pathFilter: options.pathFilter,
       raycast: options.raycast,
     };
@@ -135,7 +152,7 @@ export class NpcLocomotion {
   }
 
   moveTo(target: Vector3, facing?: Vector3): void {
-    if (!this.goal || this.goal.distanceTo(target) > this.opts.repathThreshold) {
+    if (!this.opts.flying && (!this.goal || this.goal.distanceTo(target) > this.opts.repathThreshold)) {
       this.goalAtPlan.copy(target);
       this.requestPath(target);
     }
@@ -164,6 +181,22 @@ export class NpcLocomotion {
     this.facingTarget = this.tmpFacing.copy(target).clone();
   }
 
+  /**
+   * Salto balistico hacia `target` (creatures terrestres). Libera el path
+   * actual y encara al objetivo; el motor toma el control de la fisica hasta
+   * aterrizar (`isLeaping`). La direccion la calcula el motor desde la posicion
+   * real, asi que no depende del facing.
+   */
+  leap(target: Vector3, params: { upSpeed: number; maxForwardSpeed: number }): void {
+    this.stop();
+    this.facingTarget = this.tmpFacing.copy(target).clone();
+    this.motor.leapTo(target, params.upSpeed, params.maxForwardSpeed);
+  }
+
+  isLeaping(): boolean {
+    return this.motor.isLeaping();
+  }
+
   isStuck(): boolean {
     return this.stuck;
   }
@@ -190,8 +223,20 @@ export class NpcLocomotion {
   }
 
   update(delta: number): void {
+    if (this.motor.isLeaping()) {
+      // En el aire el motor maneja la parabola; solo le pasamos el facing para
+      // que el cuerpo siga encarando al objetivo del salto. Sin pathing/stuck.
+      this.motor.update(delta, null, false, this.facingTarget);
+      return;
+    }
+    if (this.opts.flying) {
+      this.updateFlying(delta);
+      return;
+    }
     if (!this.goal) {
-      this.motor.update(delta, null, false, null);
+      // Pasamos `facingTarget` (no null) para que `face()` gire el cuerpo aun
+      // detenido: si no, FaceThreat / el windup del leap no encaran a nada.
+      this.motor.update(delta, null, false, this.facingTarget);
       this.stuckTimer = 0;
       this.hasLast = false;
       return;
@@ -273,9 +318,35 @@ export class NpcLocomotion {
     this.updateStuck(delta);
   }
 
+  /**
+   * Vuelo: sin NavSpace. Apunta directo al goal con `hoverHeight` en Y, en 3D.
+   * Frena (hover) cuando esta dentro de `goalReachRadius` (distancia 3D) del
+   * punto de hover. La separacion horizontal sigue activa para que un enjambre
+   * de manhacks no se apile.
+   */
+  private updateFlying(delta: number): void {
+    if (!this.goal) {
+      this.motor.update(delta, null, false, this.facingTarget);
+      this.stuckTimer = 0;
+      this.hasLast = false;
+      this.wantsMove = false;
+      return;
+    }
+    const pos = this.tmpPos.copy(this.motor.getPosition());
+    this.tmpFlyAim.set(this.goal.x, this.goal.y + this.opts.hoverHeight, this.goal.z);
+    const reached = pos.distanceTo(this.tmpFlyAim) <= this.opts.goalReachRadius;
+    this.wantsMove = !reached;
+    let aim: Vector3 = this.tmpFlyAim;
+    if (this.wantsMove) {
+      aim = this.applySeparation(pos, this.tmpFlyAim);
+    }
+    this.motor.update(delta, aim, this.wantsMove, this.facingTarget);
+    this.updateStuck(delta);
+  }
+
   /** Desvia el aim point alejandolo de vecinos superpuestos (anti-clumping). */
   private applySeparation(pos: Vector3, aim: Vector3): Vector3 {
-    if (this.neighbors.length === 0) return aim;
+    if (!this.opts.separation || this.neighbors.length === 0) return aim;
     const push = this.tmpSeparation.set(0, 0, 0);
     let pushed = false;
     for (const neighbor of this.neighbors) {

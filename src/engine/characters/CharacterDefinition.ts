@@ -18,7 +18,10 @@ export type CharacterAIProfileId =
   | "combineSoldier"
   | "zombieMelee"
   | "alyxSupport"
-  | "passiveHumanoid";
+  | "passiveHumanoid"
+  | "headcrabMelee"
+  | "manhackFlyer"
+  | "floorTurret";
 
 /** Configuracion de sentidos declarada por el personaje. */
 export interface CharacterPerceptionConfig {

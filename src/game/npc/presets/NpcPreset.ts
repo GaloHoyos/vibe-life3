@@ -20,6 +20,13 @@ export interface NpcPreset {
   radius: number;
   /** Distancia 2D a la que considera al threat en rango melee. */
   meleeRange: number;
+  /**
+   * Distancia 2D maxima de la banda de salto (`EnemyInLeapRange` se activa entre
+   * `meleeRange` y este valor). Omitido / 0 = la creature no salta.
+   */
+  leapRange?: number;
+  /** Parametros del salto balistico. Requerido si algun schedule usa el leap task. */
+  leap?: NpcLeapProfile;
   /** Distancia 2D minima para `EnemyTooClose`. */
   tooCloseRange: number;
   /** Umbral de health (0..1) por debajo del cual activa `LowHealth`. */
@@ -47,6 +54,17 @@ export interface NpcPresetOptions {
   hasPatrol?: boolean;
 }
 
+export interface NpcLeapProfile {
+  /** Tiempo (s) de recogida antes de lanzarse (encara al threat). */
+  windup: number;
+  /** Velocidad vertical inicial (m/s): define el apex y el tiempo de vuelo. */
+  upSpeed: number;
+  /** Tope de velocidad horizontal (m/s). */
+  maxForwardSpeed: number;
+  /** Pausa (s) tras aterrizar antes de re-evaluar (cadencia entre saltos). */
+  recover: number;
+}
+
 export interface NpcMovementProfile {
   walkSpeed: number;
   sprintSpeed: number;
@@ -56,4 +74,12 @@ export interface NpcMovementProfile {
   snapToGround: number;
   /** Habilita planning de jump portals. */
   canJump: boolean;
+  /**
+   * Vuelo: el motor ignora la gravedad y se mueve en 3D (incluido Y), y la
+   * locomotion beelinea al objetivo sin pedir paths al NavSpace. Default false
+   * (NPC terrestre).
+   */
+  flying?: boolean;
+  /** Altura (m) sobre el objetivo a la que el flyer flota al acercarse. */
+  hoverHeight?: number;
 }

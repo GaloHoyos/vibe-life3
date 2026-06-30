@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Object3D, Vector3 } from "three";
-import { PhysicsWorld } from "./PhysicsWorld";
+import { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 
 beforeAll(async () => {
   await RAPIER.init();

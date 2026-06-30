@@ -1,4 +1,4 @@
-import { Group, Vector3 } from 'three';
+import { Group, Quaternion, Vector3 } from 'three';
 import type { Faction } from '@engine/ai/Faction';
 import { isHostileTo } from '@engine/ai/Faction';
 import { Brain } from '@engine/ai/brain/Brain';
@@ -7,13 +7,13 @@ import type { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
 import { PerceptionSystem, isTargetVisible } from '@engine/ai/perception/PerceptionSystem';
 import type { PerceptionSnapshot } from '@engine/ai/perception/PerceptionSystem';
 import type { Raycast } from '@engine/physics/Raycast';
-import type { CharacterMotor } from '@engine/physics/character/CharacterMotor';
+import type { NpcMotor } from '@engine/physics/character/NpcMotor';
 import { NpcLocomotion } from '@engine/ai/locomotion/NpcLocomotion';
 import type { LocomotionNeighbor, NpcLocomotionDebug } from '@engine/ai/locomotion/NpcLocomotion';
 import type { GameEventBus } from '@game/GameEvents';
 import { Health } from '@game/gameplay/Health';
 import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
-import type { NpcAnimationBridge } from '@game/npc/animation/NpcAnimationBridge';
+import type { NpcAnimator } from '@game/npc/animation/NpcAnimator';
 import type {
   ActorSnapshot,
   AiFrameContext,
@@ -28,6 +28,7 @@ import type {
 } from '@game/npc/brain/NpcBrainContext';
 import { computeNpcConditions } from '@game/npc/brain/NpcSensors';
 import { Cond } from '@game/npc/brain/NpcConditions';
+import { NpcDebugFlags } from '@game/npc/core/NpcDebugFlags';
 import { NpcNoiseSensor } from '@game/npc/brain/NpcNoiseSensor';
 import { NpcCoverSensor } from '@game/npc/brain/NpcCoverSensor';
 import type { TacticalMap } from '@game/npc/ai/TacticalMap';
@@ -39,15 +40,17 @@ export interface NpcConstructionParams {
   faction: Faction;
   position: Vector3;
   visualRoot: Group;
-  motor: CharacterMotor;
+  motor: NpcMotor;
   combat: NpcCombatHandle;
   preset: NpcPreset;
+  /** Daño por cuchillazo de contacto (manhack); ×2 contra el player. Default 0 = no corta. */
+  sliceDamage?: number;
   navSpace: NavSpace;
   buildingRegistry: BuildingRegistry;
   pathQueue: PathRequestQueue;
   raycast: Raycast;
   eventBus: GameEventBus;
-  animation?: NpcAnimationBridge | null;
+  animation?: NpcAnimator | null;
   patrolRoute?: Vector3[] | null;
   tacticalMap?: TacticalMap | null;
   squadDirector?: SquadDirector | null;
@@ -82,18 +85,20 @@ export class Npc implements INpc {
   readonly position: Vector3;
   readonly radius: number;
 
-  private readonly motor: CharacterMotor;
+  private readonly motor: NpcMotor;
   private readonly locomotion: NpcLocomotion;
   private readonly perception: PerceptionSystem;
   private readonly brain: Brain<NpcBrainContext>;
   private readonly combatHandle: NpcCombatHandle;
   private readonly preset: NpcPreset;
+  private readonly sliceDamage: number;
   private readonly raycast: Raycast;
   private readonly buildingRegistry: BuildingRegistry;
   private readonly navSpace: NavSpace;
   private readonly eventBus: GameEventBus;
-  private readonly animation: NpcAnimationBridge | null;
+  private readonly animation: NpcAnimator | null;
   private readonly animationLookTarget = new Vector3();
+  private readonly tmpSliceDir = new Vector3();
 
   private readonly noiseSensor: NpcNoiseSensor;
   private readonly coverSensor: NpcCoverSensor | null;
@@ -122,6 +127,7 @@ export class Npc implements INpc {
     this.health = new Health(params.preset.maxHealth);
     this.motor = params.motor;
     this.preset = params.preset;
+    this.sliceDamage = params.sliceDamage ?? 0;
     this.raycast = params.raycast;
     this.buildingRegistry = params.buildingRegistry;
     this.navSpace = params.navSpace;
@@ -131,6 +137,10 @@ export class Npc implements INpc {
     this.locomotion = new NpcLocomotion(this.motor, this.navSpace, params.pathQueue, this.id, {
       bodyRadius: this.preset.radius,
       raycast: this.raycast,
+      flying: this.preset.movement.flying,
+      hoverHeight: this.preset.movement.hoverHeight,
+      // Los flyers (manhack) se choquen y reboten en vez de mantener distancia.
+      separation: !this.preset.movement.flying,
     });
     this.perception = new PerceptionSystem(this.preset.perception);
     this.brain = new Brain<NpcBrainContext>(this.preset.schedules);
@@ -153,6 +163,9 @@ export class Npc implements INpc {
     if (this.aggroTimer > 0) this.aggroTimer = Math.max(0, this.aggroTimer - delta);
 
     if (!this.health.isAlive()) {
+      // El cadaver del flyer dinamico sigue cayendo por fisica: sincronizar el
+      // visual aunque la IA ya no corra.
+      this.syncMeshFromMotor();
       this.animation?.updateStandalone(delta, { dead: true });
       return;
     }
@@ -187,6 +200,9 @@ export class Npc implements INpc {
 
     const handle: NpcLocomotionHandle = {
       moveTo: (target, options) => {
+        // Debug freeze: ignora ordenes de movimiento del brain (sin encolar
+        // paths). El NPC sigue apuntando/animando, solo no se traslada.
+        if (NpcDebugFlags.freezeMovement) return;
         this.applyGait(options?.gait ?? 'walk');
         this.locomotion.moveTo(target, options?.facing);
       },
@@ -198,6 +214,11 @@ export class Npc implements INpc {
       hasPath: () => this.locomotion.hasPath(),
       isStuck: () => this.locomotion.isStuck(),
       face: (target) => this.locomotion.face(target),
+      leap: (target, params) => {
+        if (NpcDebugFlags.freezeMovement) return;
+        this.locomotion.leap(target, params);
+      },
+      isLeaping: () => this.locomotion.isLeaping(),
     };
 
     this.noiseSensor.tick(delta);
@@ -219,9 +240,11 @@ export class Npc implements INpc {
       locomotion: handle,
       noise,
       meleeRange: this.preset.meleeRange,
+      leapRange: this.preset.leapRange ?? 0,
       tooCloseRange: this.preset.tooCloseRange,
       lowHealthRatio: this.preset.lowHealthRatio,
       justHit: this.justHitTimer > 0,
+      tipped: isBodyTipped(this.motor.getRotation()),
       alliesNear: this.countAlliesNear(ctx) > 0,
       anchorFar: this.isAnchorFar(ctx),
       coverAvailable: this.coverSensor?.isCoverAvailable() ?? false,
@@ -255,9 +278,44 @@ export class Npc implements INpc {
     };
 
     this.lastConditions = conditions;
-    this.brain.update(brainCtx, delta, conditions);
+    // Incapacitado = fuera de control de la IA (volteado por un impacto fisico o
+    // sostenido por la gravity gun): no decide schedules ni ataca, pero el motor
+    // se sigue tickeando (fisica) y aplicamos el daño de smash acumulado.
+    const incapacitated = this.motor.isIncapacitated();
+    if (!incapacitated) {
+      this.brain.update(brainCtx, delta, conditions);
+    }
+    if (NpcDebugFlags.freezeMovement) {
+      // Frena cualquier goal residual y reencara al threat: el motor se tickea
+      // sin goal (gravedad + grounding + facing) pero no hay traslacion.
+      this.locomotion.stop();
+      const faceAt = this.currentThreat?.position ?? this.threatLastKnown;
+      if (faceAt) this.locomotion.face(faceAt);
+    }
     this.locomotion.update(delta);
+    const impactDamage = this.motor.consumeImpactDamage();
+    if (impactDamage > 0) {
+      this.applyDamage(impactDamage, undefined, undefined, 'player');
+    }
+    this.applySliceHits();
     this.tickAnimation();
+  }
+
+  /**
+   * Cuchillazos por contacto del motor (manhack): aplica el daño al blanco (×2 si
+   * es el player) y avisa el ataque. El motor ya gatea la cadencia y el rebote.
+   */
+  private applySliceHits(): void {
+    if (this.sliceDamage <= 0) return;
+    const hits = this.motor.consumeSliceHits();
+    if (hits.length === 0) return;
+    for (const hit of hits) {
+      const damage = this.sliceDamage * (hit.isPlayer ? 2 : 1);
+      this.tmpSliceDir.copy(hit.point).sub(this.motor.getPosition());
+      this.tmpSliceDir.y = 0.2;
+      hit.damageable.applyDamage(damage, this.tmpSliceDir.clone().normalize(), undefined, this.id);
+    }
+    this.eventBus.emit('npc.attack', { id: this.id, characterId: this.preset.id });
   }
 
   private tickAnimation(): void {
@@ -300,14 +358,26 @@ export class Npc implements INpc {
         : new Vector3(0, 0.2, 1);
     const maxHealth = this.health.max;
     this.health.applyDamage(amount);
+    this.eventBus.emit('npc.damaged', {
+      id: this.id,
+      characterId: this.preset.id,
+      amount,
+      health: this.health.current,
+    });
     this.justHitTimer = 0.2;
     if (attackerId && attackerId !== this.id) {
       this.aggroAttackerId = attackerId;
       this.aggroTimer = DAMAGE_AGGRO_DURATION;
+      // Golpe externo (arma/crowbar): descontrola al volador un instante.
+      this.motor.reactToHit(dir, amount);
     }
     const fraction = Math.min(1, Math.max(0.2, amount / maxHealth));
     this.animation?.notifyHit(dir, fraction);
     if (!this.health.isAlive()) {
+      this.eventBus.emit('npc.killed', {
+        id: this.id,
+        characterId: this.preset.id,
+      });
       const deathVelocity = this.motor.getVelocity();
       this.animation?.notifyDeath(dir, deathVelocity, hitPartName);
       this.coverSensor?.dispose();
@@ -389,7 +459,9 @@ export class Npc implements INpc {
     const pos = this.motor.getPosition();
     this.mesh.position.copy(pos);
     this.position.copy(pos);
-    this.mesh.rotation.y = this.motor.getYaw();
+    // Rotacion completa: el flyer dinamico tumbea en 3D; el cinematico devuelve
+    // un quaternion de solo-yaw (equivalente al rotation.y de antes).
+    this.mesh.quaternion.copy(this.motor.getRotation());
   }
 
   private buildSelfSnapshot(): NpcSelfSnapshot {
@@ -421,11 +493,19 @@ export class Npc implements INpc {
   private pickThreat(ctx: AiFrameContext): ActorSnapshot | null {
     const candidates = this.threatCandidates;
     candidates.length = 0;
-    if (ctx.player.isAlive && isHostileTo(this.faction, ctx.player.faction)) {
+    const freeForAll = NpcDebugFlags.infighting;
+    if (
+      !NpcDebugFlags.ignorePlayer &&
+      ctx.player.isAlive &&
+      isHostileTo(this.faction, ctx.player.faction)
+    ) {
       candidates.push(ctx.player);
     }
     for (const npc of ctx.npcs) {
-      if (npc.isAlive && isHostileTo(this.faction, npc.faction)) candidates.push(npc);
+      if (!npc.isAlive || npc.id === this.id) continue;
+      // `infighting` ignora la matriz de facciones — hay que excluir el self a
+      // mano (antes lo filtraba `isHostileTo(mismaFaccion)` devolviendo false).
+      if (freeForAll || isHostileTo(this.faction, npc.faction)) candidates.push(npc);
     }
     if (candidates.length === 0) return null;
 
@@ -591,7 +671,22 @@ const COND_NAMES = [
   'SquadOnPoint',
   'AlliesNear',
   'AnchorFar',
+  'EnemyInLeapRange',
+  'Tipped',
 ];
+
+const tmpUp = new Vector3();
+
+/**
+ * True si el cuerpo quedo volcado: su up-vector local se aparto >60° de la
+ * vertical del mundo (dot < 0.5), estilo HL2 (`npc_turret_floor` se desactiva
+ * de lado). Los motores cinematicos devuelven un quaternion de solo-yaw → up
+ * sigue siendo (0,1,0) → nunca tipped.
+ */
+function isBodyTipped(rotation: Quaternion): boolean {
+  tmpUp.set(0, 1, 0).applyQuaternion(rotation);
+  return tmpUp.y < 0.5;
+}
 
 function conditionMaskToNames(mask: number): string[] {
   const out: string[] = [];

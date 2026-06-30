@@ -409,7 +409,7 @@ export class GrenadeSystem implements Disposable {
         }
       }
     });
-    this.physics.world.removeRigidBody(grenade.body);
+    this.physics.removeDynamicBody(grenade.body);
   }
 
   private createBody(options: GrenadeSpawnOptions): RAPIER.RigidBody {

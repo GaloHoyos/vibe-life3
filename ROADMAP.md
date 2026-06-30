@@ -57,6 +57,37 @@ Half-Life completo. Ordenado por impacto. Marcá cada ítem al cerrarlo.
 
 - [ ] **Más enemigos** (data-driven vía `CharacterPresets` + `aiProfileId`): headcrab/fast
   zombie, manhack (drone aéreo), turret Combine, variedad Combine (shotgunner/elite).
+  - [x] **Headcrab** *(hecho)* — criatura melee no-humanoide (modelo `headcrab.glb`). Para los
+    no-humanoides se introdujo la interfaz `NpcAnimator` + un `CreatureAnimator` liviano (bob/tilt +
+    muerte `tumble`/`drop`, lunge en ataque) que el `Npc` usa en lugar del bridge humanoide cuando
+    `type !== 'humanoid'`. Preset `headcrabMelee`: veloz, rango melee corto, fragil.
+  - [x] **Manhack** *(hecho)* — drone volador. Modo `flying` del `CharacterMotor` (ignora gravedad,
+    steering 3D incluido Y, sin snap-to-ground) + `NpcLocomotion` directa sin NavSpace (beeline al
+    threat + `hoverHeight`). Visual procedural `ManhackVisual` (cuchilla girada por el animador, sin
+    GLB). Contacto melee reusando `NpcCombat`. **Gotcha:** el `eyeHeight` del flyer debe quedar fuera
+    de su cápsula — el LOS de percepción es un raycast *solid* y un origen dentro del propio collider
+    se auto-impacta (perdía `SeeEnemy` siempre). *Cosmético:* el trace recorder marca un falso-positivo
+    "path vacío con threat" en flyers (no usan path).
+  - [x] **Torreta de piso** *(hecho)* — sensor + ametralladora montada sobre un trípode físico,
+    estilo HL2 `npc_turret_floor`. No navega ni decide táctica: corre sobre el runtime `Npc` con un
+    `StationaryDynamicMotor` (rigid body dinámico que descansa, se empuja, se vuelca y lo agarra la
+    gravity gun), un `TurretCombat` (apunta el cañón a 360°/s, dispara hitscan sólo alineada dentro de
+    ~10°, supresión al último punto visto, deploy/retract auto-gestionados, *thrash* caótico al
+    volcarse) y un `TurretAnimator` + visual procedural (`turret-barrel`/`turret-eye`/`turret-muzzle`).
+    Condición nueva `Cond.Tipped` (up-vector del cuerpo). **Derrota = física** (vida altísima: las
+    balas casi no la dañan; se neutraliza tumbándola). Preset `floorTurret`; `patrol[0]` define la
+    dirección de montaje.
+  - [x] **Variedad Combine: shotgunner + elite** *(hecho)* — dos variantes que reusan el esqueleto,
+    las animaciones procedurales y el `aiProfileId: "combineSoldier"` del combine común (mismos
+    schedules + percepción). El `combineShotgunner` cambia el AR3 por la escopeta con cadencia
+    ajustada (rango ~14m, ráfagas de 2, pausa larga) y su propia pose de attachment; el `combineElite`
+    es copia 1:1 del combine común (AR3, mismas stats), distinto sólo en el modelo (ojos rojos
+    emisivos). Ambos con entrada propia en `RestPoseTuning` para que el idle calce con el combine.
+  - [ ] **Pendiente:** audio propio de headcrab/manhack/torreta
+    (faltan clips del artista — la torreta usa placeholders), VFX de muerte del manhack
+    (chispa/explosión) y GLB del modelo de la torreta (hoy procedural).
+  - Encuentro de muestra cableado en `Sector2Ambush` (oleada de headcrabs + manhacks + una torreta
+    cubriendo el patio).
 - [x] **Peligros ambientales** *(hecho)*
   - **Daño por caída:** `CharacterController` captura la velocidad de impacto en el flanco
     aire→suelo (`consumeLandingImpact`); `Player` la mapea a daño vía `PlayerConfig.fallDamage`

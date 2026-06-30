@@ -18,7 +18,7 @@ export interface WeaponAttachmentPose {
   worldScale: number;
 }
 
-export type WeaponAttachmentKey = "ar3" | "pistol" | "smg" | "crowbar";
+export type WeaponAttachmentKey = "ar3" | "pistol" | "smg" | "crowbar" | "shotgun";
 
 export const WeaponAttachmentTuning: Record<WeaponAttachmentKey, WeaponAttachmentPose> = {
   ar3: {
@@ -29,6 +29,18 @@ export const WeaponAttachmentTuning: Record<WeaponAttachmentKey, WeaponAttachmen
     rotationY: 0.22,
     rotationZ: -1.57,
     worldScale: 0.38,
+  },
+  shotgun: {
+    positionX: 0.06,
+    positionY: 0.22,
+    positionZ: 0,
+    // El modelo de la escopeta tiene el cañón pitcheado ~0.6 rad respecto al
+    // del AR3, así que rotationX es negativo mientras Y/Z se mantienen iguales
+    // al ar3 para que quede en el mismo port-arms horizontal.
+    rotationX: -0.52,
+    rotationY: 0.22,
+    rotationZ: -1.57,
+    worldScale: 0.4,
   },
   pistol: {
     positionX: -0.01,

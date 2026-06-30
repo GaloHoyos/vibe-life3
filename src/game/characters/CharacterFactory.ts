@@ -4,20 +4,34 @@ import type { INpc } from '@game/npc/core/INpc';
 import { attachWeaponToHand } from '@game/npc/combat/NpcWeaponAttachment';
 import { Npc } from '@game/npc/Npc';
 import { NpcAnimationBridge } from '@game/npc/animation/NpcAnimationBridge';
+import { CreatureAnimator } from '@game/npc/animation/CreatureAnimator';
+import type { CreatureAnimConfig } from '@game/npc/animation/CreatureAnimator';
+import type { NpcAnimator } from '@game/npc/animation/NpcAnimator';
+import { TurretAnimator } from '@game/npc/animation/TurretAnimator';
+import { createManhackVisual } from '@game/characters/visuals/ManhackVisual';
+import { createTurretVisual } from '@game/characters/visuals/TurretVisual';
 import { buildAlyxPreset } from '@game/npc/presets/alyxPreset';
 import { buildCombinePreset } from '@game/npc/presets/combinePreset';
 import { buildZombiePreset } from '@game/npc/presets/zombiePreset';
+import { buildHeadcrabPreset } from '@game/npc/presets/headcrabPreset';
+import { buildManhackPreset } from '@game/npc/presets/manhackPreset';
+import { buildTurretPreset } from '@game/npc/presets/turretPreset';
 import type { NpcPreset, NpcPresetOptions } from '@game/npc/presets/NpcPreset';
 import { NpcCombat } from '@game/npc/combat/NpcCombat';
 import { NpcMeleeCombat } from '@game/npc/combat/NpcMeleeCombat';
 import { NpcRangedCombat } from '@game/npc/combat/NpcRangedCombat';
 import { RealRangedCombat } from '@game/npc/combat/RealRangedCombat';
+import { TurretCombat } from '@game/npc/combat/TurretCombat';
+import { TurretAimState } from '@game/npc/combat/TurretAimState';
 import type { NpcCombatHandle } from '@game/npc/brain/NpcBrainContext';
 import type { ModelAssetId } from '@engine/assets/AssetManifest';
 import type { GameEventBus } from "@game/GameEvents";
-import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
+import type { PhysicsMetadata, PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import { Raycast } from '@engine/physics/Raycast';
 import { CharacterMotor } from '@engine/physics/character/CharacterMotor';
+import { DynamicFlyerMotor } from '@engine/physics/character/DynamicFlyerMotor';
+import { StationaryDynamicMotor } from '@engine/physics/character/StationaryDynamicMotor';
+import type { NpcMotor } from '@engine/physics/character/NpcMotor';
 import type { NavSpace } from '@engine/ai/nav/NavSpace';
 import type { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
 import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
@@ -61,7 +75,7 @@ export class CharacterFactory {
   ): Promise<INpc> {
     const definition = CharacterPresets[characterId] ?? CharacterPresets.placeholderHumanoid;
     const model = definition.modelId ? await this.assets.instantiateModel(definition.modelId) : null;
-    const visualRoot = model?.root ?? createPlaceholderHumanoid();
+    const visualRoot = model?.root ?? proceduralVisuals[characterId]?.() ?? createPlaceholderHumanoid();
 
     visualRoot.scale.multiplyScalar(definition.visualScale);
     visualRoot.rotation.y += definition.visualRotationY;
@@ -112,35 +126,89 @@ export class CharacterFactory {
       applyDamage: () => {},
       isAlive: () => true,
     };
-    const motor = new CharacterMotor(this.physics, {
+    const metadata: PhysicsMetadata = {
       id: instanceId,
-      position,
-      height: definition.collider.height,
-      radius: definition.collider.radius,
-      mass: definition.collider.mass,
-      maxSpeed: preset.movement.walkSpeed,
-      acceleration: preset.movement.acceleration,
-      turnSpeed: preset.movement.turnSpeed,
-      rotationSmoothing: definition.movement.rotationSmoothing,
-      faceTargetDeadzone: definition.movement.faceTargetDeadzone,
-      turnBeforeMoveAngle: definition.movement.turnBeforeMoveAngle,
-      minMoveFacingDot: definition.movement.minMoveFacingDot,
-      gravity: definition.movement.gravity,
-      stepOffset: preset.movement.stepOffset,
-      snapToGround: preset.movement.snapToGround,
-      debug: definition.debug,
-      metadata: { id: instanceId, kind: 'npc', damageable: ownerProxy, faction: definition.faction },
-    });
-    const animation = new NpcAnimationBridge(
-      instanceId,
-      definition,
-      visualRoot,
-      this.physics,
-      ownerProxy,
-    );
+      kind: 'npc',
+      damageable: ownerProxy,
+      faction: definition.faction,
+    };
+    // Torreta de piso = cuerpo dinamico estacionario (no navega; se la tumba). El
+    // `aimState` se comparte entre su combat (lo escribe) y su animator (lo lee).
+    const isTurret = definition.aiProfileId === 'floorTurret';
+    const turretAim = isTurret ? new TurretAimState() : null;
+    // Voladores (manhack) = rigid body dinamico real: lo agarra la gravity gun,
+    // lo voltea una caja, se rompe contra la pared. Terrestres = cinematico.
+    const motor: NpcMotor = isTurret
+      ? new StationaryDynamicMotor(this.physics, {
+          id: instanceId,
+          position,
+          size: new Vector3(
+            definition.collider.radius * 2,
+            definition.collider.height,
+            definition.collider.radius * 2,
+          ),
+          mass: definition.collider.mass,
+          // El primer punto de `patrol` define hacia donde mira (direccion de montaje).
+          mountYaw: computeMountYaw(position, patrolPoints),
+          metadata,
+        })
+      : preset.movement.flying
+      ? new DynamicFlyerMotor(this.physics, {
+          id: instanceId,
+          position,
+          height: definition.collider.height,
+          radius: definition.collider.radius,
+          maxSpeed: preset.movement.walkSpeed,
+          acceleration: preset.movement.acceleration,
+          turnSpeed: preset.movement.turnSpeed,
+          metadata,
+        })
+      : new CharacterMotor(this.physics, {
+          id: instanceId,
+          position,
+          height: definition.collider.height,
+          radius: definition.collider.radius,
+          mass: definition.collider.mass,
+          maxSpeed: preset.movement.walkSpeed,
+          acceleration: preset.movement.acceleration,
+          turnSpeed: preset.movement.turnSpeed,
+          rotationSmoothing: definition.movement.rotationSmoothing,
+          faceTargetDeadzone: definition.movement.faceTargetDeadzone,
+          turnBeforeMoveAngle: definition.movement.turnBeforeMoveAngle,
+          minMoveFacingDot: definition.movement.minMoveFacingDot,
+          gravity: definition.movement.gravity,
+          stepOffset: preset.movement.stepOffset,
+          snapToGround: preset.movement.snapToGround,
+          debug: definition.debug,
+          metadata,
+        });
+    const animation: NpcAnimator =
+      isTurret && turretAim
+        ? new TurretAnimator(visualRoot, turretAim)
+        : definition.type === 'humanoid'
+        ? new NpcAnimationBridge(instanceId, definition, visualRoot, this.physics, ownerProxy)
+        : new CreatureAnimator(
+            visualRoot,
+            creatureAnimConfigs[definition.id] ?? DEFAULT_CREATURE_ANIM,
+          );
     const ranged = definition.attack.ranged;
     let combat: NpcCombatHandle;
-    if (ranged) {
+    if (isTurret && turretAim) {
+      combat = new TurretCombat({
+        id: instanceId,
+        characterId: definition.id,
+        faction: definition.faction,
+        body: motor.body,
+        raycast: services.raycast,
+        eventBus: this.eventBus,
+        aimState: turretAim,
+        // Pivote del cañon sobre el centro del cuerpo (coincide con el `turret-barrel`).
+        eyeHeight: 0.42,
+        // El cañon bascula dentro del mismo cono que ve la percepcion (no 360).
+        coneHalfAngle: preset.perception.visionConeRadians / 2,
+        onShot: () => animation.notifyShot(),
+      });
+    } else if (ranged) {
       const realCombat = new NpcRangedCombat(
         instanceId,
         definition.faction,
@@ -171,6 +239,7 @@ export class CharacterFactory {
       motor,
       combat,
       preset,
+      sliceDamage: preset.movement.flying ? definition.attack.damage : undefined,
       navSpace: services.navSpace,
       buildingRegistry: services.buildingRegistry,
       pathQueue: services.pathQueue,
@@ -193,11 +262,57 @@ function resolvePresetFor(definition: CharacterDefinition, options: NpcPresetOpt
       return buildAlyxPreset();
     case 'zombieMelee':
       return buildZombiePreset();
+    case 'headcrabMelee':
+      return buildHeadcrabPreset();
+    case 'manhackFlyer':
+      return buildManhackPreset();
+    case 'floorTurret':
+      return buildTurretPreset();
     case 'combineSoldier':
     default:
       return buildCombinePreset(options);
   }
 }
+
+/** Yaw de montaje de la torreta: encara el primer punto de `patrol`, o +Z si no hay. */
+function computeMountYaw(position: Vector3, patrol: Vector3[]): number {
+  if (patrol.length === 0) return 0;
+  const dx = patrol[0].x - position.x;
+  const dz = patrol[0].z - position.z;
+  if (dx * dx + dz * dz < 1e-4) return 0;
+  return Math.atan2(dx, dz);
+}
+
+/** Visuales procedurales para NPCs sin GLB (registrar uno nuevo = una entrada). */
+const proceduralVisuals: Record<string, () => Object3D> = {
+  manhack: createManhackVisual,
+  floorTurret: createTurretVisual,
+};
+
+/**
+ * Config del `CreatureAnimator` por NPC no-humanoide. Agregar una criatura =
+ * una entrada (o cae al default). Acoplada al visual (el `childName` del spin
+ * coincide con el nombre del mesh de la cuchilla del manhack).
+ */
+const creatureAnimConfigs: Record<string, CreatureAnimConfig> = {
+  headcrab: { bobAmplitude: 0.03, bobFrequency: 7, bankStrength: 0.04, death: 'tumble' },
+  // El manhack es un body dinamico: el motor le da posicion/rotacion/tumbo y la
+  // caida de muerte (fisica). El animador solo gira la cuchilla.
+  manhack: {
+    bobAmplitude: 0,
+    bobFrequency: 1,
+    bankStrength: 0,
+    spin: { childName: 'manhack-blade', axis: 'y', speed: 34 },
+    death: 'none',
+  },
+};
+
+const DEFAULT_CREATURE_ANIM: CreatureAnimConfig = {
+  bobAmplitude: 0.04,
+  bobFrequency: 2,
+  bankStrength: 0.06,
+  death: 'drop',
+};
 
 function wrapVisualRoot(root: Object3D): Group {
   const group = new Group();

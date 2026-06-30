@@ -7,18 +7,14 @@ import type {
   WeaponHandedness,
 } from "@engine/animation/AnimationInput";
 import type { CharacterDefinition } from "@engine/characters/CharacterDefinition";
-import type { CharacterMotorSnapshot } from "@engine/physics/character/CharacterMotor";
 import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Damageable } from "@shared/types/lifecycle";
 import { NpcDebugFlags } from "@game/npc/core/NpcDebugFlags";
+import type { AnimationFrame, NpcAnimator } from "./NpcAnimator";
+
+export type { AnimationFrame } from "./NpcAnimator";
 
 const FORCED_AIM_DIRECTION = new Vector3(0, 0, 1);
-
-export interface AnimationFrame {
-  snapshot: CharacterMotorSnapshot;
-  lookTarget: Vector3;
-  balanceIsStumbling: boolean;
-}
 
 /**
  * Puente entre el motor cinemÃ¡tico y el `ProceduralCharacterAnimator`.
@@ -30,7 +26,7 @@ export interface AnimationFrame {
  *    que las capas leen via input.
  *  - Mantiene el `HitReactionAnimator` legacy (sway/turn-lag del root).
  */
-export class NpcAnimationBridge {
+export class NpcAnimationBridge implements NpcAnimator {
   private readonly animator: ProceduralCharacterAnimator;
   private readonly hitReaction: HitReactionAnimator;
   private readonly previousVelocity = new Vector3();

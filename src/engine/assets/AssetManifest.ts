@@ -1,6 +1,9 @@
 const zombieUrl = new URL('../../models/characters/zombie/zombie.glb', import.meta.url).href;
+const headcrabUrl = new URL('../../models/characters/headcrab/headcrab.glb', import.meta.url).href;
 const alyxUrl = new URL('../../models/characters/alyx/alyx.glb', import.meta.url).href;
 const combineUrl = new URL('../../models/characters/combine-soldier/combine-soldier.glb', import.meta.url).href;
+const combineShotgunnerUrl = new URL('../../models/characters/combine-shotgunner/combine-shotgunner.glb', import.meta.url).href;
+const combineEliteUrl = new URL('../../models/characters/combine-elite/combine-elite.glb', import.meta.url).href;
 const crowbarUrl = new URL('../../models/weapons/crowbar.glb', import.meta.url).href;
 const pistolUrl = new URL('../../models/weapons/pistol.glb', import.meta.url).href;
 const smgUrl = new URL('../../models/weapons/smg.glb', import.meta.url).href;
@@ -33,6 +36,12 @@ export const AssetManifest = {
       type: 'character',
       debug: true,
     },
+    headcrab: {
+      id: 'headcrab',
+      path: headcrabUrl,
+      type: 'character',
+      debug: false,
+    },
     alyx: {
       id: 'alyx',
       path: alyxUrl,
@@ -42,6 +51,18 @@ export const AssetManifest = {
     combine: {
       id: 'combine',
       path: combineUrl,
+      type: 'character',
+      debug: false,
+    },
+    combineShotgunner: {
+      id: 'combineShotgunner',
+      path: combineShotgunnerUrl,
+      type: 'character',
+      debug: false,
+    },
+    combineElite: {
+      id: 'combineElite',
+      path: combineEliteUrl,
       type: 'character',
       debug: false,
     },

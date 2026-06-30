@@ -1,7 +1,7 @@
 ﻿import { Box3, Group, Mesh, MeshStandardMaterial, BoxGeometry, Vector3, type Scene } from 'three';
 import type { AssetManager } from '@engine/assets/AssetManager';
 import type { CharacterFactory } from '@game/characters/CharacterFactory';
-import { CharacterPresets } from '@game/characters/CharacterPresets';
+import { CharacterPresets, isFlyingCharacter } from '@game/characters/CharacterPresets';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import { tupleToVector3 } from '@shared/math/VectorTuple';
 import type { GameEventBus } from "@game/GameEvents";
@@ -222,7 +222,10 @@ export class LevelLoader {
         CharacterPresets[definition.characterId] ??
         CharacterPresets.placeholderHumanoid;
       const halfExtent = preset.collider.height / 2;
-      const validation = spawnValidator.validate(requested, halfExtent);
+      // Los voladores conservan su altura de diseño (no se pegan al suelo).
+      const validation = isFlyingCharacter(preset)
+        ? { position: requested, valid: true, relocated: false }
+        : spawnValidator.validate(requested, halfExtent);
       if (!validation.valid) {
         console.warn(
           `[LevelLoader] NPC '${definition.id}' spawn invalid at ${requested.toArray().join(',')} — usando posición pedida igual`,

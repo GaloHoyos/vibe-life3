@@ -59,3 +59,39 @@ export const AimTuning: AimTuningStore = {
     chestPitchFactor: 0.12,
   },
 };
+
+/**
+ * Overrides de aim por `characterId`. El `AimTuning` de arriba es el default
+ * compartido; las variantes cuyo bind pose de malla difiere (mismo esqueleto,
+ * distinto rest transform — típico entre modelos Meshy) necesitan su propia
+ * pose para que los offsets caigan bien. Resolución análoga a `RestPoseTuning`.
+ * Override parcial: lo que no esté acá cae al default compartido.
+ */
+export const AimTuningOverrides: Record<string, Partial<AimTuningStore>> = {
+  combineElite: {
+    twoHanded: {
+      rightUpperArmX: 0.61,
+      rightUpperArmY: 0.18,
+      rightUpperArmZ: 0.58,
+      rightForearmX: -1.43,
+      rightForearmY: -0.28,
+      rightForearmZ: -0.89,
+      leftUpperArmX: -0.32,
+      leftUpperArmY: -0.15,
+      leftUpperArmZ: 0.62,
+      leftForearmX: 0.1,
+      leftForearmY: -1.18,
+      leftForearmZ: 0.02,
+      spinePitchFactor: 0.3,
+      chestPitchFactor: 0.2,
+    },
+  },
+};
+
+/** Pose de aim efectiva: override del character si existe, si no el default. */
+export function getAimPose(
+  characterId: string | undefined,
+  pose: keyof AimTuningStore,
+): AimPoseTuning {
+  return AimTuningOverrides[characterId ?? ""]?.[pose] ?? AimTuning[pose];
+}

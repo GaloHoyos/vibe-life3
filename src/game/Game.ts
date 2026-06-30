@@ -10,7 +10,7 @@ import { SpawnValidator } from "@engine/physics/character/SpawnValidator";
 import { Raycast } from "@engine/physics/Raycast";
 import { CharacterFactory } from "@game/characters/CharacterFactory";
 import type { NpcRuntimeServices } from "@game/characters/CharacterFactory";
-import { CharacterPresets } from "@game/characters/CharacterPresets";
+import { CharacterPresets, isFlyingCharacter } from "@game/characters/CharacterPresets";
 import { FootstepsConfig } from "@game/config/audio.config";
 import { Dialogue, MenuStrings } from "@game/config/strings";
 import { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
@@ -611,7 +611,10 @@ export class Game {
         CharacterPresets[definition.characterId] ??
         CharacterPresets.placeholderHumanoid;
       const halfExtent = preset.collider.height / 2;
-      const validation = spawnValidator.validate(requested, halfExtent);
+      // Los voladores conservan su altura de diseño (no se pegan al suelo).
+      const validation = isFlyingCharacter(preset)
+        ? { position: requested, valid: true, relocated: false }
+        : spawnValidator.validate(requested, halfExtent);
       const npc = await characters.createNPC(
         definition.characterId,
         `${idPrefix}-${definition.id}`,

@@ -35,6 +35,17 @@ export interface NpcLocomotionHandle {
   isStuck(): boolean;
   /** Encara hacia un punto sin moverse. */
   face(target: Vector3): void;
+  /** Salto balistico hacia un punto (creatures terrestres como el headcrab). */
+  leap(target: Vector3, params: NpcLeapParams): void;
+  /** True mientras el cuerpo este en el aire por un `leap`. */
+  isLeaping(): boolean;
+}
+
+export interface NpcLeapParams {
+  /** Velocidad vertical inicial del salto (m/s). Define el apex y el tiempo de vuelo. */
+  upSpeed: number;
+  /** Tope de velocidad horizontal del salto (m/s). */
+  maxForwardSpeed: number;
 }
 
 export interface NpcMoveOptions {
@@ -62,6 +73,12 @@ export interface NpcCombatHandle {
   tick(args: NpcCombatTickArgs): void;
   /** Apunta hacia el threat (solo ranged). Sin efecto en melee. */
   aim(target: Vector3): void;
+  /**
+   * Barre buscando sin disparar (la torreta lo usa tras perder al enemigo:
+   * escanea unos segundos y luego se desactiva). Opcional: la mayoria de los
+   * combats no escanean.
+   */
+  scan?(): void;
   /** Intenta disparar una rafaga / golpe. Devuelve true si se inicio. */
   tryFire(): boolean;
   reload(): void;

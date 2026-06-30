@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Vector3 } from "three";
 import { EventBus } from "@engine/core/EventBus";
 import type { GameEventMap } from "@game/GameEvents";
-import { HazardVolumeSystem, type HazardVfx } from "./HazardVolumeSystem";
+import { HazardVolumeSystem, type HazardVfx } from "@game/levels/HazardVolumeSystem";
 
 const noopVfx: HazardVfx = {
   createEmitter: () => ({ setActive: () => {}, dispose: () => {} }),

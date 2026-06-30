@@ -1,5 +1,6 @@
 import {
   AimTuning,
+  AimTuningOverrides,
   type AimPoseTuning,
   type AimTuningStore,
 } from "@engine/animation/layers/AimTuning";
@@ -92,11 +93,14 @@ export class NpcsModule implements DebugModule {
   private readonly restRows: SliderRow[] = [];
   private readonly weaponRows: SliderRow[] = [];
   private aimPoseSelect: HTMLSelectElement | null = null;
+  private aimCharSelect: HTMLSelectElement | null = null;
   private restCharSelect: HTMLSelectElement | null = null;
   private weaponSelect: HTMLSelectElement | null = null;
   private aimOutput: HTMLPreElement | null = null;
   private restOutput: HTMLPreElement | null = null;
   private weaponOutput: HTMLPreElement | null = null;
+  /** `"default"` edita el AimTuning compartido; otro = override por characterId. */
+  private currentAimChar = "default";
   private currentAimPose: AimPoseKey = "twoHanded";
   private currentRestChar: RestPoseTuningKey = "combine";
   private currentWeapon: WeaponAttachmentKey = "ar3";
@@ -142,6 +146,14 @@ export class NpcsModule implements DebugModule {
         this.listenerAbort.signal,
       ),
     );
+    section.appendChild(
+      buildCheckbox(
+        "NPCs se atacan entre sí",
+        () => NpcDebugFlags.infighting,
+        (v) => (NpcDebugFlags.infighting = v),
+        this.listenerAbort.signal,
+      ),
+    );
 
     const wrap = document.createElement("div");
     wrap.className = "debug-row";
@@ -162,6 +174,15 @@ export class NpcsModule implements DebugModule {
 
   private buildAimSection(): HTMLElement {
     const section = buildSection("Aim pose", "#ffcc66");
+    this.aimCharSelect = buildSelect(
+      ["default", ...Object.keys(AimTuningOverrides)],
+      (v) => {
+        this.currentAimChar = v;
+        this.syncAim();
+      },
+      this.listenerAbort.signal,
+    );
+    section.appendChild(this.aimCharSelect);
     this.aimPoseSelect = buildSelect(
       ["twoHanded", "oneHanded"],
       (v) => {
@@ -179,7 +200,7 @@ export class NpcsModule implements DebugModule {
         def,
         slideHost,
         (v) => {
-          AimTuning[this.currentAimPose][def.key] = v;
+          this.activeAimPose(true)[def.key] = v;
           this.refreshAimOutput();
         },
         this.listenerAbort.signal,
@@ -203,7 +224,7 @@ export class NpcsModule implements DebugModule {
   private buildRestSection(): HTMLElement {
     const section = buildSection("Rest pose", "#66ccff");
     this.restCharSelect = buildSelect(
-      ["combine", "alyx", "zombie"],
+      Object.keys(RestPoseTuning),
       (v) => {
         this.currentRestChar = v as RestPoseTuningKey;
         this.syncRest();
@@ -287,9 +308,26 @@ export class NpcsModule implements DebugModule {
     this.syncWeapon();
   }
 
+  /**
+   * Pose de aim activa para (currentAimChar, currentAimPose). `"default"` →
+   * el AimTuning compartido. Un character → su override; en `forEdit` se crea
+   * (clonando el default) si todavía no existe, así mirar no ensucia overrides.
+   */
+  private activeAimPose(forEdit: boolean): AimPoseTuning {
+    if (this.currentAimChar === "default") return AimTuning[this.currentAimPose];
+    const override = (AimTuningOverrides[this.currentAimChar] ??= {});
+    const existing = override[this.currentAimPose];
+    if (existing) return existing;
+    if (!forEdit) return AimTuning[this.currentAimPose];
+    const seeded = { ...AimTuning[this.currentAimPose] };
+    override[this.currentAimPose] = seeded;
+    return seeded;
+  }
+
   private syncAim(): void {
+    if (this.aimCharSelect) this.aimCharSelect.value = this.currentAimChar;
     if (this.aimPoseSelect) this.aimPoseSelect.value = this.currentAimPose;
-    const pose = AimTuning[this.currentAimPose];
+    const pose = this.activeAimPose(false);
     for (const row of this.aimRows) {
       const v = pose[row.key as AimFieldKey];
       row.input.value = String(v);
@@ -322,8 +360,12 @@ export class NpcsModule implements DebugModule {
 
   private refreshAimOutput(): void {
     if (!this.aimOutput) return;
-    const pose = AimTuning[this.currentAimPose];
-    const lines = [`${this.currentAimPose}: {`];
+    const pose = this.activeAimPose(false);
+    const label =
+      this.currentAimChar === "default"
+        ? this.currentAimPose
+        : `${this.currentAimChar}.${this.currentAimPose}`;
+    const lines = [`${label}: {`];
     for (const def of AIM_FIELDS) {
       lines.push(`  ${def.key}: ${pose[def.key].toFixed(2)},`);
     }

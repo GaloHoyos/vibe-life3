@@ -68,6 +68,11 @@ export const WeaponAudio: Record<string, WeaponSoundMap> = {
     shot: "weapons.grenade.throw",
     empty: "weapons.shotgun.empty",
   },
+  // Torreta de piso: el disparo llega como `weapon.fired` con weaponName 'Torreta'.
+  // Placeholder reusando el clip de SMG hasta tener el clip propio del artista.
+  Torreta: {
+    shot: "weapons.smg.shot",
+  },
 };
 
 export interface EnemySoundMap {
@@ -87,6 +92,11 @@ export const EnemyAudio: Record<CharacterId, EnemySoundMap> = {
     alert: "enemies.zombie.alert",
     attack: "enemies.zombie.attack",
     damaged: "enemies.zombie.damaged",
+  },
+  // Torreta: `npc.alert` al desplegarse (telegraph). Placeholder hasta el clip
+  // de deploy del artista.
+  floorTurret: {
+    alert: "enemies.zombie.alert",
   },
 };
 

@@ -19,8 +19,9 @@
     "paths": {
       "@engine/*": ["./src/engine/*"],
       "@game/*": ["./src/game/*"],
-      "@shared/*": ["./src/shared/*"]
+      "@shared/*": ["./src/shared/*"],
+      "@tests/*": ["./tests/*"]
     }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts"]
 }

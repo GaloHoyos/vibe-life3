@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Vector3 } from "three";
-import { SquadDirector } from "./SquadDirector";
+import { SquadDirector } from "@game/npc/ai/SquadDirector";
 
 describe("SquadDirector", () => {
   it("assigns suppressor, grenadier, and flanker roles from squad reports", () => {
