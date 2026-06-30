@@ -129,6 +129,8 @@ export class Game {
   private playtestMode = false;
   /** Cargando el siguiente nivel encadenado: congela `tickPlaying` mientras dura. */
   private transitioning = false;
+  private readonly crashingGunships = new Map<string, { startedAt: number | null }>();
+  private readonly collapsingStriders = new Map<string, { startedAt: number | null }>();
   /** Último checkpoint cruzado en el nivel actual (snapshot para respawn). null = inicio del nivel. */
   private lastCheckpoint: CheckpointSnapshot | null = null;
   private readonly deathSequence = new DeathSequence();
@@ -225,6 +227,8 @@ export class Game {
 
     this.npcs.forEach((npc) => npc.dispose());
     this.npcs = [];
+    this.crashingGunships.clear();
+    this.collapsingStriders.clear();
 
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
@@ -315,6 +319,24 @@ export class Game {
 
     eventBus.on("npc.weapon.dropped", (payload) => {
       void this.handleWeaponDrop(payload.npcId, payload.weaponId, payload.position);
+    });
+    eventBus.on("npc.killed", ({ id, characterId }) => {
+      if (characterId === "gunship") {
+        this.crashingGunships.set(id, { startedAt: null });
+      } else if (characterId === "strider") {
+        this.collapsingStriders.set(id, { startedAt: null });
+      }
+    });
+    eventBus.on("strider.cannon.impact", ({ point, damage, radius, impulse, sourceId, sourceFaction }) => {
+      grenades.detonate(point, {
+        damage,
+        radius,
+        impulse,
+        ownerKind: "npc",
+        sourceId,
+        sourceFaction,
+        weaponName: "Strider Cannon",
+      });
     });
     eventBus.on("level.action", ({ action, position }) => {
       void this.handleLevelAction(action, position);
@@ -918,6 +940,7 @@ export class Game {
     const controls = s.resolve(GameTokens.Controls);
     const camera = s.resolve(EngineTokens.Camera);
     const physics = s.resolve(EngineTokens.Physics);
+    const raycast = s.resolve(EngineTokens.Raycast);
     const gizmos = s.resolve(EngineTokens.Gizmos);
     const interactSystem = s.resolve(GameTokens.InteractSystem);
     const triggerSystem = s.resolve(GameTokens.TriggerSystem);
@@ -989,6 +1012,8 @@ export class Game {
     this.doors.forEach((door) => door.update(time.delta));
     physics.step(time.delta);
     this.npcs.forEach((npc) => npc.syncFromPhysics());
+    this.updateGunshipCrashes(time.elapsed, raycast, grenades);
+    this.updateStriderCollapses(time.elapsed, raycast, grenades);
     grenades.update(time.delta, time.elapsed);
     explosiveBarrels.update();
 
@@ -1044,6 +1069,76 @@ export class Game {
       return "mid";
     }
     return "far";
+  }
+
+  private updateGunshipCrashes(elapsed: number, raycast: Raycast, grenades: GrenadeSystem): void {
+    if (this.crashingGunships.size === 0) return;
+    const down = new Vector3(0, -1, 0);
+    for (const [id, crash] of [...this.crashingGunships]) {
+      const npc = this.npcs.find((candidate) => candidate.id === id);
+      if (!npc) {
+        this.crashingGunships.delete(id);
+        continue;
+      }
+      if (crash.startedAt === null) crash.startedAt = elapsed;
+
+      const probe = npc.position.clone();
+      probe.y -= Math.max(npc.radius * 1.6, 1.4);
+      const hit = raycast.cast(probe, down, 1.3);
+      const hitKind = hit?.metadata?.kind;
+      const touchedGround =
+        !!hit && hit.metadata?.id !== id && (hitKind === "static" || hitKind === "door" || hitKind === "dynamic");
+      const timedOut = elapsed - crash.startedAt >= 3.5;
+      if (!touchedGround && !timedOut) continue;
+
+      const point = hit?.point.clone() ?? npc.position.clone().add(new Vector3(0, -npc.radius, 0));
+      point.y += 0.25;
+      grenades.detonate(point, {
+        damage: 140,
+        radius: 6,
+        impulse: 22,
+        ownerKind: "npc",
+        sourceId: id,
+        sourceFaction: "combine",
+        weaponName: "gunshipCrash",
+      });
+      this.crashingGunships.delete(id);
+    }
+  }
+
+  private updateStriderCollapses(elapsed: number, raycast: Raycast, grenades: GrenadeSystem): void {
+    if (this.collapsingStriders.size === 0) return;
+    const down = new Vector3(0, -1, 0);
+    for (const [id, collapse] of [...this.collapsingStriders]) {
+      const npc = this.npcs.find((candidate) => candidate.id === id);
+      if (!npc) {
+        this.collapsingStriders.delete(id);
+        continue;
+      }
+      if (collapse.startedAt === null) collapse.startedAt = elapsed;
+
+      const probe = npc.position.clone();
+      probe.y -= Math.max(npc.radius * 2.4, 2.5);
+      const hit = raycast.cast(probe, down, 2.2);
+      const hitKind = hit?.metadata?.kind;
+      const touchedGround =
+        !!hit && hit.metadata?.id !== id && (hitKind === "static" || hitKind === "door" || hitKind === "dynamic");
+      const timedOut = elapsed - collapse.startedAt >= 3.2;
+      if (!touchedGround && !timedOut) continue;
+
+      const point = hit?.point.clone() ?? npc.position.clone().add(new Vector3(0, -npc.radius * 2, 0));
+      point.y += 0.35;
+      grenades.detonate(point, {
+        damage: 220,
+        radius: 7,
+        impulse: 28,
+        ownerKind: "npc",
+        sourceId: id,
+        sourceFaction: "combine",
+        weaponName: "Strider Collapse",
+      });
+      this.collapsingStriders.delete(id);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1351,6 +1446,8 @@ export class Game {
     // todos los bodies) → limpiar la escena (preservando las luces) → cargar.
     // En el primer load (menú/boot) todo está vacío, así que es no-op.
     this.npcs.forEach((npc) => npc.dispose());
+    this.crashingGunships.clear();
+    this.collapsingStriders.clear();
     this.weaponPickups.forEach((pickup) => pickup.dispose());
     this.itemPickups.forEach((pickup) => pickup.dispose());
     this.player?.dispose();

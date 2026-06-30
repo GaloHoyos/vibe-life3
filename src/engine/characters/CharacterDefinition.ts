@@ -21,7 +21,9 @@ export type CharacterAIProfileId =
   | "passiveHumanoid"
   | "headcrabMelee"
   | "manhackFlyer"
-  | "floorTurret";
+  | "floorTurret"
+  | "gunshipBoss"
+  | "striderBoss";
 
 /** Configuracion de sentidos declarada por el personaje. */
 export interface CharacterPerceptionConfig {

@@ -64,6 +64,8 @@ export interface NpcCombatTickArgs {
   threat: ActorSnapshot | null;
 }
 
+export type NpcCombatIntent = "primary" | "secondary" | "melee";
+
 /**
  * Interfaz minima del subsistema de combate que las tasks consumen.
  * Implementada por `NpcMeleeCombat` o `RealRangedCombat` segun el preset.
@@ -81,6 +83,10 @@ export interface NpcCombatHandle {
   scan?(): void;
   /** Intenta disparar una rafaga / golpe. Devuelve true si se inicio. */
   tryFire(): boolean;
+  /** Selecciona arma/accion especial en combats con mas de un modo. */
+  setIntent?(intent: NpcCombatIntent): void;
+  /** Readiness opcional para tasks que no deben bloquear otros ataques. */
+  canUseIntent?(intent: NpcCombatIntent): boolean;
   reload(): void;
   isReloading(): boolean;
   magazineEmpty(): boolean;

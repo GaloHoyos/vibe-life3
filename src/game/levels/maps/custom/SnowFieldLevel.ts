@@ -99,6 +99,7 @@ export const SnowFieldLevel: LevelDefinition = {
   ],
   doors: [],
   npcs: [
+    { id: 'gunship-sf-01', position: [0, 22, -34], characterId: 'gunship' },
     { id: 'zombie-sf-01', position: [14, 5, -8], characterId: 'zombie' },
     { id: 'alyx-sf-01', position: [3, 6, 4], characterId: 'alyx' },
     { id: 'combine-sf-01', position: [-18, 5, 14], characterId: 'combine' },

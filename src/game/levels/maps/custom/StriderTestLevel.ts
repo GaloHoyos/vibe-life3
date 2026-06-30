@@ -1,0 +1,86 @@
+import type { LevelDefinition } from "@game/levels/LevelDefinition";
+
+export const StriderTestLevel: LevelDefinition = {
+  id: "strider-test",
+  title: "Prueba Strider",
+  description: "Arena exterior abierta para probar el Strider full-size.",
+  background: 0xaeb9c2,
+  sun: {
+    direction: [0.35, 1.0, 0.25],
+    color: 0xf0f2e8,
+    intensity: 1.65,
+  },
+  playerStart: [0, 6, 18],
+  audio: {
+    ambiences: ["background.wind"],
+    footstepSounds: [
+      "footsteps.snow1",
+      "footsteps.snow2",
+      "footsteps.snow3",
+      "footsteps.snow4",
+    ],
+  },
+  terrain: {
+    id: "strider-test-terrain",
+    position: [0, 0, 0],
+    size: [150, 150],
+    widthSamples: 97,
+    depthSamples: 97,
+    source: {
+      kind: "noise",
+      seed: 77,
+      octaves: 3,
+      frequency: 0.018,
+      persistence: 0.45,
+      lacunarity: 2,
+      amplitude: 1.8,
+      baseHeight: 0,
+      flattenRegions: [
+        { center: [0, 18], radius: 10, falloff: 6, height: 0 },
+        { center: [0, -34], radius: 24, falloff: 10, height: 0 },
+        { center: [-22, 0], radius: 8, falloff: 5, height: 0 },
+        { center: [22, 0], radius: 8, falloff: 5, height: 0 },
+      ],
+    },
+    material: "concrete",
+  },
+  staticBoxes: [
+    { id: "arena-wall-n", position: [0, 1.5, -70], size: [80, 3, 2], material: "concrete" },
+    { id: "arena-wall-s", position: [0, 1.5, 42], size: [80, 3, 2], material: "concrete" },
+    { id: "arena-wall-w", position: [-42, 1.5, -14], size: [2, 3, 112], material: "concrete" },
+    { id: "arena-wall-e", position: [42, 1.5, -14], size: [2, 3, 112], material: "concrete" },
+    { id: "cover-left", position: [-12, 1.1, 8], size: [8, 2.2, 1.2], material: "concrete" },
+    { id: "cover-right", position: [12, 1.1, 8], size: [8, 2.2, 1.2], material: "concrete" },
+  ],
+  buildings: [],
+  dynamicBoxes: [
+    { id: "crate-st-01", position: [-8, 4, 12], size: [1, 1, 1], mass: 1.4, material: "crate" },
+    { id: "crate-st-02", position: [8, 4, 12], size: [1, 1, 1], mass: 1.4, material: "crate" },
+    { id: "barrel-st-01", position: [-16, 4, -2], size: [0.8, 1.2, 0.8], mass: 1.2, material: "hazard" },
+    { id: "barrel-st-02", position: [16, 4, -2], size: [0.8, 1.2, 0.8], mass: 1.2, material: "hazard" },
+  ],
+  doors: [],
+  npcs: [
+    {
+      id: "strider-test-01",
+      position: [0, 8, -36],
+      characterId: "strider",
+      patrol: [
+        [-18, 0, -36],
+        [18, 0, -36],
+      ],
+    },
+  ],
+  weaponPickups: [
+    { id: "pickup-gravity-st", weaponId: "gravityGun", position: [-7, 2, 22] },
+    { id: "pickup-ar3-st", weaponId: "ar3", position: [-4.5, 2, 22] },
+    { id: "pickup-smg-st", weaponId: "smg", position: [-2, 2, 22] },
+    { id: "pickup-shotgun-st", weaponId: "shotgun", position: [0.5, 2, 22] },
+    { id: "pickup-grenade-st-1", weaponId: "grenade", position: [3, 2, 22] },
+    { id: "pickup-grenade-st-2", weaponId: "grenade", position: [4.1, 2, 22] },
+    { id: "pickup-grenade-st-3", weaponId: "grenade", position: [5.2, 2, 22] },
+    { id: "pickup-grenade-st-4", weaponId: "grenade", position: [6.3, 2, 22] },
+    { id: "pickup-grenade-st-5", weaponId: "grenade", position: [7.4, 2, 22] },
+  ],
+  triggers: [],
+};

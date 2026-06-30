@@ -139,8 +139,9 @@ export class Npc implements INpc {
       raycast: this.raycast,
       flying: this.preset.movement.flying,
       hoverHeight: this.preset.movement.hoverHeight,
+      directGround: this.preset.movement.directGround,
       // Los flyers (manhack) se choquen y reboten en vez de mantener distancia.
-      separation: !this.preset.movement.flying,
+      separation: !this.preset.movement.flying && !this.preset.movement.directGround,
     });
     this.perception = new PerceptionSystem(this.preset.perception);
     this.brain = new Brain<NpcBrainContext>(this.preset.schedules);

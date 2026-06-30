@@ -82,4 +82,9 @@ export interface NpcMovementProfile {
   flying?: boolean;
   /** Altura (m) sobre el objetivo a la que el flyer flota al acercarse. */
   hoverHeight?: number;
+  /**
+   * Movimiento terrestre directo: no pide path humanoide al NavSpace. Lo usan
+   * bosses grandes que resuelven suelo/clearance con su propio motor.
+   */
+  directGround?: boolean;
 }

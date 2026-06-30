@@ -43,6 +43,32 @@ describe("CharacterPresets", () => {
 
   it("detects flying characters from gravity configuration", () => {
     expect(isFlyingCharacter(CharacterPresets.manhack)).toBe(true);
+    expect(isFlyingCharacter(CharacterPresets.gunship)).toBe(true);
+    expect(isFlyingCharacter(CharacterPresets.strider)).toBe(false);
     expect(isFlyingCharacter(CharacterPresets.zombie)).toBe(false);
+  });
+
+  it("registers gunship as a procedural flying mini boss", () => {
+    const gunship = CharacterPresets.gunship;
+
+    expect(gunship).toBeDefined();
+    expect(gunship.modelId).toBeUndefined();
+    expect(gunship.aiProfileId).toBe("gunshipBoss");
+    expect(gunship.health.maxHealth).toBeGreaterThanOrEqual(600);
+    expect(gunship.movement.gravity).toBe(0);
+    expect(gunship.perception.eyeHeight).toBeGreaterThan(gunship.collider.radius);
+  });
+
+  it("registers strider as a procedural full-size boss", () => {
+    const strider = CharacterPresets.strider;
+
+    expect(strider).toBeDefined();
+    expect(strider.modelId).toBeUndefined();
+    expect(strider.aiProfileId).toBe("striderBoss");
+    expect(strider.health.maxHealth).toBeGreaterThanOrEqual(1500);
+    expect(strider.collider.height).toBeGreaterThan(8);
+    expect(strider.collider.mass).toBeGreaterThan(1000);
+    expect(strider.ragdoll.enabled).toBe(false);
+    expect(strider.perception.viewDistance).toBeGreaterThanOrEqual(85);
   });
 });

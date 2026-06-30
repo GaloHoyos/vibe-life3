@@ -8,14 +8,20 @@ import { CreatureAnimator } from '@game/npc/animation/CreatureAnimator';
 import type { CreatureAnimConfig } from '@game/npc/animation/CreatureAnimator';
 import type { NpcAnimator } from '@game/npc/animation/NpcAnimator';
 import { TurretAnimator } from '@game/npc/animation/TurretAnimator';
+import { GunshipAnimator } from '@game/npc/animation/GunshipAnimator';
+import { StriderAnimator } from '@game/npc/animation/StriderAnimator';
 import { createManhackVisual } from '@game/characters/visuals/ManhackVisual';
 import { createTurretVisual } from '@game/characters/visuals/TurretVisual';
+import { createGunshipVisual } from '@game/characters/visuals/GunshipVisual';
+import { createStriderVisual } from '@game/characters/visuals/StriderVisual';
 import { buildAlyxPreset } from '@game/npc/presets/alyxPreset';
 import { buildCombinePreset } from '@game/npc/presets/combinePreset';
 import { buildZombiePreset } from '@game/npc/presets/zombiePreset';
 import { buildHeadcrabPreset } from '@game/npc/presets/headcrabPreset';
 import { buildManhackPreset } from '@game/npc/presets/manhackPreset';
 import { buildTurretPreset } from '@game/npc/presets/turretPreset';
+import { buildGunshipPreset } from '@game/npc/presets/gunshipPreset';
+import { buildStriderPreset } from '@game/npc/presets/striderPreset';
 import type { NpcPreset, NpcPresetOptions } from '@game/npc/presets/NpcPreset';
 import { NpcCombat } from '@game/npc/combat/NpcCombat';
 import { NpcMeleeCombat } from '@game/npc/combat/NpcMeleeCombat';
@@ -23,6 +29,8 @@ import { NpcRangedCombat } from '@game/npc/combat/NpcRangedCombat';
 import { RealRangedCombat } from '@game/npc/combat/RealRangedCombat';
 import { TurretCombat } from '@game/npc/combat/TurretCombat';
 import { TurretAimState } from '@game/npc/combat/TurretAimState';
+import { GunshipCannonCombat } from '@game/npc/combat/GunshipCannonCombat';
+import { StriderCombat } from '@game/npc/combat/StriderCombat';
 import type { NpcCombatHandle } from '@game/npc/brain/NpcBrainContext';
 import type { ModelAssetId } from '@engine/assets/AssetManifest';
 import type { GameEventBus } from "@game/GameEvents";
@@ -30,6 +38,8 @@ import type { PhysicsMetadata, PhysicsWorld } from '@engine/physics/PhysicsWorld
 import { Raycast } from '@engine/physics/Raycast';
 import { CharacterMotor } from '@engine/physics/character/CharacterMotor';
 import { DynamicFlyerMotor } from '@engine/physics/character/DynamicFlyerMotor';
+import { KinematicFlyerMotor } from '@engine/physics/character/KinematicFlyerMotor';
+import { StriderWalkerMotor } from '@engine/physics/character/StriderWalkerMotor';
 import { StationaryDynamicMotor } from '@engine/physics/character/StationaryDynamicMotor';
 import type { NpcMotor } from '@engine/physics/character/NpcMotor';
 import type { NavSpace } from '@engine/ai/nav/NavSpace';
@@ -74,6 +84,7 @@ export class CharacterFactory {
     services?: NpcRuntimeServices,
   ): Promise<INpc> {
     const definition = CharacterPresets[characterId] ?? CharacterPresets.placeholderHumanoid;
+    const isGunship = definition.aiProfileId === 'gunshipBoss';
     const model = definition.modelId ? await this.assets.instantiateModel(definition.modelId) : null;
     const visualRoot = model?.root ?? proceduralVisuals[characterId]?.() ?? createPlaceholderHumanoid();
 
@@ -81,7 +92,7 @@ export class CharacterFactory {
     visualRoot.rotation.y += definition.visualRotationY;
     visualRoot.position.copy(definition.visualOffset);
 
-    const rangedWeaponId = definition.attack.ranged?.weaponId;
+    const rangedWeaponId = isGunship ? undefined : definition.attack.ranged?.weaponId;
     if (rangedWeaponId) {
       try {
         const weapon = await this.assets.instantiateModel(
@@ -135,7 +146,10 @@ export class CharacterFactory {
     // Torreta de piso = cuerpo dinamico estacionario (no navega; se la tumba). El
     // `aimState` se comparte entre su combat (lo escribe) y su animator (lo lee).
     const isTurret = definition.aiProfileId === 'floorTurret';
+    const isGunship = definition.aiProfileId === 'gunshipBoss';
+    const isStrider = definition.aiProfileId === 'striderBoss';
     const turretAim = isTurret ? new TurretAimState() : null;
+    let striderMotor: StriderWalkerMotor | null = null;
     // Voladores (manhack) = rigid body dinamico real: lo agarra la gravity gun,
     // lo voltea una caja, se rompe contra la pared. Terrestres = cinematico.
     const motor: NpcMotor = isTurret
@@ -152,6 +166,31 @@ export class CharacterFactory {
           mountYaw: computeMountYaw(position, patrolPoints),
           metadata,
         })
+      : isGunship
+      ? new KinematicFlyerMotor(this.physics, {
+          id: instanceId,
+          position,
+          height: definition.collider.height,
+          radius: definition.collider.radius,
+          mass: definition.collider.mass,
+          maxSpeed: preset.movement.walkSpeed,
+          acceleration: preset.movement.acceleration,
+          turnSpeed: preset.movement.turnSpeed,
+          metadata,
+        })
+      : isStrider
+      ? (striderMotor = new StriderWalkerMotor(this.physics, {
+          id: instanceId,
+          position,
+          height: definition.collider.height,
+          radius: definition.collider.radius,
+          mass: definition.collider.mass,
+          maxSpeed: preset.movement.walkSpeed,
+          acceleration: preset.movement.acceleration,
+          turnSpeed: preset.movement.turnSpeed,
+          metadata,
+          raycast: services.raycast,
+        }))
       : preset.movement.flying
       ? new DynamicFlyerMotor(this.physics, {
           id: instanceId,
@@ -182,9 +221,15 @@ export class CharacterFactory {
           debug: definition.debug,
           metadata,
         });
+    const striderAnimator =
+      isStrider && striderMotor ? new StriderAnimator(visualRoot, striderMotor) : null;
     const animation: NpcAnimator =
       isTurret && turretAim
         ? new TurretAnimator(visualRoot, turretAim)
+        : isGunship
+        ? new GunshipAnimator(visualRoot)
+        : striderAnimator
+        ? striderAnimator
         : definition.type === 'humanoid'
         ? new NpcAnimationBridge(instanceId, definition, visualRoot, this.physics, ownerProxy)
         : new CreatureAnimator(
@@ -207,6 +252,30 @@ export class CharacterFactory {
         // El cañon bascula dentro del mismo cono que ve la percepcion (no 360).
         coneHalfAngle: preset.perception.visionConeRadians / 2,
         onShot: () => animation.notifyShot(),
+      });
+    } else if (isGunship) {
+      combat = new GunshipCannonCombat({
+        id: instanceId,
+        characterId: definition.id,
+        faction: definition.faction,
+        body: motor.body,
+        raycast: services.raycast,
+        eventBus: this.eventBus,
+        eyeHeight: definition.perception.eyeHeight,
+        onShot: () => animation.notifyShot(),
+      });
+    } else if (isStrider) {
+      combat = new StriderCombat({
+        id: instanceId,
+        characterId: definition.id,
+        faction: definition.faction,
+        body: motor.body,
+        physics: this.physics,
+        eventBus: this.eventBus,
+        onMinigunShot: () => animation.notifyShot(),
+        onCannonCharge: () => striderAnimator?.notifyCannonCharge(),
+        onCannonShot: () => striderAnimator?.notifyCannonShot(),
+        onStomp: () => animation.notifyAttack(),
       });
     } else if (ranged) {
       const realCombat = new NpcRangedCombat(
@@ -239,7 +308,7 @@ export class CharacterFactory {
       motor,
       combat,
       preset,
-      sliceDamage: preset.movement.flying ? definition.attack.damage : undefined,
+      sliceDamage: definition.aiProfileId === 'manhackFlyer' ? definition.attack.damage : undefined,
       navSpace: services.navSpace,
       buildingRegistry: services.buildingRegistry,
       pathQueue: services.pathQueue,
@@ -268,6 +337,10 @@ function resolvePresetFor(definition: CharacterDefinition, options: NpcPresetOpt
       return buildManhackPreset();
     case 'floorTurret':
       return buildTurretPreset();
+    case 'gunshipBoss':
+      return buildGunshipPreset(options);
+    case 'striderBoss':
+      return buildStriderPreset(options);
     case 'combineSoldier':
     default:
       return buildCombinePreset(options);
@@ -287,6 +360,8 @@ function computeMountYaw(position: Vector3, patrol: Vector3[]): number {
 const proceduralVisuals: Record<string, () => Object3D> = {
   manhack: createManhackVisual,
   floorTurret: createTurretVisual,
+  gunship: createGunshipVisual,
+  strider: createStriderVisual,
 };
 
 /**

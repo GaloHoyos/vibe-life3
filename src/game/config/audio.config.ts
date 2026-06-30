@@ -73,6 +73,18 @@ export const WeaponAudio: Record<string, WeaponSoundMap> = {
   Torreta: {
     shot: "weapons.smg.shot",
   },
+  "Gunship Cannon": {
+    shot: "weapons.ar3.shot",
+  },
+  "Strider Minigun": {
+    shot: "weapons.smg.shot",
+  },
+  "Strider Cannon": {
+    shot: "weapons.smg.secondary",
+  },
+  "Strider Stomp": {
+    shot: "weapons.crowbar.hitFlesh",
+  },
 };
 
 export interface EnemySoundMap {

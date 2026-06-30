@@ -33,6 +33,11 @@ export interface NpcLocomotionOptions {
   /** Altura (m) sobre el goal a la que flota el flyer. Solo con `flying`. */
   hoverHeight?: number;
   /**
+   * Terrestre directo: no pide paths al NavSpace; steerea en XZ hacia la meta
+   * y deja que el motor grande resuelva altura/suelo.
+   */
+  directGround?: boolean;
+  /**
    * Separacion anti-clumping de vecinos. Default true. Los manhacks la apagan a
    * proposito: queremos que se choquen entre ellos y reboten (torpes, HL2), no
    * que mantengan distancia.
@@ -140,6 +145,7 @@ export class NpcLocomotion {
       bodyRadius: options.bodyRadius ?? 0.45,
       flying: options.flying ?? false,
       hoverHeight: options.hoverHeight ?? 0,
+      directGround: options.directGround ?? false,
       separation: options.separation ?? true,
       pathFilter: options.pathFilter,
       raycast: options.raycast,
@@ -152,7 +158,11 @@ export class NpcLocomotion {
   }
 
   moveTo(target: Vector3, facing?: Vector3): void {
-    if (!this.opts.flying && (!this.goal || this.goal.distanceTo(target) > this.opts.repathThreshold)) {
+    if (
+      !this.opts.flying &&
+      !this.opts.directGround &&
+      (!this.goal || this.goal.distanceTo(target) > this.opts.repathThreshold)
+    ) {
       this.goalAtPlan.copy(target);
       this.requestPath(target);
     }
@@ -231,6 +241,10 @@ export class NpcLocomotion {
     }
     if (this.opts.flying) {
       this.updateFlying(delta);
+      return;
+    }
+    if (this.opts.directGround) {
+      this.updateDirectGround(delta);
       return;
     }
     if (!this.goal) {
@@ -339,6 +353,29 @@ export class NpcLocomotion {
     let aim: Vector3 = this.tmpFlyAim;
     if (this.wantsMove) {
       aim = this.applySeparation(pos, this.tmpFlyAim);
+    }
+    this.motor.update(delta, aim, this.wantsMove, this.facingTarget);
+    this.updateStuck(delta);
+  }
+
+  /**
+   * Terrestre directo para bosses grandes: sin pathfinding de humanoide ni
+   * waypoints. El motor decide altura corporal y foot planting.
+   */
+  private updateDirectGround(delta: number): void {
+    if (!this.goal) {
+      this.motor.update(delta, null, false, this.facingTarget);
+      this.stuckTimer = 0;
+      this.hasLast = false;
+      this.wantsMove = false;
+      return;
+    }
+    const pos = this.tmpPos.copy(this.motor.getPosition());
+    const reached = planar2D(pos, this.goal) <= this.opts.goalReachRadius;
+    this.wantsMove = !reached;
+    let aim: Vector3 = this.goal;
+    if (this.wantsMove) {
+      aim = this.applySeparation(pos, this.goal);
     }
     this.motor.update(delta, aim, this.wantsMove, this.facingTarget);
     this.updateStuck(delta);

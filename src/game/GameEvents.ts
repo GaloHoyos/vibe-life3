@@ -67,6 +67,15 @@ export interface GameEventMap {
     sourceKind?: CombatEventSourceKind;
     sourceFaction?: Faction;
   };
+  "strider.cannon.impact": {
+    point: Vector3;
+    normal?: Vector3;
+    damage: number;
+    radius: number;
+    impulse: number;
+    sourceId: string;
+    sourceFaction: Faction;
+  };
   "weapon.reloaded": {
     weaponName: string;
     ammo: number;

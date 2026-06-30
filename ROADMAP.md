@@ -83,6 +83,16 @@ Half-Life completo. Ordenado por impacto. Marcá cada ítem al cerrarlo.
     ajustada (rango ~14m, ráfagas de 2, pausa larga) y su propia pose de attachment; el `combineElite`
     es copia 1:1 del combine común (AR3, mismas stats), distinto sólo en el modelo (ojos rojos
     emisivos). Ambos con entrada propia en `RestPoseTuning` para que el idle calce con el combine.
+  - [x] **Gunship mini boss** *(hecho)* — NPC Combine volador con `KinematicFlyerMotor`
+    no agarrable por gravity gun mientras vive, visual procedural (`gunship-rotor` /
+    `gunship-eye` / `gunship-muzzle`), `GunshipCannonCombat` hitscan con telegraph,
+    ráfagas con stitching lateral y crash explosivo al morir vía `GrenadeSystem.detonate()`.
+    Encuentro de prueba en `SnowFieldLevel`.
+  - [x] **Strider full-size boss** *(hecho)* — NPC Combine trípode de escala completa,
+    visual procedural, `StriderWalkerMotor` con foot planting/IK y colliders cinemáticos
+    por extremidades, minigun con stitching, cañón cargado explosivo y stomp cercano.
+    Muerte con colapso explosivo vía `GrenadeSystem.detonate()`. Mapa de prueba:
+    `strider-test`.
   - [ ] **Pendiente:** audio propio de headcrab/manhack/torreta
     (faltan clips del artista — la torreta usa placeholders), VFX de muerte del manhack
     (chispa/explosión) y GLB del modelo de la torreta (hoy procedural).
@@ -108,7 +118,7 @@ Half-Life completo. Ordenado por impacto. Marcá cada ítem al cerrarlo.
   - **Editor:** barril y kill-volume cableados de punta a punta (paleta "Peligros", inspector con
     toggle "Efecto visual", preview, codegen `to`/`from`/`toTypeScript`). *Pendiente para publicar
     por Workshop: ampliar el `validateDocument` del backend (repo hermano) a los campos nuevos.*
-- [ ] **Encuentro con jefe** (gunship / mini-strider): preset de mucha vida + ataque ranged fuerte.
+- [x] **Encuentro con jefe: Strider full-size**: boss trípode inspirado en HL2, no mini.
 
 ## Tier 3 — Armas (huecos del arsenal clásico)
 
