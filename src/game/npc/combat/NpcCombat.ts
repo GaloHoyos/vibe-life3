@@ -53,7 +53,7 @@ export class NpcCombat {
   }
 
   /** Inicia la animaciÃ³n de ataque. Devuelve `false` si no se pudo (deshabilitado). */
-  start(): boolean {
+  start(position?: Vector3): boolean {
     if (!this.definition.attack.enabled) {
       return false;
     }
@@ -64,6 +64,7 @@ export class NpcCombat {
     this.eventBus.emit("npc.attack", {
       id: this.id,
       characterId: this.definition.id,
+      position: position?.clone(),
     });
     this.logDebug("attack start");
     return true;

@@ -175,6 +175,7 @@ export class GrenadeSystem implements Disposable {
       this.positionalSounds.playAt(SOUND_BEEP, tmpExplosionPos.clone(), {
         refDistance: 2,
         maxDistance: 18,
+        bus: "weapons",
       });
       grenade.beepCount += 1;
       const interval = Math.max(
@@ -222,11 +223,12 @@ export class GrenadeSystem implements Disposable {
    * radio. Reusable por cualquier fuente (granadas, barriles explosivos, etc.).
    */
   detonate(point: Vector3, params: ExplosionParams): void {
-    this.positionalSounds.playAt(SOUND_EXPLOSION, point.clone(), {
+    this.positionalSounds.playAt(params.explosionSound ?? SOUND_EXPLOSION, point.clone(), {
       refDistance: 6,
-      maxDistance: 60,
+      maxDistance: params.soundMaxDistance ?? 60,
       rolloffFactor: 1.1,
       volume: 1,
+      bus: "weapons",
     });
     this.vfx.explosion(point, { scale: params.radius, color: params.color });
     this.eventBus.emit("world.noise", {

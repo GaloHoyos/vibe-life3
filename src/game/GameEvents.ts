@@ -146,6 +146,8 @@ export interface GameEventMap {
   "npc.alert": {
     id: string;
     characterId: CharacterId;
+    /** Posición del NPC, para reproducir la vocalización en 3D. */
+    position?: Vector3;
   };
   /**
    * Un NPC vio un threat â€” broadcast a la facciÃ³n para que aliados cercanos
@@ -168,6 +170,15 @@ export interface GameEventMap {
   "npc.attack": {
     id: string;
     characterId: CharacterId;
+    /** Posición del NPC, para reproducir el sonido de ataque en 3D. */
+    position?: Vector3;
+  };
+  /** El NPC entra en fase de carga/telegraph de un ataque (e.g. cañón del strider). */
+  "npc.charge": {
+    id: string;
+    characterId: CharacterId;
+    /** Posición del NPC, para reproducir el sonido de carga en 3D. */
+    position?: Vector3;
   };
   "npc.footstep": {
     id: string;
@@ -177,6 +188,8 @@ export interface GameEventMap {
   "npc.killed": {
     id: string;
     characterId: CharacterId;
+    /** Posición del NPC al morir, para reproducir el sonido de muerte en 3D. */
+    position?: Vector3;
   };
   /** El NPC dropea su arma en la posiciÃ³n indicada (tÃ­picamente al morir). */
   "npc.weapon.dropped": {

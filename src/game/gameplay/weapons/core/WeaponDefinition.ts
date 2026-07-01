@@ -128,6 +128,19 @@ export interface WeaponDefinition {
   /** ConfiguraciÃ³n del disparo secundario (RMB). Omitir = no tiene secundario. */
   alternateFire?: AlternateFireDefinition;
   /**
+   * Ruido que genera el arma para la percepción de NPCs. Si se omite, se
+   * deriva del tipo. `fireRadius: 0` = el disparo/uso no hace ruido (melee:
+   * el swing al aire es silencioso; solo el impacto real alerta).
+   */
+  noise?: {
+    /** Radio (m) del ruido al disparar/usar. 0 = sin ruido en el disparo. */
+    fireRadius?: number;
+    /** Clase de ruido del disparo. Default: gunshot (ranged) / impact (melee). */
+    fireKind?: "gunshot" | "impact" | "movement";
+    /** Radio (m) del ruido de impacto de melee al golpear algo. Default 5. */
+    impactRadius?: number;
+  };
+  /**
    * Duracin (s) de la animacin de swing del view model al disparar. Si es
    * 0 o undefined, no hay animacin de swing (se usa el muzzle flash + recoil
    * default). El swing combina pitch + forward con curva sinusoidal

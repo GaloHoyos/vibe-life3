@@ -11,7 +11,7 @@ import { Raycast } from "@engine/physics/Raycast";
 import { CharacterFactory } from "@game/characters/CharacterFactory";
 import type { NpcRuntimeServices } from "@game/characters/CharacterFactory";
 import { CharacterPresets, isFlyingCharacter } from "@game/characters/CharacterPresets";
-import { FootstepsConfig } from "@game/config/audio.config";
+import { FootstepsConfig, SurfaceFootsteps } from "@game/config/audio.config";
 import { Dialogue, MenuStrings } from "@game/config/strings";
 import { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
 import { EnemySoundSystem } from "@game/audio/EnemySoundSystem";
@@ -98,6 +98,7 @@ import { WorkshopStore } from "@game/workshop/WorkshopStore";
 import { CloudflareWorkshopBackend } from "@game/workshop/CloudflareWorkshopBackend";
 import { createBoxMesh } from "@engine/render/PrimitiveFactory";
 import { tupleToVector3, type VectorTuple } from "@shared/math/VectorTuple";
+import type { SurfaceType } from "@shared/types/Surface";
 
 /**
  * Bootstrap del contenido del juego.
@@ -114,6 +115,9 @@ export interface GameOptions {
   /** Opcional: bootear directamente en un nivel concreto sin pasar por el menÃº. */
   bootIntoLevel?: LevelId;
 }
+
+/** Dirección reutilizable para el raycast de superficie bajo el jugador. */
+const DOWN_DIRECTION = new Vector3(0, -1, 0);
 
 export class Game {
   private readonly root: HTMLElement;
@@ -180,6 +184,7 @@ export class Game {
 
     lighting.attach(sceneManager.scene);
     footsteps.configure(FootstepsConfig);
+    footsteps.setSurfacePools(SurfaceFootsteps);
 
     // El modo del editor es de un solo uso: se consume y se borra en el boot,
     // asi un reload/reinicio posterior vuelve al menu (no al ultimo mapa).
@@ -275,12 +280,16 @@ export class Game {
     const s = this.engine.services;
     const eventBus = s.resolve(GameTokens.EventBus);
     const sound = s.resolve(EngineTokens.Sound);
+    const positionalSound = s.resolve(EngineTokens.PositionalSound);
 
     s.register(GameTokens.BackgroundAmbience, new BackgroundAmbienceSystem(sound));
     s.register(GameTokens.Music, new MusicManager(sound));
     s.register(GameTokens.Footsteps, new FootstepSoundSystem(sound));
     s.register(GameTokens.WeaponSounds, new WeaponSoundSystem(eventBus, sound));
-    s.register(GameTokens.EnemySounds, new EnemySoundSystem(eventBus, sound));
+    s.register(
+      GameTokens.EnemySounds,
+      new EnemySoundSystem(eventBus, sound, positionalSound),
+    );
     s.register(
       GameTokens.DialogueSounds,
       new DialogueAudioSystem(eventBus, sound),
@@ -660,6 +669,7 @@ export class Game {
     const characters = services.resolve(GameTokens.Characters);
     const scene = services.resolve(EngineTokens.Scene);
     const physics = services.resolve(EngineTokens.Physics);
+    const enemySounds = services.resolve(GameTokens.EnemySounds);
     const spawnValidator = new SpawnValidator(new Raycast(physics));
 
     const npcServices = this.buildNpcRuntimeServices(new Raycast(physics));
@@ -681,6 +691,7 @@ export class Game {
         npcServices,
       );
       scene.scene.add(npc.mesh);
+      enemySounds.registerActor(npc.id, npc.mesh, definition.characterId);
       this.npcs.push(npc);
     }
   }
@@ -782,6 +793,7 @@ export class Game {
         this.buildNpcRuntimeServices(raycast),
       );
       scene.scene.add(npc.mesh);
+      services.resolve(GameTokens.EnemySounds).registerActor(npc.id, npc.mesh, "combine");
       this.npcs.push(npc);
       eventBus.emit("subtitle.show", {
         text: "Combine spawneado.",
@@ -982,6 +994,17 @@ export class Game {
     });
   }
 
+  /**
+   * Superficie física bajo el jugador (para elegir el pool de pasos). Rayo
+   * corto hacia abajo desde los pies, excluyendo el propio collider `player`.
+   */
+  private resolvePlayerSurface(raycast: Raycast, player: Player): SurfaceType | null {
+    const origin = player.getPosition().clone();
+    origin.y += 0.2;
+    const hit = raycast.cast(origin, DOWN_DIRECTION, 4, undefined, "player");
+    return hit?.metadata?.surface ?? null;
+  }
+
   /** Tick completo cuando el juego estÃ¡ activo (no en menÃº/pausa). */
   private tickPlaying(time: Time): void {
     const player = this.player!;
@@ -1018,7 +1041,23 @@ export class Game {
       void this.spawnDebugCombineAtAim();
     }
 
-    footsteps.update(time.delta, player.getMoveIntensity());
+    const stepped = footsteps.update(
+      time.delta,
+      player.getMoveIntensity(),
+      () => this.resolvePlayerSurface(raycast, player),
+    );
+    // Ruido de sigilo: cada paso audible avisa a los NPCs cercanos. Agacharse
+    // es silencioso; correr hace mucho más ruido que caminar.
+    if (stepped && !player.isCrouched()) {
+      const eventBus = s.resolve(GameTokens.EventBus);
+      eventBus.emit("world.noise", {
+        kind: "movement",
+        position: player.getPosition().clone(),
+        radius: player.isSprinting() ? 12 : 4,
+        sourceId: "player",
+        sourceFaction: "player",
+      });
+    }
 
     let playerPosition = player.getPosition();
     this.weaponPickups.forEach((pickup) =>
@@ -1522,6 +1561,7 @@ export class Game {
     explosiveBarrels.clear();
     vfx.clear();
     services.resolve(EngineTokens.PositionalSound).clear();
+    services.resolve(GameTokens.EnemySounds).clearActors();
     interactSystem.clear();
     triggerSystem.clear();
     checkpointSystem.clear();
@@ -1530,6 +1570,13 @@ export class Game {
     sceneManager.clearLevel([...lighting.getLights(), ...vfx.getPersistentObjects()]);
 
     const loaded = await loader.load(level);
+    const enemySounds = services.resolve(GameTokens.EnemySounds);
+    loaded.npcs.forEach((npc, index) => {
+      const definition = level.npcs[index];
+      if (definition) {
+        enemySounds.registerActor(npc.id, npc.mesh, definition.characterId);
+      }
+    });
     this.npcs = loaded.npcs;
     this.doors = loaded.doors;
     this.weaponPickups = loaded.weaponPickups;

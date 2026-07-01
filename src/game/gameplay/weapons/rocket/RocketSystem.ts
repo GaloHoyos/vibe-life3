@@ -280,6 +280,9 @@ export class RocketSystem implements Disposable {
       sourceId: rocket.sourceId,
       sourceFaction: rocket.sourceFaction,
       weaponName: rocket.weaponName,
+      // Boom propio del RPG (más grande/grave que la granada) y audible de lejos.
+      explosionSound: "weapons.rpg.hl2.explosion",
+      soundMaxDistance: 120,
     });
     this.disposeRocketMesh(rocket.mesh);
   }
@@ -389,6 +392,7 @@ export class RocketSystem implements Disposable {
       refDistance: 2,
       maxDistance: 48,
       volume: 0.72,
+      bus: "weapons",
     });
   }
 }

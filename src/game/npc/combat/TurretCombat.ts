@@ -156,6 +156,7 @@ export class TurretCombat implements NpcCombatHandle {
       this.opts.eventBus.emit("npc.alert", {
         id: this.opts.id,
         characterId: this.opts.characterId,
+        position: args.position.clone(),
       });
     }
     if (this.aimState.phase === "deploying") {

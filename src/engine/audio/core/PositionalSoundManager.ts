@@ -1,5 +1,11 @@
-import { AudioListener, Object3D, PositionalAudio, Vector3 } from "three";
-import type { AudioSystem } from "./AudioSystem";
+import {
+  AudioContext as ThreeAudioContext,
+  AudioListener,
+  Object3D,
+  PositionalAudio,
+  Vector3,
+} from "three";
+import type { AudioBusName, AudioSystem } from "./AudioSystem";
 import type { SoundManager } from "./SoundManager";
 
 export interface PositionalAudioOptions {
@@ -8,6 +14,8 @@ export interface PositionalAudioOptions {
   rolloffFactor?: number;
   volume?: number;
   loop?: boolean;
+  /** Bus del mixer al que rutear la salida (respeta volúmenes de usuario). Default `sfx`. */
+  bus?: AudioBusName;
 }
 
 interface AttachedSound {
@@ -30,6 +38,13 @@ export class PositionalSoundManager {
     private readonly scene: Object3D,
     camera: Object3D,
   ) {
+    // El `AudioListener` de Three usa su `AudioContext` singleton; forzarlo al
+    // mismo contexto que los buses del mixer para poder conectar el panner al
+    // bus.gain (conectar nodos entre contextos distintos lanza DOMException).
+    const context = this.audioSystem.getContext();
+    if (context) {
+      ThreeAudioContext.setContext(context);
+    }
     this.listener = new AudioListener();
     camera.add(this.listener);
   }
@@ -47,6 +62,25 @@ export class PositionalSoundManager {
       audio.onEnded = () => {
         anchor.remove(audio);
         anchor.removeFromParent();
+      };
+    });
+  }
+
+  /**
+   * One-shot posicional que **sigue** a un objeto en movimiento (a diferencia
+   * de `playAt`, que fija un ancla estático). Se auto-desacopla al terminar.
+   * Ideal para sonidos de NPCs que se mueven mientras suenan (e.g. el disparo
+   * del gunship en pleno vuelo).
+   */
+  playFollowing(
+    soundId: string,
+    object: Object3D,
+    options: PositionalAudioOptions = {},
+  ): void {
+    void this.spawnAudio(soundId, options, (audio) => {
+      object.add(audio);
+      audio.onEnded = () => {
+        object.remove(audio);
       };
     });
   }
@@ -107,8 +141,26 @@ export class PositionalSoundManager {
     audio.setMaxDistance(options.maxDistance ?? 12);
     audio.setRolloffFactor(options.rolloffFactor ?? 1.2);
     audio.setVolume(options.volume ?? 1);
+    this.routeToBus(audio, options.bus ?? "sfx");
     audio.play();
 
     onReady(audio);
+  }
+
+  /**
+   * Rerutea la salida del `PositionalAudio` al gain del bus del mixer en vez
+   * de al listener → destino. Se reconecta desde `audio.gain` (no desde el
+   * panner que devuelve `getOutput()`): así la cadena queda
+   * `source → panner → gain → bus.gain`, la espacialización la sigue haciendo
+   * el `PannerNode`, `setVolume` (que escribe en `gain`) mantiene efecto, y el
+   * volumen pasa por el bus (respeta el slider del usuario).
+   */
+  private routeToBus(audio: PositionalAudio, busName: AudioBusName): void {
+    const bus = this.audioSystem.getBus(busName);
+    if (!bus) {
+      return;
+    }
+    audio.gain.disconnect();
+    audio.gain.connect(bus.gain);
   }
 }

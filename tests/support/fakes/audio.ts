@@ -1,4 +1,8 @@
-import type { PositionalSoundManager } from "@engine/audio/core/PositionalSoundManager";
+import type { Object3D, Vector3 } from "three";
+import type {
+  PositionalAudioOptions,
+  PositionalSoundManager,
+} from "@engine/audio/core/PositionalSoundManager";
 import type { PlayOptions, SoundManager } from "@engine/audio/core/SoundManager";
 
 export interface PlayedSound {
@@ -6,18 +10,50 @@ export interface PlayedSound {
   options: PlayOptions;
 }
 
+export interface PositionalSoundCall {
+  id: string;
+  object?: Object3D;
+  position?: Vector3;
+  options: PositionalAudioOptions;
+}
+
+export type FakePositionalSoundManager = PositionalSoundManager & {
+  readonly attachedCalls: PositionalSoundCall[];
+  readonly followed: PositionalSoundCall[];
+  readonly playedAt: PositionalSoundCall[];
+  readonly stopped: Object3D[];
+};
+
 export type FakeSoundManager = SoundManager & {
   readonly available: Set<string>;
   readonly played: PlayedSound[];
 };
 
-export function fakePositionalSounds(): PositionalSoundManager {
+export function fakePositionalSounds(): FakePositionalSoundManager {
+  const attachedCalls: PositionalSoundCall[] = [];
+  const followed: PositionalSoundCall[] = [];
+  const playedAt: PositionalSoundCall[] = [];
+  const stopped: Object3D[] = [];
+
   return {
-    playAt: () => undefined,
-    attachToObject: () => undefined,
-    stopAttached: () => undefined,
+    attachedCalls,
+    followed,
+    playedAt,
+    stopped,
+    playAt: (id: string, position: Vector3, options: PositionalAudioOptions = {}) => {
+      playedAt.push({ id, position, options });
+    },
+    playFollowing: (id: string, object: Object3D, options: PositionalAudioOptions = {}) => {
+      followed.push({ id, object, options });
+    },
+    attachToObject: (id: string, object: Object3D, options: PositionalAudioOptions = {}) => {
+      attachedCalls.push({ id, object, options });
+    },
+    stopAttached: (object: Object3D) => {
+      stopped.push(object);
+    },
     clear: () => undefined,
-  } as unknown as PositionalSoundManager;
+  } as unknown as FakePositionalSoundManager;
 }
 
 export function fakeSoundManager(soundIds: Iterable<string> = []): FakeSoundManager {

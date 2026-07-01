@@ -18,6 +18,7 @@ import { SpawnValidator } from '@engine/physics/character/SpawnValidator';
 import { createBoxMesh } from '@engine/render/PrimitiveFactory';
 import { createTerrainMesh } from '@engine/render/TerrainMesh';
 import type { MaterialKey } from '@engine/render/material/Materials';
+import { materialToSurface } from './materialSurface';
 import { generateHeightField } from '@shared/math/HeightField';
 import { NavSpace } from '@engine/ai/nav/NavSpace';
 import { NavSpaceBuilder } from '@engine/ai/nav/NavSpaceBuilder';
@@ -93,6 +94,7 @@ export class LevelLoader {
         id: terrain.id,
         position: tupleToVector3(terrain.position),
         size: terrain.size,
+        metadata: { surface: materialToSurface(terrain.material) },
       });
     }
 
@@ -107,6 +109,7 @@ export class LevelLoader {
         position: tupleToVector3(definition.position),
         size: tupleToVector3(definition.size),
         rotation: definition.rotation ? quatFromEuler(definition.rotation) : undefined,
+        metadata: { surface: materialToSurface(definition.material) },
       });
     });
     const buildingRegistry = new BuildingRegistry(buildings);
@@ -121,6 +124,7 @@ export class LevelLoader {
           size: tupleToVector3(definition.size),
           rotation: definition.rotation ? quatFromEuler(definition.rotation) : undefined,
           mass: definition.mass,
+          metadata: { surface: materialToSurface(definition.material) },
         },
         mesh,
       );

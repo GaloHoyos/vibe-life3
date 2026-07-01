@@ -38,6 +38,23 @@ export class AudioSystem {
   private readonly volumes: Record<AudioBusName, number> = {
     ...defaultVolumes,
   };
+  /**
+   * Multiplicador de ducking por bus (1 = sin atenuar). Se combina con el
+   * volumen del usuario sin pisarlo, así el ducking de diálogo y el slider
+   * conviven.
+   */
+  private readonly duckFactors: Record<AudioBusName, number> = {
+    master: 1,
+    music: 1,
+    ambience: 1,
+    sfx: 1,
+    weapons: 1,
+    enemies: 1,
+    footsteps: 1,
+    dialogue: 1,
+    ui: 1,
+  };
+  private limiter: DynamicsCompressorNode | null = null;
   private muted = false;
 
   constructor() {
@@ -75,12 +92,7 @@ export class AudioSystem {
 
   setMuted(muted: boolean): void {
     this.muted = muted;
-    const master = this.buses.get("master");
-    if (!master) {
-      return;
-    }
-
-    master.gain.gain.value = muted ? 0 : this.volumes.master;
+    this.applyBusGain("master");
   }
 
   isMuted(): boolean {
@@ -90,14 +102,11 @@ export class AudioSystem {
   setVolume(bus: AudioBusName, value: number): void {
     const clamped = Math.min(1, Math.max(0, value));
     this.volumes[bus] = clamped;
-    const node = this.buses.get(bus);
-    if (node) {
-      node.gain.gain.value = clamped;
-    }
 
     if (bus === "master" && this.muted) {
-      this.setMuted(false);
+      this.muted = false;
     }
+    this.applyBusGain(bus);
 
     this.saveVolumes();
   }
@@ -109,6 +118,48 @@ export class AudioSystem {
   getBus(bus: AudioBusName): AudioBus | null {
     this.ensureContext();
     return this.buses.get(bus) ?? null;
+  }
+
+  /**
+   * Atenúa temporalmente un conjunto de buses (ducking). El factor multiplica
+   * el volumen del usuario sin pisarlo; `unduck` lo restaura. Lo usa el
+   * ducking de diálogo para dejar respirar la voz.
+   */
+  duck(buses: readonly AudioBusName[], factor: number, rampSeconds = 0.15): void {
+    const clamped = Math.min(1, Math.max(0, factor));
+    buses.forEach((bus) => {
+      this.duckFactors[bus] = clamped;
+      this.applyBusGain(bus, rampSeconds);
+    });
+  }
+
+  unduck(buses: readonly AudioBusName[], rampSeconds = 0.4): void {
+    buses.forEach((bus) => {
+      this.duckFactors[bus] = 1;
+      this.applyBusGain(bus, rampSeconds);
+    });
+  }
+
+  private applyBusGain(bus: AudioBusName, rampSeconds = 0): void {
+    const node = this.buses.get(bus);
+    if (!node) {
+      return;
+    }
+
+    let target = this.volumes[bus] * this.duckFactors[bus];
+    if (bus === "master" && this.muted) {
+      target = 0;
+    }
+
+    const param = node.gain.gain;
+    if (this.context && rampSeconds > 0) {
+      const now = this.context.currentTime;
+      param.cancelScheduledValues(now);
+      param.setValueAtTime(param.value, now);
+      param.linearRampToValueAtTime(target, now + rampSeconds);
+    } else {
+      param.value = target;
+    }
   }
 
   private ensureContext(): AudioContext | null {
@@ -135,11 +186,18 @@ export class AudioSystem {
       return;
     }
 
-    const master = new AudioBus(
-      "master",
-      this.context,
-      this.context.destination,
-    );
+    // Limiter suave en la salida: evita clipping cuando se apilan disparos +
+    // explosiones. Se ubica entre el bus master y el destino.
+    const limiter = this.context.createDynamicsCompressor();
+    limiter.threshold.value = -3;
+    limiter.knee.value = 6;
+    limiter.ratio.value = 12;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.25;
+    limiter.connect(this.context.destination);
+    this.limiter = limiter;
+
+    const master = new AudioBus("master", this.context, limiter);
     master.gain.gain.value = this.volumes.master;
     this.buses.set("master", master);
 

@@ -41,6 +41,7 @@ export class GunshipCannonCombat implements NpcCombatHandle {
   private readonly aimTarget = new Vector3();
   private readonly stitchStart = new Vector3();
   private readonly stitchEnd = new Vector3();
+  private readonly position = new Vector3();
   private readonly burstHits = new Map<string, number>();
 
   private hasAim = false;
@@ -56,6 +57,7 @@ export class GunshipCannonCombat implements NpcCombatHandle {
 
   tick(args: NpcCombatTickArgs): void {
     this.now = args.elapsed;
+    this.position.copy(args.position);
     tmpOrigin.copy(args.position);
     tmpOrigin.y += this.opts.eyeHeight;
 
@@ -95,6 +97,7 @@ export class GunshipCannonCombat implements NpcCombatHandle {
       this.opts.eventBus.emit("npc.attack", {
         id: this.opts.id,
         characterId: this.opts.characterId,
+        position: this.position.clone(),
       });
       return false;
     }

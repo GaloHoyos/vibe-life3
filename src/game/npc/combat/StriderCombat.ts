@@ -187,6 +187,7 @@ export class StriderCombat implements NpcCombatHandle {
       this.opts.eventBus.emit("npc.attack", {
         id: this.opts.id,
         characterId: this.opts.characterId,
+        position: this.position.clone(),
       });
       return false;
     }
@@ -289,6 +290,7 @@ export class StriderCombat implements NpcCombatHandle {
     this.opts.eventBus.emit("npc.attack", {
       id: this.opts.id,
       characterId: this.opts.characterId,
+      position: this.position.clone(),
     });
     return true;
   }
@@ -309,6 +311,11 @@ export class StriderCombat implements NpcCombatHandle {
       this.cannonState = "charge";
       this.cannonPhaseUntil = this.now + CANNON_CHARGE;
       this.opts.onCannonCharge?.();
+      this.opts.eventBus.emit("npc.charge", {
+        id: this.opts.id,
+        characterId: this.opts.characterId,
+        position: this.position.clone(),
+      });
       return;
     }
     if (this.cannonState === "charge" && this.now >= this.cannonPhaseUntil) {
@@ -380,6 +387,7 @@ export class StriderCombat implements NpcCombatHandle {
     this.opts.eventBus.emit("npc.attack", {
       id: this.opts.id,
       characterId: this.opts.characterId,
+      position: this.position.clone(),
     });
     return true;
   }

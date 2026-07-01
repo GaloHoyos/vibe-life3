@@ -316,7 +316,11 @@ export class Npc implements INpc {
       this.tmpSliceDir.y = 0.2;
       hit.damageable.applyDamage(damage, this.tmpSliceDir.clone().normalize(), undefined, this.id, hit.point.clone());
     }
-    this.eventBus.emit('npc.attack', { id: this.id, characterId: this.preset.id });
+    this.eventBus.emit('npc.attack', {
+      id: this.id,
+      characterId: this.preset.id,
+      position: this.motor.getPosition().clone(),
+    });
   }
 
   private tickAnimation(delta: number): void {
@@ -385,6 +389,7 @@ export class Npc implements INpc {
       this.eventBus.emit('npc.killed', {
         id: this.id,
         characterId: this.preset.id,
+        position: this.motor.getPosition().clone(),
       });
       const deathVelocity = this.motor.getVelocity();
       this.animation?.notifyDeath(dir, deathVelocity, hitPartName);

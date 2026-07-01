@@ -7,6 +7,7 @@
  */
 
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
+import type { SurfaceType } from "@shared/types/Surface";
 
 export type SoundRef = string | readonly string[];
 export type WeaponSoundEvent = "shot" | "reload" | "empty" | "altShot";
@@ -119,9 +120,9 @@ export const WeaponAudio: Record<string, WeaponSoundMap> = {
       "enemies.turret.hl2.attack3",
     ],
   },
-  "Gunship Cannon": {
-    shot: "enemies.gunship.hl2.fire",
-  },
+  // Gunship: el cañón dispara ~15 tiros/ráfaga; reproducir el clip (un loop
+  // largo) por tiro lo hace atronador y sobrelapado. El disparo suena una vez
+  // por ráfaga vía `npc.attack` posicional (ver EnemyAudio.gunship.attack).
   "Strider Minigun": {
     shot: "enemies.strider.hl2.minigun",
   },
@@ -136,9 +137,13 @@ export const WeaponAudio: Record<string, WeaponSoundMap> = {
 export interface EnemySoundMap {
   alert?: SoundRef;
   attack?: SoundRef;
+  /** Carga/telegraph previo a un ataque pesado (e.g. cañón del strider). */
+  charge?: SoundRef;
   damaged?: SoundRef;
   killed?: SoundRef;
   footstep?: SoundRef;
+  /** Loop de motor/vuelo atado al mesh del NPC mientras vive (e.g. gunship, manhack). */
+  flightLoop?: string;
 }
 
 /**
@@ -223,6 +228,7 @@ export const EnemyAudio: Record<CharacterId, EnemySoundMap> = {
     ],
     damaged: "enemies.manhack.hl2.damage1",
     killed: "enemies.manhack.hl2.die",
+    flightLoop: "enemies.manhack.hl2.engine",
   },
   floorTurret: {
     alert: [
@@ -242,10 +248,12 @@ export const EnemyAudio: Record<CharacterId, EnemySoundMap> = {
     attack: "enemies.gunship.hl2.fire",
     damaged: "enemies.gunship.hl2.pain",
     killed: "enemies.gunship.hl2.die",
+    flightLoop: "enemies.gunship.hl2.engine",
   },
   strider: {
     alert: ["enemies.strider.hl2.alert1", "enemies.strider.hl2.alert2"],
     attack: ["enemies.strider.hl2.minigun", "enemies.strider.hl2.cannon"],
+    charge: "enemies.strider.hl2.cannonCharge",
     damaged: "enemies.strider.hl2.pain",
     killed: "enemies.strider.hl2.die",
     footstep: [
@@ -367,6 +375,24 @@ export const FootstepPools = {
     "footsteps.snow4",
   ],
 } as const satisfies Record<string, readonly string[]>;
+
+/**
+ * Pool de pasos por `SurfaceType` física. Lo consume el `FootstepSoundSystem`
+ * vía `setSurfacePools`; la superficie sale del collider bajo el jugador
+ * (raycast al suelo). Superficie sin entrada acá cae al pool default del nivel.
+ */
+export const SurfaceFootsteps: Record<SurfaceType, readonly string[]> = {
+  concrete: FootstepPools.concrete,
+  metal: FootstepPools.metal,
+  wood: FootstepPools.wood,
+  dirt: FootstepPools.dirt,
+  grass: FootstepPools.grass,
+  sand: FootstepPools.sand,
+  gravel: FootstepPools.gravel,
+  snow: FootstepPools.snow,
+  tile: FootstepPools.tile,
+  mud: FootstepPools.mud,
+};
 
 export const FootstepsConfig = {
   /** Tiempo (s) entre pasos cuando el jugador se mueve a velocidad plena. */

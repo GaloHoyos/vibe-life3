@@ -169,13 +169,22 @@ export abstract class Weapon {
       sourceKind: "player",
       sourceFaction: "player",
     });
-    this.context.eventBus.emit("world.noise", {
-      kind: this.definition.type === "melee" ? "impact" : "gunshot",
-      position: fireContext.origin.clone(),
-      radius: noiseRadiusForWeapon(this.definition.type, this.definition.range),
-      sourceId: "player",
-      sourceFaction: "player",
-    });
+    const fireNoiseRadius =
+      this.definition.noise?.fireRadius ??
+      defaultFireNoiseRadius(this.definition.type, this.definition.range);
+    // Un swing de melee al aire no hace ruido: radio 0 => no se emite. El
+    // impacto real de melee lo emite `MeleeWeapon` desde el punto de golpe.
+    if (fireNoiseRadius > 0) {
+      this.context.eventBus.emit("world.noise", {
+        kind:
+          this.definition.noise?.fireKind ??
+          (this.definition.type === "melee" ? "impact" : "gunshot"),
+        position: fireContext.origin.clone(),
+        radius: fireNoiseRadius,
+        sourceId: "player",
+        sourceFaction: "player",
+      });
+    }
     this.performFire(fireContext);
     this.emitAmmoChanged();
     return true;
@@ -249,9 +258,14 @@ export abstract class Weapon {
   protected abstract performFire(context: WeaponFireContext): void;
 }
 
-function noiseRadiusForWeapon(type: WeaponDefinition["type"], range: number): number {
+function defaultFireNoiseRadius(
+  type: WeaponDefinition["type"],
+  range: number,
+): number {
+  // Melee y especial (gravity gun) no hacen ruido al usarse: el ruido nace
+  // del impacto real, no del gesto.
   if (type === "melee" || type === "special") {
-    return 7;
+    return 0;
   }
   if (type === "grenade") {
     return 18;

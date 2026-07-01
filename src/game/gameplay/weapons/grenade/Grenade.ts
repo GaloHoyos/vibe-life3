@@ -60,6 +60,10 @@ export interface ExplosionParams {
   ignoreBody?: RAPIER.RigidBody;
   /** Tinte del VFX de explosión (energía del strider, etc.). Default = fuego. */
   color?: Color;
+  /** Clip de explosión a reproducir. Default = explosión de granada. */
+  explosionSound?: string;
+  /** Radio (m) de audibilidad de la explosión. Default derivado del radio físico. */
+  soundMaxDistance?: number;
 }
 
 export interface ActiveGrenade {

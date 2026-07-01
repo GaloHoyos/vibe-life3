@@ -129,6 +129,14 @@ export class Player implements Damageable {
     return this.controller.getMoveIntensity();
   }
 
+  isSprinting(): boolean {
+    return this.controller.isSprinting();
+  }
+
+  isCrouched(): boolean {
+    return this.controller.isCrouched();
+  }
+
   dispose(): void {
     this.weapons.dispose();
   }

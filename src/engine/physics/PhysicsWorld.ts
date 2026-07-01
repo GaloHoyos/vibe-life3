@@ -1,6 +1,7 @@
 ﻿import RAPIER from '@dimforge/rapier3d-compat';
 import type { Object3D, Quaternion, Vector3 } from 'three';
 import type { Damageable } from '@shared/types/lifecycle';
+import type { SurfaceType } from '@shared/types/Surface';
 import type { HeightField } from '@shared/math/HeightField';
 import type { Faction } from '@engine/ai/Faction';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
@@ -23,6 +24,8 @@ export interface PhysicsMetadata {
   characterId?: CharacterId;
   /** Bando del actor (npc/player). Lo consumen guards de fuego amigo. */
   faction?: Faction;
+  /** Superficie física (para pasos e impactos). La derivan loader/builders del material. */
+  surface?: SurfaceType;
   bodyPart?: {
     name: string;
     damageMultiplier: number;
