@@ -251,7 +251,7 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       viewConeRadians: Math.PI * (140 / 180),
       hearingRadius: 18,
       memoryDuration: 8,
-      eyeHeight: 1.6,
+      eyeHeight: 0.62,
     },
     ai: {
       detectionRange: 32,
@@ -347,7 +347,7 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       viewConeRadians: Math.PI * (140 / 180),
       hearingRadius: 18,
       memoryDuration: 8,
-      eyeHeight: 1.6,
+      eyeHeight: 0.62,
     },
     ai: {
       detectionRange: 32,
@@ -443,7 +443,7 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       viewConeRadians: Math.PI * (140 / 180),
       hearingRadius: 18,
       memoryDuration: 8,
-      eyeHeight: 1.6,
+      eyeHeight: 0.62,
     },
     ai: {
       detectionRange: 32,
@@ -539,7 +539,7 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       viewConeRadians: Math.PI * (130 / 180),
       hearingRadius: 16,
       memoryDuration: 5,
-      eyeHeight: 1.55,
+      eyeHeight: 0.62,
     },
     ai: {
       detectionRange: 28,
@@ -756,7 +756,9 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       viewConeRadians: Math.PI,
       hearingRadius: 38,
       memoryDuration: 8,
-      eyeHeight: 1.6,
+      // Ojo a la altura de la cabeza (ver striderPreset). El runtime usa la
+      // percepcion del preset; esto queda en sync para evitar confusion.
+      eyeHeight: 0.4,
     },
     ai: { detectionRange: 85 },
     attack: {

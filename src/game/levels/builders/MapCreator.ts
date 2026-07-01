@@ -6,6 +6,7 @@ import type { BuildingArtifact } from '@game/levels/buildings/BuildingArtifact';
 import type { LevelId } from '@game/levels/LevelRegistry';
 import type {
   ActionButtonDefinition,
+  AmmoPickupDefinition,
   ChargerDefinition,
   DoorDefinition,
   DynamicBoxDefinition,
@@ -89,6 +90,7 @@ export class MapBuilder {
   private readonly npcList: NPCDefinition[] = [];
   private readonly pickupList: WeaponPickupDefinition[] = [];
   private readonly itemPickupList: ItemPickupDefinition[] = [];
+  private readonly ammoPickupList: AmmoPickupDefinition[] = [];
   private readonly chargerList: ChargerDefinition[] = [];
   private readonly triggerList: TriggerDefinition[] = [];
   private readonly barrelList: ExplosiveBarrelDefinition[] = [];
@@ -230,6 +232,23 @@ export class MapBuilder {
     return this;
   }
 
+  /** Pickup de munición separado de armas. */
+  ammo(def: AmmoPickupDefinition): this {
+    this.ammoPickupList.push(def);
+    return this;
+  }
+
+  /** Coloca un pickup de munición dentro de un room. */
+  ammoInRoom(
+    buildingId: string,
+    story: number,
+    local: [number, number],
+    def: Omit<AmmoPickupDefinition, 'position'>,
+  ): this {
+    this.ammoPickupList.push({ ...def, position: this.roomPoint(buildingId, story, local, 0.5) });
+    return this;
+  }
+
   /** Cargador de pared (vida / HEV) estilo HL2. */
   charger(def: ChargerDefinition): this {
     this.chargerList.push(def);
@@ -311,6 +330,7 @@ export class MapBuilder {
       npcs: this.npcList,
       weaponPickups: this.pickupList,
       itemPickups: this.itemPickupList.length > 0 ? this.itemPickupList : undefined,
+      ammoPickups: this.ammoPickupList.length > 0 ? this.ammoPickupList : undefined,
       chargers: this.chargerList.length > 0 ? this.chargerList : undefined,
       triggers: this.triggerList,
       explosiveBarrels: this.barrelList.length > 0 ? this.barrelList : undefined,
@@ -337,6 +357,7 @@ export class MapBuilder {
     this.npcList.forEach((n) => check(n.id));
     this.pickupList.forEach((p) => check(p.id));
     this.itemPickupList.forEach((p) => check(p.id));
+    this.ammoPickupList.forEach((p) => check(p.id));
     this.chargerList.forEach((c) => { check(c.id); check(`${c.id}-body`); });
     this.triggerList.forEach((t) => check(t.id));
     this.barrelList.forEach((b) => check(b.id));

@@ -1,4 +1,4 @@
-﻿import { Vector3 } from "three";
+﻿import { Color, Vector3 } from "three";
 import { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
 import { FootstepSoundSystem } from "@engine/audio/systems/FootstepSoundSystem";
 import { MusicManager } from "@engine/audio/core/MusicManager";
@@ -33,7 +33,11 @@ import { DeathSequence } from "@game/gameplay/player/DeathSequence";
 import { DeathScreen } from "@game/ui/overlay/DeathScreen";
 import { TransitionOverlay } from "@game/ui/overlay/TransitionOverlay";
 import { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
+import { NpcBloodEffects } from "@game/gameplay/effects/NpcBloodEffects";
 import { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
+import { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
+import { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 import { InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
 import type { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
@@ -58,9 +62,12 @@ import { DialogueSystem } from "@game/narrative/DialogueSystem";
 import { LevelEvents } from "@game/narrative/LevelEvents";
 import { WeaponPickup } from "@game/gameplay/weapons/pickup/WeaponPickup";
 import { ItemPickup } from "@game/gameplay/items/ItemPickup";
+import { AmmoPickup } from "@game/gameplay/items/AmmoPickup";
 import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
 import { WEAPON_ORDER, WeaponDefinitions } from "@game/config/weapons.config";
+import { AMMO_ORDER } from "@game/config/ammo.config";
 import { HUD } from "@game/ui/hud/HUD";
+import { ScopeOverlay } from "@game/ui/overlay/ScopeOverlay";
 import { Subtitles } from "@game/ui/subtitles/Subtitles";
 import { MainMenu } from "@game/ui/menu/MainMenu";
 import type { CustomMapEntry, GameMenuState } from "@game/ui/menu/MainMenuState";
@@ -119,6 +126,7 @@ export class Game {
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
   private itemPickups: ItemPickup[] = [];
+  private ammoPickups: AmmoPickup[] = [];
   private chargers: Charger[] = [];
   private tacticalMap: TacticalMap | null = null;
   private squadDirector: SquadDirector | null = null;
@@ -233,11 +241,16 @@ export class Game {
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
     s.resolve(GameTokens.WeaponEffects).dispose();
+    s.resolve(GameTokens.NpcBloodEffects).dispose();
     s.resolve(GameTokens.Grenades).dispose();
+    s.resolve(GameTokens.Rockets).dispose();
+    s.resolve(GameTokens.Bolts).dispose();
+    s.resolve(GameTokens.EnergyBalls).dispose();
     this.player?.dispose();
     this.deathScreen?.dispose();
     this.transitionOverlay?.dispose();
     s.resolve(GameTokens.HUD).dispose();
+    s.resolve(GameTokens.ScopeOverlay).dispose();
     s.resolve(GameTokens.Subtitles).dispose();
     s.resolve(GameTokens.MainMenu).dispose();
     s.resolve(GameTokens.DebugMenu).dispose();
@@ -293,11 +306,13 @@ export class Game {
 
     const subtitles = s.register(GameTokens.Subtitles, new Subtitles(this.root));
     s.register(GameTokens.Dialogue, new DialogueSystem(eventBus, subtitles));
-    s.register(
-      GameTokens.WeaponEffects,
-      new WeaponEffects(scene.scene, eventBus),
-    );
+    const weaponEffects = new WeaponEffects(scene.scene, eventBus, raycast);
+    s.register(GameTokens.WeaponEffects, weaponEffects);
     const vfx = s.resolve(EngineTokens.Vfx);
+    s.register(
+      GameTokens.NpcBloodEffects,
+      new NpcBloodEffects(scene.scene, eventBus, raycast, vfx),
+    );
     const grenades = new GrenadeSystem(
       physics,
       scene.scene,
@@ -308,6 +323,22 @@ export class Game {
       vfx,
     );
     s.register(GameTokens.Grenades, grenades);
+    s.register(
+      GameTokens.Rockets,
+      new RocketSystem(scene.scene, assets, raycast, grenades, vfx, positionalSounds),
+    );
+    s.register(GameTokens.Bolts, new BoltSystem(scene.scene, raycast, eventBus));
+    s.register(
+      GameTokens.EnergyBalls,
+      new EnergyBallSystem(
+        scene.scene,
+        raycast,
+        eventBus,
+        grenades,
+        vfx,
+        positionalSounds,
+      ),
+    );
     s.register(
       GameTokens.ExplosiveBarrels,
       new ExplosiveBarrelSystem(physics, scene.scene, grenades),
@@ -327,7 +358,9 @@ export class Game {
         this.collapsingStriders.set(id, { startedAt: null });
       }
     });
-    eventBus.on("strider.cannon.impact", ({ point, damage, radius, impulse, sourceId, sourceFaction }) => {
+    const striderCannonColor = 0x53c8ff;
+    eventBus.on("strider.cannon.impact", ({ point, origin, damage, radius, impulse, sourceId, sourceFaction }) => {
+      weaponEffects.beam(origin, point, striderCannonColor);
       grenades.detonate(point, {
         damage,
         radius,
@@ -336,6 +369,7 @@ export class Game {
         sourceId,
         sourceFaction,
         weaponName: "Strider Cannon",
+        color: new Color(striderCannonColor),
       });
     });
     eventBus.on("level.action", ({ action, position }) => {
@@ -384,6 +418,7 @@ export class Game {
       health: this.player.health.current,
       armor: this.player.health.armor,
       weapons: loadout.entries,
+      ammo: loadout.ammo,
       activeWeaponId: loadout.activeId,
     };
     this.engine.services
@@ -594,6 +629,7 @@ export class Game {
       health: this.player.health.current,
       armor: this.player.health.armor,
       weapons: loadout.entries,
+      ammo: loadout.ammo,
       activeWeaponId: loadout.activeId,
     };
   }
@@ -777,6 +813,19 @@ export class Game {
       });
       this.weaponPickups.push(pickup);
     }
+
+    for (let i = 0; i < AMMO_ORDER.length; i += 1) {
+      const column = i % 6;
+      const position = origin
+        .clone()
+        .add(new Vector3((column - 2.5) * 1.15, 0.2, 5.4));
+      const pickup = await AmmoPickup.create(scene.scene, physics, assets, {
+        id: `action-ammo-${this.actionSpawnSerial}-${i}-${AMMO_ORDER[i]}`,
+        ammoId: AMMO_ORDER[i],
+        position,
+      });
+      this.ammoPickups.push(pickup);
+    }
   }
 
   private registerWorkshop(): void {
@@ -799,6 +848,7 @@ export class Game {
     const raycast = s.resolve(EngineTokens.Raycast);
 
     s.register(GameTokens.HUD, new HUD(this.root, eventBus));
+    s.register(GameTokens.ScopeOverlay, new ScopeOverlay(this.root, eventBus));
 
     s.register(
       GameTokens.LevelEditor,
@@ -947,9 +997,13 @@ export class Game {
     const checkpointSystem = s.resolve(GameTokens.CheckpointSystem);
     const hazardVolumes = s.resolve(GameTokens.HazardVolumes);
     const weaponEffects = s.resolve(GameTokens.WeaponEffects);
+    const npcBloodEffects = s.resolve(GameTokens.NpcBloodEffects);
     const subtitles = s.resolve(GameTokens.Subtitles);
     const footsteps = s.resolve(GameTokens.Footsteps);
     const grenades = s.resolve(GameTokens.Grenades);
+    const rockets = s.resolve(GameTokens.Rockets);
+    const bolts = s.resolve(GameTokens.Bolts);
+    const energyBalls = s.resolve(GameTokens.EnergyBalls);
     const explosiveBarrels = s.resolve(GameTokens.ExplosiveBarrels);
     const vfx = s.resolve(EngineTokens.Vfx);
 
@@ -972,6 +1026,9 @@ export class Game {
     );
     this.itemPickups.forEach((pickup) =>
       pickup.update(time.delta, playerPosition, player.health),
+    );
+    this.ammoPickups.forEach((pickup) =>
+      pickup.update(time.delta, playerPosition, player.weapons),
     );
     if (this.tacticalMap && this.navSpace && this.squadDirector) {
       const playerSnapshot: ActorSnapshot = {
@@ -1015,6 +1072,9 @@ export class Game {
     this.updateGunshipCrashes(time.elapsed, raycast, grenades);
     this.updateStriderCollapses(time.elapsed, raycast, grenades);
     grenades.update(time.delta, time.elapsed);
+    rockets.update(time.delta, time.elapsed);
+    bolts.update(time.delta, time.elapsed);
+    energyBalls.update(time.delta, time.elapsed, this.npcs);
     explosiveBarrels.update();
 
     playerPosition = player.getPosition();
@@ -1038,6 +1098,7 @@ export class Game {
     s.resolve(GameTokens.HUD).updateObjective(camera.camera);
     subtitles.update(time.delta);
     weaponEffects.update(time.delta);
+    npcBloodEffects.update(time.delta);
     vfx.update(time.delta);
     gizmos.update(time.delta);
   }
@@ -1450,9 +1511,14 @@ export class Game {
     this.collapsingStriders.clear();
     this.weaponPickups.forEach((pickup) => pickup.dispose());
     this.itemPickups.forEach((pickup) => pickup.dispose());
+    this.ammoPickups.forEach((pickup) => pickup.dispose());
     this.player?.dispose();
     services.resolve(GameTokens.WeaponEffects).clear();
+    services.resolve(GameTokens.NpcBloodEffects).clear();
     services.resolve(GameTokens.Grenades).clear();
+    services.resolve(GameTokens.Rockets).clear();
+    services.resolve(GameTokens.Bolts).clear();
+    services.resolve(GameTokens.EnergyBalls).clear();
     explosiveBarrels.clear();
     vfx.clear();
     services.resolve(EngineTokens.PositionalSound).clear();
@@ -1468,6 +1534,7 @@ export class Game {
     this.doors = loaded.doors;
     this.weaponPickups = loaded.weaponPickups;
     this.itemPickups = loaded.itemPickups;
+    this.ammoPickups = loaded.ammoPickups;
     this.chargers = loaded.chargers;
     this.tacticalMap = loaded.tacticalMap;
     this.squadDirector = loaded.squadDirector;
@@ -1483,10 +1550,17 @@ export class Game {
       sceneManager.scene,
       eventBus,
       services.resolve(GameTokens.Grenades),
+      services.resolve(GameTokens.Rockets),
+      services.resolve(GameTokens.Bolts),
+      services.resolve(GameTokens.EnergyBalls),
     );
     if (spawn) {
       this.player.health.restore(spawn.health, spawn.armor);
-      this.player.weapons.restoreLoadout(spawn.weapons, spawn.activeWeaponId);
+      this.player.weapons.restoreLoadout(
+        spawn.weapons,
+        spawn.activeWeaponId,
+        spawn.ammo,
+      );
     }
     this.chargers.forEach((charger) => charger.bind(this.player!.health));
 

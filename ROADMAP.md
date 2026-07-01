@@ -118,14 +118,37 @@ Half-Life completo. Ordenado por impacto. Marcá cada ítem al cerrarlo.
   - **Editor:** barril y kill-volume cableados de punta a punta (paleta "Peligros", inspector con
     toggle "Efecto visual", preview, codegen `to`/`from`/`toTypeScript`). *Pendiente para publicar
     por Workshop: ampliar el `validateDocument` del backend (repo hermano) a los campos nuevos.*
+- [x] **VFX de sangre para NPCs orgánicos** *(hecho)* — daño con contexto espacial
+  (`hitPoint`/dirección/body part), filtro por tipo de personaje (humanoides/criaturas sangran;
+  robots/props no), `VfxSystem.bloodImpact()` con puff/gotas y decals oscuros proyectados en
+  paredes/piso cercanos. Incluye throttling por NPC/frame y metadata física para excluir al NPC
+  golpeado durante los raycasts.
 - [x] **Encuentro con jefe: Strider full-size**: boss trípode inspirado en HL2, no mini.
 
-## Tier 3 — Armas (huecos del arsenal clásico)
+## Tier 3 — Armas (arsenal clásico)
 
-- [ ] Crossbow (sniper silencioso, proyectil).
-- [ ] .357 Magnum (pistola de alto impacto).
-- [ ] RPG con cohete guiable (anti-vehículo/jefe).
-- [ ] Energy orb del pulse rifle como alt-fire del AR3 (hoy sin secundario).
+- [x] **.357 Magnum / revolver** *(hecho)* — sidearm de alto impacto con modelo
+  propio, pickup, HUD/icono, munición `.357` separada y balance de daño/cadencia
+  distinto de la pistola 9mm.
+- [x] **Crossbow** *(hecho)* — arma monotiro de alto daño con `BoltSystem`
+  balístico, recarga automática desde reserva y mira telescópica con overlay +
+  FOV reducido. Incluye modelo, pickup, ammo de flechas y HUD/icono.
+- [x] **RPG con cohete guiable** *(hecho)* — launcher + cohete GLB optimizados,
+  misil único activo estilo HL2, punto láser siempre activo al equipar, guía suave
+  hacia la mira, retardo de ignición, colisión continua y explosión radial
+  reutilizando `GrenadeSystem.detonate()`. Incluye pickup de cohete como munición
+  RPG y HUD/icono.
+- [x] **Energy orb del AR3 / pulse rifle alt-fire** *(hecho)* — secundario del AR3
+  con reserva `energyBall`, proyectil Combine que rebota/vaporiza enemigos y pickup
+  de munición propio.
+- [x] **Pickups de munición HL2-style** *(hecho)* — `AmmoDefinitions` +
+  `AmmoInventory` global, pickups separados de armas para pistol/revolver/SMG/AR3/
+  crossbow/shotgun/RPG/grenade/energyBall, compatibilidad con checkpoints/transición
+  y soporte completo en niveles, loader, editor, codegen, paleta e inspector.
+- [x] **Calibración visual de armas, viewmodels y munición** *(hecho)* —
+  escalas/colliders runtime para worldmodels y ammo, poses de viewmodel ajustadas
+  hacia una lectura tipo HL2, `weapon-scale-test` como mapa custom permanente de
+  verificación y `WeaponsModule` extendido para copiar config de armas y ammo.
 
 ## Tier 4 — Lo que da "alma" (más caro)
 

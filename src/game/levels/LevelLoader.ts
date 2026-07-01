@@ -8,6 +8,7 @@ import type { GameEventBus } from "@game/GameEvents";
 import { ActionButton, Charger, DoorButton, InteractSystem, SlidingDoor } from '@game/gameplay/interactions';
 import { WeaponPickup } from '@game/gameplay/weapons/pickup/WeaponPickup';
 import { ItemPickup } from '@game/gameplay/items/ItemPickup';
+import { AmmoPickup } from '@game/gameplay/items/AmmoPickup';
 import { getChargerType } from '@game/config/items.config';
 import { SquadDirector } from '@game/npc/ai/SquadDirector';
 import type { INpc } from '@game/npc/core/INpc';
@@ -36,6 +37,7 @@ export interface LoadedLevel {
   doors: SlidingDoor[];
   weaponPickups: WeaponPickup[];
   itemPickups: ItemPickup[];
+  ammoPickups: AmmoPickup[];
   chargers: Charger[];
   tacticalMap: TacticalMap;
   squadDirector: SquadDirector;
@@ -68,6 +70,7 @@ export class LevelLoader {
     const doors: SlidingDoor[] = [];
     const weaponPickups: WeaponPickup[] = [];
     const itemPickups: ItemPickup[] = [];
+    const ammoPickups: AmmoPickup[] = [];
     const chargers: Charger[] = [];
     const sharedRaycast = new Raycast(this.physics);
 
@@ -266,6 +269,16 @@ export class LevelLoader {
       );
     }
 
+    for (const definition of level.ammoPickups ?? []) {
+      ammoPickups.push(
+        await AmmoPickup.create(this.scene, this.physics, this.assets, {
+          id: definition.id,
+          ammoId: definition.ammoId,
+          position: tupleToVector3(definition.position),
+        }),
+      );
+    }
+
     for (const definition of level.chargers ?? []) {
       const type = getChargerType(definition.kind);
       const instance = await this.assets.instantiateModel(type.modelId);
@@ -318,6 +331,7 @@ export class LevelLoader {
       doors,
       weaponPickups,
       itemPickups,
+      ammoPickups,
       chargers,
       tacticalMap,
       squadDirector,

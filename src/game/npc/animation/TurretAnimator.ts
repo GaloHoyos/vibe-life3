@@ -2,7 +2,7 @@ import { Color, MathUtils, Mesh, MeshStandardMaterial, Object3D } from "three";
 import type { AnimationFrame, NpcAnimator } from "./NpcAnimator";
 import type { TurretAimState } from "@game/npc/combat/TurretAimState";
 
-const EYE_DORMANT = new Color(0x18ff5a);
+const EYE_DORMANT = new Color(0xff2a12);
 const EYE_ACTIVE = new Color(0xff2a12);
 /** Duracion (s) del destello de boca por disparo. */
 const MUZZLE_FLASH = 0.05;
@@ -12,7 +12,7 @@ const tmpColor = new Color();
 /**
  * Animador de la torreta de piso. No tiene esqueleto: rota el hijo nombrado
  * `turret-barrel` hacia donde apunta el cañon (leído del `TurretAimState` que
- * escribe `TurretCombat`) y enciende el `turret-eye` (verde dormida → rojo
+ * escribe `TurretCombat`) y enciende el `turret-eye` (rojo tenue → rojo
  * activa) y el `turret-muzzle` (destello por disparo). El `Npc` lo trata vía la
  * interfaz `NpcAnimator`; los métodos de arma/postura humanoide son no-ops.
  *

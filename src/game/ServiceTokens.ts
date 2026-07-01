@@ -16,8 +16,13 @@ import type { TriggerSystem } from "@game/levels/TriggerSystem";
 import type { CheckpointSystem } from "@game/levels/CheckpointSystem";
 import type { HazardVolumeSystem } from "@game/levels/HazardVolumeSystem";
 import type { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
+import type { NpcBloodEffects } from "@game/gameplay/effects/NpcBloodEffects";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
+import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
+import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 import type { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
+import type { ScopeOverlay } from "@game/ui/overlay/ScopeOverlay";
 import type { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
 import type { HUD } from "@game/ui/hud/HUD";
 import type { Subtitles } from "@game/ui/subtitles/Subtitles";
@@ -38,13 +43,18 @@ export const GameTokens = {
   Subtitles: new ServiceToken<Subtitles>("Subtitles"),
   Dialogue: new ServiceToken<DialogueSystem>("DialogueSystem"),
   WeaponEffects: new ServiceToken<WeaponEffects>("WeaponEffects"),
+  NpcBloodEffects: new ServiceToken<NpcBloodEffects>("NpcBloodEffects"),
   Grenades: new ServiceToken<GrenadeSystem>("GrenadeSystem"),
+  Rockets: new ServiceToken<RocketSystem>("RocketSystem"),
+  Bolts: new ServiceToken<BoltSystem>("BoltSystem"),
+  EnergyBalls: new ServiceToken<EnergyBallSystem>("EnergyBallSystem"),
   ExplosiveBarrels: new ServiceToken<ExplosiveBarrelSystem>("ExplosiveBarrelSystem"),
   InteractSystem: new ServiceToken<InteractSystem>("InteractSystem"),
   TriggerSystem: new ServiceToken<TriggerSystem>("TriggerSystem"),
   CheckpointSystem: new ServiceToken<CheckpointSystem>("CheckpointSystem"),
   HazardVolumes: new ServiceToken<HazardVolumeSystem>("HazardVolumeSystem"),
   HUD: new ServiceToken<HUD>("HUD"),
+  ScopeOverlay: new ServiceToken<ScopeOverlay>("ScopeOverlay"),
   MainMenu: new ServiceToken<MainMenu>("MainMenu"),
   DebugMenu: new ServiceToken<DebugMenu>("DebugMenu"),
   LevelEditor: new ServiceToken<LevelEditor>("LevelEditor"),

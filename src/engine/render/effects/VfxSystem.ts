@@ -16,6 +16,7 @@ import { buildSoftSprite, ParticleField } from "./ParticleField";
 
 const ADDITIVE_CAPACITY = 3200;
 const SMOKE_CAPACITY = 1600;
+const BLOOD_CAPACITY = 2200;
 // Las luces de destello viven SIEMPRE en la escena (intensidad 0 en reposo). Si
 // se prendieran/apagaran con `visible`, cada explosión cambiaría
 // `NUM_POINT_LIGHTS` y Three recompilaría todos los materiales iluminados → hitch
@@ -79,6 +80,16 @@ export interface ExplosionOptions {
   color?: Color;
 }
 
+export interface BloodImpactOptions {
+  scale?: number;
+  color?: Color;
+  variant?: "direct" | "radial";
+}
+
+export interface RocketTrailOptions {
+  scale?: number;
+}
+
 interface FlashLight {
   light: PointLight;
   remaining: number;
@@ -118,6 +129,7 @@ const tmpDrawSize = new Vector2();
 export class VfxSystem implements Disposable {
   private readonly additive: ParticleField;
   private readonly smoke: ParticleField;
+  private readonly blood: ParticleField;
   private readonly sprite = buildSoftSprite();
 
   private readonly flashLights: FlashLight[] = [];
@@ -138,6 +150,12 @@ export class VfxSystem implements Disposable {
       capacity: SMOKE_CAPACITY,
       blend: "alpha",
       drag: 1.6,
+      texture: this.sprite,
+    });
+    this.blood = new ParticleField(scene, {
+      capacity: BLOOD_CAPACITY,
+      blend: "alpha",
+      drag: 1.1,
       texture: this.sprite,
     });
 
@@ -169,6 +187,7 @@ export class VfxSystem implements Disposable {
     const viewportHeight = this.renderer.getDrawingBufferSize(tmpDrawSize).y || 1080;
     this.additive.advance(delta, viewportHeight);
     this.smoke.advance(delta, viewportHeight);
+    this.blood.advance(delta, viewportHeight);
     this.updateFlashLights(delta);
     this.updateShockwaves(delta);
     this.updateEmitters(delta);
@@ -188,6 +207,130 @@ export class VfxSystem implements Disposable {
     this.spawnFireball(point, scale, tint);
     this.spawnSparks(point, scale, tint);
     this.spawnSmoke(point, scale);
+  }
+
+  bloodImpact(point: Vector3, direction: Vector3, options: BloodImpactOptions = {}): void {
+    const scale = Math.max(0.55, Math.min(options.scale ?? 1, 2.4));
+    const variant = options.variant ?? "direct";
+    const dir = direction.lengthSq() > 0.001
+      ? direction.clone().normalize()
+      : new Vector3(0, 0.35, 1).normalize();
+    const right = new Vector3();
+    const up = new Vector3();
+    buildBasis(dir, right, up);
+
+    const color = options.color ?? new Color(0x6f0710);
+    const dark = color.clone().multiplyScalar(0.38);
+    const coreCount = variant === "radial" ? 8 : 5;
+    const dropCount = variant === "radial" ? 18 : 10;
+    const puffCount = variant === "radial" ? 7 : 4;
+
+    for (let i = 0; i < coreCount; i += 1) {
+      const origin = point
+        .clone()
+        .addScaledVector(dir, scale * 0.08)
+        .addScaledVector(right, (Math.random() - 0.5) * scale * 0.16)
+        .addScaledVector(up, (Math.random() - 0.5) * scale * 0.16);
+      this.blood.spawn({
+        position: origin,
+        velocity: jitterDirection(dir, 0.45).multiplyScalar(scale * (1.2 + Math.random() * 2.2)),
+        accel: new Vector3(0, GRAVITY * 0.35, 0),
+        color: jitterColor(color, 0.35),
+        endColor: dark.clone(),
+        size: scale * (0.08 + Math.random() * 0.07),
+        endSize: scale * (0.34 + Math.random() * 0.24),
+        lifetime: 0.22 + Math.random() * 0.2,
+        turbulence: scale * 0.08,
+      });
+    }
+
+    for (let i = 0; i < puffCount; i += 1) {
+      const origin = point
+        .clone()
+        .addScaledVector(dir, scale * (0.12 + Math.random() * 0.18))
+        .addScaledVector(right, (Math.random() - 0.5) * scale * 0.28)
+        .addScaledVector(up, (Math.random() - 0.5) * scale * 0.28);
+      this.blood.spawn({
+        position: origin,
+        velocity: jitterDirection(dir, 0.75).multiplyScalar(scale * (0.6 + Math.random() * 1.3)),
+        accel: new Vector3(0, GRAVITY * 0.15, 0),
+        color: jitterColor(color, 0.45),
+        endColor: dark.clone(),
+        size: scale * (0.16 + Math.random() * 0.08),
+        endSize: scale * (0.62 + Math.random() * 0.34),
+        lifetime: 0.38 + Math.random() * 0.28,
+        turbulence: scale * 0.14,
+      });
+    }
+
+    for (let i = 0; i < dropCount; i += 1) {
+      const origin = point
+        .clone()
+        .addScaledVector(right, (Math.random() - 0.5) * scale * 0.2)
+        .addScaledVector(up, (Math.random() - 0.5) * scale * 0.2);
+      const spray = variant === "radial" ? randomUnitVector(new Vector3()) : jitterDirection(dir, 1.0);
+      spray.y += 0.18 + Math.random() * 0.35;
+      spray.normalize();
+      this.blood.spawn({
+        position: origin,
+        velocity: spray.multiplyScalar(scale * (2.2 + Math.random() * (variant === "radial" ? 4.5 : 3.0))),
+        accel: new Vector3(0, GRAVITY * (0.75 + Math.random() * 0.35), 0),
+        color: jitterColor(color, 0.28),
+        endColor: dark.clone(),
+        size: scale * (0.035 + Math.random() * 0.035),
+        endSize: scale * (0.012 + Math.random() * 0.016),
+        lifetime: 0.42 + Math.random() * 0.48,
+      });
+    }
+  }
+
+  rocketTrail(point: Vector3, direction: Vector3, options: RocketTrailOptions = {}): void {
+    const scale = Math.max(0.65, Math.min(options.scale ?? 1, 1.8));
+    const forward = direction.lengthSq() > 0.001
+      ? direction.clone().normalize()
+      : new Vector3(0, 0, -1);
+    const exhaust = point.clone().addScaledVector(forward, -0.34 * scale);
+    const smokeDark = new Color(0x2a2926);
+    const smokeLight = new Color(0x7b766e);
+
+    for (let i = 0; i < 2; i += 1) {
+      randomUnitVector(tmpDir);
+      const origin = exhaust
+        .clone()
+        .addScaledVector(tmpDir, scale * 0.08)
+        .addScaledVector(forward, -Math.random() * scale * 0.14);
+      this.smoke.spawn({
+        position: origin,
+        velocity: forward
+          .clone()
+          .multiplyScalar(-scale * (0.7 + Math.random() * 0.7))
+          .add(new Vector3(
+            tmpDir.x * scale * 0.35,
+            Math.abs(tmpDir.y) * scale * 0.45 + 0.15,
+            tmpDir.z * scale * 0.35,
+          )),
+        accel: new Vector3(0, 0.65, 0),
+        color: smokeDark.clone().lerp(smokeLight, Math.random() * 0.65),
+        endColor: smokeDark.clone().multiplyScalar(0.45),
+        size: scale * (0.16 + Math.random() * 0.08),
+        endSize: scale * (0.62 + Math.random() * 0.24),
+        lifetime: 0.42 + Math.random() * 0.32,
+        turbulence: scale * 0.12,
+      });
+    }
+
+    if (Math.random() < 0.8) {
+      this.additive.spawn({
+        position: exhaust,
+        velocity: forward.clone().multiplyScalar(-scale * 1.8),
+        accel: new Vector3(0, 0.2, 0),
+        color: new Color(0xffd7a0),
+        endColor: new Color(0xff5a12),
+        size: scale * 0.08,
+        endSize: scale * 0.22,
+        lifetime: 0.08 + Math.random() * 0.05,
+      });
+    }
   }
 
   createEmitter(config: VfxEmitterConfig): VfxEmitterHandle {
@@ -233,6 +376,7 @@ export class VfxSystem implements Disposable {
     return [
       this.additive.object,
       this.smoke.object,
+      this.blood.object,
       ...this.flashLights.map((f) => f.light),
       ...this.shockwaves.map((w) => w.mesh),
     ];
@@ -242,6 +386,7 @@ export class VfxSystem implements Disposable {
   clear(): void {
     this.additive.clear();
     this.smoke.clear();
+    this.blood.clear();
     for (const flash of this.flashLights) {
       flash.remaining = 0;
       flash.light.intensity = 0;
@@ -260,6 +405,7 @@ export class VfxSystem implements Disposable {
     this.clear();
     this.additive.dispose();
     this.smoke.dispose();
+    this.blood.dispose();
     for (const flash of this.flashLights) flash.light.removeFromParent();
     for (const wave of this.shockwaves) {
       wave.mesh.removeFromParent();
@@ -475,6 +621,27 @@ function randomUnitVector(out: Vector3): Vector3 {
   const r = Math.sqrt(Math.max(0, 1 - z * z));
   out.set(r * Math.cos(a), z, r * Math.sin(a));
   return out;
+}
+
+function buildBasis(direction: Vector3, right: Vector3, up: Vector3): void {
+  const reference = Math.abs(direction.y) > 0.92
+    ? new Vector3(1, 0, 0)
+    : new Vector3(0, 1, 0);
+  right.crossVectors(direction, reference);
+  if (right.lengthSq() < 1e-5) right.set(1, 0, 0);
+  right.normalize();
+  up.crossVectors(right, direction).normalize();
+}
+
+function jitterDirection(base: Vector3, amount: number): Vector3 {
+  return base
+    .clone()
+    .addScaledVector(randomUnitVector(new Vector3()), Math.random() * amount)
+    .normalize();
+}
+
+function jitterColor(base: Color, amount: number): Color {
+  return base.clone().multiplyScalar(1 - Math.random() * amount);
 }
 
 function easeOut(t: number): number {

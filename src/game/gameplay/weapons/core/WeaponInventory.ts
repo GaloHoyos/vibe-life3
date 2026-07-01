@@ -3,6 +3,7 @@
   getSlotForWeapon,
 } from "@game/config/weapons.config";
 import type { GameEventBus } from "@game/GameEvents";
+import type { AmmoInventory } from "./AmmoInventory";
 import type { Weapon } from "./Weapon";
 import type { WeaponId } from "./WeaponDefinition";
 
@@ -16,7 +17,10 @@ export class WeaponInventory {
   private readonly weapons = new Map<WeaponId, Weapon>();
   private activeId: WeaponId | null = null;
 
-  constructor(private readonly eventBus: GameEventBus) {}
+  constructor(
+    private readonly eventBus: GameEventBus,
+    private readonly ammo: AmmoInventory,
+  ) {}
 
   addWeapon(weapon: Weapon): boolean {
     const id = weapon.definition.id;
@@ -117,10 +121,26 @@ export class WeaponInventory {
   }
 
   getSecondaryAmmoForWeapon(id: WeaponId): number | undefined {
-    if (id !== "smg") {
-      return undefined;
+    if (id === "smg") {
+      return this.weapons.get("grenade")?.getAmmo() ?? 0;
     }
-    return this.weapons.get("grenade")?.getAmmo() ?? 0;
+    // El AR3 muestra las bolas de energía (munición de pura reserva, sin arma propia).
+    if (id === "ar3") {
+      return this.ammo.get("energyBall");
+    }
+    return undefined;
+  }
+
+  /**
+   * Reemite `weapon.changed` del arma activa para refrescar el contador
+   * secundario del HUD (ej. tras consumir o recoger munición secundaria que no
+   * pasa por el flujo normal de reserva primaria).
+   */
+  refreshActiveWeapon(): void {
+    const weapon = this.getActiveWeapon();
+    if (weapon) {
+      this.emitWeaponChanged(weapon);
+    }
   }
 
   private orderedWeapons(): Weapon[] {

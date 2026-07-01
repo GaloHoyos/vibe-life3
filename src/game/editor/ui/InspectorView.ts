@@ -29,6 +29,7 @@ import {
   setSize,
 } from '../EditorEntityOps';
 import {
+  AMMO_IDS,
   CHARACTER_IDS,
   CHARGER_KINDS,
   HAZARD_KINDS,
@@ -275,6 +276,12 @@ export class InspectorView implements Disposable {
       case 'itemPickup':
         this.append(selectField('Item', entity.def.itemId, ITEM_IDS, (v) => {
           entity.def.itemId = v as typeof entity.def.itemId;
+          this.commit();
+        }));
+        return;
+      case 'ammoPickup':
+        this.append(selectField('Municion', entity.def.ammoId, AMMO_IDS, (v) => {
+          entity.def.ammoId = v as typeof entity.def.ammoId;
           this.commit();
         }));
         return;

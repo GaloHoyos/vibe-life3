@@ -7,6 +7,7 @@ export interface Damageable {
     hitDirection?: Vector3,
     hitPartName?: string,
     attackerId?: string,
+    hitPoint?: Vector3,
   ): void;
   isAlive(): boolean;
 }

@@ -16,6 +16,9 @@ import { PlayerHealth } from "./PlayerHealth";
 import { Stamina } from "./Stamina";
 import { WeaponController } from "@game/gameplay/weapons/core/WeaponController";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
+import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
+import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 
 export class Player implements Damageable {
   readonly health: PlayerHealth;
@@ -31,6 +34,9 @@ export class Player implements Damageable {
     scene: Scene,
     private readonly eventBus: GameEventBus,
     grenades: GrenadeSystem,
+    rockets: RocketSystem,
+    bolts: BoltSystem,
+    energyBalls: EnergyBallSystem,
   ) {
     this.health = new PlayerHealth(
       eventBus,
@@ -61,7 +67,16 @@ export class Player implements Damageable {
       kind: "player",
       damageable: this,
     });
-    this.weapons = new WeaponController(eventBus, raycast, assets, scene, grenades);
+    this.weapons = new WeaponController(
+      eventBus,
+      raycast,
+      assets,
+      scene,
+      grenades,
+      rockets,
+      bolts,
+      energyBalls,
+    );
   }
 
   update(

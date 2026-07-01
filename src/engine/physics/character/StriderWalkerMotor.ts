@@ -70,11 +70,19 @@ const tmpGround = new Vector3();
 
 const STAND_HEIGHT_RATIO = 0.72;
 const BODY_HEIGHT_LAMBDA = 5.5;
-const STEP_TRIGGER_DISTANCE = 2.8;
+/** Distancia que un pie planta puede rezagar del cuerpo antes de re-pisar. */
+const STEP_TRIGGER_DISTANCE = 1.5;
+/**
+ * Rezago al que se permite un SEGUNDO pie en el aire en simultaneo. A velocidad
+ * de combate un solo pie por vez no alcanza a seguir al cuerpo y las patas
+ * arrastran detras (el cuerpo parece inclinarse hacia adelante). Con el overflow
+ * dos patas ciclan bajo carga y los pies quedan debajo del cuerpo.
+ */
+const STEP_OVERFLOW_DISTANCE = 2.4;
 const STEP_TRIGGER_YAW = MathUtils.degToRad(25);
-const STEP_ARC_HEIGHT = 1.2;
-const MIN_SWING_DURATION = 0.45;
-const MAX_SWING_DURATION = 0.7;
+const STEP_ARC_HEIGHT = 1.0;
+const MIN_SWING_DURATION = 0.3;
+const MAX_SWING_DURATION = 0.45;
 const FOOT_GROUND_OFFSET = 0.08;
 const FOOT_RAY_UP = 8;
 const FOOT_RAY_DOWN = 22;
@@ -312,18 +320,18 @@ export class StriderWalkerMotor implements NpcMotor {
   }
 
   private updateLegs(delta: number, rootPosition: Vector3): void {
-    let swinging: LegRuntime | null = null;
+    let swingingCount = 0;
     for (const leg of this.legs) {
       if (leg.phase === "swinging") {
-        swinging = leg;
+        swingingCount += 1;
         this.tickLegSwing(leg, delta);
       }
     }
-    if (swinging) return;
 
     let candidate: LegRuntime | null = null;
     let bestScore = STEP_TRIGGER_DISTANCE;
     for (const leg of this.legs) {
+      if (leg.phase === "swinging") continue;
       this.computeDesiredFoot(rootPosition, leg, tmpGround);
       const dist = planarDistance(leg.foot, tmpGround);
       const yawDelta = Math.abs(angleDelta(this.yaw, leg.plantedYaw));
@@ -333,7 +341,11 @@ export class StriderWalkerMotor implements NpcMotor {
         candidate = leg;
       }
     }
-    if (candidate) {
+    // Tripode estable = un solo pie en el aire. Solo si el pie mas rezagado
+    // supera el overflow (alta velocidad) dejamos un segundo pie en simultaneo,
+    // para que las patas no queden arrastrando detras del cuerpo.
+    const maxConcurrent = bestScore >= STEP_OVERFLOW_DISTANCE ? 2 : 1;
+    if (candidate && swingingCount < maxConcurrent) {
       this.computeDesiredFoot(rootPosition, candidate, tmpGround);
       this.startLegSwing(candidate, tmpGround);
     }

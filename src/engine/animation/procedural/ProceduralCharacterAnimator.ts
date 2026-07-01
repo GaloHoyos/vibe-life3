@@ -109,6 +109,7 @@ export class ProceduralCharacterAnimator {
       physics: options.physics,
       mapper: this.mapper,
       config: options.ragdoll,
+      characterId: options.characterId,
       owner: options.owner,
     });
     if (

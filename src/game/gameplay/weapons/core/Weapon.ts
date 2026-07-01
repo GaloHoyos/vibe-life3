@@ -2,6 +2,10 @@
 import type { GameEventBus } from "@game/GameEvents";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
+import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
+import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
+import type { AmmoInventory } from "./AmmoInventory";
 import type { WeaponDefinition } from "./WeaponDefinition";
 import type { WeaponInventory } from "./WeaponInventory";
 
@@ -10,6 +14,14 @@ export interface WeaponContext {
   raycast: Raycast;
   /** Sistema de granadas activas. Lo usan `GrenadeWeapon` y el secundario del SMG. */
   grenades: GrenadeSystem;
+  /** Sistema de cohetes guiados. Lo usa el RPG del jugador. */
+  rockets: RocketSystem;
+  /** Sistema de bolts balísticos. Lo usa el crossbow del jugador. */
+  bolts: BoltSystem;
+  /** Sistema de bolas de energía Combine. Lo usa el secundario del AR3. */
+  energyBalls: EnergyBallSystem;
+  /** Reserva global de munición por tipo; las armas guardan solo cargador. */
+  ammo: AmmoInventory;
   /**
    * Inventario del jugador. Permite a un arma consultar otra (ej. SMG-alt
    * mira la reserva del `grenade`). Es un getter porque el inventario
@@ -50,7 +62,6 @@ export abstract class Weapon {
   protected lastFireTime = -Infinity;
   private lastDryFireTime = -Infinity;
   protected magazine: number;
-  protected reserve: number;
   private reloadingUntil = 0;
 
   constructor(
@@ -58,9 +69,6 @@ export abstract class Weapon {
     protected readonly context: WeaponContext,
   ) {
     this.magazine = definition.hasAmmo ? definition.magazineSize : 0;
-    this.reserve = definition.hasAmmo
-      ? Math.min(definition.ammoPerPickup, definition.reserveAmmoMax)
-      : 0;
   }
 
   get id(): string {
@@ -76,7 +84,9 @@ export abstract class Weapon {
   }
 
   getReserveAmmo(): number {
-    return this.definition.hasAmmo ? this.reserve : 0;
+    return this.definition.hasAmmo
+      ? this.context.ammo.getForWeapon(this.definition.id)
+      : 0;
   }
 
   addPickupAmmo(emit = true): number {
@@ -87,15 +97,14 @@ export abstract class Weapon {
       return 0;
     }
 
-    const before = this.reserve;
-    this.reserve = Math.min(
-      this.reserve + this.definition.ammoPerPickup,
-      this.definition.reserveAmmoMax,
+    const gained = this.context.ammo.addForWeapon(
+      this.definition.id,
+      this.definition.ammoPerPickup,
     );
     if (emit) {
       this.emitAmmoChanged();
     }
-    return this.reserve - before;
+    return gained;
   }
 
   /**
@@ -107,7 +116,7 @@ export abstract class Weapon {
       return;
     }
     this.magazine = Math.max(0, Math.min(magazine, this.definition.magazineSize));
-    this.reserve = Math.max(0, Math.min(reserve, this.definition.reserveAmmoMax));
+    this.context.ammo.setForWeapon(this.definition.id, reserve);
   }
 
   canFire(now: number): boolean {
@@ -176,21 +185,23 @@ export abstract class Weapon {
     if (
       !this.definition.hasAmmo ||
       this.magazine >= this.definition.magazineSize ||
-      this.reserve <= 0
+      this.getReserveAmmo() <= 0
     ) {
       return false;
     }
 
     this.reloadingUntil = now + this.definition.reloadTime;
     const missing = this.definition.magazineSize - this.magazine;
-    const moved = Math.min(missing, this.reserve);
+    const moved = Math.min(missing, this.getReserveAmmo());
+    if (!this.context.ammo.consumeForWeapon(this.definition.id, moved)) {
+      return false;
+    }
     this.magazine += moved;
-    this.reserve -= moved;
     this.emitAmmoChanged();
     this.context.eventBus.emit("weapon.reloaded", {
       weaponName: this.name,
       ammo: this.magazine,
-      reserve: this.reserve,
+      reserve: this.getReserveAmmo(),
     });
     return true;
   }
@@ -220,6 +231,15 @@ export abstract class Weapon {
   tryAlternateFire(_context: WeaponAlternateFireContext): void {}
 
   /**
+   * FOV objetivo (grados) cuando el arma fuerza un zoom de mira. `null` =
+   * sin zoom (FOV default). El `WeaponController` lerpea la cámara hacia este
+   * valor cada frame. Default sin zoom; el crossbow lo sobrescribe al estar scoped.
+   */
+  getZoomFov(): number | null {
+    return null;
+  }
+
+  /**
    * Llamado cuando esta arma deja de ser la activa (switch o pickup). Las
    * armas con estado externo (props holdeados, charge, etc.) deben liberar
    * recursos acá.
@@ -235,6 +255,9 @@ function noiseRadiusForWeapon(type: WeaponDefinition["type"], range: number): nu
   }
   if (type === "grenade") {
     return 18;
+  }
+  if (type === "rpg") {
+    return 60;
   }
   return Math.max(24, Math.min(range * 0.6, 55));
 }

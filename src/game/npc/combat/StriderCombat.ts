@@ -55,7 +55,7 @@ const CANNON_COOLDOWN = 8;
 const CANNON_BRACE = 1;
 const CANNON_CHARGE = 1.25;
 const CANNON_HIT_DELAY = 0.2;
-const CANNON_DAMAGE = 180;
+const CANNON_DAMAGE = 140;
 const CANNON_RADIUS = 5.5;
 const CANNON_IMPULSE = 26;
 
@@ -85,6 +85,7 @@ export class StriderCombat implements NpcCombatHandle {
   private readonly minigunAnchor = new Vector3();
   private readonly cannonTarget = new Vector3();
   private readonly cannonImpact = new Vector3();
+  private readonly cannonFireOrigin = new Vector3();
   private readonly cannonNormal = new Vector3(0, 1, 0);
   private readonly stompPoint = new Vector3();
   private readonly burstHits = new Map<string, number>();
@@ -294,6 +295,16 @@ export class StriderCombat implements NpcCombatHandle {
 
   private tickCannon(): void {
     if (this.cannonState === "idle") return;
+    // Trackea el objetivo durante el telegraph (brace+charge ~2.25 s). Sin esto
+    // el cañon dispara a la posicion lockeada al inicio del brace y nunca le
+    // pega a un player que se mueve. El counterplay es romper la linea de vista
+    // durante la carga (el `castShot` pega en la pared, no en el player).
+    if (
+      (this.cannonState === "brace" || this.cannonState === "charge") &&
+      this.hasFreshAim()
+    ) {
+      this.cannonTarget.copy(this.aimTarget);
+    }
     if (this.cannonState === "brace" && this.now >= this.cannonPhaseUntil) {
       this.cannonState = "charge";
       this.cannonPhaseUntil = this.now + CANNON_CHARGE;
@@ -309,6 +320,7 @@ export class StriderCombat implements NpcCombatHandle {
     if (this.cannonState === "delay" && this.now >= this.cannonPhaseUntil) {
       this.opts.eventBus.emit("strider.cannon.impact", {
         point: this.cannonImpact.clone(),
+        origin: this.cannonFireOrigin.clone(),
         normal: this.cannonNormal.clone(),
         damage: CANNON_DAMAGE,
         radius: CANNON_RADIUS,
@@ -324,6 +336,7 @@ export class StriderCombat implements NpcCombatHandle {
 
   private fireCannon(): void {
     const origin = this.cannonOrigin();
+    this.cannonFireOrigin.copy(origin);
     tmpDirection.copy(this.cannonTarget).sub(origin);
     if (tmpDirection.lengthSq() < 0.001) tmpDirection.copy(this.facing);
     tmpDirection.normalize();
@@ -420,7 +433,7 @@ export class StriderCombat implements NpcCombatHandle {
           bodyPartName: metadata.bodyPart?.name,
           damage,
           direction,
-          point: point.clone(),
+          point: new Vector3(parentPos.x, parentPos.y, parentPos.z),
         });
         return true;
       },
@@ -431,6 +444,7 @@ export class StriderCombat implements NpcCombatHandle {
         target.direction.clone(),
         target.bodyPartName,
         this.opts.id,
+        target.point.clone(),
       );
       this.opts.eventBus.emit("weapon.hit", {
         weaponName: STOMP_NAME,
@@ -480,7 +494,7 @@ export class StriderCombat implements NpcCombatHandle {
         : baseDamage * (metadata.bodyPart?.damageMultiplier ?? 1);
     if (damage > 0) {
       this.burstHits.set(targetId, previous + 1);
-      damageable.applyDamage(damage, direction.clone(), metadata.bodyPart?.name, this.opts.id);
+      damageable.applyDamage(damage, direction.clone(), metadata.bodyPart?.name, this.opts.id, point);
     }
     this.emitWeaponHit(weaponName, metadata, point, normal, damage);
   }

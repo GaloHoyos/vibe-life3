@@ -2,6 +2,7 @@
 
 const ZERO_VECTOR = new Vector3();
 import type { Damageable } from '@shared/types/lifecycle';
+import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import { BoneMapper } from '@engine/animation/pose/BoneMapper';
 import { PhysicalSkeleton } from './PhysicalSkeleton';
@@ -15,6 +16,7 @@ export interface RagdollSystemOptions {
   physics: PhysicsWorld;
   mapper: BoneMapper;
   config?: Partial<RagdollConfig>;
+  characterId?: CharacterId;
   owner?: Damageable;
 }
 
@@ -55,6 +57,7 @@ export class RagdollSystem {
       mapper: this.options.mapper,
       physics: this.options.physics,
       config: this.options.config,
+      characterId: this.options.characterId,
       owner: this.options.owner,
     });
 
@@ -79,6 +82,7 @@ export class RagdollSystem {
       mapper: this.options.mapper,
       physics: this.options.physics,
       config: this.options.config,
+      characterId: this.options.characterId,
       owner: this.options.owner,
     });
 

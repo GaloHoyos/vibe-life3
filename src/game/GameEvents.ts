@@ -37,6 +37,19 @@ export interface GameEventMap {
     sourceFaction?: Faction;
   };
   /**
+   * Tracer suelto, desacoplado del sonido/flash de `weapon.fired`. Lo usan las
+   * armas que disparan varios rayos por trigger (escopeta = un tracer por
+   * perdigón) sin querer N gunshots. El `WeaponEffects` dibuja la línea.
+   */
+  "weapon.tracer": {
+    origin: Vector3;
+    direction: Vector3;
+    range: number;
+    sourceId?: string;
+    sourceKind?: CombatEventSourceKind;
+    sourceFaction?: Faction;
+  };
+  /**
    * Secundario distinto del primario (ej. lanzagranadas del SMG). El audio
    * usa este evento para reproducir un clip aparte. Las armas cuyo
    * secundario reusa el mismo sonido del primario emiten `weapon.fired`.
@@ -69,6 +82,8 @@ export interface GameEventMap {
   };
   "strider.cannon.impact": {
     point: Vector3;
+    /** Boca del cañón al disparar — origen del tracer. */
+    origin: Vector3;
     normal?: Vector3;
     damage: number;
     radius: number;
@@ -83,6 +98,10 @@ export interface GameEventMap {
   };
   "weapon.empty": {
     weaponName: string;
+  };
+  /** El arma activa entró/salió de mira telescópica (scope del crossbow). */
+  "weapon.scope.changed": {
+    active: boolean;
   };
   /**
    * Sonido mecnico discreto despus de un evento (pump-action de la
@@ -119,6 +138,10 @@ export interface GameEventMap {
     characterId: CharacterId;
     amount: number;
     health: number;
+    point?: Vector3;
+    direction?: Vector3;
+    bodyPart?: string;
+    attackerId?: string;
   };
   "npc.alert": {
     id: string;

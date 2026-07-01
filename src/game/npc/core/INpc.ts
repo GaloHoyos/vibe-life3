@@ -167,6 +167,7 @@ export interface INpc {
     hitDirection?: Vector3,
     hitPartName?: string,
     attackerId?: string,
+    hitPoint?: Vector3,
   ): void;
   isAlive(): boolean;
   getState(): string;

@@ -1,6 +1,7 @@
 import type { MapMeta } from '@game/levels/builders/MapCreator';
 import type {
   ActionButtonDefinition,
+  AmmoPickupDefinition,
   ChargerDefinition,
   DoorDefinition,
   DynamicBoxDefinition,
@@ -64,6 +65,7 @@ export type EditorEntity = EditorEntityBase &
     | { kind: 'npc'; def: NPCDefinition }
     | { kind: 'weaponPickup'; def: WeaponPickupDefinition }
     | { kind: 'itemPickup'; def: ItemPickupDefinition }
+    | { kind: 'ammoPickup'; def: AmmoPickupDefinition }
     | { kind: 'charger'; def: ChargerDefinition }
     | { kind: 'trigger'; def: TriggerDefinition }
     | { kind: 'explosiveBarrel'; def: ExplosiveBarrelDefinition }
@@ -140,6 +142,7 @@ const KIND_LABELS: Record<EditorEntityKind, string> = {
   npc: 'NPC',
   weaponPickup: 'Arma',
   itemPickup: 'Item',
+  ammoPickup: 'Municion',
   charger: 'Cargador',
   trigger: 'Trigger',
   explosiveBarrel: 'Barril explosivo',

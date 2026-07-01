@@ -84,12 +84,12 @@ const map = createMap({
   },
   playerStart: [0, 1.5, 8],
   audio: {
-    ambiences: ['background.wind'],
+    ambiences: ['background.wind', 'background.hl2.atmosphere.cityRumble'],
     footstepSounds: [
-      'footsteps.snow1',
-      'footsteps.snow2',
-      'footsteps.snow3',
-      'footsteps.snow4',
+      'footsteps.hl2.concrete1',
+      'footsteps.hl2.concrete2',
+      'footsteps.hl2.concrete3',
+      'footsteps.hl2.concrete4',
     ],
   },
 })

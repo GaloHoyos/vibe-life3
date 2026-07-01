@@ -15,7 +15,7 @@ export const Sector2Ambush = createMap({
   background: 0x0c1014,
   playerStart: [0, 1.2, 24],
   audio: {
-    ambiences: ['background.wind'],
+    ambiences: ['background.wind', 'background.hl2.wind.wasteland'],
     footstepSounds: ['footsteps.snow1', 'footsteps.snow2', 'footsteps.snow3', 'footsteps.snow4'],
   },
 })

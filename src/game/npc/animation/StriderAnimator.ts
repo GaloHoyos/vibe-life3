@@ -1,4 +1,14 @@
-import { Mesh, MeshStandardMaterial, Object3D, Quaternion, Vector3 } from "three";
+import {
+  AdditiveBlending,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  Object3D,
+  PointLight,
+  Quaternion,
+  SphereGeometry,
+  Vector3,
+} from "three";
 import type { StriderWalkerMotor } from "@engine/physics/character/StriderWalkerMotor";
 import type { AnimationFrame, NpcAnimator } from "./NpcAnimator";
 
@@ -9,6 +19,17 @@ const tmpQuat = new Quaternion();
 const tmpHip = new Vector3();
 const tmpKnee = new Vector3();
 const tmpFoot = new Vector3();
+
+/** Azul-cyan de energía del cañón (matchea el ojo del strider). */
+const CANNON_ENERGY_COLOR = 0x53c8ff;
+/** Segundos de la rampa de carga (≈ CANNON_CHARGE del combate). */
+const CHARGE_RAMP_TIME = 1.1;
+/** Duración del flash de disparo (matchea notifyCannonShot). */
+const CANNON_FLASH_TIME = 0.18;
+const CHARGE_LIGHT_PEAK = 7;
+const FLASH_LIGHT_PEAK = 16;
+/** Esfera de energía compartida (additive). Vive lo que dura la app. */
+const CHARGE_ORB_GEOMETRY = new SphereGeometry(1, 16, 12);
 
 export class StriderAnimator implements NpcAnimator {
   private readonly eyeMaterial: MeshStandardMaterial | null;
@@ -27,7 +48,12 @@ export class StriderAnimator implements NpcAnimator {
   private minigunFlash = 0;
   private cannonFlash = 0;
   private charge = 0;
+  private charging = false;
   private hitPulse = 0;
+
+  private chargeOrb: Mesh | null = null;
+  private chargeOrbMaterial: MeshBasicMaterial | null = null;
+  private chargeLight: PointLight | null = null;
 
   constructor(
     private readonly root: Object3D,
@@ -43,20 +69,57 @@ export class StriderAnimator implements NpcAnimator {
       foot: root.getObjectByName(`strider-leg-${name}-foot`) ?? null,
       hip: root.getObjectByName(`strider-leg-${name}-hip`) ?? null,
     }));
+    this.attachCannonChargeFx(root.getObjectByName("strider-cannon-muzzle") ?? null);
+  }
+
+  /**
+   * Orbe de energía + luz cyan en la boca del cañón. Parentados al nodo del
+   * muzzle, así siguen al strider sin recalcular posición por frame. La luz suma
+   * 1 al conteo del strider (boss raro): hitch de recompile de un frame al
+   * spawnear, aceptable.
+   */
+  private attachCannonChargeFx(cannonMuzzle: Object3D | null): void {
+    if (!cannonMuzzle) return;
+    const orbMaterial = new MeshBasicMaterial({
+      color: CANNON_ENERGY_COLOR,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: AdditiveBlending,
+    });
+    const orb = new Mesh(CHARGE_ORB_GEOMETRY, orbMaterial);
+    orb.visible = false;
+    orb.renderOrder = 42;
+    cannonMuzzle.add(orb);
+    this.chargeOrb = orb;
+    this.chargeOrbMaterial = orbMaterial;
+
+    const light = new PointLight(CANNON_ENERGY_COLOR, 0, 16, 2);
+    cannonMuzzle.add(light);
+    this.chargeLight = light;
   }
 
   updateFromMotor(frame: AnimationFrame): void {
     if (!this.enabled || this.dead) return;
-    this.minigunFlash = Math.max(0, this.minigunFlash - 1 / 60);
-    this.cannonFlash = Math.max(0, this.cannonFlash - 1 / 60);
-    this.charge = Math.max(0, this.charge - 1 / 60);
-    this.hitPulse = Math.max(0, this.hitPulse - 1 / 60);
+    const delta = frame.delta;
+    this.minigunFlash = Math.max(0, this.minigunFlash - delta);
+    this.cannonFlash = Math.max(0, this.cannonFlash - delta);
+    this.hitPulse = Math.max(0, this.hitPulse - delta);
+    // El cañon "carga" de a poco durante el telegraph (sube hasta 1 al disparar)
+    // y se descarga rapido si se interrumpe. notifyCannonShot lo resetea.
+    this.charge = this.charging
+      ? Math.min(1, this.charge + delta / CHARGE_RAMP_TIME)
+      : Math.max(0, this.charge - delta * 4);
+    this.updateCannonCharge();
 
     if (this.body) {
       const localSideSpeed =
         frame.snapshot.velocity.x * Math.cos(-frame.snapshot.yaw) -
         frame.snapshot.velocity.z * Math.sin(-frame.snapshot.yaw);
-      this.body.rotation.z = Math.max(-0.12, Math.min(0.12, -localSideSpeed * 0.018));
+      // Roll lateral sutil al strafe (peso). Bajo a proposito: de mas se lee como
+      // un tilt raro al caminar/orbitar.
+      const targetRoll = Math.max(-0.07, Math.min(0.07, -localSideSpeed * 0.01));
+      this.body.rotation.z += (targetRoll - this.body.rotation.z) * Math.min(1, delta * 8);
     }
 
     const legs = this.motor.getLegSnapshots();
@@ -84,6 +147,8 @@ export class StriderAnimator implements NpcAnimator {
     this.minigunFlash = 0;
     this.cannonFlash = 0;
     this.charge = 0;
+    this.charging = false;
+    this.updateCannonCharge();
     this.root.rotation.z += delta * 0.08;
     this.applyMaterials(true);
   }
@@ -93,11 +158,12 @@ export class StriderAnimator implements NpcAnimator {
   }
 
   notifyCannonCharge(): void {
-    this.charge = 1.4;
+    this.charging = true;
   }
 
   notifyCannonShot(): void {
-    this.cannonFlash = 0.18;
+    this.charging = false;
+    this.cannonFlash = CANNON_FLASH_TIME;
     this.charge = 0;
   }
 
@@ -115,11 +181,37 @@ export class StriderAnimator implements NpcAnimator {
 
   disable(): void {
     this.enabled = false;
+    if (this.chargeLight) {
+      this.chargeLight.intensity = 0;
+      this.chargeLight.removeFromParent();
+      this.chargeLight = null;
+    }
+    if (this.chargeOrb) {
+      this.chargeOrb.removeFromParent();
+      this.chargeOrb = null;
+    }
+    if (this.chargeOrbMaterial) {
+      this.chargeOrbMaterial.dispose();
+      this.chargeOrbMaterial = null;
+    }
   }
 
   setAiming(): void {}
   setActivity(): void {}
   notifyReload(): void {}
+
+  /** Orbe de energía + luz cyan, manejados por el nivel de carga y el flash. */
+  private updateCannonCharge(): void {
+    const flash = this.cannonFlash > 0 ? this.cannonFlash / CANNON_FLASH_TIME : 0;
+    if (this.chargeOrb && this.chargeOrbMaterial) {
+      this.chargeOrb.scale.setScalar(0.12 + this.charge * 0.5 + flash * 0.3);
+      this.chargeOrbMaterial.opacity = Math.min(0.9, this.charge * 0.9 + flash);
+      this.chargeOrb.visible = this.charge > 0.01 || flash > 0;
+    }
+    if (this.chargeLight) {
+      this.chargeLight.intensity = this.charge * CHARGE_LIGHT_PEAK + flash * FLASH_LIGHT_PEAK;
+    }
+  }
 
   private applyMaterials(dead: boolean): void {
     if (this.eyeMaterial) {

@@ -37,6 +37,7 @@ export class MeleeWeapon extends Weapon {
       context.direction.clone(),
       hit.metadata?.bodyPart?.name,
       "player",
+      hit.point,
     );
 
     this.context.eventBus.emit("weapon.hit", {

@@ -51,6 +51,7 @@ interface ExplosionDamageTarget {
   bodyPartName?: string;
   damage: number;
   direction: Vector3;
+  point: Vector3;
 }
 
 /**
@@ -227,7 +228,7 @@ export class GrenadeSystem implements Disposable {
       rolloffFactor: 1.1,
       volume: 1,
     });
-    this.vfx.explosion(point, { scale: params.radius });
+    this.vfx.explosion(point, { scale: params.radius, color: params.color });
     this.eventBus.emit("world.noise", {
       kind: "explosion",
       position: point.clone(),
@@ -293,6 +294,7 @@ export class GrenadeSystem implements Disposable {
           bodyPartName: metadata.bodyPart?.name,
           damage,
           direction,
+          point: new Vector3(bodyPos.x, bodyPos.y, bodyPos.z),
         });
         return true;
       },
@@ -308,12 +310,13 @@ export class GrenadeSystem implements Disposable {
         target.direction.clone(),
         target.bodyPartName,
         params.sourceId,
+        target.point.clone(),
       );
       this.eventBus.emit("weapon.hit", {
         weaponName: params.weaponName,
         targetId: target.targetId,
         surfaceKind: target.surfaceKind,
-        point: point.clone(),
+        point: target.point.clone(),
         normal: target.direction.clone(),
         damage: target.damage,
         sourceId: params.sourceId,
@@ -352,6 +355,7 @@ export class GrenadeSystem implements Disposable {
     targets.set(candidate.damageable, {
       ...candidate,
       direction: candidate.direction.clone(),
+      point: candidate.point.clone(),
     });
   }
 

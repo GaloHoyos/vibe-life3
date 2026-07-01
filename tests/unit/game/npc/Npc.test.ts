@@ -139,4 +139,26 @@ describe("Npc.applyDamage", () => {
     expect(damaged).toHaveLength(2);
     expect(killed).toHaveLength(1);
   });
+
+  it("emite contexto espacial del impacto cuando esta disponible", () => {
+    const { npc, damaged } = createNpc();
+    const direction = new Vector3(1, 0, 0);
+    const point = new Vector3(0.2, 1.1, -0.4);
+
+    npc.applyDamage(12, direction, "head", "player", point);
+
+    expect(damaged).toHaveLength(1);
+    expect(damaged[0]).toMatchObject({
+      id: "npc-1",
+      characterId: "test-npc",
+      amount: 12,
+      health: 88,
+      bodyPart: "head",
+      attackerId: "player",
+    });
+    expect(damaged[0].direction).not.toBe(direction);
+    expect(damaged[0].direction).toEqual(new Vector3(1, 0, 0));
+    expect(damaged[0].point).not.toBe(point);
+    expect(damaged[0].point).toEqual(point);
+  });
 });

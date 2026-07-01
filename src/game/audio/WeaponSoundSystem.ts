@@ -1,6 +1,6 @@
 ﻿import type { GameEventBus } from "@game/GameEvents";
 import type { SoundManager } from "@engine/audio/core/SoundManager";
-import { WeaponAudio } from "@game/config/audio.config";
+import { WeaponAudio, type SoundRef } from "@game/config/audio.config";
 
 /**
  * Reproduce sonidos de arma reaccionando a eventos del bus.
@@ -37,10 +37,23 @@ export class WeaponSoundSystem {
     });
   }
 
-  private playSound(soundId: string | undefined): void {
-    if (!soundId || !this.sounds.hasSound(soundId)) {
+  private playSound(soundRef: SoundRef | undefined): void {
+    const soundId = this.pickAvailable(soundRef);
+    if (!soundId) {
       return;
     }
     this.sounds.play(soundId, { bus: "weapons" });
+  }
+
+  private pickAvailable(soundRef: SoundRef | undefined): string | null {
+    if (!soundRef) {
+      return null;
+    }
+    const candidates = typeof soundRef === "string" ? [soundRef] : soundRef;
+    const available = candidates.filter((soundId) => this.sounds.hasSound(soundId));
+    if (available.length === 0) {
+      return null;
+    }
+    return available[Math.floor(Math.random() * available.length)] ?? null;
   }
 }

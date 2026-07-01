@@ -183,7 +183,7 @@ export function buildCombinePreset(options: NpcPresetOptions = {}): NpcPreset {
       visionConeRadians: (160 * Math.PI) / 180,
       hearingRadius: 18,
       memoryTime: 8,
-      eyeHeight: 1.6,
+      eyeHeight: 0.62,
     },
     maxHealth: 100,
     radius: 0.45,

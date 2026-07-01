@@ -199,7 +199,7 @@ export class GunshipCannonCombat implements NpcCombatHandle {
     const damage = previousHits >= MAX_HITS_PER_TARGET_PER_BURST ? 0 : DAMAGE * partMul;
     if (damage > 0) {
       this.burstHits.set(targetId, previousHits + 1);
-      damageable.applyDamage(damage, shotDir.clone(), meta.bodyPart?.name, this.opts.id);
+      damageable.applyDamage(damage, shotDir.clone(), meta.bodyPart?.name, this.opts.id, hit.point);
     }
     this.emitHit(targetId, meta.kind, hit.point, hit.normal, damage);
   }

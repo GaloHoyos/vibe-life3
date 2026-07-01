@@ -23,6 +23,13 @@ export class Raycast {
     direction: Vector3,
     maxDistance: number,
     excludeBody?: RAPIER.RigidBody,
+    /**
+     * Descarta todo collider cuyo `metadata.id` coincida. Necesario para los
+     * NPCs multi-collider (el strider tiene capsula raiz + 11 followers, todos
+     * con el mismo id): `excludeBody` solo saca un rigid body; esto los saca a
+     * todos. Sin esto, el LOS de un cuerpo gigante choca consigo mismo.
+     */
+    excludeId?: string,
   ): RaycastHit | null {
     const normalizedDirection = direction.clone().normalize();
     const ray = new RAPIER.Ray(
@@ -41,6 +48,14 @@ export class Raycast {
       undefined,
       undefined,
       excludeBody,
+      excludeId
+        ? (collider) => {
+            const meta = this.physics.getColliderMetadata(collider);
+            // Por ownerId (la cápsula y sus hitboxes lo comparten), con fallback
+            // a id para colliders sin ownerId.
+            return (meta?.ownerId ?? meta?.id) !== excludeId;
+          }
+        : undefined,
     );
 
     if (!hit) {

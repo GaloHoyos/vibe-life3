@@ -76,7 +76,7 @@ export class MainMenuView {
           </div>
           <div class="hl2-brand__text">
             <span class="hl2-brand__sub">FAN PROJECT</span>
-            <h1>HALF-LIFE <span>3</span></h1>
+            <h1>VIBE-LIFE <span>3</span></h1>
             <span class="hl2-brand__tag">CASCADIA LABS</span>
           </div>
         </header>

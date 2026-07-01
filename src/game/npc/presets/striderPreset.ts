@@ -74,7 +74,10 @@ export function buildStriderPreset(options: NpcPresetOptions = {}): NpcPreset {
       visionConeRadians: Math.PI,
       hearingRadius: 38,
       memoryTime: 8,
-      eyeHeight: 1.6,
+      // Alineado al ojo visual (`strider-eye`, local y≈0.25 sobre el centro del
+      // cuerpo). El cuerpo ya esta ~6.8 m sobre el piso, asi que el LOS pasa por
+      // encima de cualquier cobertura.
+      eyeHeight: 0.4,
     },
     maxHealth: 1500,
     radius: 1.35,

@@ -12,10 +12,21 @@ const gravityGunUrl = new URL('../../models/weapons/gravitygun.glb', import.meta
 const shotgunUrl = new URL('../../models/weapons/shotgun.glb', import.meta.url).href;
 const grenadeUrl = new URL('../../models/weapons/grenade.glb', import.meta.url).href;
 const grenadePrimedUrl = new URL('../../models/weapons/grenade-primed.glb', import.meta.url).href;
+const rpgUrl = new URL('../../models/weapons/rpg.glb', import.meta.url).href;
+const rpgRocketUrl = new URL('../../models/weapons/rpg-rocket.glb', import.meta.url).href;
+const revolverUrl = new URL('../../models/weapons/revolver.glb', import.meta.url).href;
+const crossbowUrl = new URL('../../models/weapons/crossbow.glb', import.meta.url).href;
 const medkitUrl = new URL('../../models/items/medkit.glb', import.meta.url).href;
 const hevBatteryUrl = new URL('../../models/items/hev-battery.glb', import.meta.url).href;
 const healthChargerUrl = new URL('../../models/items/health-charger.glb', import.meta.url).href;
 const hevChargerUrl = new URL('../../models/items/hev-charger.glb', import.meta.url).href;
+const pistolAmmoUrl = new URL('../../models/items/pistol-ammo.glb', import.meta.url).href;
+const smgAmmoUrl = new URL('../../models/items/smg-ammo.glb', import.meta.url).href;
+const ar3AmmoUrl = new URL('../../models/items/ar3-ammo.glb', import.meta.url).href;
+const shotgunAmmoUrl = new URL('../../models/items/shotgun-ammo.glb', import.meta.url).href;
+const revolverAmmoUrl = new URL('../../models/items/revolver-ammo.glb', import.meta.url).href;
+const crossbowAmmoUrl = new URL('../../models/items/crossbow-ammo.glb', import.meta.url).href;
+const ar3AltFireUrl = new URL('../../models/items/ar3-alt-fire.glb', import.meta.url).href;
 
 export type ModelAssetType = 'character' | 'weapon' | 'prop' | 'environment' | 'generated';
 
@@ -114,6 +125,30 @@ export const AssetManifest = {
       type: 'prop',
       debug: false,
     },
+    rpg: {
+      id: 'rpg',
+      path: rpgUrl,
+      type: 'weapon',
+      debug: false,
+    },
+    rpgRocket: {
+      id: 'rpgRocket',
+      path: rpgRocketUrl,
+      type: 'prop',
+      debug: false,
+    },
+    revolver: {
+      id: 'revolver',
+      path: revolverUrl,
+      type: 'weapon',
+      debug: false,
+    },
+    crossbow: {
+      id: 'crossbow',
+      path: crossbowUrl,
+      type: 'weapon',
+      debug: false,
+    },
     medkit: {
       id: 'medkit',
       path: medkitUrl,
@@ -135,6 +170,48 @@ export const AssetManifest = {
     hevCharger: {
       id: 'hevCharger',
       path: hevChargerUrl,
+      type: 'prop',
+      debug: false,
+    },
+    pistolAmmo: {
+      id: 'pistolAmmo',
+      path: pistolAmmoUrl,
+      type: 'prop',
+      debug: false,
+    },
+    smgAmmo: {
+      id: 'smgAmmo',
+      path: smgAmmoUrl,
+      type: 'prop',
+      debug: false,
+    },
+    ar3Ammo: {
+      id: 'ar3Ammo',
+      path: ar3AmmoUrl,
+      type: 'prop',
+      debug: false,
+    },
+    shotgunAmmo: {
+      id: 'shotgunAmmo',
+      path: shotgunAmmoUrl,
+      type: 'prop',
+      debug: false,
+    },
+    revolverAmmo: {
+      id: 'revolverAmmo',
+      path: revolverAmmoUrl,
+      type: 'prop',
+      debug: false,
+    },
+    crossbowAmmo: {
+      id: 'crossbowAmmo',
+      path: crossbowAmmoUrl,
+      type: 'prop',
+      debug: false,
+    },
+    ar3AltFire: {
+      id: 'ar3AltFire',
+      path: ar3AltFireUrl,
       type: 'prop',
       debug: false,
     },

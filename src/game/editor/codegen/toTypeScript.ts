@@ -35,6 +35,9 @@ export function toTypeScript(doc: EditorDocument): string {
       case 'itemPickup':
         lines.push(`  .item(${lit(entity.def)})`);
         break;
+      case 'ammoPickup':
+        lines.push(`  .ammo(${lit(entity.def)})`);
+        break;
       case 'charger':
         lines.push(`  .charger(${lit(entity.def)})`);
         break;

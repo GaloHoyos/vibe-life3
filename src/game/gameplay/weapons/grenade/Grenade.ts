@@ -1,5 +1,5 @@
 import type RAPIER from "@dimforge/rapier3d-compat";
-import type { Object3D, Vector3 } from "three";
+import type { Color, Object3D, Vector3 } from "three";
 import type { Faction } from "@engine/ai/Faction";
 
 /**
@@ -58,6 +58,8 @@ export interface ExplosionParams {
   weaponName: string;
   /** Cuerpo a excluir del impulso (p. ej. la propia granada). */
   ignoreBody?: RAPIER.RigidBody;
+  /** Tinte del VFX de explosión (energía del strider, etc.). Default = fuego. */
+  color?: Color;
 }
 
 export interface ActiveGrenade {

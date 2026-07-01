@@ -88,10 +88,24 @@ export class GravityGunWeapon extends Weapon {
 
   override tryAlternateFire(context: WeaponAlternateFireContext): void {
     if (!context.pressed) return;
+    let acted = false;
     if (this.held) {
       this.drop();
+      acted = true;
     } else {
-      this.tryGrabOrPull(context);
+      acted = this.tryGrabOrPull(context);
+    }
+    if (acted) {
+      this.context.eventBus.emit("weapon.alternate.fired", {
+        weaponName: this.name,
+        origin: context.origin,
+        direction: context.direction,
+        sourceId: "player",
+        sourceKind: "player",
+        sourceFaction: "player",
+      });
+    } else {
+      this.context.eventBus.emit("weapon.empty", { weaponName: this.name });
     }
   }
 
@@ -151,6 +165,7 @@ export class GravityGunWeapon extends Weapon {
         this.tmpDirection.clone(),
         hit.metadata.bodyPart?.name,
         "player",
+        hit.point,
       );
       this.context.eventBus.emit("weapon.hit", {
         weaponName: this.name,
@@ -174,7 +189,7 @@ export class GravityGunWeapon extends Weapon {
     }
   }
 
-  private tryGrabOrPull(context: WeaponAlternateFireContext): void {
+  private tryGrabOrPull(context: WeaponAlternateFireContext): boolean {
     const origin = context.origin
       .clone()
       .addScaledVector(context.direction, CONFIG.rayOriginOffset);
@@ -183,16 +198,17 @@ export class GravityGunWeapon extends Weapon {
       context.direction,
       CONFIG.pullRange,
     );
-    if (!hit) return;
+    if (!hit) return false;
     const body = hit.collider.parent();
-    if (!body || !body.isDynamic()) return;
+    if (!body || !body.isDynamic()) return false;
 
     if (hit.toi <= CONFIG.reachRange) {
       this.grabBody(body, context);
-      return;
+      return true;
     }
 
     this.pullTarget = { body };
+    return true;
   }
 
   private grabBody(

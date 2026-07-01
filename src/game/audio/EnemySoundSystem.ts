@@ -1,6 +1,6 @@
 ﻿import type { GameEventBus } from "@game/GameEvents";
 import type { SoundManager } from "@engine/audio/core/SoundManager";
-import { EnemyAudio } from "@game/config/audio.config";
+import { EnemyAudio, type SoundRef } from "@game/config/audio.config";
 
 /**
  * Reproduce vocalizaciones / impacto de NPCs reaccionando a eventos del bus.
@@ -27,12 +27,28 @@ export class EnemySoundSystem {
     eventBus.on("npc.killed", ({ characterId }) =>
       this.playSound(EnemyAudio[characterId]?.killed),
     );
+    eventBus.on("npc.footstep", ({ characterId }) =>
+      this.playSound(EnemyAudio[characterId]?.footstep),
+    );
   }
 
-  private playSound(soundId: string | undefined): void {
-    if (!soundId || !this.sounds.hasSound(soundId)) {
+  private playSound(soundRef: SoundRef | undefined): void {
+    const soundId = this.pickAvailable(soundRef);
+    if (!soundId) {
       return;
     }
     this.sounds.play(soundId, { bus: "enemies" });
+  }
+
+  private pickAvailable(soundRef: SoundRef | undefined): string | null {
+    if (!soundRef) {
+      return null;
+    }
+    const candidates = typeof soundRef === "string" ? [soundRef] : soundRef;
+    const available = candidates.filter((soundId) => this.sounds.hasSound(soundId));
+    if (available.length === 0) {
+      return null;
+    }
+    return available[Math.floor(Math.random() * available.length)] ?? null;
   }
 }

@@ -5,16 +5,21 @@ import type { ModelAssetId } from "@engine/assets/AssetManifest";
 export type WeaponId =
   | "crowbar"
   | "pistol"
+  | "revolver"
   | "smg"
   | "ar3"
+  | "crossbow"
   | "gravityGun"
   | "shotgun"
-  | "grenade";
+  | "grenade"
+  | "rpg";
 export type WeaponType =
   | "melee"
   | "hitscan"
   | "shotgun"
   | "grenade"
+  | "rpg"
+  | "crossbow"
   | "special";
 export type WeaponFireMode = "semi" | "auto";
 /**
@@ -82,6 +87,12 @@ export type AlternateFireDefinition =
       throwSpeed: number;
       /** Lift vertical extra (m/s). */
       throwLift: number;
+    }
+  /** AR3: bola de energía Combine (rebota y vaporiza). Consume munición `energyBall`. */
+  | {
+      kind: "energyBall";
+      /** Velocidad inicial (m/s) del orbe. */
+      launchSpeed: number;
     };
 
 export interface WeaponDefinition {

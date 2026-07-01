@@ -27,7 +27,10 @@ describe("StriderCombat", () => {
     combat.aim(new Vector3(0, 0, 20));
     expect(combat.tryFire()).toBe(true);
 
-    for (let i = 0; i < 36; i += 1) {
+    // Ventana acotada a una sola ráfaga: pasada la ráfaga + downtime (~1.1 s)
+    // arrancaría una segunda que limpia `burstHits` y permitiría >6 hits al mismo
+    // target (el cap de 6 es por ráfaga), volviendo el test no determinista.
+    for (let i = 0; i < 28; i += 1) {
       const elapsed = 0.38 + i * 0.12;
       combat.tick(frame(elapsed, new Vector3(0, 6, 0)));
       combat.aim(new Vector3(0, 0, 20));
@@ -57,7 +60,7 @@ describe("StriderCombat", () => {
 
     expect(impacts).toHaveLength(1);
     expect(impacts[0]).toMatchObject({
-      damage: 180,
+      damage: 140,
       radius: 5.5,
       impulse: 26,
       sourceId: "strider-1",

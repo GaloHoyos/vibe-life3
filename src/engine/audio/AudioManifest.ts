@@ -19,6 +19,54 @@ export interface AudioClipDefinition {
   category: AudioCategory;
 }
 
+interface Hl2ClipSpec {
+  id: string;
+  path: string;
+  category: AudioCategory;
+  bus: AudioBusName;
+  loop?: boolean;
+  volume?: number;
+}
+
+const hl2SoundUrls = import.meta.glob("../assets/sounds/hl2/**/*.{wav,mp3}", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
+
+function hl2Sound(path: string): string {
+  const key = `../assets/sounds/hl2/${path}`;
+  const url = hl2SoundUrls[key];
+  if (!url) {
+    throw new Error(`Missing HL2 sound asset: ${path}`);
+  }
+  return url;
+}
+
+function hl2Clip(spec: Hl2ClipSpec): AudioClipDefinition {
+  return {
+    id: spec.id,
+    path: hl2Sound(spec.path),
+    loop: spec.loop ?? false,
+    volume: spec.volume ?? 0.75,
+    bus: spec.bus,
+    category: spec.category,
+  };
+}
+
+function repeatHl2Footsteps(surface: string, count: number): Hl2ClipSpec[] {
+  return Array.from({ length: count }, (_, index) => {
+    const n = index + 1;
+    return {
+      id: `footsteps.hl2.${surface}${n}`,
+      path: `footsteps/${surface}${n}.wav`,
+      category: "footsteps",
+      bus: "footsteps",
+      volume: surface === "wade" ? 0.48 : 0.55,
+    };
+  });
+}
+
 const backgroundWind = new URL(
   "../assets/sounds/background/wind.mp3",
   import.meta.url,
@@ -348,6 +396,158 @@ export const AudioManifest = {
   sfx: {},
 } as const;
 
+const hl2WeaponClips: Hl2ClipSpec[] = [
+  { id: "weapons.revolver.hl2.shot1", path: "weapons/357/357_fire2.wav", category: "weapons", bus: "weapons", volume: 0.95 },
+  { id: "weapons.revolver.hl2.shot2", path: "weapons/357/357_fire3.wav", category: "weapons", bus: "weapons", volume: 0.95 },
+  { id: "weapons.revolver.hl2.reload1", path: "weapons/357/357_reload1.wav", category: "weapons", bus: "weapons", volume: 0.75 },
+  { id: "weapons.revolver.hl2.reload2", path: "weapons/357/357_reload3.wav", category: "weapons", bus: "weapons", volume: 0.75 },
+  { id: "weapons.revolver.hl2.reload3", path: "weapons/357/357_reload4.wav", category: "weapons", bus: "weapons", volume: 0.75 },
+  { id: "weapons.revolver.hl2.spin", path: "weapons/357/357_spin1.wav", category: "weapons", bus: "weapons", volume: 0.7 },
+  { id: "weapons.crossbow.hl2.shot", path: "weapons/crossbow/fire1.wav", category: "weapons", bus: "weapons", volume: 0.8 },
+  { id: "weapons.crossbow.hl2.reload", path: "weapons/crossbow/reload1.wav", category: "weapons", bus: "weapons", volume: 0.7 },
+  { id: "weapons.crossbow.hl2.load1", path: "weapons/crossbow/bolt_load1.wav", category: "weapons", bus: "weapons", volume: 0.72 },
+  { id: "weapons.crossbow.hl2.load2", path: "weapons/crossbow/bolt_load2.wav", category: "weapons", bus: "weapons", volume: 0.72 },
+  { id: "weapons.crossbow.hl2.fly", path: "weapons/crossbow/bolt_fly4.wav", category: "weapons", bus: "weapons", volume: 0.62 },
+  { id: "weapons.crossbow.hl2.hitWorld", path: "weapons/crossbow/hit1.wav", category: "weapons", bus: "weapons", volume: 0.65 },
+  { id: "weapons.crossbow.hl2.hitBody1", path: "weapons/crossbow/hitbod1.wav", category: "weapons", bus: "weapons", volume: 0.75 },
+  { id: "weapons.crossbow.hl2.hitBody2", path: "weapons/crossbow/hitbod2.wav", category: "weapons", bus: "weapons", volume: 0.75 },
+  { id: "weapons.crossbow.hl2.skewer", path: "weapons/crossbow/bolt_skewer1.wav", category: "weapons", bus: "weapons", volume: 0.75 },
+  { id: "weapons.rpg.hl2.fire", path: "weapons/rpg/rocketfire1.wav", category: "weapons", bus: "weapons", volume: 0.95 },
+  { id: "weapons.rpg.hl2.rocketLoop", path: "weapons/rpg/rocket1.wav", category: "weapons", bus: "weapons", loop: true, volume: 0.75 },
+  { id: "weapons.rpg.hl2.shotdown", path: "weapons/rpg/shotdown.wav", category: "weapons", bus: "weapons", volume: 0.75 },
+  { id: "weapons.ar3.hl2.altFire", path: "weapons/ar2/ar2_altfire.wav", category: "weapons", bus: "weapons", volume: 0.9 },
+  { id: "weapons.ar3.hl2.altEmpty", path: "weapons/ar2/ar2_empty.wav", category: "weapons", bus: "weapons", volume: 0.65 },
+  { id: "weapons.energyball.hl2.bounce1", path: "weapons/physcannon/energy_bounce1.wav", category: "weapons", bus: "weapons", volume: 0.72 },
+  { id: "weapons.energyball.hl2.bounce2", path: "weapons/physcannon/energy_bounce2.wav", category: "weapons", bus: "weapons", volume: 0.72 },
+  { id: "weapons.energyball.hl2.disintegrate1", path: "weapons/physcannon/energy_disintegrate4.wav", category: "weapons", bus: "weapons", volume: 0.82 },
+  { id: "weapons.energyball.hl2.disintegrate2", path: "weapons/physcannon/energy_disintegrate5.wav", category: "weapons", bus: "weapons", volume: 0.82 },
+  { id: "weapons.energyball.hl2.explosion", path: "weapons/physcannon/energy_sing_explosion2.wav", category: "weapons", bus: "weapons", volume: 0.82 },
+  { id: "weapons.energyball.hl2.flyby1", path: "weapons/physcannon/energy_sing_flyby1.wav", category: "weapons", bus: "weapons", volume: 0.55 },
+  { id: "weapons.energyball.hl2.flyby2", path: "weapons/physcannon/energy_sing_flyby2.wav", category: "weapons", bus: "weapons", volume: 0.55 },
+  { id: "weapons.gravityGun.hl2.charge", path: "weapons/physcannon/physcannon_charge.wav", category: "weapons", bus: "weapons", volume: 0.75 },
+  { id: "weapons.gravityGun.hl2.dryfire", path: "weapons/physcannon/physcannon_dryfire.wav", category: "weapons", bus: "weapons", volume: 0.7 },
+  { id: "weapons.gravityGun.hl2.pickup", path: "weapons/physcannon/physcannon_pickup.wav", category: "weapons", bus: "weapons", volume: 0.75 },
+  { id: "weapons.gravityGun.hl2.drop", path: "weapons/physcannon/physcannon_drop.wav", category: "weapons", bus: "weapons", volume: 0.75 },
+  { id: "weapons.gravityGun.hl2.clawsOpen", path: "weapons/physcannon/physcannon_claws_open.wav", category: "weapons", bus: "weapons", volume: 0.65 },
+  { id: "weapons.gravityGun.hl2.clawsClose", path: "weapons/physcannon/physcannon_claws_close.wav", category: "weapons", bus: "weapons", volume: 0.65 },
+  { id: "weapons.gravityGun.hl2.launch1", path: "weapons/physcannon/superphys_launch1.wav", category: "weapons", bus: "weapons", volume: 0.8 },
+  { id: "weapons.gravityGun.hl2.launch2", path: "weapons/physcannon/superphys_launch2.wav", category: "weapons", bus: "weapons", volume: 0.8 },
+];
+
+const hl2EnemyClips: Hl2ClipSpec[] = [
+  { id: "enemies.headcrab.hl2.alert", path: "npcs/headcrab/alert1.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.headcrab.hl2.attack1", path: "npcs/headcrab/attack1.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.headcrab.hl2.attack2", path: "npcs/headcrab/attack2.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.headcrab.hl2.attack3", path: "npcs/headcrab/attack3.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.headcrab.hl2.bite", path: "npcs/headcrab/headbite.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.headcrab.hl2.pain1", path: "npcs/headcrab/pain1.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.headcrab.hl2.pain2", path: "npcs/headcrab/pain2.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.headcrab.hl2.pain3", path: "npcs/headcrab/pain3.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.headcrab.hl2.die1", path: "npcs/headcrab/die1.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.headcrab.hl2.die2", path: "npcs/headcrab/die2.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.manhack.hl2.alert", path: "npcs/manhack/mh_blade_snick1.wav", category: "enemies", bus: "enemies", volume: 0.65 },
+  { id: "enemies.manhack.hl2.attack", path: "npcs/manhack/grind_flesh1.wav", category: "enemies", bus: "enemies", volume: 0.72 },
+  { id: "enemies.manhack.hl2.attack2", path: "npcs/manhack/grind_flesh2.wav", category: "enemies", bus: "enemies", volume: 0.72 },
+  { id: "enemies.manhack.hl2.attack3", path: "npcs/manhack/grind_flesh3.wav", category: "enemies", bus: "enemies", volume: 0.72 },
+  { id: "enemies.manhack.hl2.engine", path: "npcs/manhack/mh_engine_loop1.wav", category: "enemies", bus: "enemies", loop: true, volume: 0.45 },
+  { id: "enemies.manhack.hl2.damage1", path: "npcs/manhack/bat_away.wav", category: "enemies", bus: "enemies", volume: 0.7 },
+  { id: "enemies.manhack.hl2.die", path: "npcs/manhack/gib.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.turret.hl2.deploy", path: "npcs/turret_floor/deploy.wav", category: "enemies", bus: "enemies", volume: 0.72 },
+  { id: "enemies.turret.hl2.active", path: "npcs/turret_floor/active.wav", category: "enemies", bus: "enemies", volume: 0.6 },
+  { id: "enemies.turret.hl2.alert", path: "npcs/turret_floor/alert.wav", category: "enemies", bus: "enemies", volume: 0.72 },
+  { id: "enemies.turret.hl2.attack1", path: "npcs/turret_floor/shoot1.wav", category: "enemies", bus: "weapons", volume: 0.82 },
+  { id: "enemies.turret.hl2.attack2", path: "npcs/turret_floor/shoot2.wav", category: "enemies", bus: "weapons", volume: 0.82 },
+  { id: "enemies.turret.hl2.attack3", path: "npcs/turret_floor/shoot3.wav", category: "enemies", bus: "weapons", volume: 0.82 },
+  { id: "enemies.turret.hl2.die", path: "npcs/turret_floor/die.wav", category: "enemies", bus: "enemies", volume: 0.85 },
+  { id: "enemies.turret.hl2.retract", path: "npcs/turret_floor/retract.wav", category: "enemies", bus: "enemies", volume: 0.72 },
+  { id: "enemies.combine.hl2.alert1", path: "npcs/combine_soldier/vo/alert1.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.combine.hl2.alert2", path: "npcs/combine_soldier/vo/contact.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.combine.hl2.attack1", path: "npcs/combine_soldier/vo/engaging.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.combine.hl2.attack2", path: "npcs/combine_soldier/vo/coverme.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.combine.hl2.pain1", path: "npcs/combine_soldier/pain1.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.combine.hl2.pain2", path: "npcs/combine_soldier/pain2.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.combine.hl2.pain3", path: "npcs/combine_soldier/pain3.wav", category: "enemies", bus: "enemies", volume: 0.75 },
+  { id: "enemies.combine.hl2.die1", path: "npcs/combine_soldier/die1.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.combine.hl2.die2", path: "npcs/combine_soldier/die2.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.combine.hl2.die3", path: "npcs/combine_soldier/die3.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.zombie.hl2.die1", path: "npcs/zombie/zombie_die1.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.zombie.hl2.die2", path: "npcs/zombie/zombie_die2.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.zombie.hl2.die3", path: "npcs/zombie/zombie_die3.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.gunship.hl2.alert", path: "npcs/combine_gunship/see_enemy.wav", category: "enemies", bus: "enemies", volume: 0.82 },
+  { id: "enemies.gunship.hl2.pain", path: "npcs/combine_gunship/gunship_pain.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.gunship.hl2.die", path: "npcs/combine_gunship/gunship_explode2.wav", category: "enemies", bus: "enemies", volume: 0.85 },
+  { id: "enemies.gunship.hl2.fire", path: "npcs/combine_gunship/gunship_weapon_fire_loop6.wav", category: "enemies", bus: "weapons", volume: 0.78 },
+  { id: "enemies.strider.hl2.alert1", path: "npcs/strider/striderx_alert2.wav", category: "enemies", bus: "enemies", volume: 0.82 },
+  { id: "enemies.strider.hl2.alert2", path: "npcs/strider/striderx_alert4.wav", category: "enemies", bus: "enemies", volume: 0.82 },
+  { id: "enemies.strider.hl2.pain", path: "npcs/strider/striderx_pain2.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.strider.hl2.die", path: "npcs/strider/striderx_die1.wav", category: "enemies", bus: "enemies", volume: 0.85 },
+  { id: "enemies.strider.hl2.minigun", path: "npcs/strider/strider_minigun.wav", category: "enemies", bus: "weapons", volume: 0.82 },
+  { id: "enemies.strider.hl2.cannon", path: "npcs/strider/fire.wav", category: "enemies", bus: "weapons", volume: 0.85 },
+  { id: "enemies.strider.hl2.step1", path: "npcs/strider/strider_step1.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.strider.hl2.step2", path: "npcs/strider/strider_step2.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.strider.hl2.step3", path: "npcs/strider/strider_step3.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.strider.hl2.step4", path: "npcs/strider/strider_step4.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.strider.hl2.step5", path: "npcs/strider/strider_step5.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+  { id: "enemies.strider.hl2.step6", path: "npcs/strider/strider_step6.wav", category: "enemies", bus: "enemies", volume: 0.8 },
+];
+
+const hl2FootstepClips: Hl2ClipSpec[] = [
+  ...repeatHl2Footsteps("chainlink", 4),
+  ...repeatHl2Footsteps("concrete", 4),
+  ...repeatHl2Footsteps("dirt", 4),
+  ...repeatHl2Footsteps("duct", 4),
+  ...repeatHl2Footsteps("grass", 4),
+  ...repeatHl2Footsteps("gravel", 4),
+  ...repeatHl2Footsteps("ladder", 4),
+  ...repeatHl2Footsteps("metal", 4),
+  ...repeatHl2Footsteps("metalgrate", 4),
+  ...repeatHl2Footsteps("mud", 4),
+  ...repeatHl2Footsteps("sand", 4),
+  ...repeatHl2Footsteps("slosh", 4),
+  ...repeatHl2Footsteps("tile", 4),
+  ...repeatHl2Footsteps("wade", 8),
+  ...repeatHl2Footsteps("wood", 4),
+  ...repeatHl2Footsteps("woodpanel", 4),
+];
+
+const hl2BackgroundClips: Hl2ClipSpec[] = [
+  { id: "background.hl2.wind.wasteland", path: "ambient/wind/wasteland_wind.wav", category: "background", bus: "ambience", loop: true, volume: 0.42 },
+  { id: "background.hl2.wind.med1", path: "ambient/wind/wind_med1.wav", category: "background", bus: "ambience", loop: true, volume: 0.35 },
+  { id: "background.hl2.wind.med2", path: "ambient/wind/wind_med2.wav", category: "background", bus: "ambience", loop: true, volume: 0.35 },
+  { id: "background.hl2.wind.rooftop", path: "ambient/wind/wind_rooftop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.35 },
+  { id: "background.hl2.wind.tunnel", path: "ambient/wind/wind_tunnel1.wav", category: "background", bus: "ambience", loop: true, volume: 0.35 },
+  { id: "background.hl2.labs.equipmentBeep", path: "ambient/levels/labs/equipment_beep_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.26 },
+  { id: "background.hl2.labs.machineMoving", path: "ambient/levels/labs/machine_moving_loop3.wav", category: "background", bus: "ambience", loop: true, volume: 0.28 },
+  { id: "background.hl2.labs.machineRing", path: "ambient/levels/labs/machine_ring_resonance_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.24 },
+  { id: "background.hl2.labs.teleportActive", path: "ambient/levels/labs/teleport_active_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.24 },
+  { id: "background.hl2.canals.tunnelWind", path: "ambient/levels/canals/tunnel_wind_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.36 },
+  { id: "background.hl2.canals.waterRivulet", path: "ambient/levels/canals/water_rivulet_loop2.wav", category: "background", bus: "ambience", loop: true, volume: 0.25 },
+  { id: "background.hl2.canals.waterLeak", path: "ambient/levels/canals/waterleak_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.24 },
+  { id: "background.hl2.canals.generator", path: "ambient/levels/canals/generator_ambience_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.3 },
+  { id: "background.hl2.canals.manhackMachine", path: "ambient/levels/canals/manhack_machine_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.26 },
+  { id: "background.hl2.streetwar.battle1", path: "ambient/levels/streetwar/city_battle1.wav", category: "background", bus: "ambience", volume: 0.34 },
+  { id: "background.hl2.streetwar.battle5", path: "ambient/levels/streetwar/city_battle5.wav", category: "background", bus: "ambience", volume: 0.34 },
+  { id: "background.hl2.streetwar.riot", path: "ambient/levels/streetwar/city_riot1.wav", category: "background", bus: "ambience", loop: true, volume: 0.22 },
+  { id: "background.hl2.streetwar.gunshipDistant", path: "ambient/levels/streetwar/gunship_distant1.wav", category: "background", bus: "ambience", volume: 0.35 },
+  { id: "background.hl2.streetwar.striderDistantWalk", path: "ambient/levels/streetwar/strider_distant_walk1.wav", category: "background", bus: "ambience", volume: 0.34 },
+  { id: "background.hl2.atmosphere.cityRumble", path: "ambient/atmosphere/city_rumble_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.24 },
+  { id: "background.hl2.atmosphere.plaza", path: "ambient/atmosphere/plaza_amb.wav", category: "background", bus: "ambience", loop: true, volume: 0.24 },
+  { id: "background.hl2.atmosphere.undergroundHall", path: "ambient/atmosphere/underground_hall_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.26 },
+  { id: "background.hl2.atmosphere.undercity", path: "ambient/atmosphere/undercity_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.26 },
+  { id: "background.hl2.atmosphere.trainstation", path: "ambient/atmosphere/trainstation_ambient_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.26 },
+  { id: "background.hl2.machines.combineTerminal", path: "ambient/machines/combine_terminal_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.22 },
+  { id: "background.hl2.machines.labLoop", path: "ambient/machines/lab_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.24 },
+  { id: "background.hl2.machines.wallAmbient", path: "ambient/machines/wall_ambient_loop1.wav", category: "background", bus: "ambience", loop: true, volume: 0.22 },
+  { id: "background.hl2.machines.trainRumble", path: "ambient/machines/train_rumble.wav", category: "background", bus: "ambience", loop: true, volume: 0.28 },
+];
+
+const HL2AudioClipCatalog: Record<string, AudioClipDefinition> = Object.fromEntries(
+  [...hl2WeaponClips, ...hl2EnemyClips, ...hl2FootstepClips, ...hl2BackgroundClips].map((spec) => [
+    spec.id,
+    hl2Clip(spec),
+  ]),
+);
+
 export const AudioClipCatalog: Record<string, AudioClipDefinition> = {
   "background.wind": {
     id: "background.wind",
@@ -581,4 +781,5 @@ export const AudioClipCatalog: Record<string, AudioClipDefinition> = {
     bus: AudioManifest.enemies.zombie.damaged.bus,
     category: "enemies",
   },
+  ...HL2AudioClipCatalog,
 };

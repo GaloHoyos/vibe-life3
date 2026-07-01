@@ -1,6 +1,7 @@
 ﻿import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { WeaponId } from '@game/gameplay/weapons/core/WeaponDefinition';
+import type { AmmoId } from '@game/config/ammo.config';
 import type { ChargerKind, ItemId } from '@game/config/items.config';
 import type { MaterialKey } from '@engine/render/material/Materials';
 import type { SkyboxId } from '@engine/render/environment/Skybox';
@@ -76,6 +77,13 @@ export interface WeaponPickupDefinition {
 export interface ItemPickupDefinition {
   id: string;
   itemId: ItemId;
+  position: VectorTuple;
+  rotation?: RotationTuple;
+}
+
+export interface AmmoPickupDefinition {
+  id: string;
+  ammoId: AmmoId;
   position: VectorTuple;
   rotation?: RotationTuple;
 }
@@ -206,6 +214,8 @@ export interface LevelDefinition {
   weaponPickups: WeaponPickupDefinition[];
   /** Pickups de vitals (botiquines, baterías HEV). Si se omite, el nivel no trae. */
   itemPickups?: ItemPickupDefinition[];
+  /** Pickups de munición separados de las armas. Si se omite, el nivel no trae. */
+  ammoPickups?: AmmoPickupDefinition[];
   /** Cargadores de pared (vida / HEV) estilo HL2. Si se omite, el nivel no trae. */
   chargers?: ChargerDefinition[];
   triggers: TriggerDefinition[];

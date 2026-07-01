@@ -1,6 +1,7 @@
 ﻿import RAPIER from '@dimforge/rapier3d-compat';
 import { Quaternion, Vector3 } from 'three';
 import type { Damageable } from '@shared/types/lifecycle';
+import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import type { BoneMapper } from '@engine/animation/pose/BoneMapper';
 import type { PhysicalBone } from './PhysicalBone';
@@ -17,6 +18,7 @@ export interface PhysicalSkeletonOptions {
   mapper: BoneMapper;
   physics: PhysicsWorld;
   config?: Partial<RagdollConfig>;
+  characterId?: CharacterId;
   owner?: Damageable;
 }
 
@@ -82,8 +84,10 @@ export class PhysicalSkeleton {
       collider.setSensor(true);
       this.options.physics.registerCollider(collider, {
         id: `${this.options.id}-live-part-${definition.id}`,
+        ownerId: this.options.id,
         kind: 'ragdoll',
         damageable: this.options.owner,
+        characterId: this.options.characterId,
         bodyPart: {
           name: definition.id,
           damageMultiplier: definition.damageMultiplier,

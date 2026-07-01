@@ -1,6 +1,7 @@
 ﻿import RAPIER from '@dimforge/rapier3d-compat';
 import { Bone, Object3D, Quaternion, Vector3 } from 'three';
 import type { Damageable } from '@shared/types/lifecycle';
+import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import type { BoneMapper } from '@engine/animation/pose/BoneMapper';
 import { getBoneWorldTransform, PhysicsBoneLink } from './PhysicsBoneLink';
@@ -22,6 +23,7 @@ export interface RagdollBuildOptions {
   config?: Partial<RagdollConfig>;
   hitDirection?: Vector3;
   currentVelocity?: Vector3;
+  characterId?: CharacterId;
   owner?: Damageable;
 }
 
@@ -53,7 +55,7 @@ export class RagdollBuilder {
     });
 
     if (links.length === 0) {
-      const fallbackBody = this.createFallbackBody(options.root, options.physics, config, `${options.id}-fallback`);
+      const fallbackBody = this.createFallbackBody(options, config, `${options.id}-fallback`);
       return new RagdollController(options.physics, [], [], [fallbackBody], [], config, options.root, fallbackBody);
     }
 
@@ -81,8 +83,10 @@ export class RagdollBuilder {
     const collider = options.physics.world.createCollider(this.createCollider(part, config), body);
     options.physics.registerCollider(collider, {
       id: `${options.id}-ragdoll-${part.id}`,
+      ownerId: options.id,
       kind: 'ragdoll',
       damageable: options.owner,
+      characterId: options.characterId,
       bodyPart: {
         name: part.id,
         damageMultiplier: part.damageMultiplier,
@@ -93,29 +97,34 @@ export class RagdollBuilder {
   }
 
   private createFallbackBody(
-    root: Object3D,
-    physics: PhysicsWorld,
+    options: RagdollBuildOptions,
     config: RagdollConfig,
     id: string,
   ): RAPIER.RigidBody {
     const worldPosition = new Vector3();
     const worldRotation = new Quaternion();
-    root.getWorldPosition(worldPosition);
-    root.getWorldQuaternion(worldRotation);
+    options.root.getWorldPosition(worldPosition);
+    options.root.getWorldQuaternion(worldRotation);
     worldPosition.y = Math.max(worldPosition.y, 0.5);
 
-    const body = physics.world.createRigidBody(
+    const body = options.physics.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(worldPosition.x, worldPosition.y, worldPosition.z)
         .setRotation(toRapierRotation(worldRotation))
         .setLinearDamping(config.linearDamping)
         .setAngularDamping(config.angularDamping),
     );
-    const collider = physics.world.createCollider(
+    const collider = options.physics.world.createCollider(
       RAPIER.ColliderDesc.capsule(0.75, 0.38).setDensity(config.density),
       body,
     );
-    physics.registerCollider(collider, { id, kind: 'ragdoll' });
+    options.physics.registerCollider(collider, {
+      id,
+      ownerId: options.id,
+      kind: 'ragdoll',
+      damageable: options.owner,
+      characterId: options.characterId,
+    });
     return body;
   }
 

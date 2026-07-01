@@ -107,7 +107,7 @@ export function buildZombiePreset(): NpcPreset {
       visionConeRadians: (100 * Math.PI) / 180,
       hearingRadius: 25,
       memoryTime: 10,
-      eyeHeight: 1.55,
+      eyeHeight: 0.62,
     },
     maxHealth: 100,
     radius: 0.35,

@@ -131,7 +131,7 @@ export class CharacterFactory {
     const preset = resolvePresetFor(definition, { hasPatrol: patrolPoints.length > 0 });
     const visualGroup = wrapVisualRoot(visualRoot);
     const ownerProxy: {
-      applyDamage: (amount: number, dir?: Vector3, part?: string, attackerId?: string) => void;
+      applyDamage: (amount: number, dir?: Vector3, part?: string, attackerId?: string, point?: Vector3) => void;
       isAlive: () => boolean;
     } = {
       applyDamage: () => {},
@@ -141,6 +141,7 @@ export class CharacterFactory {
       id: instanceId,
       kind: 'npc',
       damageable: ownerProxy,
+      characterId: definition.id,
       faction: definition.faction,
     };
     // Torreta de piso = cuerpo dinamico estacionario (no navega; se la tumba). El
@@ -288,6 +289,7 @@ export class CharacterFactory {
       );
       combat = new RealRangedCombat({
         combat: realCombat,
+        ownerId: instanceId,
         ownerBody: motor.body,
         faction: definition.faction,
         eyeHeight: definition.perception.eyeHeight,

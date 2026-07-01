@@ -35,6 +35,9 @@ export function toLevelDefinition(doc: EditorDocument): LevelDefinition {
       case 'itemPickup':
         map.item(entity.def);
         break;
+      case 'ammoPickup':
+        map.ammo(entity.def);
+        break;
       case 'charger':
         map.charger(entity.def);
         break;

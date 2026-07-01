@@ -44,4 +44,46 @@ describe("EnemySoundSystem", () => {
 
     expect(sounds.played).toEqual([]);
   });
+
+  it("plays turret clips without falling back to zombie vocals", () => {
+    const bus = new EventBus<GameEventMap>();
+    const sounds = fakeSoundManager([
+      "enemies.zombie.alert",
+      "enemies.turret.hl2.alert",
+    ]);
+
+    new EnemySoundSystem(bus, sounds);
+
+    bus.emit("npc.alert", { id: "turret-1", characterId: "floorTurret" });
+
+    expect(sounds.played).toEqual([
+      { id: "enemies.turret.hl2.alert", options: { bus: "enemies" } },
+    ]);
+  });
+
+  it("chooses an available variant from mapped sound arrays", () => {
+    const bus = new EventBus<GameEventMap>();
+    const sounds = fakeSoundManager(["enemies.combine.hl2.alert2"]);
+
+    new EnemySoundSystem(bus, sounds);
+
+    bus.emit("npc.alert", { id: "combine-1", characterId: "combine" });
+
+    expect(sounds.played).toEqual([
+      { id: "enemies.combine.hl2.alert2", options: { bus: "enemies" } },
+    ]);
+  });
+
+  it("plays mapped npc footstep variants", () => {
+    const bus = new EventBus<GameEventMap>();
+    const sounds = fakeSoundManager(["enemies.strider.hl2.step4"]);
+
+    new EnemySoundSystem(bus, sounds);
+
+    bus.emit("npc.footstep", { id: "strider-1", characterId: "strider" });
+
+    expect(sounds.played).toEqual([
+      { id: "enemies.strider.hl2.step4", options: { bus: "enemies" } },
+    ]);
+  });
 });

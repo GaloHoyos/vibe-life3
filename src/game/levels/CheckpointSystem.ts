@@ -3,7 +3,10 @@ import type { GameEventBus } from "@game/GameEvents";
 import type { VectorTuple } from "@shared/math/VectorTuple";
 import { tupleToVector3 } from "@shared/math/VectorTuple";
 import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
-import type { WeaponLoadoutEntry } from "@game/gameplay/weapons/core/WeaponController";
+import type {
+  AmmoLoadoutEntry,
+  WeaponLoadoutEntry,
+} from "@game/gameplay/weapons/core/WeaponController";
 
 export interface CheckpointDefinition {
   id: string;
@@ -26,6 +29,8 @@ export interface CheckpointSnapshot {
   health: number;
   armor: number;
   weapons: WeaponLoadoutEntry[];
+  /** Reserva global nueva. Si falta, se reconstruye desde `weapons[].reserve`. */
+  ammo?: AmmoLoadoutEntry[];
   activeWeaponId: WeaponId | null;
   /** Orientación (yaw, rad) a restaurar. Lo usa la transición de niveles para
    *  conservar hacia dónde mirabas. Opcional: los checkpoints no lo capturan. */

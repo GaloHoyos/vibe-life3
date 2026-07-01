@@ -3,14 +3,24 @@ import type { Object3D, Quaternion, Vector3 } from 'three';
 import type { Damageable } from '@shared/types/lifecycle';
 import type { HeightField } from '@shared/math/HeightField';
 import type { Faction } from '@engine/ai/Faction';
+import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import { createBoxCollider } from './Colliders';
 
 const GRAVITY = { x: 0, y: -20.5, z: 0 } as const;
 
 export interface PhysicsMetadata {
   id: string;
+  /**
+   * Actor al que pertenece el collider. La cápsula y todos sus hitboxes/parts
+   * (que tienen `id` derivado, p. ej. `<id>-live-part-chest`) comparten el mismo
+   * `ownerId`. Lo usan las exclusiones de raycast (LOS de percepción, disparos
+   * del propio NPC) para no chocar con el cuerpo propio. Default = `id`.
+   */
+  ownerId?: string;
   kind: 'static' | 'dynamic' | 'door' | 'npc' | 'player' | 'ragdoll' | 'weaponPickup';
   damageable?: Damageable;
+  /** Character preset id for actor-owned colliders. Used by hit effects. */
+  characterId?: CharacterId;
   /** Bando del actor (npc/player). Lo consumen guards de fuego amigo. */
   faction?: Faction;
   bodyPart?: {

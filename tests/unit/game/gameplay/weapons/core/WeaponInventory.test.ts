@@ -4,24 +4,44 @@ import { EventBus } from "@engine/core/EventBus";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { GameEventMap } from "@game/GameEvents";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
+import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
+import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 import { recordEvents } from "@tests/support/events";
 import { createWeapon } from "@game/gameplay/weapons/core/WeaponFactory";
+import { AmmoInventory } from "@game/gameplay/weapons/core/AmmoInventory";
 import { WeaponInventory } from "@game/gameplay/weapons/core/WeaponInventory";
 import type { WeaponContext } from "@game/gameplay/weapons/core/Weapon";
 import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
 
 function setup() {
   const bus = new EventBus<GameEventMap>();
-  const inventory = new WeaponInventory(bus);
+  const ammo = new AmmoInventory();
+  const inventory = new WeaponInventory(bus, ammo);
   const context: WeaponContext = {
     eventBus: bus,
     raycast: {} as Raycast,
     grenades: { spawn: () => undefined } as unknown as GrenadeSystem,
+    rockets: {
+      spawn: () => "rocket-test",
+      hasRocket: () => false,
+      updateLaser: () => undefined,
+      hideLaser: () => undefined,
+    } as unknown as RocketSystem,
+    bolts: { spawn: () => undefined } as unknown as BoltSystem,
+    energyBalls: { spawn: () => undefined } as unknown as EnergyBallSystem,
+    ammo,
     getInventory: () => inventory,
   };
   return {
     inventory,
-    weapon: (id: WeaponId) => createWeapon(id, context),
+    weapon: (id: WeaponId) => {
+      const created = createWeapon(id, context);
+      if (created.definition.hasAmmo) {
+        ammo.addForWeapon(id, created.definition.ammoPerPickup);
+      }
+      return created;
+    },
     changed: recordEvents(bus, "weapon.changed"),
     ammoChanged: recordEvents(bus, "weapon.ammo.changed"),
   };

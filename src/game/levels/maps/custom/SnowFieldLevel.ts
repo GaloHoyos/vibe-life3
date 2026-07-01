@@ -52,7 +52,7 @@ export const SnowFieldLevel: LevelDefinition = {
   },
   playerStart: [0, 10, 0],
   audio: {
-    ambiences: ['background.wind'],
+    ambiences: ['background.wind', 'background.hl2.wind.wasteland'],
     footstepSounds: [
       'footsteps.snow1',
       'footsteps.snow2',
@@ -113,9 +113,18 @@ export const SnowFieldLevel: LevelDefinition = {
     { id: 'pickup-crowbar-sf', weaponId: 'crowbar', position: [1, 6, -2] },
     { id: 'pickup-gravity-gun-sf', weaponId: 'gravityGun', position: [3, 6, -2] },
     { id: 'pickup-shotgun-sf', weaponId: 'shotgun', position: [5, 6, -2] },
-    { id: 'pickup-grenade-sf-1', weaponId: 'grenade', position: [7, 6, -2] },
-    { id: 'pickup-grenade-sf-2', weaponId: 'grenade', position: [7.5, 6, -2] },
-    { id: 'pickup-grenade-sf-3', weaponId: 'grenade', position: [8, 6, -2] },
+    { id: 'pickup-rpg-sf', weaponId: 'rpg', position: [7, 6, -2] },
+    { id: 'pickup-grenade-sf-1', weaponId: 'grenade', position: [8.5, 6, -2] },
+    { id: 'pickup-grenade-sf-2', weaponId: 'grenade', position: [9, 6, -2] },
+    { id: 'pickup-grenade-sf-3', weaponId: 'grenade', position: [9.5, 6, -2] },
+  ],
+  ammoPickups: [
+    { id: 'ammo-pistol-sf', ammoId: 'pistol', position: [-5, 6, -3.4] },
+    { id: 'ammo-smg-sf', ammoId: 'smg', position: [-3, 6, -3.4] },
+    { id: 'ammo-ar3-sf', ammoId: 'ar3', position: [-1, 6, -3.4] },
+    { id: 'ammo-shotgun-sf', ammoId: 'shotgun', position: [5, 6, -3.4] },
+    { id: 'ammo-rpg-sf', ammoId: 'rpg', position: [7, 6, -3.4] },
+    { id: 'ammo-grenade-sf', ammoId: 'grenade', position: [8.5, 6, -3.4] },
   ],
   triggers: [],
 };

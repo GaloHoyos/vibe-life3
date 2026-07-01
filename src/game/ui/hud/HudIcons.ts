@@ -33,6 +33,21 @@ const Pistol = `
   <line x1="32" y1="11" x2="38" y2="11"/>
 </svg>`.trim();
 
+const Revolver = `
+<svg viewBox="0 0 48 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" xmlns="http://www.w3.org/2000/svg">
+  <path d="M 8 8 L 34 8 L 34 13 L 23 13 L 23 20 L 15 20 L 15 13 L 8 13 Z"/>
+  <line x1="30" y1="11" x2="40" y2="11"/>
+  <circle cx="19" cy="11" r="3.4"/>
+</svg>`.trim();
+
+const Crossbow = `
+<svg viewBox="0 0 48 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" xmlns="http://www.w3.org/2000/svg">
+  <line x1="6" y1="13" x2="45" y2="13"/>
+  <path d="M 34 3 Q 40 13 34 23"/>
+  <path d="M 30 6 L 38 13 L 30 20"/>
+  <path d="M 6 13 L 9 18 L 13 18"/>
+</svg>`.trim();
+
 const Smg = `
 <svg viewBox="0 0 48 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" xmlns="http://www.w3.org/2000/svg">
   <path d="M 4 10 L 36 10 L 36 14 L 26 14 L 26 20 L 18 20 L 18 14 L 4 14 Z"/>
@@ -76,14 +91,27 @@ const Grenade = `
   <line x1="24" y1="2" x2="30" y2="2"/>
 </svg>`.trim();
 
+const Rpg = `
+<svg viewBox="0 0 48 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" xmlns="http://www.w3.org/2000/svg">
+  <path d="M 4 12 L 32 12"/>
+  <path d="M 12 8 L 35 8 L 41 12 L 35 16 L 12 16 Z"/>
+  <path d="M 12 9 L 7 6"/>
+  <path d="M 12 15 L 7 18"/>
+  <line x1="28" y1="16" x2="28" y2="21"/>
+  <line x1="34" y1="10" x2="44" y2="10"/>
+</svg>`.trim();
+
 const ICONS: Record<WeaponId, string> = {
   crowbar: Crowbar,
   pistol: Pistol,
+  revolver: Revolver,
   smg: Smg,
   ar3: Ar3,
+  crossbow: Crossbow,
   gravityGun: GravityGun,
   shotgun: Shotgun,
   grenade: Grenade,
+  rpg: Rpg,
 };
 
 export function getWeaponIcon(id: WeaponId): string {

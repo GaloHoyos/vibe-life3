@@ -14,6 +14,8 @@ export type FakeSoundManager = SoundManager & {
 export function fakePositionalSounds(): PositionalSoundManager {
   return {
     playAt: () => undefined,
+    attachToObject: () => undefined,
+    stopAttached: () => undefined,
     clear: () => undefined,
   } as unknown as PositionalSoundManager;
 }

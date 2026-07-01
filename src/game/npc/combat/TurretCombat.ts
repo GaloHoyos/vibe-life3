@@ -360,7 +360,7 @@ export class TurretCombat implements NpcCombatHandle {
     if (!damageable) return;
     const partMul = hit.metadata?.bodyPart?.damageMultiplier ?? 1;
     const damage = SHOT_DAMAGE * partMul;
-    damageable.applyDamage(damage, dir.clone(), hit.metadata?.bodyPart?.name, this.opts.id);
+    damageable.applyDamage(damage, dir.clone(), hit.metadata?.bodyPart?.name, this.opts.id, hit.point);
     this.opts.eventBus.emit("weapon.hit", {
       weaponName: WEAPON_NAME,
       targetId: hit.metadata?.id,

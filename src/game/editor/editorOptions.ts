@@ -3,6 +3,7 @@ import type { SkyboxId } from '@engine/render/environment/Skybox';
 import { SkyboxManifest } from '@engine/render/environment/Skybox';
 import { WEAPON_ORDER } from '@game/config/weapons.config';
 import type { WeaponId } from '@game/gameplay/weapons/core/WeaponDefinition';
+import { AmmoDefinitions, type AmmoId } from '@game/config/ammo.config';
 import {
   ChargerTypes,
   ItemDefinitions,
@@ -23,6 +24,7 @@ export const MATERIAL_KEYS: readonly MaterialKey[] = [
 ];
 
 export const WEAPON_IDS: readonly WeaponId[] = [...WEAPON_ORDER];
+export const AMMO_IDS: readonly AmmoId[] = Object.keys(AmmoDefinitions) as AmmoId[];
 export const CHARACTER_IDS: readonly CharacterId[] = Object.keys(CharacterPresets);
 export const ITEM_IDS: readonly ItemId[] = Object.keys(ItemDefinitions) as ItemId[];
 export const CHARGER_KINDS: readonly ChargerKind[] = Object.keys(ChargerTypes) as ChargerKind[];

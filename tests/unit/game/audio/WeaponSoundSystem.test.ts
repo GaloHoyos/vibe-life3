@@ -67,4 +67,24 @@ describe("WeaponSoundSystem", () => {
 
     expect(sounds.played).toEqual([]);
   });
+
+  it("chooses an available variant from mapped sound arrays", () => {
+    const bus = new EventBus<GameEventMap>();
+    const sounds = fakeSoundManager(["weapons.revolver.hl2.shot2"]);
+
+    new WeaponSoundSystem(bus, sounds);
+
+    bus.emit("weapon.fired", {
+      weaponName: ".357 Magnum",
+      weaponType: "hitscan",
+      ammo: 5,
+      origin: new Vector3(),
+      direction: new Vector3(0, 0, -1),
+      range: 100,
+    });
+
+    expect(sounds.played).toEqual([
+      { id: "weapons.revolver.hl2.shot2", options: { bus: "weapons" } },
+    ]);
+  });
 });

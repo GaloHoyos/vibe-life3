@@ -8,6 +8,8 @@ import type { Input } from '@engine/input/Input';
  */
 export class CameraSystem {
   readonly camera: PerspectiveCamera;
+  /** FOV base (grados) sin zoom. El zoom de mira lerpea hacia/desde este valor. */
+  readonly defaultFov = 75;
 
   private yaw = 0;
   private pitch = 0;
@@ -17,10 +19,29 @@ export class CameraSystem {
 
   constructor(private readonly container: HTMLElement) {
     const aspect = this.container.clientWidth / Math.max(this.container.clientHeight, 1);
-    this.camera = new PerspectiveCamera(75, aspect, 0.05, 350);
+    this.camera = new PerspectiveCamera(this.defaultFov, aspect, 0.05, 350);
     this.camera.position.set(0, 1.7, 4);
 
     window.addEventListener('resize', this.handleResize);
+  }
+
+  /**
+   * Lerpea el FOV de la cámara hacia `targetFov` (grados) — usado por el zoom
+   * de mira de las armas. Suaviza la transición con un factor dependiente de
+   * `delta`; cuando ya está cerca del objetivo no toca la matriz de proyección.
+   */
+  applyZoom(targetFov: number, delta: number): void {
+    const current = this.camera.fov;
+    if (Math.abs(current - targetFov) < 0.05) {
+      if (current !== targetFov) {
+        this.camera.fov = targetFov;
+        this.camera.updateProjectionMatrix();
+      }
+      return;
+    }
+    const t = 1 - Math.exp(-delta * 14);
+    this.camera.fov = current + (targetFov - current) * t;
+    this.camera.updateProjectionMatrix();
   }
 
   dispose(): void {

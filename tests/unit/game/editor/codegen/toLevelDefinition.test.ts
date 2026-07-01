@@ -40,6 +40,16 @@ describe("toLevelDefinition", () => {
           actions: [{ kind: "dialogue", text: "hola", duration: 1 }],
         },
       },
+      {
+        eid: "ammo-eid",
+        kind: "ammoPickup",
+        def: {
+          id: "ammo-1",
+          ammoId: "smg",
+          position: [3, 0.5, 2],
+          rotation: [0, 0.5, 0],
+        },
+      },
     ];
 
     const level = toLevelDefinition(testEditorDocument({ entities }));
@@ -55,6 +65,11 @@ describe("toLevelDefinition", () => {
     expect(level.triggers[0]).toMatchObject({
       id: "trigger-1",
       rotation: [0, Math.PI / 2, 0],
+    });
+    expect(level.ammoPickups?.[0]).toMatchObject({
+      id: "ammo-1",
+      ammoId: "smg",
+      rotation: [0, 0.5, 0],
     });
   });
 

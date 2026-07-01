@@ -143,7 +143,7 @@ export class Npc implements INpc {
       // Los flyers (manhack) se choquen y reboten en vez de mantener distancia.
       separation: !this.preset.movement.flying && !this.preset.movement.directGround,
     });
-    this.perception = new PerceptionSystem(this.preset.perception);
+    this.perception = new PerceptionSystem(this.preset.perception, this.id);
     this.brain = new Brain<NpcBrainContext>(this.preset.schedules);
     this.patrolRoute =
       params.patrolRoute && params.patrolRoute.length > 0 ? params.patrolRoute : null;
@@ -299,7 +299,7 @@ export class Npc implements INpc {
       this.applyDamage(impactDamage, undefined, undefined, 'player');
     }
     this.applySliceHits();
-    this.tickAnimation();
+    this.tickAnimation(delta);
   }
 
   /**
@@ -314,12 +314,12 @@ export class Npc implements INpc {
       const damage = this.sliceDamage * (hit.isPlayer ? 2 : 1);
       this.tmpSliceDir.copy(hit.point).sub(this.motor.getPosition());
       this.tmpSliceDir.y = 0.2;
-      hit.damageable.applyDamage(damage, this.tmpSliceDir.clone().normalize(), undefined, this.id);
+      hit.damageable.applyDamage(damage, this.tmpSliceDir.clone().normalize(), undefined, this.id, hit.point.clone());
     }
     this.eventBus.emit('npc.attack', { id: this.id, characterId: this.preset.id });
   }
 
-  private tickAnimation(): void {
+  private tickAnimation(delta: number): void {
     if (!this.animation) return;
     const snap = this.motor.syncFromPhysics();
     const lookTarget = this.animationLookTarget;
@@ -333,6 +333,7 @@ export class Npc implements INpc {
       snapshot: snap,
       lookTarget,
       balanceIsStumbling: false,
+      delta,
     });
     if (this.currentThreat && this.preset.weaponAim !== 'none') {
       this.animation.setAiming(this.currentThreat.position, this.preset.weaponAim);
@@ -351,10 +352,12 @@ export class Npc implements INpc {
     hitDirection?: Vector3,
     hitPartName?: string,
     attackerId?: string,
+    hitPoint?: Vector3,
   ): void {
     if (this.disposed || !this.health.isAlive()) return;
+    const hasHitDirection = !!hitDirection && hitDirection.lengthSq() > 0.001;
     const dir =
-      hitDirection && hitDirection.lengthSq() > 0.001
+      hasHitDirection
         ? hitDirection.clone().normalize()
         : new Vector3(0, 0.2, 1);
     const maxHealth = this.health.max;
@@ -364,6 +367,10 @@ export class Npc implements INpc {
       characterId: this.preset.id,
       amount,
       health: this.health.current,
+      ...(hitPoint ? { point: hitPoint.clone() } : {}),
+      ...(hasHitDirection ? { direction: dir.clone() } : {}),
+      ...(hitPartName ? { bodyPart: hitPartName } : {}),
+      ...(attackerId ? { attackerId } : {}),
     });
     this.justHitTimer = 0.2;
     if (attackerId && attackerId !== this.id) {
@@ -538,6 +545,7 @@ export class Npc implements INpc {
         facing,
         { id: candidate.id, position: candidate.position, isAlive: candidate.isAlive },
         this.raycast,
+        this.id,
       );
       if (!visible) score *= THREAT_UNSEEN_PENALTY;
       if (candidate === current) currentScore = score;

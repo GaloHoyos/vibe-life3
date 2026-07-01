@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { AudioClipCatalog } from "@engine/audio/AudioManifest";
 import { CharacterPresets } from "@game/characters/CharacterPresets";
+import { AmmoDefinitions, AMMO_ORDER } from "@game/config/ammo.config";
 import { ItemDefinitions, ChargerTypes } from "@game/config/items.config";
-import { WeaponDefinitions } from "@game/config/weapons.config";
+import { WeaponDefinitions, WEAPON_ORDER } from "@game/config/weapons.config";
 import {
   getAllLevels,
   getCampaignLevels,
@@ -38,6 +39,19 @@ describe("LevelRegistry contracts", () => {
 
     expect(() => getLevel("__missing__")).toThrow(/no registrado/);
   });
+
+  it("keeps weapon-scale-test covering every weapon and ammo pickup", () => {
+    const level = getLevel("weapon-scale-test");
+
+    expect(level.weaponPickups.map((pickup) => pickup.weaponId).sort()).toEqual(
+      [...WEAPON_ORDER].sort(),
+    );
+    expect((level.ammoPickups ?? []).map((pickup) => pickup.ammoId).sort()).toEqual(
+      [...AMMO_ORDER].sort(),
+    );
+    expect(level.npcs).toHaveLength(0);
+    expect(level.triggers).toHaveLength(0);
+  });
 });
 
 function expectValidLevel(level: LevelDefinition, levelIds: ReadonlySet<string>): void {
@@ -70,6 +84,11 @@ function expectValidLevel(level: LevelDefinition, levelIds: ReadonlySet<string>)
 
   for (const pickup of level.itemPickups ?? []) {
     expect(ItemDefinitions[pickup.itemId]).toBeDefined();
+    expectFiniteTuple(pickup.position, 3);
+  }
+
+  for (const pickup of level.ammoPickups ?? []) {
+    expect(AmmoDefinitions[pickup.ammoId]).toBeDefined();
     expectFiniteTuple(pickup.position, 3);
   }
 

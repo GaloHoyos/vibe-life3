@@ -4,6 +4,7 @@ import { AssetManifest } from "@engine/assets/AssetManifest";
 import { ActionOrder, DefaultBindings, NonRebindableActions } from "@game/config/controls.config";
 import { PlayerConfig } from "@game/config/gameplay.config";
 import { ChargerTypes, ItemDefinitions } from "@game/config/items.config";
+import { AmmoDefinitions } from "@game/config/ammo.config";
 import {
   EnemyAudio,
   WeaponAudio,
@@ -18,6 +19,7 @@ import {
   WEAPON_SLOT_COUNT,
   WeaponDefinitions,
 } from "@game/config/weapons.config";
+import { getWeaponIcon } from "@game/ui/hud/HudIcons";
 
 describe("game config contracts", () => {
   it("keeps weapon order, slots and asset references valid", () => {
@@ -38,6 +40,12 @@ describe("game config contracts", () => {
       expect(weapon.fireRate).toBeGreaterThan(0);
       expect(weapon.damage).toBeGreaterThanOrEqual(0);
       expect(weapon.pickupScale).toBeGreaterThan(0);
+      expect(weapon.pickupScale).toBeGreaterThanOrEqual(0.05);
+      expect(weapon.pickupScale).toBeLessThanOrEqual(0.55);
+      expect(weapon.viewModelScale).toBeGreaterThanOrEqual(0.05);
+      expect(weapon.viewModelScale).toBeLessThanOrEqual(0.6);
+      expectVectorWithin(weapon.pickupCollider, 0.02, 1.2);
+      expect(getWeaponIcon(weapon.id)).toContain("<svg");
 
       if (weapon.hasAmmo) {
         expect(weapon.reserveAmmoMax + weapon.magazineSize).toBeGreaterThan(0);
@@ -65,7 +73,36 @@ describe("game config contracts", () => {
     }
   });
 
+  it("keeps ammo definitions aligned with weapons and assets", () => {
+    const modelIds = new Set(Object.keys(AssetManifest.models));
+
+    for (const ammo of Object.values(AmmoDefinitions)) {
+      const weapon = WeaponDefinitions[ammo.weaponId];
+      expect(weapon).toBeDefined();
+      expect(weapon.hasAmmo).toBe(true);
+      expect(modelIds.has(ammo.modelId)).toBe(true);
+      if (ammo.id === "energyBall") {
+        expect(ammo.weaponId).toBe("ar3");
+      } else {
+        expect(ammo.amount).toBe(weapon.ammoPerPickup);
+        expect(ammo.max).toBe(weapon.reserveAmmoMax);
+      }
+      expect(ammo.amount).toBeGreaterThan(0);
+      expect(ammo.max).toBeGreaterThanOrEqual(ammo.amount);
+      expect(ammo.pickupRadius).toBeGreaterThan(0);
+      expect(ammo.pickupScale).toBeGreaterThan(0);
+      expect(ammo.pickupScale).toBeGreaterThanOrEqual(0.05);
+      expect(ammo.pickupScale).toBeLessThanOrEqual(0.35);
+    }
+  });
+
   it("keeps audio maps pointing at catalog clips", () => {
+    const clipIds = Object.keys(AudioClipCatalog);
+    expect(new Set(clipIds).size).toBe(clipIds.length);
+    for (const [id, clip] of Object.entries(AudioClipCatalog)) {
+      expect(clip.id).toBe(id);
+    }
+
     for (const soundId of collectWeaponSoundIds(WeaponAudio)) {
       expect(AudioClipCatalog[soundId]).toBeDefined();
     }
@@ -101,17 +138,40 @@ describe("game config contracts", () => {
 
 function collectWeaponSoundIds(audio: Record<string, WeaponSoundMap>): string[] {
   return Object.values(audio).flatMap((sounds) => [
-    ...defined([sounds.shot, sounds.reload, sounds.empty, sounds.altShot, sounds.cock]),
-    ...defined(Object.values(sounds.hit ?? {})),
+    ...flattenSoundRefs([sounds.shot, sounds.reload, sounds.empty, sounds.altShot, sounds.cock]),
+    ...flattenSoundRefs(Object.values(sounds.hit ?? {})),
   ]);
 }
 
 function collectEnemySoundIds(audio: Record<string, EnemySoundMap>): string[] {
   return Object.values(audio).flatMap((sounds) =>
-    defined([sounds.alert, sounds.attack, sounds.damaged, sounds.killed]),
+    flattenSoundRefs([
+      sounds.alert,
+      sounds.attack,
+      sounds.damaged,
+      sounds.killed,
+      sounds.footstep,
+    ]),
   );
 }
 
-function defined(values: Array<string | undefined>): string[] {
-  return values.filter((value): value is string => typeof value === "string");
+function flattenSoundRefs(values: Array<string | readonly string[] | undefined>): string[] {
+  return values.flatMap((value) => {
+    if (typeof value === "string") {
+      return [value];
+    }
+    return value ? [...value] : [];
+  });
+}
+
+function expectVectorWithin(
+  vector: { x: number; y: number; z: number },
+  min: number,
+  max: number,
+): void {
+  for (const value of [vector.x, vector.y, vector.z]) {
+    expect(Number.isFinite(value)).toBe(true);
+    expect(value).toBeGreaterThanOrEqual(min);
+    expect(value).toBeLessThanOrEqual(max);
+  }
 }

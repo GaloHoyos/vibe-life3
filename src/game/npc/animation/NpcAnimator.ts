@@ -9,6 +9,8 @@ export interface AnimationFrame {
   snapshot: CharacterMotorSnapshot;
   lookTarget: Vector3;
   balanceIsStumbling: boolean;
+  /** Segundos del frame; los decays temporales (flashes) deben usar esto. */
+  delta: number;
 }
 
 /**

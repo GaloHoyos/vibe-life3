@@ -5,7 +5,10 @@
 import { GravityGunWeapon } from "@game/gameplay/weapons/types/GravityGunWeapon";
 import { GrenadeWeapon } from "@game/gameplay/weapons/types/GrenadeWeapon";
 import { HitscanWeapon } from "@game/gameplay/weapons/types/HitscanWeapon";
+import { Ar3Weapon } from "@game/gameplay/weapons/types/Ar3Weapon";
+import { CrossbowWeapon } from "@game/gameplay/weapons/types/CrossbowWeapon";
 import { MeleeWeapon } from "@game/gameplay/weapons/types/MeleeWeapon";
+import { RpgWeapon } from "@game/gameplay/weapons/types/RpgWeapon";
 import { ShotgunWeapon } from "@game/gameplay/weapons/types/ShotgunWeapon";
 import { SmgWeapon } from "@game/gameplay/weapons/types/SmgWeapon";
 import type { Weapon, WeaponContext } from "./Weapon";
@@ -40,11 +43,18 @@ function instantiateWeapon(
       if (definition.alternateFire?.kind === "grenadeLauncher") {
         return new SmgWeapon(definition, context);
       }
+      if (definition.alternateFire?.kind === "energyBall") {
+        return new Ar3Weapon(definition, context);
+      }
       return new HitscanWeapon(definition, context);
     case "shotgun":
       return new ShotgunWeapon(definition, context);
     case "grenade":
       return new GrenadeWeapon(definition, context);
+    case "rpg":
+      return new RpgWeapon(definition, context);
+    case "crossbow":
+      return new CrossbowWeapon(definition, context);
     case "melee":
       return new MeleeWeapon(definition, context);
     case "special":
