@@ -1,6 +1,7 @@
 ﻿import RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3 } from "three";
 import { createCapsuleCollider } from "@engine/physics/Colliders";
+import { ACTOR_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
 
 export interface KinematicCharacterBaseOptions {
@@ -51,7 +52,7 @@ export abstract class KinematicCharacterBase {
       ),
     );
     this.collider = physics.world.createCollider(
-      createCapsuleCollider(options.radius, options.halfHeight),
+      createCapsuleCollider(options.radius, options.halfHeight).setCollisionGroups(ACTOR_COLLISION_GROUPS),
       this.body,
     );
     physics.registerCollider(this.collider, options.metadata);

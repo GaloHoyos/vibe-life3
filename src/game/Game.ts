@@ -22,6 +22,7 @@ import { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
 import type { GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
 import { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
+import { installNpcConsole } from "@game/debug/NpcConsole";
 import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
 import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
 import { NpcsModule } from "@game/ui/overlay/debug/modules/NpcsModule";
@@ -128,6 +129,7 @@ export class Game {
   private gameState: GameMenuState = "mainMenu";
   private currentLevel: LevelDefinition | null = null;
   private player: Player | null = null;
+  private uninstallNpcConsole: (() => void) | null = null;
   private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
@@ -244,6 +246,8 @@ export class Game {
     this.npcs = [];
     this.crashingGunships.clear();
     this.collapsingStriders.clear();
+    this.uninstallNpcConsole?.();
+    this.uninstallNpcConsole = null;
 
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
@@ -886,6 +890,8 @@ export class Game {
         },
       ),
     );
+
+    this.uninstallNpcConsole = installNpcConsole(() => this.npcs);
 
     const debugMenu = new DebugMenu(this.root, input, controls, eventBus);
     debugMenu.register(new StatsModule());

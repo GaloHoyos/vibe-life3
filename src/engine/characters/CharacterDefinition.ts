@@ -108,7 +108,6 @@ export interface CharacterRagdollConfig extends Partial<RagdollConfig> {
   mode: "passiveOnDeath";
   maxDeathLinearVelocity: number;
   maxDeathAngularVelocity: number;
-  initialDampingDuration: number;
 }
 
 export interface CharacterAIConfig {

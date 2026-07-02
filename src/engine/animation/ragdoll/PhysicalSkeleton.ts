@@ -1,16 +1,12 @@
-﻿import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d-compat';
 import { Quaternion, Vector3 } from 'three';
 import type { Damageable } from '@shared/types/lifecycle';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
-import type { BoneMapper } from '@engine/animation/pose/BoneMapper';
+import type { BoneMapper, NormalizedBoneName } from '@engine/animation/pose/BoneMapper';
 import type { PhysicalBone } from './PhysicalBone';
-import {
-  DefaultRagdollConfig,
-  DefaultRagdollDefinition,
-  type RagdollConfig,
-  type RagdollPartDefinition,
-} from './RagdollDefinition';
+import { DefaultRagdollConfig, DefaultRagdollDefinition, type RagdollConfig } from './RagdollDefinition';
+import { createPartCollider } from './RagdollGeometry';
 import { getBoneWorldTransform } from './PhysicsBoneLink';
 
 export interface PhysicalSkeletonOptions {
@@ -23,8 +19,10 @@ export interface PhysicalSkeletonOptions {
 }
 
 /**
- * Live physical skeleton used as a stable Phase-B fallback.
- * Bodies are kinematic sensors and never drive the visual skeleton while alive.
+ * Live hit-detection skeleton: kinematic sensor bodies following each bone.
+ * They never drive the visual skeleton nor affect the simulation while alive.
+ * Sensors use the bone frame directly (they mirror the bone transform each
+ * frame), unlike the passive ragdoll which uses canonical frames.
  */
 export class PhysicalSkeleton {
   private readonly config: RagdollConfig;
@@ -43,9 +41,11 @@ export class PhysicalSkeleton {
 
     this.bones.forEach((part) => {
       const transform = getBoneWorldTransform(part.bone);
-      const offset = DefaultRagdollDefinition.find((definition) => definition.id === part.name)?.localOffset;
-      const position = transform.position.clone().add((offset ?? new Vector3()).clone().applyQuaternion(transform.rotation));
-      part.rigidBody.setNextKinematicTranslation({ x: position.x, y: Math.max(position.y, 0.08), z: position.z });
+      part.rigidBody.setNextKinematicTranslation({
+        x: transform.position.x,
+        y: transform.position.y,
+        z: transform.position.z,
+      });
       part.rigidBody.setNextKinematicRotation(toRapierRotation(transform.rotation));
     });
   }
@@ -67,6 +67,18 @@ export class PhysicalSkeleton {
   }
 
   private buildSensorBodies(): void {
+    const bonePositionCache = new Map<NormalizedBoneName, Vector3 | null>();
+    const getBoneWorldPosition = (name: NormalizedBoneName): Vector3 | null => {
+      const cached = bonePositionCache.get(name);
+      if (cached !== undefined) {
+        return cached ? cached.clone() : null;
+      }
+      const bone = this.options.mapper.get(name);
+      const position = bone ? getBoneWorldTransform(bone).position : null;
+      bonePositionCache.set(name, position);
+      return position ? position.clone() : null;
+    };
+
     DefaultRagdollDefinition.forEach((definition) => {
       const bone = this.options.mapper.get(definition.bone);
       if (!bone) {
@@ -74,13 +86,19 @@ export class PhysicalSkeleton {
       }
 
       const transform = getBoneWorldTransform(bone);
-      const position = transform.position.clone().add(definition.localOffset.clone().applyQuaternion(transform.rotation));
       const body = this.options.physics.world.createRigidBody(
         RAPIER.RigidBodyDesc.kinematicPositionBased()
-          .setTranslation(position.x, Math.max(position.y, 0.08), position.z)
+          .setTranslation(transform.position.x, transform.position.y, transform.position.z)
           .setRotation(toRapierRotation(transform.rotation)),
       );
-      const collider = this.options.physics.world.createCollider(this.createCollider(definition), body);
+      const colliderDesc = createPartCollider(definition, {
+        bodyRotation: transform.rotation,
+        boneRotation: transform.rotation,
+        bonePosition: transform.position,
+        getBoneWorldPosition,
+        config: this.config,
+      });
+      const collider = this.options.physics.world.createCollider(colliderDesc, body);
       collider.setSensor(true);
       this.options.physics.registerCollider(collider, {
         id: `${this.options.id}-live-part-${definition.id}`,
@@ -101,26 +119,9 @@ export class PhysicalSkeleton {
         rigidBody: body,
         collider,
         parentName: definition.parentPartName,
-        mass: definition.mass,
-        damping: this.config.bodyPartDamping,
         damageMultiplier: definition.damageMultiplier,
       });
     });
-  }
-
-  private createCollider(part: RagdollPartDefinition): RAPIER.ColliderDesc {
-    const size = part.size.clone().multiplyScalar(this.config.colliderScale);
-    const density = this.config.density * part.mass;
-
-    if (part.shape === 'sphere') {
-      return RAPIER.ColliderDesc.ball(Math.max(size.x, size.y, size.z)).setDensity(density);
-    }
-
-    if (part.shape === 'capsule') {
-      return RAPIER.ColliderDesc.capsule(size.y * 0.5, Math.max(size.x, size.z) * 0.5).setDensity(density);
-    }
-
-    return RAPIER.ColliderDesc.cuboid(size.x * 0.5, size.y * 0.5, size.z * 0.5).setDensity(density);
   }
 }
 
