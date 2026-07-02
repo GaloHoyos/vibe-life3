@@ -9,6 +9,7 @@ import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem
 import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
+import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
 import { WeaponController } from "@game/gameplay/weapons/core/WeaponController";
 import { recordEvents } from "@tests/support/events";
 
@@ -28,6 +29,7 @@ function setup() {
     } as unknown as RocketSystem,
     { spawn: vi.fn() } as unknown as BoltSystem,
     { spawn: vi.fn() } as unknown as EnergyBallSystem,
+    { fire: vi.fn(), surf: vi.fn(), stopSurf: vi.fn() } as unknown as IceGunSystem,
   );
   return {
     controller,

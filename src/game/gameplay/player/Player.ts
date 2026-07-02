@@ -19,6 +19,7 @@ import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem
 import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
+import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
 
 export class Player implements Damageable {
   readonly health: PlayerHealth;
@@ -37,6 +38,7 @@ export class Player implements Damageable {
     rockets: RocketSystem,
     bolts: BoltSystem,
     energyBalls: EnergyBallSystem,
+    iceGun: IceGunSystem,
   ) {
     this.health = new PlayerHealth(
       eventBus,
@@ -76,6 +78,7 @@ export class Player implements Damageable {
       rockets,
       bolts,
       energyBalls,
+      iceGun,
     );
   }
 

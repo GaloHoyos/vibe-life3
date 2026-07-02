@@ -17,6 +17,7 @@ import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem
 import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
+import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
 import type { Weapon } from "./Weapon";
 import { WeaponInventory } from "./WeaponInventory";
 import { AmmoInventory, type AmmoLoadoutEntry } from "./AmmoInventory";
@@ -87,6 +88,7 @@ export class WeaponController {
     private readonly rockets: RocketSystem,
     private readonly bolts: BoltSystem,
     private readonly energyBalls: EnergyBallSystem,
+    private readonly iceGun: IceGunSystem,
   ) {
     this.inventory = new WeaponInventory(eventBus, this.ammo);
     this.viewModel = new WeaponViewModel(scene, assets);
@@ -331,6 +333,7 @@ export class WeaponController {
       rockets: this.rockets,
       bolts: this.bolts,
       energyBalls: this.energyBalls,
+      iceGun: this.iceGun,
       ammo: this.ammo,
       getInventory: () => this.inventory,
     });

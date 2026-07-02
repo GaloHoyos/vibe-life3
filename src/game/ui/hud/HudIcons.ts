@@ -76,6 +76,18 @@ const GravityGun = `
   <line x1="36" y1="16" x2="36" y2="20"/>
 </svg>`.trim();
 
+const IceGun = `
+<svg viewBox="0 0 48 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" xmlns="http://www.w3.org/2000/svg">
+  <path d="M 5 9 L 27 9 L 32 5 L 42 5"/>
+  <path d="M 5 15 L 27 15 L 32 19 L 42 19"/>
+  <path d="M 5 9 L 5 15"/>
+  <path d="M 27 9 L 27 15"/>
+  <path d="M 36 8 L 39 5 L 42 8"/>
+  <path d="M 36 16 L 39 19 L 42 16"/>
+  <path d="M 13 18 L 18 18 L 15.5 22 Z"/>
+  <path d="M 18 6 L 23 6 L 20.5 2 Z"/>
+</svg>`.trim();
+
 const Shotgun = `
 <svg viewBox="0 0 48 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" xmlns="http://www.w3.org/2000/svg">
   <path d="M 2 10 L 40 10 L 40 14 L 26 14 L 26 20 L 20 20 L 20 14 L 2 14 Z"/>
@@ -109,6 +121,7 @@ const ICONS: Record<WeaponId, string> = {
   ar3: Ar3,
   crossbow: Crossbow,
   gravityGun: GravityGun,
+  iceGun: IceGun,
   shotgun: Shotgun,
   grenade: Grenade,
   rpg: Rpg,

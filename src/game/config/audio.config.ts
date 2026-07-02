@@ -274,6 +274,16 @@ export const WeaponAudio: Record<string, WeaponSoundMap> = {
     ],
     empty: "weapons.gravityGun.hl2.dryfire",
   },
+  "Ice Gun": {
+    shot: "weapons.gravityGun.hl2.charge",
+    altShot: "weapons.gravityGun.hl2.pickup",
+    empty: "weapons.gravityGun.hl2.dryfire",
+    hit: {
+      static: ["weapons.energyball.hl2.bounce1", "weapons.energyball.hl2.bounce2"],
+      door: ["weapons.energyball.hl2.bounce1", "weapons.energyball.hl2.bounce2"],
+      dynamic: ["weapons.energyball.hl2.bounce1", "weapons.energyball.hl2.bounce2"],
+    },
+  },
   // Torreta de piso: el disparo llega como `weapon.fired` con weaponName 'Torreta'.
   Torreta: {
     shot: [

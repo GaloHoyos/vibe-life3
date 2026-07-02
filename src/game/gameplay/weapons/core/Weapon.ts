@@ -5,6 +5,7 @@ import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem
 import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
+import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
 import type { AmmoInventory } from "./AmmoInventory";
 import type { WeaponDefinition } from "./WeaponDefinition";
 import type { WeaponInventory } from "./WeaponInventory";
@@ -20,6 +21,8 @@ export interface WeaponContext {
   bolts: BoltSystem;
   /** Sistema de bolas de energía Combine. Lo usa el secundario del AR3. */
   energyBalls: EnergyBallSystem;
+  /** Sistema de hielo Blobulator-style. Lo usa el Ice Gun. */
+  iceGun: IceGunSystem;
   /** Reserva global de munición por tipo; las armas guardan solo cargador. */
   ammo: AmmoInventory;
   /**

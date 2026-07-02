@@ -41,6 +41,7 @@ import { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
+import { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
 import { InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
 import type { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
@@ -257,6 +258,7 @@ export class Game {
     s.resolve(GameTokens.Rockets).dispose();
     s.resolve(GameTokens.Bolts).dispose();
     s.resolve(GameTokens.EnergyBalls).dispose();
+    s.resolve(GameTokens.IceGun).dispose();
     this.player?.dispose();
     this.deathScreen?.dispose();
     this.transitionOverlay?.dispose();
@@ -357,6 +359,10 @@ export class Game {
         vfx,
         positionalSounds,
       ),
+    );
+    s.register(
+      GameTokens.IceGun,
+      new IceGunSystem(scene.scene, physics, raycast, eventBus, vfx),
     );
     s.register(
       GameTokens.ExplosiveBarrels,
@@ -1043,6 +1049,7 @@ export class Game {
     const rockets = s.resolve(GameTokens.Rockets);
     const bolts = s.resolve(GameTokens.Bolts);
     const energyBalls = s.resolve(GameTokens.EnergyBalls);
+    const iceGun = s.resolve(GameTokens.IceGun);
     const explosiveBarrels = s.resolve(GameTokens.ExplosiveBarrels);
     const vfx = s.resolve(EngineTokens.Vfx);
 
@@ -1130,6 +1137,7 @@ export class Game {
     rockets.update(time.delta, time.elapsed);
     bolts.update(time.delta, time.elapsed);
     energyBalls.update(time.delta, time.elapsed, this.npcs);
+    iceGun.update(time.delta, time.elapsed);
     explosiveBarrels.update();
 
     playerPosition = player.getPosition();
@@ -1574,6 +1582,7 @@ export class Game {
     services.resolve(GameTokens.Rockets).clear();
     services.resolve(GameTokens.Bolts).clear();
     services.resolve(GameTokens.EnergyBalls).clear();
+    services.resolve(GameTokens.IceGun).clear();
     explosiveBarrels.clear();
     vfx.clear();
     services.resolve(EngineTokens.PositionalSound).clear();
@@ -1616,6 +1625,7 @@ export class Game {
       services.resolve(GameTokens.Rockets),
       services.resolve(GameTokens.Bolts),
       services.resolve(GameTokens.EnergyBalls),
+      services.resolve(GameTokens.IceGun),
     );
     if (spawn) {
       this.player.health.restore(spawn.health, spawn.armor);

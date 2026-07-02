@@ -10,6 +10,7 @@ export type WeaponId =
   | "ar3"
   | "crossbow"
   | "gravityGun"
+  | "iceGun"
   | "shotgun"
   | "grenade"
   | "rpg";
@@ -20,6 +21,7 @@ export type WeaponType =
   | "grenade"
   | "rpg"
   | "crossbow"
+  | "iceGun"
   | "special";
 export type WeaponFireMode = "semi" | "auto";
 /**
