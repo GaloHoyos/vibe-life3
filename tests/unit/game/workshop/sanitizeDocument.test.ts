@@ -59,4 +59,44 @@ describe("sanitizeDocument", () => {
       reason: "El documento no es serializable.",
     });
   });
+
+  it("rechaza soundscapes desconocidos en metadata", () => {
+    const doc = testEditorDocument({
+      meta: {
+        ...testEditorDocument().meta,
+        audio: {
+          ...testEditorDocument().meta.audio,
+          soundscape: "missing-soundscape" as never,
+        },
+      },
+    });
+
+    expect(sanitizeDocument(doc)).toMatchObject({
+      ok: false,
+      reason: "El documento referencia un soundscape desconocido.",
+    });
+  });
+
+  it("rechaza soundscapes desconocidos en triggers", () => {
+    const doc = testEditorDocument({
+      entities: [
+        {
+          eid: "trigger-1",
+          kind: "trigger",
+          def: {
+            id: "trigger-1",
+            position: [0, 1, 0],
+            size: [1, 1, 1],
+            once: true,
+            actions: [{ kind: "soundscape", soundscape: "missing-soundscape" as never }],
+          },
+        },
+      ],
+    });
+
+    expect(sanitizeDocument(doc)).toMatchObject({
+      ok: false,
+      reason: "El documento referencia un soundscape desconocido.",
+    });
+  });
 });

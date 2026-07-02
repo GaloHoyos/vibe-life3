@@ -7,6 +7,8 @@ import type { CharacterFactory } from "@game/characters/CharacterFactory";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
 import type { EnemySoundSystem } from "@game/audio/EnemySoundSystem";
+import type { HevSuitSoundSystem } from "@game/audio/HevSuitSoundSystem";
+import type { SoundscapeSystem } from "@game/audio/SoundscapeSystem";
 import type { UISoundSystem } from "@game/audio/UISoundSystem";
 import type { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
 import type { GameEventMap } from "./GameEvents";
@@ -62,10 +64,12 @@ export const GameTokens = {
   BackgroundAmbience: new ServiceToken<BackgroundAmbienceSystem>(
     "BackgroundAmbienceSystem",
   ),
+  Soundscapes: new ServiceToken<SoundscapeSystem>("SoundscapeSystem"),
   Music: new ServiceToken<MusicManager>("MusicManager"),
   Footsteps: new ServiceToken<FootstepSoundSystem>("FootstepSoundSystem"),
   WeaponSounds: new ServiceToken<WeaponSoundSystem>("WeaponSoundSystem"),
   EnemySounds: new ServiceToken<EnemySoundSystem>("EnemySoundSystem"),
   DialogueSounds: new ServiceToken<DialogueAudioSystem>("DialogueAudioSystem"),
+  HevSuitSounds: new ServiceToken<HevSuitSoundSystem>("HevSuitSoundSystem"),
   UISounds: new ServiceToken<UISoundSystem>("UISoundSystem"),
 } as const;

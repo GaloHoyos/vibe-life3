@@ -1,8 +1,9 @@
 import type { Disposable } from '@shared/types/lifecycle';
 import type { TerrainDefinition } from '@game/levels/LevelDefinition';
 import type { SkyboxId } from '@engine/render/environment/Skybox';
+import { DefaultSoundscapeId, type SoundscapeId } from '@game/config/audio.config';
 import type { EditorDocument } from '../EditorDocument';
-import { LEVEL_IDS, MATERIAL_KEYS, SKYBOX_IDS } from '../editorOptions';
+import { LEVEL_IDS, MATERIAL_KEYS, SKYBOX_IDS, SOUNDSCAPE_IDS } from '../editorOptions';
 import { iconSpan } from './editorIcons';
 import {
   checkboxField,
@@ -139,6 +140,10 @@ export class LevelSettingsView implements Disposable {
       }).element,
       textField('Musica', meta.audio.music ?? '', (v) => {
         meta.audio.music = v || undefined;
+        changed();
+      }).element,
+      selectField('Ambiente sonoro', meta.audio.soundscape ?? DefaultSoundscapeId, SOUNDSCAPE_IDS, (v) => {
+        meta.audio.soundscape = v as SoundscapeId;
         changed();
       }).element,
     );

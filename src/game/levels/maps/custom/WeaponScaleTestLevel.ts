@@ -45,6 +45,7 @@ export const WeaponScaleTestLevel: LevelDefinition = {
   playerStart: [0, 1.05, 9.5],
   audio: {
     ambiences: ["background.wind", "background.hl2.labs.machineRing"],
+    soundscape: "lab",
     footstepSounds: [
       "footsteps.hl2.concrete1",
       "footsteps.hl2.concrete2",

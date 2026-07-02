@@ -85,6 +85,7 @@ const map = createMap({
   playerStart: [0, 1.5, 8],
   audio: {
     ambiences: ['background.wind', 'background.hl2.atmosphere.cityRumble'],
+    soundscape: 'warehouse',
     footstepSounds: [
       'footsteps.hl2.concrete1',
       'footsteps.hl2.concrete2',

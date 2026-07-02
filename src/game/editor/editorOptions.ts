@@ -11,6 +11,7 @@ import {
   type ItemId,
 } from '@game/config/items.config';
 import { CharacterPresets } from '@game/characters/CharacterPresets';
+import { Soundscapes, type SoundscapeId } from '@game/config/audio.config';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { LevelActionKind } from '@game/GameEvents';
 import type { TriggerAction } from '@game/levels/LevelDefinition';
@@ -29,9 +30,10 @@ export const CHARACTER_IDS: readonly CharacterId[] = Object.keys(CharacterPreset
 export const ITEM_IDS: readonly ItemId[] = Object.keys(ItemDefinitions) as ItemId[];
 export const CHARGER_KINDS: readonly ChargerKind[] = Object.keys(ChargerTypes) as ChargerKind[];
 export const SKYBOX_IDS: readonly SkyboxId[] = Object.keys(SkyboxManifest) as SkyboxId[];
+export const SOUNDSCAPE_IDS: readonly SoundscapeId[] = Object.keys(Soundscapes) as SoundscapeId[];
 export const LEVEL_ACTIONS: readonly LevelActionKind[] = ['respawnEncounters', 'spawnAllWeapons'];
 export const TRIGGER_ACTION_KINDS: readonly TriggerAction['kind'][] = [
-  'dialogue', 'spawnNpcs', 'door', 'levelAction', 'objective', 'endLevel',
+  'dialogue', 'spawnNpcs', 'door', 'levelAction', 'soundscape', 'objective', 'endLevel',
 ];
 export const HAZARD_KINDS: readonly HazardKind[] = ['toxic', 'fire', 'electric', 'void'];
 

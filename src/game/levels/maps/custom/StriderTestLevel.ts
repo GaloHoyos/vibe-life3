@@ -13,6 +13,7 @@ export const StriderTestLevel: LevelDefinition = {
   playerStart: [0, 6, 18],
   audio: {
     ambiences: ["background.wind", "background.hl2.atmosphere.cityRumble"],
+    soundscape: "outdoor",
     footstepSounds: [
       "footsteps.hl2.concrete1",
       "footsteps.hl2.concrete2",

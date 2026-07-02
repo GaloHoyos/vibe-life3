@@ -1,6 +1,7 @@
 import type { Object3D } from 'three';
 import type { PlayerHealth } from '@game/gameplay/player/PlayerHealth';
 import type { ChargerKind, ChargerTypeDefinition } from '@game/config/items.config';
+import type { GameEventBus } from '@game/GameEvents';
 import type { Interactable } from './Interactable';
 
 /**
@@ -18,12 +19,15 @@ export class Charger implements Interactable {
   private readonly rate: number;
   private reserve: number;
   private health: PlayerHealth | null = null;
+  private active = false;
+  private deniedLatched = false;
 
   constructor(
     readonly id: string,
     readonly object: Object3D,
     type: ChargerTypeDefinition,
     capacity: number,
+    private readonly eventBus: GameEventBus,
   ) {
     this.kind = type.kind;
     this.displayName = type.displayName;
@@ -48,7 +52,11 @@ export class Charger implements Interactable {
   }
 
   interactHeld(delta: number): void {
-    if (!this.health || this.reserve <= 0) {
+    if (!this.health) {
+      return;
+    }
+    if (this.reserve <= 0) {
+      this.deny('empty');
       return;
     }
     const deficit =
@@ -56,18 +64,46 @@ export class Charger implements Interactable {
         ? this.health.max - this.health.current
         : this.health.armorMaximum - this.health.armor;
     if (deficit <= 0) {
+      this.deny('full');
       return;
     }
     const amount = Math.min(this.rate * delta, this.reserve, deficit);
     if (amount <= 0) {
       return;
     }
+    if (!this.active) {
+      this.active = true;
+      this.eventBus.emit('charger.started', { id: this.id, kind: this.kind });
+    }
+    this.deniedLatched = false;
     if (this.kind === 'health') {
       this.health.heal(amount);
     } else {
       this.health.rechargeArmor(amount);
     }
     this.reserve -= amount;
+  }
+
+  interactEnd(): void {
+    if (!this.active) {
+      this.deniedLatched = false;
+      return;
+    }
+    this.eventBus.emit('charger.stopped', {
+      id: this.id,
+      kind: this.kind,
+      depleted: this.reserve <= 0,
+    });
+    this.active = false;
+    this.deniedLatched = false;
+  }
+
+  private deny(reason: 'empty' | 'full'): void {
+    if (this.deniedLatched) {
+      return;
+    }
+    this.deniedLatched = true;
+    this.eventBus.emit('charger.denied', { id: this.id, kind: this.kind, reason });
   }
 }
 

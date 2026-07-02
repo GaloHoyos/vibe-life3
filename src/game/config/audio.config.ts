@@ -7,10 +7,172 @@
  */
 
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
+import type { AudioEnvironmentPreset } from "@engine/audio/core/AudioSystem";
 import type { SurfaceType } from "@shared/types/Surface";
 
 export type SoundRef = string | readonly string[];
 export type WeaponSoundEvent = "shot" | "reload" | "empty" | "altShot";
+export type UiSoundCue = "hover" | "press" | "release" | "back" | "deny";
+export type HevSuitSoundCue =
+  | "armorPickup"
+  | "healthPickup"
+  | "armorChargerLoop"
+  | "healthChargerLoop"
+  | "chargerDone"
+  | "chargerDenied"
+  | "damage"
+  | "armorGone"
+  | "healthCritical"
+  | "nearDeath"
+  | "auxDepleted"
+  | "powerRestored"
+  | "hazardFire"
+  | "hazardToxic"
+  | "hazardElectric"
+  | "hazardVoid"
+  | "flatline";
+
+export type AudioDspPresetId =
+  | "none"
+  | "outdoor"
+  | "smallRoom"
+  | "concreteRoom"
+  | "metalTunnel"
+  | "warehouse"
+  | "citadelChamber";
+
+export type SoundscapeId =
+  | "outdoor"
+  | "wasteland"
+  | "lab"
+  | "factory"
+  | "metalTunnel"
+  | "smallInterior"
+  | "warehouse"
+  | "citadelChamber";
+
+export interface SoundscapeDefinition {
+  readonly dsp: AudioDspPresetId;
+  readonly ambiences?: readonly string[];
+  readonly fadeSeconds?: number;
+}
+
+const reflectiveSends = {
+  weapons: 1,
+  enemies: 0.9,
+  sfx: 0.85,
+  footsteps: 0.65,
+  ambience: 0.08,
+} as const;
+
+export const AudioDspPresets = {
+  none: {
+    reverb: { duration: 0.05, decay: 1, wet: 0 },
+    echo: { delay: 0, feedback: 0, wet: 0 },
+    sends: {},
+  },
+  outdoor: {
+    reverb: { duration: 0.35, decay: 3.8, wet: 0.035, preDelay: 0.01, tone: 8500 },
+    echo: { delay: 0, feedback: 0, wet: 0 },
+    sends: { weapons: 0.25, enemies: 0.2, sfx: 0.18, footsteps: 0.1, ambience: 0.02 },
+  },
+  smallRoom: {
+    reverb: { duration: 0.45, decay: 2.2, wet: 0.18, preDelay: 0.012, tone: 9500 },
+    echo: { delay: 0.055, feedback: 0.16, wet: 0.045, tone: 5200 },
+    sends: reflectiveSends,
+  },
+  concreteRoom: {
+    reverb: { duration: 0.9, decay: 2.6, wet: 0.24, preDelay: 0.018, tone: 7200 },
+    echo: { delay: 0.09, feedback: 0.22, wet: 0.075, tone: 4300 },
+    sends: reflectiveSends,
+  },
+  metalTunnel: {
+    reverb: { duration: 1.35, decay: 2.9, wet: 0.28, preDelay: 0.025, tone: 6200 },
+    echo: { delay: 0.145, feedback: 0.42, wet: 0.18, tone: 3200 },
+    sends: { ...reflectiveSends, ambience: 0.12, footsteps: 0.75 },
+  },
+  warehouse: {
+    reverb: { duration: 2.1, decay: 3.3, wet: 0.26, preDelay: 0.035, tone: 6800 },
+    echo: { delay: 0.12, feedback: 0.24, wet: 0.08, tone: 3900 },
+    sends: { ...reflectiveSends, ambience: 0.1 },
+  },
+  citadelChamber: {
+    reverb: { duration: 2.8, decay: 3.9, wet: 0.34, preDelay: 0.045, tone: 5200 },
+    echo: { delay: 0.18, feedback: 0.36, wet: 0.14, tone: 2400 },
+    sends: { ...reflectiveSends, ambience: 0.14, footsteps: 0.7 },
+  },
+} as const satisfies Record<AudioDspPresetId, AudioEnvironmentPreset>;
+
+export const Soundscapes = {
+  outdoor: {
+    dsp: "outdoor",
+    fadeSeconds: 2,
+  },
+  wasteland: {
+    dsp: "outdoor",
+    ambiences: ["background.hl2.wind.wasteland", "background.hl2.wind.med1"],
+    fadeSeconds: 2.5,
+  },
+  lab: {
+    dsp: "smallRoom",
+    ambiences: ["background.hl2.labs.machineMoving", "background.hl2.machines.labLoop"],
+    fadeSeconds: 1.5,
+  },
+  factory: {
+    dsp: "warehouse",
+    ambiences: ["background.hl2.atmosphere.cityRumble", "background.hl2.machines.wallAmbient"],
+    fadeSeconds: 2,
+  },
+  metalTunnel: {
+    dsp: "metalTunnel",
+    ambiences: ["background.hl2.canals.tunnelWind", "background.hl2.canals.generator"],
+    fadeSeconds: 1.2,
+  },
+  smallInterior: {
+    dsp: "smallRoom",
+    fadeSeconds: 1,
+  },
+  warehouse: {
+    dsp: "warehouse",
+    ambiences: ["background.hl2.atmosphere.undergroundHall"],
+    fadeSeconds: 2,
+  },
+  citadelChamber: {
+    dsp: "citadelChamber",
+    ambiences: ["background.hl2.machines.combineTerminal", "background.hl2.atmosphere.undercity"],
+    fadeSeconds: 2.5,
+  },
+} as const satisfies Record<SoundscapeId, SoundscapeDefinition>;
+
+export const DefaultSoundscapeId: SoundscapeId = "outdoor";
+
+export const UiAudio = {
+  hover: "ui.hl2.buttonRollover",
+  press: "ui.hl2.buttonClick",
+  release: "ui.hl2.buttonClickRelease",
+  back: "ui.hl2.buttonClickRelease",
+  deny: "ui.hl2.buttonClick",
+} as const satisfies Record<UiSoundCue, SoundRef>;
+
+export const HevSuitAudio = {
+  armorPickup: "hev.items.suitChargeOk",
+  healthPickup: ["hev.fvox.medicalRepaired", "hev.fvox.morphine"],
+  armorChargerLoop: "hev.items.suitCharge",
+  healthChargerLoop: "hev.items.medCharge",
+  chargerDone: "hev.items.suitChargeOk",
+  chargerDenied: ["hev.items.suitChargeNo", "hev.player.denyDevice"],
+  damage: "hev.fvox.damage",
+  armorGone: "hev.fvox.armorGone",
+  healthCritical: "hev.fvox.healthCritical",
+  nearDeath: "hev.fvox.nearDeath",
+  auxDepleted: ["hev.player.sprint", "hev.fvox.powerBelow"],
+  powerRestored: "hev.fvox.powerRestored",
+  hazardFire: "hev.fvox.heatDamage",
+  hazardToxic: ["hev.fvox.biohazard", "hev.fvox.chemical"],
+  hazardElectric: "hev.fvox.shockDamage",
+  hazardVoid: ["hev.fvox.warning", "hev.fvox.radiation"],
+  flatline: ["hev.fvox.criticalFail", "hev.fvox.flatline"],
+} as const satisfies Record<HevSuitSoundCue, SoundRef>;
 
 export type WeaponHitSurface =
   | "static"

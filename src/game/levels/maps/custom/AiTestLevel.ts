@@ -386,6 +386,7 @@ export const AiTestLevel: LevelDefinition = {
   playerStart: [0, 1.5, 0],
   audio: {
     ambiences: ["background.wind", "background.hl2.atmosphere.trainstation"],
+    soundscape: "warehouse",
     footstepSounds: [
       "footsteps.hl2.concrete1",
       "footsteps.hl2.concrete2",

@@ -5,6 +5,8 @@ import type { EventBus } from "@engine/core/EventBus";
 import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
 import type { TriggerAction } from "@game/levels/LevelDefinition";
 import type { HazardKind } from "@game/levels/HazardVolumeSystem";
+import type { UiSoundCue } from "@game/config/audio.config";
+import type { ChargerKind } from "@game/config/items.config";
 
 export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
 export type CombatEventSourceKind = "player" | "npc" | "system";
@@ -266,6 +268,9 @@ export interface GameEventMap {
   "player.pickup.health": {
     amount: number;
   };
+  "player.pickup.armor": {
+    amount: number;
+  };
   "player.pickup.ammo": {
     amount: number;
     weaponName?: string;
@@ -313,6 +318,23 @@ export interface GameEventMap {
   "workshop.error": {
     action: string;
     message: string;
+  };
+  "ui.sound": {
+    cue: UiSoundCue;
+  };
+  "charger.started": {
+    id: string;
+    kind: ChargerKind;
+  };
+  "charger.stopped": {
+    id: string;
+    kind: ChargerKind;
+    depleted: boolean;
+  };
+  "charger.denied": {
+    id: string;
+    kind: ChargerKind;
+    reason: "empty" | "full";
   };
 }
 

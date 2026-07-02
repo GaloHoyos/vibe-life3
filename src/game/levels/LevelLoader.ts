@@ -265,11 +265,17 @@ export class LevelLoader {
 
     for (const definition of level.itemPickups ?? []) {
       itemPickups.push(
-        await ItemPickup.create(this.scene, this.physics, this.assets, {
-          id: definition.id,
-          itemId: definition.itemId,
-          position: tupleToVector3(definition.position),
-        }),
+        await ItemPickup.create(
+          this.scene,
+          this.physics,
+          this.assets,
+          this.eventBus,
+          {
+            id: definition.id,
+            itemId: definition.itemId,
+            position: tupleToVector3(definition.position),
+          },
+        ),
       );
     }
 
@@ -307,7 +313,13 @@ export class LevelLoader {
         size: solid.getSize(new Vector3()),
       });
 
-      const charger = new Charger(definition.id, object, type, definition.capacity ?? type.capacity);
+      const charger = new Charger(
+        definition.id,
+        object,
+        type,
+        definition.capacity ?? type.capacity,
+        this.eventBus,
+      );
       this.interactSystem.register(charger);
       chargers.push(charger);
     }

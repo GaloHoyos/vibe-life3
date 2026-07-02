@@ -15,6 +15,8 @@ import { FootstepsConfig, SurfaceFootsteps } from "@game/config/audio.config";
 import { Dialogue, MenuStrings } from "@game/config/strings";
 import { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
 import { EnemySoundSystem } from "@game/audio/EnemySoundSystem";
+import { HevSuitSoundSystem } from "@game/audio/HevSuitSoundSystem";
+import { SoundscapeSystem } from "@game/audio/SoundscapeSystem";
 import { UISoundSystem } from "@game/audio/UISoundSystem";
 import { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
 import type { GameEventMap } from "./GameEvents";
@@ -279,10 +281,13 @@ export class Game {
   private registerAudio(): void {
     const s = this.engine.services;
     const eventBus = s.resolve(GameTokens.EventBus);
+    const audio = s.resolve(EngineTokens.Audio);
     const sound = s.resolve(EngineTokens.Sound);
     const positionalSound = s.resolve(EngineTokens.PositionalSound);
+    const ambience = new BackgroundAmbienceSystem(sound);
 
-    s.register(GameTokens.BackgroundAmbience, new BackgroundAmbienceSystem(sound));
+    s.register(GameTokens.BackgroundAmbience, ambience);
+    s.register(GameTokens.Soundscapes, new SoundscapeSystem(audio, ambience));
     s.register(GameTokens.Music, new MusicManager(sound));
     s.register(GameTokens.Footsteps, new FootstepSoundSystem(sound));
     s.register(GameTokens.WeaponSounds, new WeaponSoundSystem(eventBus, sound));
@@ -294,6 +299,7 @@ export class Game {
       GameTokens.DialogueSounds,
       new DialogueAudioSystem(eventBus, sound),
     );
+    s.register(GameTokens.HevSuitSounds, new HevSuitSoundSystem(eventBus, sound));
     s.register(GameTokens.UISounds, new UISoundSystem(eventBus, sound));
   }
 
@@ -546,6 +552,11 @@ export class Game {
           marker: action.marker ? tupleToVector3(action.marker) : null,
         });
         return;
+      case "soundscape":
+        this.engine.services
+          .resolve(GameTokens.Soundscapes)
+          .activate(action.soundscape, this.currentLevel.audio.ambiences);
+        return;
       case "endLevel":
         void this.goToNextLevel(action.landmark, position);
         return;
@@ -580,7 +591,6 @@ export class Game {
     }
 
     this.transitioning = true;
-    const s = this.engine.services;
     const next = getLevel(nextId);
     const spawn = this.computeTransitionSpawn(landmark, triggerPos, next);
     this.transitionOverlay?.show(next.title);
@@ -589,11 +599,7 @@ export class Game {
 
     try {
       await this.loadLevelDefinition(next, spawn ?? undefined);
-      const ambience = s.resolve(GameTokens.BackgroundAmbience);
-      const music = s.resolve(GameTokens.Music);
-      ambience.start(next.audio.ambiences);
-      if (next.audio.music) music.fadeToMusic(next.audio.music);
-      else music.stopMusic();
+      this.activateLevelSoundscape(next);
       this.transitionOverlay?.hide();
       this.transitioning = false;
     } catch (error) {
@@ -910,6 +916,10 @@ export class Game {
         onResume: () => this.setGameState("playing"),
         onExitToMain: () => this.exitToMainMenu(),
         onOpenEditor: () => this.enterEditor(),
+        onSound: (cue) => {
+          audio.unlock();
+          eventBus.emit("ui.sound", { cue });
+        },
         onToggleDebug: (enabled) => debugMenu.setVisible(enabled),
         onVolumeChange: (bus, value) => audio.setVolume(bus, value),
         onGetVolume: (bus) => audio.getVolume(bus),
@@ -1453,16 +1463,8 @@ export class Game {
 
     await this.loadLevelDefinition(level, spawn);
 
-    const ambience = s.resolve(GameTokens.BackgroundAmbience);
-    const music = s.resolve(GameTokens.Music);
-
     if (this.currentLevel) {
-      ambience.start(this.currentLevel.audio.ambiences);
-      if (this.currentLevel.audio.music) {
-        music.fadeToMusic(this.currentLevel.audio.music);
-      } else {
-        music.stopMusic();
-      }
+      this.activateLevelSoundscape(this.currentLevel);
     }
 
     this.setGameState("playing");
@@ -1480,12 +1482,8 @@ export class Game {
 
     await this.loadLevelDefinition(level);
 
-    const ambience = s.resolve(GameTokens.BackgroundAmbience);
-    const music = s.resolve(GameTokens.Music);
     if (this.currentLevel) {
-      ambience.start(this.currentLevel.audio.ambiences);
-      if (this.currentLevel.audio.music) music.fadeToMusic(this.currentLevel.audio.music);
-      else music.stopMusic();
+      this.activateLevelSoundscape(this.currentLevel);
     }
 
     this.playtestMode = true;
@@ -1494,6 +1492,18 @@ export class Game {
       text: "Playtest — F4 para volver al editor",
       duration: 3,
     });
+  }
+
+  private activateLevelSoundscape(level: LevelDefinition): void {
+    const soundscapes = this.engine.services.resolve(GameTokens.Soundscapes);
+    const music = this.engine.services.resolve(GameTokens.Music);
+
+    soundscapes.activate(level.audio.soundscape, level.audio.ambiences);
+    if (level.audio.music) {
+      music.fadeToMusic(level.audio.music);
+    } else {
+      music.stopMusic();
+    }
   }
 
   private async loadLevelDefinition(
@@ -1642,7 +1652,7 @@ export class Game {
   private exitToMainMenu(): void {
     const s = this.engine.services;
     const mainMenu = s.resolve(GameTokens.MainMenu);
-    const ambience = s.resolve(GameTokens.BackgroundAmbience);
+    const soundscapes = s.resolve(GameTokens.Soundscapes);
     const music = s.resolve(GameTokens.Music);
 
     // Limpiar el modo del editor: si veníamos de un playtest, el flag seguiría
@@ -1652,7 +1662,7 @@ export class Game {
     this.dying = false;
     this.deathScreen?.hide();
 
-    ambience.stop();
+    soundscapes.clear();
     music.stopMusic();
     mainMenu.showLoading(MenuStrings.exitingToMainMenu);
 

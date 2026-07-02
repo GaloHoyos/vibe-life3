@@ -16,6 +16,7 @@ export const Sector1Arrival = createMap({
   audio: {
     ambiences: ['background.wind', 'background.hl2.wind.wasteland'],
     footstepSounds: ['footsteps.snow1', 'footsteps.snow2', 'footsteps.snow3', 'footsteps.snow4'],
+    soundscape: 'wasteland',
   },
 })
   .ground({ size: [40, 52], boundary: { height: 4 } })

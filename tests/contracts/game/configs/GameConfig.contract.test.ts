@@ -6,8 +6,12 @@ import { PlayerConfig } from "@game/config/gameplay.config";
 import { ChargerTypes, ItemDefinitions } from "@game/config/items.config";
 import { AmmoDefinitions } from "@game/config/ammo.config";
 import {
-  EnemyAudio,
-  WeaponAudio,
+	  AudioDspPresets,
+	  EnemyAudio,
+	  HevSuitAudio,
+	  Soundscapes,
+	  UiAudio,
+	  WeaponAudio,
   type EnemySoundMap,
   type WeaponSoundMap,
 } from "@game/config/audio.config";
@@ -110,6 +114,26 @@ describe("game config contracts", () => {
     for (const soundId of collectEnemySoundIds(EnemyAudio)) {
       expect(AudioClipCatalog[soundId]).toBeDefined();
     }
+
+	    for (const soundId of flattenSoundRefs(Object.values(UiAudio))) {
+	      expect(AudioClipCatalog[soundId]).toBeDefined();
+	      expect(AudioClipCatalog[soundId].bus).toBe("ui");
+	    }
+
+	    for (const soundId of flattenSoundRefs(Object.values(HevSuitAudio))) {
+	      expect(AudioClipCatalog[soundId]).toBeDefined();
+	      expect(["dialogue", "ui"]).toContain(AudioClipCatalog[soundId].bus);
+	    }
+	  });
+
+  it("keeps soundscapes pointing at DSP presets and ambience clips", () => {
+    for (const soundscape of Object.values(Soundscapes)) {
+      expect(AudioDspPresets[soundscape.dsp]).toBeDefined();
+      const ambiences = "ambiences" in soundscape ? soundscape.ambiences : [];
+      for (const soundId of ambiences) {
+        expect(AudioClipCatalog[soundId]).toBeDefined();
+      }
+    }
   });
 
   it("keeps control bindings and gameplay constants coherent", () => {
@@ -148,9 +172,11 @@ function collectEnemySoundIds(audio: Record<string, EnemySoundMap>): string[] {
     flattenSoundRefs([
       sounds.alert,
       sounds.attack,
+      sounds.charge,
       sounds.damaged,
       sounds.killed,
       sounds.footstep,
+      sounds.flightLoop,
     ]),
   );
 }

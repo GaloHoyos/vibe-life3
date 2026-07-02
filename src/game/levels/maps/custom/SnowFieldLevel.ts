@@ -53,6 +53,7 @@ export const SnowFieldLevel: LevelDefinition = {
   playerStart: [0, 10, 0],
   audio: {
     ambiences: ['background.wind', 'background.hl2.wind.wasteland'],
+    soundscape: 'wasteland',
     footstepSounds: [
       'footsteps.snow1',
       'footsteps.snow2',

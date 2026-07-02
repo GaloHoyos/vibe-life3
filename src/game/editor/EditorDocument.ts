@@ -1,4 +1,5 @@
 import type { MapMeta } from '@game/levels/builders/MapCreator';
+import { DefaultSoundscapeId } from '@game/config/audio.config';
 import type {
   ActionButtonDefinition,
   AmmoPickupDefinition,
@@ -106,7 +107,7 @@ export function blankDocument(): EditorDocument {
       title: 'Nuevo Nivel',
       background: 0x101820,
       playerStart: [0, 1.6, 6],
-      audio: { ambiences: [], footstepSounds: [] },
+      audio: { ambiences: [], footstepSounds: [], soundscape: DefaultSoundscapeId },
     },
     entities: [
       {

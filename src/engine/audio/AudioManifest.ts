@@ -544,11 +544,48 @@ const hl2BackgroundClips: Hl2ClipSpec[] = [
   { id: "background.hl2.machines.trainRumble", path: "ambient/machines/train_rumble.wav", category: "background", bus: "ambience", loop: true, volume: 0.28 },
 ];
 
+const hl2UiClips: Hl2ClipSpec[] = [
+  { id: "ui.hl2.buttonRollover", path: "ui/buttonrollover.wav", category: "ui", bus: "ui", volume: 0.42 },
+  { id: "ui.hl2.buttonClick", path: "ui/buttonclick.wav", category: "ui", bus: "ui", volume: 0.5 },
+  { id: "ui.hl2.buttonClickRelease", path: "ui/buttonclickrelease.wav", category: "ui", bus: "ui", volume: 0.48 },
+];
+
+const hl2HevClips: Hl2ClipSpec[] = [
+  { id: "hev.items.suitCharge", path: "items/suitcharge1.wav", category: "ui", bus: "ui", loop: true, volume: 0.34 },
+  { id: "hev.items.suitChargeNo", path: "items/suitchargeno1.wav", category: "ui", bus: "ui", volume: 0.48 },
+  { id: "hev.items.suitChargeOk", path: "items/suitchargeok1.wav", category: "ui", bus: "ui", volume: 0.48 },
+  { id: "hev.items.medCharge", path: "items/medcharge4.wav", category: "ui", bus: "ui", loop: true, volume: 0.34 },
+  { id: "hev.player.denyDevice", path: "player/suit_denydevice.wav", category: "ui", bus: "ui", volume: 0.52 },
+  { id: "hev.player.sprint", path: "player/suit_sprint.wav", category: "ui", bus: "ui", volume: 0.5 },
+  { id: "hev.fvox.flatline", path: "hl1/fvox/flatline.wav", category: "dialogue", bus: "dialogue", volume: 0.72 },
+  { id: "hev.fvox.criticalFail", path: "hl1/fvox/hev_critical_fail.wav", category: "dialogue", bus: "dialogue", volume: 0.72 },
+  { id: "hev.fvox.generalFail", path: "hl1/fvox/hev_general_fail.wav", category: "dialogue", bus: "dialogue", volume: 0.72 },
+  { id: "hev.fvox.shutdown", path: "hl1/fvox/hev_shutdown.wav", category: "dialogue", bus: "dialogue", volume: 0.72 },
+  { id: "hev.fvox.healthCritical", path: "hl1/fvox/health_critical.wav", category: "dialogue", bus: "dialogue", volume: 0.72 },
+  { id: "hev.fvox.nearDeath", path: "hl1/fvox/near_death.wav", category: "dialogue", bus: "dialogue", volume: 0.72 },
+  { id: "hev.fvox.damage", path: "hl1/fvox/hev_damage.wav", category: "dialogue", bus: "dialogue", volume: 0.68 },
+  { id: "hev.fvox.armorGone", path: "hl1/fvox/armor_gone.wav", category: "dialogue", bus: "dialogue", volume: 0.7 },
+  { id: "hev.fvox.powerBelow", path: "hl1/fvox/power_below.wav", category: "dialogue", bus: "dialogue", volume: 0.7 },
+  { id: "hev.fvox.powerRestored", path: "hl1/fvox/power_restored.wav", category: "dialogue", bus: "dialogue", volume: 0.68 },
+  { id: "hev.fvox.heatDamage", path: "hl1/fvox/heat_damage.wav", category: "dialogue", bus: "dialogue", volume: 0.72 },
+  { id: "hev.fvox.shockDamage", path: "hl1/fvox/shock_damage.wav", category: "dialogue", bus: "dialogue", volume: 0.72 },
+  { id: "hev.fvox.biohazard", path: "hl1/fvox/biohazard_detected.wav", category: "dialogue", bus: "dialogue", volume: 0.72 },
+  { id: "hev.fvox.chemical", path: "hl1/fvox/chemical_detected.wav", category: "dialogue", bus: "dialogue", volume: 0.72 },
+  { id: "hev.fvox.radiation", path: "hl1/fvox/radiation_detected.wav", category: "dialogue", bus: "dialogue", volume: 0.72 },
+  { id: "hev.fvox.warning", path: "hl1/fvox/warning.wav", category: "dialogue", bus: "dialogue", volume: 0.72 },
+  { id: "hev.fvox.medicalRepaired", path: "hl1/fvox/medical_repaired.wav", category: "dialogue", bus: "dialogue", volume: 0.66 },
+  { id: "hev.fvox.morphine", path: "hl1/fvox/morphine_shot.wav", category: "dialogue", bus: "dialogue", volume: 0.66 },
+];
+
 const HL2AudioClipCatalog: Record<string, AudioClipDefinition> = Object.fromEntries(
-  [...hl2WeaponClips, ...hl2EnemyClips, ...hl2FootstepClips, ...hl2BackgroundClips].map((spec) => [
-    spec.id,
-    hl2Clip(spec),
-  ]),
+  [
+    ...hl2WeaponClips,
+    ...hl2EnemyClips,
+    ...hl2FootstepClips,
+    ...hl2BackgroundClips,
+    ...hl2UiClips,
+    ...hl2HevClips,
+  ].map((spec) => [spec.id, hl2Clip(spec)]),
 );
 
 export const AudioClipCatalog: Record<string, AudioClipDefinition> = {

@@ -153,6 +153,7 @@ const map = createMap({
   playerStart: [0, BASE_H + 1.2, 90],
   audio: {
     ambiences: ['background.wind', 'background.hl2.wind.wasteland'],
+    soundscape: 'factory',
     footstepSounds: [
       'footsteps.snow1',
       'footsteps.snow2',

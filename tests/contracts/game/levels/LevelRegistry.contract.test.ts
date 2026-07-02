@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AudioClipCatalog } from "@engine/audio/AudioManifest";
 import { CharacterPresets } from "@game/characters/CharacterPresets";
 import { AmmoDefinitions, AMMO_ORDER } from "@game/config/ammo.config";
+import { Soundscapes } from "@game/config/audio.config";
 import { ItemDefinitions, ChargerTypes } from "@game/config/items.config";
 import { WeaponDefinitions, WEAPON_ORDER } from "@game/config/weapons.config";
 import {
@@ -72,6 +73,10 @@ function expectValidLevel(level: LevelDefinition, levelIds: ReadonlySet<string>)
     expect(levelIds.has(level.nextLevel)).toBe(true);
   }
 
+  if (level.audio.soundscape) {
+    expect(Soundscapes[level.audio.soundscape]).toBeDefined();
+  }
+
   for (const npc of level.npcs) {
     expect(CharacterPresets[npc.characterId]).toBeDefined();
     expectFiniteTuple(npc.position, 3);
@@ -120,6 +125,10 @@ function expectValidTriggerAction(action: TriggerAction): void {
 
   if (action.kind === "objective" && action.marker) {
     expectFiniteTuple(action.marker, 3);
+  }
+
+  if (action.kind === "soundscape") {
+    expect(Soundscapes[action.soundscape]).toBeDefined();
   }
 
   if (action.kind === "dialogue") {

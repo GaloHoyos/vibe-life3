@@ -6,6 +6,7 @@ import {
   type GameMenuState,
 } from "./MainMenuState";
 import type { AudioBusName } from "@engine/audio/core/AudioSystem";
+import type { UiSoundCue } from "@game/config/audio.config";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { WorkshopService } from "@game/workshop/WorkshopService";
 
@@ -18,6 +19,7 @@ export interface MainMenuCallbacks {
   onResume: () => void;
   onExitToMain: () => void;
   onOpenEditor: () => void;
+  onSound: (cue: UiSoundCue) => void;
   onToggleDebug: (enabled: boolean) => void;
   onVolumeChange: (bus: AudioBusName, value: number) => void;
   onGetVolume: (bus: AudioBusName) => number;
@@ -54,6 +56,7 @@ export class MainMenu implements Disposable {
       onResume: callbacks.onResume,
       onExitToMain: callbacks.onExitToMain,
       onOpenEditor: callbacks.onOpenEditor,
+      onSound: callbacks.onSound,
       onToggleDebug: callbacks.onToggleDebug,
       onVolumeChange: callbacks.onVolumeChange,
       onGetVolume: callbacks.onGetVolume,

@@ -14,6 +14,7 @@ import type { RampSpec } from '@game/levels/builders/RampBuilder';
 import type { NPCDefinition, TriggerAction, TriggerDefinition } from '@game/levels/LevelDefinition';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { LevelActionKind } from '@game/GameEvents';
+import { DefaultSoundscapeId, type SoundscapeId } from '@game/config/audio.config';
 import type { EditorDocument, EditorEntity, PropEntitySpec } from '../EditorDocument';
 import { entityKindLabel, entityLevelId } from '../EditorDocument';
 import {
@@ -36,6 +37,7 @@ import {
   ITEM_IDS,
   LEVEL_ACTIONS,
   MATERIAL_KEYS,
+  SOUNDSCAPE_IDS,
   TRIGGER_ACTION_KINDS,
   WEAPON_IDS,
 } from '../editorOptions';
@@ -452,6 +454,14 @@ export class InspectorView implements Disposable {
           }).element,
         );
         return;
+      case 'soundscape':
+        item.append(
+          selectField('Ambiente sonoro', action.soundscape, SOUNDSCAPE_IDS, (v) => {
+            action.soundscape = v as SoundscapeId;
+            this.commit();
+          }).element,
+        );
+        return;
       case 'objective':
         item.append(
           textField('Texto', action.text, (v) => { action.text = v; this.commit(); }).element,
@@ -792,6 +802,8 @@ function defaultTriggerAction(kind: TriggerAction['kind'], delay?: number): Trig
       return { kind, doorId: '', open: true, delay };
     case 'levelAction':
       return { kind, action: LEVEL_ACTIONS[0], delay };
+    case 'soundscape':
+      return { kind, soundscape: DefaultSoundscapeId, delay };
     case 'objective':
       return { kind, text: '', delay };
     case 'endLevel':

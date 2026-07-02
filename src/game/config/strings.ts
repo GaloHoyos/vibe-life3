@@ -122,6 +122,7 @@ export const HudStrings = {
   unarmed: "DESARMADO",
   weaponPickedUp: (weaponName: string): string => `arma adquirida: ${weaponName}`,
   healthPickedUp: (amount: number): string => `+${amount} vida`,
+  armorPickedUp: (amount: number): string => `+${amount} traje`,
   ammoPickedUp: (amount: number, weaponName?: string): string =>
     `+${amount} ${weaponName ?? "munición"}`,
 } as const;

@@ -8,6 +8,7 @@ import type { SkyboxId } from '@engine/render/environment/Skybox';
 import type { SunOptions } from '@engine/render/environment/LightingSystem';
 import type { HeightSource } from '@shared/math/HeightField';
 import type { LevelActionKind } from '@game/GameEvents';
+import type { SoundscapeId } from '@game/config/audio.config';
 import type { BuildingArtifact } from '@game/levels/buildings/BuildingArtifact';
 import type { CheckpointDefinition } from '@game/levels/CheckpointSystem';
 import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
@@ -109,6 +110,7 @@ export type TriggerAction =
   | { kind: 'spawnNpcs'; npcs: NPCDefinition[]; delay?: number }
   | { kind: 'door'; doorId: string; open: boolean; delay?: number }
   | { kind: 'levelAction'; action: LevelActionKind; delay?: number }
+  | { kind: 'soundscape'; soundscape: SoundscapeId; delay?: number }
   /** Actualiza el objetivo del HUD. `completed` lo marca cumplido; `marker` mueve la brújula. */
   | { kind: 'objective'; text: string; completed?: boolean; marker?: VectorTuple; delay?: number }
   /**
@@ -167,6 +169,8 @@ export interface LevelAudioDefinition {
   footstepSounds: string[];
   /** Id opcional de la mÃºsica del nivel. */
   music?: string;
+  /** Soundscape activo al cargar el nivel. Si se omite, cae a exterior seco. */
+  soundscape?: SoundscapeId;
 }
 
 export interface LevelDefinition {

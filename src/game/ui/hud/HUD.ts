@@ -95,6 +95,9 @@ export class HUD implements Disposable {
       eventBus.on("player.pickup.health", ({ amount }) =>
         this.view.notify(HudStrings.healthPickedUp(amount), "pickup"),
       ),
+      eventBus.on("player.pickup.armor", ({ amount }) =>
+        this.view.notify(HudStrings.armorPickedUp(amount), "pickup"),
+      ),
       eventBus.on("player.pickup.ammo", ({ amount, weaponName }) => {
         this.view.notify(HudStrings.ammoPickedUp(amount, weaponName), "pickup");
       }),

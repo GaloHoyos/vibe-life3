@@ -10,6 +10,11 @@ export interface PlayedSound {
   options: PlayOptions;
 }
 
+export interface FadedSound {
+  id: string;
+  duration: number;
+}
+
 export interface PositionalSoundCall {
   id: string;
   object?: Object3D;
@@ -27,6 +32,7 @@ export type FakePositionalSoundManager = PositionalSoundManager & {
 export type FakeSoundManager = SoundManager & {
   readonly available: Set<string>;
   readonly played: PlayedSound[];
+  readonly fadedOut: FadedSound[];
 };
 
 export function fakePositionalSounds(): FakePositionalSoundManager {
@@ -59,10 +65,12 @@ export function fakePositionalSounds(): FakePositionalSoundManager {
 export function fakeSoundManager(soundIds: Iterable<string> = []): FakeSoundManager {
   const available = new Set(soundIds);
   const played: PlayedSound[] = [];
+  const fadedOut: FadedSound[] = [];
 
   return {
     available,
     played,
+    fadedOut,
     hasSound: (soundId: string) => available.has(soundId),
     preload: () => undefined,
     play: (id: string, options: PlayOptions = {}) => {
@@ -72,7 +80,9 @@ export function fakeSoundManager(soundIds: Iterable<string> = []): FakeSoundMana
       played.push({ id, options: { ...options, loop: true } });
     },
     stop: () => undefined,
-    fadeOut: () => undefined,
+    fadeOut: (id: string, duration?: number) => {
+      fadedOut.push({ id, duration: duration ?? 1 });
+    },
     stopAllByCategory: () => undefined,
     setBusVolume: () => undefined,
     getBuffer: async () => null,
