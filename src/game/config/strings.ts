@@ -125,6 +125,7 @@ export const HudStrings = {
   armorPickedUp: (amount: number): string => `+${amount} traje`,
   ammoPickedUp: (amount: number, weaponName?: string): string =>
     `+${amount} ${weaponName ?? "munición"}`,
+  portalPlacementFailed: "Superficie no válida para portal",
 } as const;
 
 /** Anuncio del traje H.E.V. por tipo de peligro ambiental (estilo HL2). */

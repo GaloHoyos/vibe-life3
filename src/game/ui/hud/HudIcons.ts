@@ -113,6 +113,18 @@ const Rpg = `
   <line x1="34" y1="10" x2="44" y2="10"/>
 </svg>`.trim();
 
+const PortalGun = `
+<svg viewBox="0 0 48 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" xmlns="http://www.w3.org/2000/svg">
+  <path d="M 5 9 L 26 9 L 30 5 L 40 5"/>
+  <path d="M 5 15 L 26 15 L 30 19 L 40 19"/>
+  <path d="M 5 9 L 5 15"/>
+  <path d="M 26 9 L 26 15"/>
+  <path d="M 40 5 L 44 9"/>
+  <path d="M 40 19 L 44 15"/>
+  <ellipse cx="41" cy="12" rx="2.4" ry="4"/>
+  <line x1="14" y1="15" x2="14" y2="20"/>
+</svg>`.trim();
+
 const ICONS: Record<WeaponId, string> = {
   crowbar: Crowbar,
   pistol: Pistol,
@@ -122,6 +134,7 @@ const ICONS: Record<WeaponId, string> = {
   crossbow: Crossbow,
   gravityGun: GravityGun,
   iceGun: IceGun,
+  portalGun: PortalGun,
   shotgun: Shotgun,
   grenade: Grenade,
   rpg: Rpg,

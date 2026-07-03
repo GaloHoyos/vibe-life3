@@ -67,6 +67,15 @@ export class CameraSystem {
     this.camera.quaternion.setFromEuler(this.lookEuler);
   }
 
+  /** Fija yaw y pitch de una vez (teleports/portales). Clampea pitch como `updateLook`. */
+  setLook(yaw: number, pitch: number): void {
+    const maxPitch = Math.PI / 2 - 0.02;
+    this.yaw = yaw;
+    this.pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch));
+    this.lookEuler.set(this.pitch, this.yaw, 0);
+    this.camera.quaternion.setFromEuler(this.lookEuler);
+  }
+
   syncToPosition(position: Vector3): void {
     this.camera.position.copy(position);
   }

@@ -47,6 +47,14 @@ export interface PhysicsBoxOptions {
   metadata?: Partial<PhysicsMetadata>;
 }
 
+export interface PhysicsTrimeshOptions {
+  id: string;
+  /** Vertices en world space (el body queda en el origen, sin rotación). */
+  vertices: Float32Array;
+  indices: Uint32Array;
+  metadata?: Partial<PhysicsMetadata>;
+}
+
 export interface PhysicsHeightfieldOptions {
   id: string;
   /** Centro del heightfield en world space. */
@@ -145,6 +153,20 @@ export class PhysicsWorld {
     );
     const colliderDesc = RAPIER.ColliderDesc.trimesh(vertices, indices);
     const collider = this.world.createCollider(colliderDesc, rigidBody);
+    this.registerCollider(collider, {
+      id: options.id,
+      kind: 'static',
+      ...options.metadata,
+    });
+    return rigidBody;
+  }
+
+  createStaticTrimesh(options: PhysicsTrimeshOptions): RAPIER.RigidBody {
+    const rigidBody = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    const collider = this.world.createCollider(
+      RAPIER.ColliderDesc.trimesh(options.vertices, options.indices),
+      rigidBody,
+    );
     this.registerCollider(collider, {
       id: options.id,
       kind: 'static',

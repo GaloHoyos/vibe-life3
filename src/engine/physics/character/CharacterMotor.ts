@@ -54,6 +54,7 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
   private leaping = false;
   private leapAirborne = false;
   private leapTimer = 0;
+  private portalExclusions: ReadonlySet<number> | null = null;
 
   constructor(
     physics: PhysicsWorld,
@@ -279,8 +280,32 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
     this.body.setEnabled(false);
   }
 
-  getVelocity(): Vector3 {
+  override getVelocity(): Vector3 {
     return this.velocity.clone();
+  }
+
+  /**
+   * Colliders que el collide-and-slide debe ignorar mientras el NPC transita
+   * un portal (la pared que respalda el disco). Null = sin exclusiones.
+   */
+  setPortalExclusions(handles: ReadonlySet<number> | null): void {
+    this.portalExclusions = handles;
+  }
+
+  /** Reorienta el yaw de golpe (salida de portal): sin damping ni giro visible. */
+  snapYaw(yaw: number): void {
+    this.yaw = yaw;
+    this.targetYaw = yaw;
+    this.body.setNextKinematicRotation(
+      this.tmpRotation.setFromAxisAngle(Y_AXIS, yaw),
+    );
+  }
+
+  override teleport(position: Vector3, velocity: Vector3): void {
+    super.teleport(position, velocity);
+    // El damping de horizontalVelocity pisaría la velocidad nueva un frame
+    // después; sincronizarla mantiene el momentum de salida.
+    this.horizontalVelocity.set(velocity.x, 0, velocity.z);
   }
 
   setSpeedMultiplier(multiplier: number): void {
@@ -293,6 +318,9 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
 
   private shouldCollideWith(collider: RAPIER.Collider): boolean {
     if (collider.handle === this.collider.handle || collider.isSensor()) {
+      return false;
+    }
+    if (this.portalExclusions?.has(collider.handle)) {
       return false;
     }
 

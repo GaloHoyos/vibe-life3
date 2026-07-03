@@ -10,6 +10,7 @@ import {
 } from "three";
 import type RAPIER from "@dimforge/rapier3d-compat";
 import type { Raycast, RaycastHit } from "@engine/physics/Raycast";
+import type { PortalRaycast } from "@engine/portals/PortalRaycast";
 import type { GameEventBus } from "@game/GameEvents";
 import type { Disposable } from "@shared/types/lifecycle";
 
@@ -64,6 +65,7 @@ export class BoltSystem implements Disposable {
     private readonly scene: Scene,
     private readonly raycast: Raycast,
     private readonly eventBus: GameEventBus,
+    private readonly portals?: PortalRaycast,
   ) {}
 
   spawn(options: BoltSpawnOptions): void {
@@ -114,6 +116,21 @@ export class BoltSystem implements Disposable {
       tmpDir.copy(bolt.velocity).divideScalar(speed);
 
       const hit = this.castImpact(bolt, tmpDir, travel);
+      // Portal jump: rebasa posición/dirección y rota la velocidad completa
+      // (la rapidez se conserva — la transformación es una isometría).
+      const leftover = this.portals?.projectileStep(
+        bolt.position,
+        tmpDir,
+        travel,
+        hit ? hit.toi : null,
+      );
+      if (leftover !== null && leftover !== undefined) {
+        bolt.velocity.copy(tmpDir).multiplyScalar(speed);
+        bolt.position.addScaledVector(tmpDir, leftover);
+        bolt.mesh.position.copy(bolt.position);
+        bolt.mesh.quaternion.setFromUnitVectors(LOCAL_X, tmpDir);
+        continue;
+      }
       if (hit) {
         this.resolveImpact(bolt, hit, tmpDir);
         this.stickBolt(bolt, hit, tmpDir, elapsed);

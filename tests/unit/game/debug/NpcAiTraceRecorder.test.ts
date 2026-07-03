@@ -53,6 +53,8 @@ function fakeNpc(snapshot: NpcAiDebugSnapshot = fakeSnapshot()): INpc {
     radius: 0.4,
     update: () => undefined,
     syncFromPhysics: () => undefined,
+    getPortalTraversalHandle: () => null,
+    getFreezeHandle: () => null,
     applyDamage: () => undefined,
     isAlive: () => snapshot.isAlive,
     getState: () => snapshot.state,

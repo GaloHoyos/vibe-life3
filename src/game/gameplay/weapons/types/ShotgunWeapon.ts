@@ -235,7 +235,8 @@ export class ShotgunWeapon extends Weapon {
     for (let i = 0; i < pellets; i += 1) {
       const dir = applySpread(direction, spread);
       const rayOrigin = origin.clone().addScaledVector(dir, 0.45);
-      const hit = this.context.raycast.cast(rayOrigin, dir, range);
+      // Portal-aware: los perdigones cruzan el par linked igual que el hitscan.
+      const hit = this.context.portals.throughRaycast.cast(rayOrigin, dir, range);
       // Un tracer por perdigón (también los que erran), vía evento dedicado para
       // no disparar N sonidos/flashes como haría un `weapon.fired` por perdigón.
       this.context.eventBus.emit("weapon.tracer", {

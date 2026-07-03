@@ -15,6 +15,7 @@ import type { Faction } from "@engine/ai/Faction";
 import type { AssetManager } from "@engine/assets/AssetManager";
 import type { PositionalSoundManager } from "@engine/audio/core/PositionalSoundManager";
 import type { Raycast, RaycastHit } from "@engine/physics/Raycast";
+import type { PortalRaycast } from "@engine/portals/PortalRaycast";
 import type { VfxSystem } from "@engine/render/effects/VfxSystem";
 import type { Disposable } from "@shared/types/lifecycle";
 import type { GrenadeOwnerKind } from "@game/gameplay/weapons/grenade/Grenade";
@@ -90,6 +91,7 @@ export class RocketSystem implements Disposable {
     private readonly grenades: GrenadeSystem,
     private readonly vfx: VfxSystem,
     private readonly positionalSounds: PositionalSoundManager,
+    private readonly portals?: PortalRaycast,
   ) {
     void this.assets.loadModel("rpgRocket");
   }
@@ -177,6 +179,18 @@ export class RocketSystem implements Disposable {
 
       const travel = Math.max(0, ROCKET_SPEED * delta);
       const hit = this.castImpact(rocket, travel, elapsed);
+      // Portal jump wins coplanar ties against the wall backing the disc.
+      const leftover = this.portals?.projectileStep(
+        rocket.position,
+        rocket.direction,
+        travel,
+        hit ? hit.toi : null,
+      );
+      if (leftover !== null && leftover !== undefined) {
+        rocket.position.addScaledVector(rocket.direction, leftover);
+        this.syncMesh(rocket);
+        continue;
+      }
       if (hit) {
         this.explode(rocket, hit.point);
         this.rockets.splice(i, 1);
@@ -297,7 +311,15 @@ export class RocketSystem implements Disposable {
     let remaining = LASER_RANGE;
 
     for (let i = 0; i < MAX_IGNORED_HITS && remaining > 0; i += 1) {
-      const hit = this.raycast.cast(tmpCastOrigin, dir, remaining, undefined, sourceId);
+      // Portal-aware: el punto láser aparece del otro lado del portal, y el
+      // homing arrastra el cohete hacia el disco (que también lo atraviesa).
+      const hit = (this.portals ?? this.raycast).cast(
+        tmpCastOrigin,
+        dir,
+        remaining,
+        undefined,
+        sourceId,
+      );
       if (!hit) {
         break;
       }

@@ -284,6 +284,12 @@ export const WeaponAudio: Record<string, WeaponSoundMap> = {
       dynamic: ["weapons.energyball.hl2.bounce1", "weapons.energyball.hl2.bounce2"],
     },
   },
+  // Portal Gun: reusa clips de gravity gun/energy ball, sin binarios nuevos.
+  "Portal Gun": {
+    shot: ["weapons.gravityGun.hl2.launch1", "weapons.gravityGun.hl2.launch2"],
+    altShot: ["weapons.gravityGun.hl2.launch1", "weapons.gravityGun.hl2.launch2"],
+    empty: "weapons.gravityGun.hl2.dryfire",
+  },
   // Torreta de piso: el disparo llega como `weapon.fired` con weaponName 'Torreta'.
   Torreta: {
     shot: [

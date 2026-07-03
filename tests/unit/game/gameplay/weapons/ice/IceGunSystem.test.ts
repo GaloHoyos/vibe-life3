@@ -1,54 +1,61 @@
-import type RAPIER from "@dimforge/rapier3d-compat";
-import { describe, expect, it, vi } from "vitest";
+import RAPIER from "@dimforge/rapier3d-compat";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { Scene, Vector3 } from "three";
 import { EventBus } from "@engine/core/EventBus";
-import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
+import type { PhysicsMetadata } from "@engine/physics/PhysicsWorld";
+import { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast, RaycastHit } from "@engine/physics/Raycast";
+import { Raycast as RealRaycast } from "@engine/physics/Raycast";
 import type { VfxSystem } from "@engine/render/effects/VfxSystem";
 import type { GameEventMap } from "@game/GameEvents";
+import { IceConfig } from "@game/config/ice.config";
 import { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
+import type { NpcFreezeHandle } from "@game/npc/core/INpc";
 
-interface FakeBody {
-  isValid(): boolean;
-  invalidate(): void;
+beforeAll(async () => {
+  await RAPIER.init();
+});
+
+function fakeVfx(): VfxSystem {
+  return { explosion: vi.fn() } as unknown as VfxSystem;
 }
 
-function setup() {
+/** Mundo real con piso en y=0 para tests de pintado/rampas/carveo. */
+async function setupWorld() {
+  const scene = new Scene();
+  const bus = new EventBus<GameEventMap>();
+  const physics = new PhysicsWorld();
+  await physics.init();
+  physics.createStaticBox({
+    id: "floor",
+    position: new Vector3(0, -0.5, 0),
+    size: new Vector3(60, 1, 60),
+  });
+  physics.updateQueryPipeline();
+  const raycast = new RealRaycast(physics);
+  const vfx = fakeVfx();
+  const system = new IceGunSystem(scene, physics, raycast, bus, vfx);
+  return { scene, bus, physics, raycast, vfx, system };
+}
+
+/** Raycast mockeado para tests de freeze contra NPCs sintéticos. */
+function setupMocked() {
   const scene = new Scene();
   const bus = new EventBus<GameEventMap>();
   let hit: RaycastHit | null = null;
   const raycast = {
     cast: vi.fn(() => hit),
   } as unknown as Raycast;
-  const createStaticBox = vi.fn((_options: unknown) => {
-    let valid = true;
-    const body: FakeBody = {
-      isValid: () => valid,
-      invalidate: () => {
-        valid = false;
-      },
-    };
-    return body as unknown as RAPIER.RigidBody;
-  });
-  const removeBody = vi.fn((body: RAPIER.RigidBody) => {
-    (body as unknown as FakeBody).invalidate();
-  });
   const physics = {
-    createStaticBox,
-    removeBody,
+    createStaticTrimesh: vi.fn(),
+    removeBody: vi.fn(),
   } as unknown as PhysicsWorld;
-  const vfx = {
-    explosion: vi.fn(),
-  } as unknown as VfxSystem;
+  const vfx = fakeVfx();
   const system = new IceGunSystem(scene, physics, raycast, bus, vfx);
-
   return {
-    bus,
     scene,
+    bus,
     system,
-    raycast,
-    createStaticBox,
-    removeBody,
     vfx,
     setHit: (next: RaycastHit | null) => {
       hit = next;
@@ -56,52 +63,20 @@ function setup() {
   };
 }
 
-function fire(system: IceGunSystem, now: number, direction = new Vector3(0, 0, -1)) {
+function fire(
+  system: IceGunSystem,
+  now: number,
+  origin = new Vector3(0, 1.6, 0),
+  direction = new Vector3(0, -1, 0),
+) {
   return system.fire({
-    origin: new Vector3(0, 1.6, 3),
+    origin,
     direction,
     range: 18,
     now,
     sourceId: "player",
     weaponName: "Ice Gun",
   });
-}
-
-function surf(system: IceGunSystem, now: number, direction = new Vector3(0, 0, -1)) {
-  return system.surf({
-    origin: new Vector3(0, 1.6, 3),
-    direction,
-    now,
-    sourceId: "player",
-  });
-}
-
-function worldHit(point: Vector3): RaycastHit {
-  return {
-    collider: {} as RAPIER.Collider,
-    metadata: {
-      id: "world",
-      kind: "static",
-      surface: "concrete",
-    },
-    point,
-    normal: new Vector3(0, 1, 0),
-    toi: 1,
-  };
-}
-
-function iceHit(id: string, point: Vector3, normal = new Vector3(0, 0, 1)): RaycastHit {
-  return {
-    collider: {} as RAPIER.Collider,
-    metadata: {
-      id,
-      kind: "static",
-      surface: "snow",
-    },
-    point,
-    normal,
-    toi: 1,
-  };
 }
 
 function npcHit(metadata: PhysicsMetadata): RaycastHit {
@@ -114,138 +89,236 @@ function npcHit(metadata: PhysicsMetadata): RaycastHit {
   };
 }
 
-describe("IceGunSystem", () => {
-  it("deposits a wall blob at the beam impact point immediately", () => {
-    const { system, setHit, raycast, createStaticBox } = setup();
+function freezeHandle(id: string): NpcFreezeHandle & {
+  frozenCalls: boolean[];
+  alive: { value: boolean };
+} {
+  const frozenCalls: boolean[] = [];
+  const alive = { value: true };
+  return {
+    id,
+    radius: 0.35,
+    getPosition: () => new Vector3(0, 1, -2),
+    isAlive: () => alive.value,
+    setFrozen: (frozen: boolean) => {
+      frozenCalls.push(frozen);
+    },
+    frozenCalls,
+    alive,
+  };
+}
 
-    setHit(worldHit(new Vector3(0, 0, 0)));
+describe("IceGunSystem (blobulator)", () => {
+  it("spraying the floor bakes walkable ice with a raycastable trimesh", async () => {
+    const { system, physics, raycast } = await setupWorld();
+
     expect(fire(system, 0)).toBe(true);
-
-    expect(raycast.cast).toHaveBeenCalled();
-    expect(system.getStructureCount()).toBe(1);
     expect(system.getDepositedBlobCount()).toBe(1);
-    expect(createStaticBox).toHaveBeenCalledTimes(1);
-    expect(createStaticBox).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "ice-0",
-        metadata: { surface: "snow" },
-      }),
+    system.flushChunks();
+    physics.updateQueryPipeline();
+
+    const hit = raycast.cast(new Vector3(0, 2, 0), new Vector3(0, -1, 0), 5);
+    expect(hit).not.toBeNull();
+    expect(hit!.metadata?.id.startsWith("ice-")).toBe(true);
+    expect(hit!.metadata?.surface).toBe("snow");
+    expect(hit!.point.y).toBeGreaterThan(0.05);
+  });
+
+  it("spraying on top of existing ice keeps stacking (mounds grow)", async () => {
+    const { system, physics, raycast } = await setupWorld();
+
+    for (let i = 0; i < 6; i += 1) {
+      fire(system, i * 0.06);
+      system.flushChunks();
+      physics.updateQueryPipeline();
+    }
+
+    const hit = raycast.cast(new Vector3(0, 3, 0), new Vector3(0, -1, 0), 5);
+    expect(hit).not.toBeNull();
+    // Tras varias capas, la masa supera con holgura un solo blob.
+    expect(hit!.point.y).toBeGreaterThan(0.5);
+    expect(system.getDepositedBlobCount()).toBeGreaterThanOrEqual(6);
+  });
+
+  it("bridges the stroke between consecutive spray ticks", async () => {
+    const { system } = await setupWorld();
+
+    fire(system, 0, new Vector3(0, 1.6, 0));
+    fire(system, 0.06, new Vector3(1.2, 1.6, 0));
+
+    // 2 depósitos directos + puentes intermedios del stroke.
+    expect(system.getDepositedBlobCount()).toBeGreaterThan(2);
+  });
+
+  it("RMB grows an ascending ramp anchored on the ground and caps its length", async () => {
+    const { system } = await setupWorld();
+    const origin = new Vector3(0, 1.6, 0);
+    const direction = new Vector3(0, 0, 1);
+
+    let steps = 0;
+    let now = 0;
+    while (
+      system.surf({ origin, direction, now, sourceId: "player" }) &&
+      steps < 100
+    ) {
+      steps += 1;
+      now += IceConfig.ramp.cooldown + 0.01;
+    }
+
+    const expectedSteps = Math.ceil(
+      IceConfig.ramp.maxLength /
+        Math.hypot(IceConfig.ramp.step, IceConfig.ramp.rise),
+    );
+    expect(steps).toBeGreaterThan(3);
+    expect(steps).toBeLessThanOrEqual(expectedSteps + 1);
+    expect(system.getDepositedBlobCount()).toBe(
+      steps * IceConfig.ramp.lateralOffsets.length,
     );
   });
 
-  it("merges nearby LMB impacts into one connected blob structure", () => {
-    const { system, setHit, createStaticBox } = setup();
+  it("melts the oldest blobs when the budget is exceeded", async () => {
+    const { system } = await setupWorld();
+    const over = 5;
+    const total = IceConfig.paint.budget + over;
+    for (let i = 0; i < total; i += 1) {
+      // Separados más que strokeBridgeMax para que no haya puentes, y con la
+      // grilla centrada para no salirse del piso de 60×60.
+      fire(
+        system,
+        i * 0.01,
+        new Vector3((i % 16) * 2.9 - 22, 1.6, Math.floor(i / 16) * 2.9 - 22),
+      );
+    }
+    expect(system.getDepositedBlobCount()).toBe(total);
 
-    setHit(worldHit(new Vector3(0, 0, 0)));
+    system.update(1 / 60, total * 0.01 + IceConfig.melt.seconds + 0.2, []);
+    expect(system.getDepositedBlobCount()).toBe(IceConfig.paint.budget);
+  });
+
+  it("weapon damage on ice carves blobs around the impact", async () => {
+    const { system, bus, vfx } = await setupWorld();
     fire(system, 0);
-    setHit(worldHit(new Vector3(0.24, 0, 0.08)));
     fire(system, 0.06);
-
-    expect(system.getStructureCount()).toBe(1);
     expect(system.getDepositedBlobCount()).toBe(2);
-    expect(createStaticBox).toHaveBeenCalledTimes(2);
-  });
 
-  it("creates a separate wall structure when the beam is moved far away", () => {
-    const { system, setHit } = setup();
-
-    setHit(worldHit(new Vector3(0, 0, 0)));
-    fire(system, 0);
-    setHit(worldHit(new Vector3(5, 0, 0)));
-    fire(system, 0.06);
-
-    expect(system.getStructureCount()).toBe(2);
-    expect(system.getDepositedBlobCount()).toBe(2);
-  });
-
-  it("updates the grouped collider as the wall bounds grow", () => {
-    const { system, setHit, createStaticBox, removeBody } = setup();
-
-    setHit(worldHit(new Vector3(0, 0, 0)));
-    fire(system, 0);
-    const firstSize = (createStaticBox.mock.calls.at(-1)?.[0] as { size: Vector3 } | undefined)?.size.clone();
-    setHit(worldHit(new Vector3(0.95, 0, 0)));
-    fire(system, 0.06);
-    const lastSize = (createStaticBox.mock.calls.at(-1)?.[0] as { size: Vector3 } | undefined)?.size.clone();
-
-    expect(firstSize).toBeDefined();
-    expect(lastSize).toBeDefined();
-    expect(lastSize!.x).toBeGreaterThan(firstSize!.x);
-    expect(lastSize!.z).toBeLessThanOrEqual(0.36);
-    expect(removeBody).toHaveBeenCalled();
-  });
-
-  it("keeps wall painting on the existing ice plane when the beam hits its collider face", () => {
-    const { system, setHit, createStaticBox } = setup();
-
-    setHit(worldHit(new Vector3(0, 0, 0)));
-    fire(system, 0);
-    const firstPosition = (createStaticBox.mock.calls.at(-1)?.[0] as { position: Vector3 } | undefined)?.position.clone();
-
-    expect(firstPosition).toBeDefined();
-    setHit(iceHit("ice-0", new Vector3(0.12, firstPosition!.y, firstPosition!.z + 0.65)));
-    fire(system, 0.06);
-    const lastPosition = (createStaticBox.mock.calls.at(-1)?.[0] as { position: Vector3 } | undefined)?.position.clone();
-    const lastSize = (createStaticBox.mock.calls.at(-1)?.[0] as { size: Vector3 } | undefined)?.size.clone();
-
-    expect(system.getStructureCount()).toBe(1);
-    expect(system.getDepositedBlobCount()).toBe(2);
-    expect(lastPosition).toBeDefined();
-    expect(lastSize).toBeDefined();
-    expect(Math.abs(lastPosition!.z - firstPosition!.z)).toBeLessThan(0.05);
-    expect(lastSize!.z).toBeLessThanOrEqual(0.36);
-  });
-
-  it("RMB creates a connected surf ramp whose collider climbs over time", () => {
-    const { system, setHit, createStaticBox } = setup();
-
-    setHit(worldHit(new Vector3(0, 0, 2)));
-    expect(surf(system, 0)).toBe(true);
-    const firstY = (createStaticBox.mock.calls.at(-1)?.[0] as { position: Vector3 } | undefined)?.position.y;
-    setHit(null);
-    expect(surf(system, 0.1)).toBe(true);
-    const lastY = (createStaticBox.mock.calls.at(-1)?.[0] as { position: Vector3 } | undefined)?.position.y;
-    const lastSize = (createStaticBox.mock.calls.at(-1)?.[0] as { size: Vector3 } | undefined)?.size.clone();
-
-    expect(system.getStructureCount()).toBe(1);
-    expect(system.getDepositedBlobCount()).toBe(6);
-    expect(firstY).toBeDefined();
-    expect(lastY).toBeDefined();
-    expect(lastY!).toBeGreaterThan(firstY!);
-    expect(lastSize).toBeDefined();
-    expect(lastSize!.x).toBeGreaterThanOrEqual(1.48);
-    expect(lastSize!.y).toBeLessThan(0.55);
-  });
-
-  it("beam freeze accumulates on normal NPCs and kills only at threshold", () => {
-    const { system, setHit, vfx } = setup();
-    let alive = true;
-    const applyDamage = vi.fn((amount: number) => {
-      if (amount >= 1000) {
-        alive = false;
-      }
+    system.update(1 / 60, 1, []);
+    bus.emit("weapon.hit", {
+      weaponName: "SMG",
+      targetId: "ice-0,0,0",
+      surfaceKind: "static",
+      point: new Vector3(0, 0.3, 0),
+      normal: new Vector3(0, 1, 0),
+      damage: 40,
+      sourceId: "player",
     });
+    system.update(1 / 60, 1.5, []);
+
+    expect(system.getDepositedBlobCount()).toBe(0);
+    expect(vfx.explosion).toHaveBeenCalled();
+  });
+
+  it("freeze meter fills on NPCs and turns them into a statue via the handle", () => {
+    const { system, bus, setHit } = setupMocked();
+    const handle = freezeHandle("combine-1");
+    const frozenEvents: string[] = [];
+    bus.on("ice.frozen", (payload) => frozenEvents.push(payload.targetId));
+
     setHit(
       npcHit({
         id: "combine-body",
         ownerId: "combine-1",
         kind: "npc",
         characterId: "combine",
-        damageable: {
-          applyDamage,
-          isAlive: () => alive,
-        },
+        damageable: { applyDamage: vi.fn(), isAlive: () => true },
       }),
     );
 
+    system.update(1 / 60, 0, [handle]);
     for (let i = 0; i < 7; i += 1) {
       fire(system, i * 0.06);
     }
     expect(system.getFreezeAmount("combine-1")).toBe(98);
+    expect(handle.frozenCalls).toHaveLength(0);
 
     fire(system, 0.48);
+    expect(handle.frozenCalls).toEqual([true]);
+    expect(system.isFrozen("combine-1")).toBe(true);
+    expect(frozenEvents).toEqual(["combine-1"]);
+  });
 
-    expect(applyDamage).toHaveBeenCalledTimes(1);
+  it("statues thaw after their duration and keep a residual freeze meter", () => {
+    const { system, bus, setHit } = setupMocked();
+    const handle = freezeHandle("combine-1");
+    const thawed: string[] = [];
+    bus.on("ice.thawed", (payload) => thawed.push(payload.targetId));
+
+    setHit(
+      npcHit({
+        id: "combine-body",
+        ownerId: "combine-1",
+        kind: "npc",
+        characterId: "combine",
+        damageable: { applyDamage: vi.fn(), isAlive: () => true },
+      }),
+    );
+    system.update(1 / 60, 0, [handle]);
+    for (let i = 0; i < 8; i += 1) {
+      fire(system, i * 0.06);
+    }
+    expect(system.isFrozen("combine-1")).toBe(true);
+
+    system.update(1 / 60, 0.5 + IceConfig.freeze.statueSeconds + 0.1, [handle]);
+    expect(handle.frozenCalls).toEqual([true, false]);
+    expect(system.isFrozen("combine-1")).toBe(false);
+    expect(thawed).toEqual(["combine-1"]);
+    expect(system.getFreezeAmount("combine-1")).toBe(
+      IceConfig.freeze.refreezeAmount,
+    );
+  });
+
+  it("a statue killed by damage shatters with an ice burst", () => {
+    const { system, setHit, vfx } = setupMocked();
+    const handle = freezeHandle("combine-1");
+    setHit(
+      npcHit({
+        id: "combine-body",
+        ownerId: "combine-1",
+        kind: "npc",
+        characterId: "combine",
+        damageable: { applyDamage: vi.fn(), isAlive: () => handle.alive.value },
+      }),
+    );
+    system.update(1 / 60, 0, [handle]);
+    for (let i = 0; i < 8; i += 1) {
+      fire(system, i * 0.06);
+    }
+    expect(system.isFrozen("combine-1")).toBe(true);
+
+    handle.alive.value = false;
+    system.update(1 / 60, 1, [handle]);
+    expect(system.isFrozen("combine-1")).toBe(false);
+    expect(vfx.explosion).toHaveBeenCalled();
+  });
+
+  it("targets without a freeze handle die of cold at threshold (fallback)", () => {
+    const { system, setHit, vfx } = setupMocked();
+    let alive = true;
+    const applyDamage = vi.fn((amount: number) => {
+      if (amount >= 1000) alive = false;
+    });
+    setHit(
+      npcHit({
+        id: "turret-body",
+        ownerId: "turret-1",
+        kind: "npc",
+        characterId: "combine",
+        damageable: { applyDamage, isAlive: () => alive },
+      }),
+    );
+
+    for (let i = 0; i < 8; i += 1) {
+      fire(system, i * 0.06);
+    }
     expect(applyDamage).toHaveBeenCalledWith(
       1000,
       expect.any(Vector3),
@@ -253,15 +326,11 @@ describe("IceGunSystem", () => {
       "player",
       expect.any(Vector3),
     );
-    expect(system.getFreezeAmount("combine-1")).toBe(0);
-    expect(vfx.explosion).toHaveBeenCalledWith(
-      expect.any(Vector3),
-      expect.objectContaining({ scale: 0.75 }),
-    );
+    expect(vfx.explosion).toHaveBeenCalled();
   });
 
-  it("freeze-resistant NPCs receive light cold damage and do not store freeze", () => {
-    const { system, setHit } = setup();
+  it("freeze-resistant characters take light cold damage instead", () => {
+    const { system, setHit } = setupMocked();
     const applyDamage = vi.fn();
     setHit(
       npcHit({
@@ -269,17 +338,13 @@ describe("IceGunSystem", () => {
         ownerId: "strider-1",
         kind: "npc",
         characterId: "strider",
-        damageable: {
-          applyDamage,
-          isAlive: () => true,
-        },
+        damageable: { applyDamage, isAlive: () => true },
       }),
     );
 
     fire(system, 0);
-
     expect(applyDamage).toHaveBeenCalledWith(
-      4,
+      IceConfig.freeze.bossColdDamage,
       expect.any(Vector3),
       undefined,
       "player",
@@ -288,52 +353,17 @@ describe("IceGunSystem", () => {
     expect(system.getFreezeAmount("strider-1")).toBe(0);
   });
 
-  it("breaks ice structures when weapon.hit depletes their health", () => {
-    const { bus, system, setHit, removeBody, vfx } = setup();
-    const point = new Vector3(0, 1, 0);
-
-    setHit(worldHit(new Vector3(0, 0, 0)));
-    fire(system, 0);
-    bus.emit("weapon.hit", {
-      weaponName: "SMG",
-      targetId: "ice-0",
-      surfaceKind: "static",
-      point,
-      normal: new Vector3(0, 1, 0),
-      damage: 200,
-      sourceId: "player",
-    });
-
-    expect(system.getStructureCount()).toBe(0);
-    expect(removeBody).toHaveBeenCalled();
-    expect(vfx.explosion).toHaveBeenCalledWith(
-      point,
-      expect.objectContaining({ scale: 0.65 }),
-    );
-  });
-
-  it("TTL, caps and clear remove blobs, beams, meshes and bodies", () => {
-    const { scene, system, setHit, removeBody } = setup();
-
-    for (let i = 0; i < 50; i += 1) {
-      setHit(worldHit(new Vector3(i * 3, 0, 0)));
-      fire(system, i * 0.06);
+  it("clear removes all ice, statues and physics bodies", async () => {
+    const { system, physics } = await setupWorld();
+    for (let i = 0; i < 5; i += 1) {
+      fire(system, i * 0.06, new Vector3(i * 3, 1.6, 0));
     }
+    system.flushChunks();
+    expect(system.getDepositedBlobCount()).toBe(5);
 
-    expect(system.getStructureCount()).toBe(48);
-    expect(system.getDepositedBlobCount()).toBe(48);
-    expect(removeBody).toHaveBeenCalled();
-
-    system.update(1 / 60, 20);
-    expect(system.getStructureCount()).toBe(0);
-
-    setHit(worldHit(new Vector3(0, 0, 0)));
-    fire(system, 21);
-    expect(scene.children.length).toBeGreaterThan(0);
     system.clear();
-
-    expect(system.getStructureCount()).toBe(0);
     expect(system.getDepositedBlobCount()).toBe(0);
-    expect(scene.children).toHaveLength(0);
+    // Solo queda el piso del setup.
+    expect(physics.getBodyCount()).toBe(1);
   });
 });

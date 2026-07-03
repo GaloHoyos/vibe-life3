@@ -8,6 +8,7 @@ import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
+import type { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
 import { recordEvents } from "@tests/support/events";
 import { createWeapon } from "@game/gameplay/weapons/core/WeaponFactory";
 import { AmmoInventory } from "@game/gameplay/weapons/core/AmmoInventory";
@@ -32,6 +33,13 @@ function setup() {
     bolts: { spawn: () => undefined } as unknown as BoltSystem,
     energyBalls: { spawn: () => undefined } as unknown as EnergyBallSystem,
     iceGun: { fire: () => false, surf: () => false, stopSurf: () => undefined } as unknown as IceGunSystem,
+    portals: {
+      fire: () => true,
+      throughRaycast: {
+        cast: () => null,
+        castSegments: () => ({ hit: null, segments: [] }),
+      },
+    } as unknown as PortalGunSystem,
     ammo,
     getInventory: () => inventory,
   };

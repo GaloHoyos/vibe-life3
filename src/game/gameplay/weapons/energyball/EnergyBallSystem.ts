@@ -13,6 +13,7 @@ import {
 import { isHostileTo, type Faction } from "@engine/ai/Faction";
 import type { PositionalSoundManager } from "@engine/audio/core/PositionalSoundManager";
 import type { Raycast } from "@engine/physics/Raycast";
+import type { PortalRaycast } from "@engine/portals/PortalRaycast";
 import type { VfxSystem } from "@engine/render/effects/VfxSystem";
 import type { GameEventBus } from "@game/GameEvents";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
@@ -94,6 +95,7 @@ export class EnergyBallSystem implements Disposable {
     private readonly grenades: GrenadeSystem,
     private readonly vfx: VfxSystem,
     private readonly positionalSounds: PositionalSoundManager,
+    private readonly portals?: PortalRaycast,
   ) {}
 
   spawn(options: EnergyBallSpawnOptions): void {
@@ -176,6 +178,21 @@ export class EnergyBallSystem implements Disposable {
         undefined,
         ball.sourceId,
       );
+
+      // Portal antes que el rebote: la bola cruza en vez de rebotar contra la
+      // pared que respalda el disco; la velocidad rota completa.
+      const leftover = this.portals?.projectileStep(
+        tmpOrigin,
+        tmpDir,
+        remaining,
+        hit ? hit.toi : null,
+      );
+      if (leftover !== null && leftover !== undefined) {
+        ball.velocity.copy(tmpDir).multiplyScalar(speed);
+        remaining = leftover;
+        continue;
+      }
+
       if (!hit) {
         tmpOrigin.addScaledVector(tmpDir, remaining);
         break;

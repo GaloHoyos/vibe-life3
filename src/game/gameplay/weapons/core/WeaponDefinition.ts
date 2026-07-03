@@ -11,6 +11,7 @@ export type WeaponId =
   | "crossbow"
   | "gravityGun"
   | "iceGun"
+  | "portalGun"
   | "shotgun"
   | "grenade"
   | "rpg";
@@ -22,6 +23,7 @@ export type WeaponType =
   | "rpg"
   | "crossbow"
   | "iceGun"
+  | "portalGun"
   | "special";
 export type WeaponFireMode = "semi" | "auto";
 /**

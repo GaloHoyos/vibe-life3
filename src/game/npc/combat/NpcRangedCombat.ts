@@ -1,7 +1,7 @@
 ﻿import RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3 } from "three";
 import type { Faction } from "@engine/ai/Faction";
-import type { Raycast } from "@engine/physics/Raycast";
+import type { RaycastSource } from "@engine/physics/Raycast";
 import type { CharacterRangedAttackConfig } from "@engine/characters/CharacterDefinition";
 import { getWeaponDefinition } from "@game/config/weapons.config";
 import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
@@ -67,7 +67,7 @@ export class NpcRangedCombat {
     private readonly ownerId: string,
     private readonly ownerFaction: Faction,
     private readonly rangedConfig: CharacterRangedAttackConfig,
-    private readonly raycast: Raycast,
+    private readonly raycast: RaycastSource,
     private readonly eventBus: GameEventBus,
     private readonly onShot?: () => void,
   ) {

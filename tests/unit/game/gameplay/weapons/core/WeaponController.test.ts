@@ -10,6 +10,7 @@ import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
+import type { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
 import { WeaponController } from "@game/gameplay/weapons/core/WeaponController";
 import { recordEvents } from "@tests/support/events";
 
@@ -30,6 +31,13 @@ function setup() {
     { spawn: vi.fn() } as unknown as BoltSystem,
     { spawn: vi.fn() } as unknown as EnergyBallSystem,
     { fire: vi.fn(), surf: vi.fn(), stopSurf: vi.fn() } as unknown as IceGunSystem,
+    {
+      fire: vi.fn(() => true),
+      throughRaycast: {
+        cast: () => null,
+        castSegments: () => ({ hit: null, segments: [] }),
+      },
+    } as unknown as PortalGunSystem,
   );
   return {
     controller,

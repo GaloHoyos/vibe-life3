@@ -3,7 +3,7 @@ import { Vector3 } from 'three';
 import { isHostileTo } from '@engine/ai/Faction';
 import type { Faction } from '@engine/ai/Faction';
 import type { CharacterRangedAttackConfig } from '@engine/characters/CharacterDefinition';
-import type { Raycast } from '@engine/physics/Raycast';
+import type { RaycastSource } from '@engine/physics/Raycast';
 import type { NpcCombatHandle, NpcCombatTickArgs } from '@game/npc/brain/NpcBrainContext';
 import { NpcRangedCombat } from '@game/npc/combat/NpcRangedCombat';
 
@@ -16,7 +16,7 @@ export interface RealRangedCombatOptions {
   /** Distancia maxima a la que tiene sentido encarar combate. */
   effectiveRange: number;
   rangedConfig: CharacterRangedAttackConfig;
-  raycast: Raycast;
+  raycast: RaycastSource;
   onReload?: (duration: number) => void;
 }
 

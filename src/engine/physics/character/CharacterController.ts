@@ -65,6 +65,8 @@ export class CharacterController extends KinematicCharacterBase {
   private readonly tmpWishDir = new Vector3();
   private readonly tmpImpulse = new Vector3();
   private readonly tmpRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, TMP_STAND_UP);
+  private collisionFilter: ((collider: RAPIER.Collider) => boolean) | null =
+    null;
 
   constructor(
     physics: PhysicsWorld,
@@ -111,7 +113,7 @@ export class CharacterController extends KinematicCharacterBase {
     // impacto se captura ANTES; el flanco aire→suelo lo da el cambio de `grounded`.
     const wasGrounded = this.grounded;
     const fallSpeed = -this.velocity.y;
-    this.stepMovement(delta);
+    this.stepMovement(delta, this.collisionFilter ?? undefined);
     this.landingImpact =
       !wasGrounded && this.grounded && fallSpeed > 0 ? fallSpeed : 0;
   }
@@ -131,6 +133,17 @@ export class CharacterController extends KinematicCharacterBase {
     );
     const p = this.body.translation();
     return this.tmpEye.set(p.x, p.y + eyeOffset, p.z);
+  }
+
+  /**
+   * Filtro de colliders para el collide-and-slide (null = sin filtro). Lo usan
+   * los portales para dejar pasar la cápsula a través de la pared que respalda
+   * el portal mientras el jugador está transitando.
+   */
+  setCollisionFilter(
+    filter: ((collider: RAPIER.Collider) => boolean) | null,
+  ): void {
+    this.collisionFilter = filter;
   }
 
   applyImpulse(direction: Vector3, strength: number): void {

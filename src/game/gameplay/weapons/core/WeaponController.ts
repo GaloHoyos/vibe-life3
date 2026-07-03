@@ -3,7 +3,7 @@ import type { GameEventBus, WeaponSelectorState } from "@game/GameEvents";
 import type { Input } from "@engine/input/Input";
 import type { CameraSystem } from "@engine/render/CameraSystem";
 import type { Raycast } from "@engine/physics/Raycast";
-import { Quaternion, Vector3, type Scene } from "three";
+import { Quaternion, Vector3, type Object3D, type Scene } from "three";
 import { WEAPON_ORDER, WEAPON_SLOT_COUNT } from "@game/config/weapons.config";
 import {
   AmmoDefinitions,
@@ -18,6 +18,7 @@ import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
+import type { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
 import type { Weapon } from "./Weapon";
 import { WeaponInventory } from "./WeaponInventory";
 import { AmmoInventory, type AmmoLoadoutEntry } from "./AmmoInventory";
@@ -68,6 +69,11 @@ export class WeaponController {
   readonly inventory: WeaponInventory;
   readonly ammo = new AmmoInventory();
 
+  /** Raíz del view model en primera persona (para ocultarlo en passes de portal). */
+  getViewModelRoot(): Object3D {
+    return this.viewModel.getRoot();
+  }
+
   private readonly recoil = new Recoil();
   private readonly viewModel: WeaponViewModel;
   private selector: SelectorState | null = null;
@@ -89,6 +95,7 @@ export class WeaponController {
     private readonly bolts: BoltSystem,
     private readonly energyBalls: EnergyBallSystem,
     private readonly iceGun: IceGunSystem,
+    private readonly portals: PortalGunSystem,
   ) {
     this.inventory = new WeaponInventory(eventBus, this.ammo);
     this.viewModel = new WeaponViewModel(scene, assets);
@@ -334,6 +341,7 @@ export class WeaponController {
       bolts: this.bolts,
       energyBalls: this.energyBalls,
       iceGun: this.iceGun,
+      portals: this.portals,
       ammo: this.ammo,
       getInventory: () => this.inventory,
     });

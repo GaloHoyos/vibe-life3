@@ -20,6 +20,7 @@ import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
+import type { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
 
 export class Player implements Damageable {
   readonly health: PlayerHealth;
@@ -39,6 +40,7 @@ export class Player implements Damageable {
     bolts: BoltSystem,
     energyBalls: EnergyBallSystem,
     iceGun: IceGunSystem,
+    portals: PortalGunSystem,
   ) {
     this.health = new PlayerHealth(
       eventBus,
@@ -79,6 +81,7 @@ export class Player implements Damageable {
       bolts,
       energyBalls,
       iceGun,
+      portals,
     );
   }
 

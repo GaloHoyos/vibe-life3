@@ -24,6 +24,7 @@ import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
+import type { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
 import type { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
 import type { ScopeOverlay } from "@game/ui/overlay/ScopeOverlay";
 import type { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
@@ -52,6 +53,7 @@ export const GameTokens = {
   Bolts: new ServiceToken<BoltSystem>("BoltSystem"),
   EnergyBalls: new ServiceToken<EnergyBallSystem>("EnergyBallSystem"),
   IceGun: new ServiceToken<IceGunSystem>("IceGunSystem"),
+  Portals: new ServiceToken<PortalGunSystem>("PortalGunSystem"),
   ExplosiveBarrels: new ServiceToken<ExplosiveBarrelSystem>("ExplosiveBarrelSystem"),
   InteractSystem: new ServiceToken<InteractSystem>("InteractSystem"),
   TriggerSystem: new ServiceToken<TriggerSystem>("TriggerSystem"),

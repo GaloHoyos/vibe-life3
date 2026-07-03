@@ -2,6 +2,7 @@
 import type { Faction } from "@engine/ai/Faction";
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { EventBus } from "@engine/core/EventBus";
+import type { PortalSlot } from "@engine/portals/PortalFrame";
 import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
 import type { TriggerAction } from "@game/levels/LevelDefinition";
 import type { HazardKind } from "@game/levels/HazardVolumeSystem";
@@ -63,6 +64,31 @@ export interface GameEventMap {
     sourceId?: string;
     sourceKind?: CombatEventSourceKind;
     sourceFaction?: Faction;
+  };
+  "portal.placed": {
+    slot: PortalSlot;
+    position: Vector3;
+    normal: Vector3;
+    /** True cuando ambos portales existen tras esta colocación. */
+    linked: boolean;
+  };
+  "portal.placementfailed": {
+    slot: PortalSlot;
+  };
+  "portal.teleported": {
+    entityKind: "player" | "dynamic" | "projectile" | "npc";
+    entityId?: string;
+    exitPosition: Vector3;
+  };
+  "portal.cleared": Record<string, never>;
+  /** Un NPC quedó estatua de hielo (ice gun al llenar el medidor de freeze). */
+  "ice.frozen": {
+    targetId: string;
+    position: Vector3;
+  };
+  /** La estatua se descongeló sin que la remataran. */
+  "ice.thawed": {
+    targetId: string;
   };
   "weapon.hit": {
     weaponName: string;

@@ -1,24 +1,28 @@
-import type RAPIER from "@dimforge/rapier3d-compat";
 import {
   AdditiveBlending,
   Color,
   CylinderGeometry,
   DoubleSide,
+  FrontSide,
   Group,
-  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
-  Quaternion,
   SphereGeometry,
   Vector3,
   type Scene,
 } from "three";
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
-import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
+import type {
+  PhysicsMetadata,
+  PhysicsWorld,
+} from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { VfxSystem } from "@engine/render/effects/VfxSystem";
+import { Blobulator } from "@engine/blob/Blobulator";
 import type { GameEventBus } from "@game/GameEvents";
+import { IceConfig } from "@game/config/ice.config";
+import type { NpcFreezeHandle } from "@game/npc/core/INpc";
 import type { Disposable } from "@shared/types/lifecycle";
 
 export interface IceGunFireOptions {
@@ -37,35 +41,17 @@ export interface IceGunSurfOptions {
   sourceId: string;
 }
 
-type IceStructureKind = "wall" | "surf";
+interface Deposit {
+  blobId: number;
+  createdAt: number;
+}
 
-interface DepositedBlob {
-  localPosition: Vector3;
+interface MeltingBlob {
+  blobId: number;
   radius: number;
-  colliderHalfExtents: Vector3;
-  mesh: Mesh<SphereGeometry, MeshPhysicalMaterial>;
-  createdAt: number;
-}
-
-interface DepositedBlobMesh {
-  mesh: Mesh<SphereGeometry, MeshPhysicalMaterial>;
-  colliderHalfExtents: Vector3;
-}
-
-interface IceStructure {
-  id: string;
-  kind: IceStructureKind;
-  root: Group;
-  body: RAPIER.RigidBody | null;
-  segmentBodies: RAPIER.RigidBody[];
-  blobs: DepositedBlob[];
-  position: Vector3;
-  rotation: Quaternion;
-  size: Vector3;
-  health: number;
-  maxHealth: number;
-  createdAt: number;
-  expiresAt: number;
+  startedAt: number;
+  duration: number;
+  lastUpdateAt: number;
 }
 
 interface BeamPart {
@@ -82,10 +68,8 @@ interface BeamState {
 }
 
 interface FreezeState {
-  targetId: string;
   amount: number;
   lastHitAt: number;
-  characterId?: CharacterId;
 }
 
 interface FreezePatch {
@@ -93,87 +77,68 @@ interface FreezePatch {
   expiresAt: number;
 }
 
+interface Statue {
+  handle: NpcFreezeHandle;
+  shell: Group;
+  thawAt: number;
+}
+
 interface PaintState {
-  lastPoint: Vector3 | null;
-  lastStructureId: string | null;
+  lastCenter: Vector3 | null;
   lastPaintAt: number;
 }
 
 interface SurfState {
   lastSpawnAt: number;
+  startCenter: Vector3 | null;
   lastCenter: Vector3 | null;
   lastForward: Vector3 | null;
 }
 
 const ICE_COLOR = new Color(0x8fe6ff);
 const ICE_WHITE = new Color(0xf2fdff);
+const ICE_ID_PREFIX = "ice";
 const WORLD_UP = new Vector3(0, 1, 0);
 const WORLD_DOWN = new Vector3(0, -1, 0);
 const LOCAL_UP = new Vector3(0, 1, 0);
-
-const MAX_STRUCTURES = 48;
-const MAX_DEPOSITED_BLOBS = 140;
-const MAX_FREEZE_PATCHES = 48;
-
-const WALL_TTL = 12;
-const SURF_TTL = 4;
-const WALL_HEALTH = 130;
-const SURF_HEALTH = 80;
-
-const WALL_BLOB_RADIUS = 0.36;
-const SURF_BLOB_RADIUS = 0.38;
 const FREEZE_PATCH_RADIUS = 0.2;
-const WALL_COLLIDER_THICKNESS = 0.34;
-const WALL_MIN_WIDTH = 0.72;
-const WALL_MIN_HEIGHT = 0.78;
-const SURF_MIN_WIDTH = 1.48;
-const SURF_MIN_THICKNESS = 0.26;
-const SURF_MIN_LENGTH = 0.92;
-const SURF_COLLIDER_HALF_THICKNESS = 0.13;
-const SURF_SEGMENT_COLLIDER_LENGTH = 1.08;
-const WALL_CONNECT_RADIUS = 1.15;
-const SURF_CONNECT_RADIUS = 1.35;
-const WALL_BRIDGE_STEP = 0.42;
-const WALL_BRIDGE_MAX_DISTANCE = 2.1;
-const PAINT_RESET_DELAY = 0.35;
-
-const SURF_COOLDOWN = 0.09;
-const SURF_STEP = 0.86;
-const SURF_RISE = 0.16;
-const SURF_GROUND_CAST_HEIGHT = 0.65;
-const SURF_GROUND_CAST_DISTANCE = 3.6;
-const SURF_RAMP_PITCH = Math.atan2(SURF_RISE, SURF_STEP);
-
-const FREEZE_PER_TICK = 14;
-const FREEZE_THRESHOLD = 100;
-const FREEZE_DECAY_DELAY = 1.2;
-const FREEZE_DECAY_PER_SECOND = 28;
-const BOSS_COLD_DAMAGE = 4;
 const FREEZE_LETHAL_DAMAGE = 1000;
-const FREEZE_PATCH_TTL = 2.2;
 
 const RAY_ORIGIN_OFFSET = 0.45;
-const ICE_CAST_EPSILON = 0.045;
 const BEAM_HOLD_DURATION = 0.16;
 const BEAM_CORE_RADIUS = 0.028;
 const BEAM_HALO_RADIUS = 0.09;
+/** Derretido rápido para cavados por daño (visualmente "se rompe"). */
+const CARVE_MELT_SECONDS = 0.22;
 
 const tmpForward = new Vector3();
 const tmpRight = new Vector3();
-const tmpNormal = new Vector3();
-const tmpSlope = new Vector3();
-const tmpMatrix = new Matrix4();
-const tmpQuaternion = new Quaternion();
+const tmpCenter = new Vector3();
+const tmpPoint = new Vector3();
 
+/**
+ * Ice gun estilo Episode 3 sobre el `Blobulator` del engine: el spray deposita
+ * blobs que se fusionan en una superficie continua de hielo (marching cubes)
+ * con collider trimesh real — muros, montículos y rampas surfeables salen de la
+ * misma masa. El hielo persiste por presupuesto (el más viejo se derrite) y los
+ * NPCs congelados quedan estatua hasta descongelarse o hacerse añicos.
+ */
 export class IceGunSystem implements Disposable {
-  private readonly structures: IceStructure[] = [];
+  private readonly blobulator: Blobulator;
+  private readonly iceMaterial: MeshPhysicalMaterial;
+  private readonly shellMaterial: MeshPhysicalMaterial;
+  private readonly deposits: Deposit[] = [];
+  private readonly melting: MeltingBlob[] = [];
   private readonly beams = new Map<string, BeamState>();
   private readonly freezeByTarget = new Map<string, FreezeState>();
+  private readonly freezeHandles = new Map<string, NpcFreezeHandle>();
+  private readonly statues = new Map<string, Statue>();
   private readonly freezePatches: FreezePatch[] = [];
   private readonly paintBySource = new Map<string, PaintState>();
   private readonly surfBySource = new Map<string, SurfState>();
   private readonly unsubscribers: Array<() => void> = [];
-  private nextId = 0;
+  /** Reloj de juego del último update; los handlers de eventos no lo reciben. */
+  private elapsedNow = 0;
 
   constructor(
     private readonly scene: Scene,
@@ -182,17 +147,28 @@ export class IceGunSystem implements Disposable {
     private readonly eventBus: GameEventBus,
     private readonly vfx: VfxSystem,
   ) {
+    this.iceMaterial = createIceMaterial();
+    this.shellMaterial = createShellMaterial();
+    this.blobulator = new Blobulator(scene, physics, this.iceMaterial, {
+      chunkSize: IceConfig.blob.chunkSize,
+      cellSize: IceConfig.blob.cellSize,
+      padCells: IceConfig.blob.padCells,
+      maxPolyCount: IceConfig.blob.maxPolyCount,
+      colliderIdPrefix: ICE_ID_PREFIX,
+      surface: "snow",
+      maxChunkRebuildsPerFrame: IceConfig.blob.maxChunkRebuildsPerFrame,
+    });
     this.unsubscribers.push(
       this.eventBus.on("weapon.hit", (payload) => {
-        const targetId = payload.targetId;
-        if (!targetId?.startsWith("ice-")) {
+        if (!payload.targetId?.startsWith(`${ICE_ID_PREFIX}-`)) {
           return;
         }
-        this.damageStructure(targetId, Math.max(10, payload.damage), payload.point);
+        this.carve(payload.point, Math.max(10, payload.damage));
       }),
     );
   }
 
+  /** Spray principal: pinta hielo en superficies estáticas / congela NPCs. */
   fire(options: IceGunFireOptions): boolean {
     const direction = normalizedOrForward(options.direction);
     const rayOrigin = options.origin
@@ -205,7 +181,8 @@ export class IceGunSystem implements Disposable {
       undefined,
       options.sourceId,
     );
-    const endpoint = hit?.point ?? rayOrigin.clone().addScaledVector(direction, options.range);
+    const endpoint =
+      hit?.point ?? rayOrigin.clone().addScaledVector(direction, options.range);
     this.updateBeam(options.sourceId, rayOrigin, endpoint, options.now);
 
     if (!hit) {
@@ -221,27 +198,21 @@ export class IceGunSystem implements Disposable {
       return true;
     }
 
-    if (!canGrowIceOn(metadata)) {
+    // Solo superficies estáticas (los chunks de hielo también son static, así
+    // que pintar sobre hielo apila y la masa crece hacia el jugador — rampas).
+    if (metadata?.kind !== "static" || !hit.normal) {
       this.resetPaintState(options.sourceId);
       return true;
     }
 
-    const existingIce = this.findStructureById(metadata?.id);
-    const normal = normalizedOrUp(hit.normal);
-    const blobCenter = wallBlobCenter(hit.point, normal, existingIce !== null);
-    this.paintWallBlob(
-      options.sourceId,
-      blobCenter,
-      direction,
-      options.now,
-      existingIce?.kind === "wall" ? existingIce : null,
-    );
+    this.paint(options.sourceId, hit.point, hit.normal, options.now);
     return true;
   }
 
+  /** Rampa asistida (RMB sostenido): crece hacia adelante y arriba. */
   surf(options: IceGunSurfOptions): boolean {
     const state = this.getSurfState(options.sourceId);
-    if (options.now - state.lastSpawnAt < SURF_COOLDOWN) {
+    if (options.now - state.lastSpawnAt < IceConfig.ramp.cooldown) {
       return false;
     }
 
@@ -250,17 +221,64 @@ export class IceGunSystem implements Disposable {
       return false;
     }
 
-    const center = this.resolveSurfCenter(options.origin, forward, state);
+    if (state.lastCenter && state.startCenter) {
+      tmpCenter
+        .copy(state.lastCenter)
+        .addScaledVector(forward, IceConfig.ramp.step)
+        .addScaledVector(WORLD_UP, IceConfig.ramp.rise);
+      if (
+        tmpCenter.distanceTo(state.startCenter) > IceConfig.ramp.maxLength
+      ) {
+        return false;
+      }
+    } else {
+      // Arranque: la rampa nace apoyada en el piso (o hielo) frente al tirador.
+      const probe = options.origin
+        .clone()
+        .addScaledVector(forward, IceConfig.ramp.groundProbeForward)
+        .addScaledVector(WORLD_UP, IceConfig.ramp.groundProbeHeight);
+      const hit = this.raycast.cast(
+        probe,
+        WORLD_DOWN,
+        IceConfig.ramp.groundProbeDistance,
+        undefined,
+        options.sourceId,
+      );
+      if (!hit || hit.metadata?.kind !== "static") {
+        return false;
+      }
+      tmpCenter
+        .copy(hit.point)
+        .addScaledVector(WORLD_UP, IceConfig.ramp.blobRadius * 0.4);
+      state.startCenter = tmpCenter.clone();
+    }
+
     const beamOrigin = options.origin
       .clone()
       .addScaledVector(forward, 0.55)
       .addScaledVector(WORLD_UP, -0.35);
-    this.updateBeam(options.sourceId, beamOrigin, center, options.now);
-    this.depositSurfStep(center, forward, options.now);
+    this.updateBeam(options.sourceId, beamOrigin, tmpCenter, options.now);
+
+    tmpRight.crossVectors(forward, WORLD_UP);
+    if (tmpRight.lengthSq() < 1e-4) {
+      tmpRight.set(1, 0, 0);
+    }
+    tmpRight.normalize();
+    for (const offset of IceConfig.ramp.lateralOffsets) {
+      tmpPoint
+        .copy(tmpCenter)
+        .addScaledVector(tmpRight, offset)
+        .addScaledVector(WORLD_UP, offset === 0 ? 0.02 : -0.02);
+      this.deposit(
+        tmpPoint,
+        IceConfig.ramp.blobRadius * (0.95 + Math.random() * 0.1),
+        options.now,
+      );
+    }
 
     state.lastSpawnAt = options.now;
-    state.lastCenter = center.clone();
-    state.lastForward = forward.clone();
+    state.lastCenter = (state.lastCenter ?? new Vector3()).copy(tmpCenter);
+    state.lastForward = (state.lastForward ?? new Vector3()).copy(forward);
     return true;
   }
 
@@ -268,23 +286,35 @@ export class IceGunSystem implements Disposable {
     this.surfBySource.delete(sourceId);
   }
 
-  update(delta: number, elapsed: number): void {
+  update(
+    delta: number,
+    elapsed: number,
+    freezeTargets: readonly NpcFreezeHandle[] = [],
+  ): void {
+    this.elapsedNow = elapsed;
+    this.freezeHandles.clear();
+    for (const handle of freezeTargets) {
+      this.freezeHandles.set(handle.id, handle);
+    }
     this.updateFreezes(delta, elapsed);
+    this.updateStatues(elapsed);
     this.updateBeams(elapsed);
     this.updateFreezePatches(elapsed);
-
-    for (let i = this.structures.length - 1; i >= 0; i -= 1) {
-      const structure = this.structures[i];
-      if (elapsed >= structure.expiresAt || !this.structureBodiesAreValid(structure)) {
-        this.removeStructureAt(i, false);
-      }
-    }
+    this.updateMelting(elapsed);
+    this.blobulator.update();
   }
 
   clear(): void {
-    while (this.structures.length > 0) {
-      this.removeStructureAt(this.structures.length - 1, false);
+    for (const statue of this.statues.values()) {
+      if (statue.handle.isAlive()) {
+        statue.handle.setFrozen(false);
+      }
+      this.disposeShell(statue.shell);
     }
+    this.statues.clear();
+    this.blobulator.clear();
+    this.deposits.length = 0;
+    this.melting.length = 0;
     for (const beam of this.beams.values()) {
       this.disposeBeam(beam);
     }
@@ -294,6 +324,7 @@ export class IceGunSystem implements Disposable {
       if (patch) this.disposeFreezePatch(patch);
     }
     this.freezeByTarget.clear();
+    this.freezeHandles.clear();
     this.paintBySource.clear();
     this.surfBySource.clear();
   }
@@ -302,287 +333,146 @@ export class IceGunSystem implements Disposable {
     this.unsubscribers.forEach((unsubscribe) => unsubscribe());
     this.unsubscribers.length = 0;
     this.clear();
-  }
-
-  getStructureCount(): number {
-    return this.structures.length;
-  }
-
-  getDepositedBlobCount(): number {
-    return this.structures.reduce(
-      (total, structure) => total + structure.blobs.length,
-      this.freezePatches.length,
-    );
+    this.blobulator.dispose();
+    this.iceMaterial.dispose();
+    this.shellMaterial.dispose();
   }
 
   getFreezeAmount(targetId: string): number {
     return this.freezeByTarget.get(targetId)?.amount ?? 0;
   }
 
-  private paintWallBlob(
+  getDepositedBlobCount(): number {
+    return this.blobulator.getBlobCount();
+  }
+
+  isFrozen(targetId: string): boolean {
+    return this.statues.has(targetId);
+  }
+
+  /** Rebuild inmediato de chunks pendientes (para tests deterministas). */
+  flushChunks(): void {
+    this.blobulator.flush();
+  }
+
+  private paint(
     sourceId: string,
     point: Vector3,
-    direction: Vector3,
+    normal: Vector3,
     now: number,
-    preferredStructure: IceStructure | null = null,
   ): void {
-    const state = this.getPaintState(sourceId);
-    const forward = planarForward(direction, null) ?? new Vector3(0, 0, -1);
-    const target = preferredStructure
-      ?? this.findStructureNear("wall", point, WALL_CONNECT_RADIUS)
-      ?? this.createStructure("wall", point, wallRotation(forward), now);
-    const paintPoint = target.blobs.length > 0
-      ? projectWallPointToPlane(target, point)
-      : point.clone();
+    const jitter = IceConfig.paint.radiusJitter;
+    const radius =
+      IceConfig.paint.blobRadius * (1 - jitter / 2 + Math.random() * jitter);
+    tmpCenter
+      .copy(point)
+      .addScaledVector(
+        normalizedOrUp(normal),
+        radius * IceConfig.paint.embedFactor,
+      );
 
+    const state = this.getPaintState(sourceId);
     if (
-      state.lastPoint &&
-      state.lastStructureId === target.id &&
-      now - state.lastPaintAt <= PAINT_RESET_DELAY
+      state.lastCenter &&
+      now - state.lastPaintAt <= IceConfig.paint.strokeResetDelay
     ) {
-      const distance = state.lastPoint.distanceTo(paintPoint);
-      if (distance > WALL_BRIDGE_STEP && distance <= WALL_BRIDGE_MAX_DISTANCE) {
-        const steps = Math.floor(distance / WALL_BRIDGE_STEP);
+      const distance = state.lastCenter.distanceTo(tmpCenter);
+      if (
+        distance > IceConfig.paint.strokeStep &&
+        distance <= IceConfig.paint.strokeBridgeMax
+      ) {
+        // Puente del stroke: rellena el hueco entre ticks para que barrer el
+        // arma pinte una banda continua y no gotas separadas.
+        const steps = Math.floor(distance / IceConfig.paint.strokeStep);
         for (let i = 1; i <= steps; i += 1) {
-          const t = i / (steps + 1);
-          this.addBlobToStructure(target, state.lastPoint.clone().lerp(paintPoint, t), WALL_BLOB_RADIUS * 0.92, now);
+          tmpPoint
+            .copy(state.lastCenter)
+            .lerp(tmpCenter, i / (steps + 1));
+          this.deposit(tmpPoint, radius * 0.9, now);
         }
       }
     }
 
-    this.addBlobToStructure(target, paintPoint, WALL_BLOB_RADIUS * (0.9 + Math.random() * 0.22), now);
-    state.lastPoint = paintPoint.clone();
-    state.lastStructureId = target.id;
+    this.deposit(tmpCenter, radius, now);
+    state.lastCenter = (state.lastCenter ?? new Vector3()).copy(tmpCenter);
     state.lastPaintAt = now;
   }
 
-  private depositSurfStep(center: Vector3, forward: Vector3, now: number): void {
-    const target = this.findStructureNear("surf", center, SURF_CONNECT_RADIUS)
-      ?? this.createStructure("surf", center, rampRotation(forward, SURF_RAMP_PITCH), now);
-    const right = new Vector3().crossVectors(forward, WORLD_UP);
-    if (right.lengthSq() < 1e-4) {
-      right.set(1, 0, 0);
-    }
-    right.normalize();
-
-    for (const offset of [-0.54, 0, 0.54]) {
-      const blobPoint = center
-        .clone()
-        .addScaledVector(right, offset)
-        .addScaledVector(WORLD_UP, offset === 0 ? 0.02 : -0.01);
-      this.addBlobToStructure(target, blobPoint, SURF_BLOB_RADIUS * (0.92 + Math.random() * 0.12), now);
-    }
-    this.addSurfSegmentCollider(target, center);
+  private deposit(center: Vector3, radius: number, now: number): void {
+    const blobId = this.blobulator.addBlob(center, radius);
+    this.deposits.push({ blobId, createdAt: now });
+    this.enforceBudget(now);
   }
 
-  private createStructure(
-    kind: IceStructureKind,
-    point: Vector3,
-    rotation: Quaternion,
-    now: number,
-  ): IceStructure {
-    const id = `ice-${this.nextId++}`;
-    const root = new Group();
-    root.name = id;
-    root.position.copy(point);
-    root.quaternion.copy(rotation);
-    this.scene.add(root);
-
-    const maxHealth = kind === "wall" ? WALL_HEALTH : SURF_HEALTH;
-    const structure: IceStructure = {
-      id,
-      kind,
-      root,
-      body: null,
-      segmentBodies: [],
-      blobs: [],
-      position: point.clone(),
-      rotation: rotation.clone(),
-      size: new Vector3(0.1, 0.1, 0.1),
-      health: maxHealth,
-      maxHealth,
-      createdAt: now,
-      expiresAt: now + ttlForKind(kind),
-    };
-    this.structures.push(structure);
-    this.enforceLimits();
-    return structure;
+  private enforceBudget(now: number): void {
+    while (
+      this.deposits.length > IceConfig.paint.budget &&
+      this.melting.length < IceConfig.melt.maxConcurrent
+    ) {
+      const oldest = this.deposits.shift();
+      if (!oldest) {
+        return;
+      }
+      this.startMelt(oldest.blobId, now, IceConfig.melt.seconds);
+    }
   }
 
-  private addBlobToStructure(
-    structure: IceStructure,
-    worldPoint: Vector3,
-    radius: number,
-    now: number,
-  ): void {
-    const localPosition = worldToStructureLocal(structure, worldPoint);
-    if (structure.kind === "wall") {
-      localPosition.z = 0;
-    }
-    const { mesh, colliderHalfExtents } = createDepositedBlobMesh(structure.kind, radius);
-    mesh.position.copy(localPosition);
-    randomizeBlobRotation(mesh, structure.kind);
-    structure.root.add(mesh);
-    structure.blobs.push({
-      localPosition,
-      radius,
-      colliderHalfExtents,
-      mesh,
-      createdAt: now,
-    });
-    structure.expiresAt = now + ttlForKind(structure.kind);
-    structure.health = Math.min(structure.maxHealth, structure.health + 6);
-    this.rebuildStructureBounds(structure);
-    if (structure.kind === "wall") {
-      this.rebuildStructureCollider(structure);
-    }
-    this.enforceLimits();
-  }
-
-  private rebuildStructureBounds(structure: IceStructure): void {
-    if (structure.blobs.length === 0) {
+  private startMelt(blobId: number, now: number, duration: number): void {
+    const radius = this.blobulator.getBlobRadius(blobId);
+    if (radius === undefined) {
       return;
     }
-
-    const min = new Vector3(Infinity, Infinity, Infinity);
-    const max = new Vector3(-Infinity, -Infinity, -Infinity);
-    for (const blob of structure.blobs) {
-      const half = blob.colliderHalfExtents;
-      min.min(new Vector3(
-        blob.localPosition.x - half.x,
-        blob.localPosition.y - half.y,
-        blob.localPosition.z - half.z,
-      ));
-      max.max(new Vector3(
-        blob.localPosition.x + half.x,
-        blob.localPosition.y + half.y,
-        blob.localPosition.z + half.z,
-      ));
-    }
-
-    if (structure.kind === "wall") {
-      min.z = -WALL_COLLIDER_THICKNESS * 0.5;
-      max.z = WALL_COLLIDER_THICKNESS * 0.5;
-    }
-
-    const centerLocal = min.clone().add(max).multiplyScalar(0.5);
-    if (centerLocal.lengthSq() > 1e-8) {
-      const centerWorldOffset = centerLocal.clone().applyQuaternion(structure.rotation);
-      structure.position.add(centerWorldOffset);
-      structure.root.position.copy(structure.position);
-      for (const blob of structure.blobs) {
-        blob.localPosition.sub(centerLocal);
-        blob.mesh.position.copy(blob.localPosition);
-      }
-      min.sub(centerLocal);
-      max.sub(centerLocal);
-    }
-
-    const size = max.clone().sub(min);
-    if (structure.kind === "wall") {
-      size.x = Math.max(size.x, WALL_MIN_WIDTH);
-      size.y = Math.max(size.y, WALL_MIN_HEIGHT);
-      size.z = WALL_COLLIDER_THICKNESS;
-    } else {
-      size.x = Math.max(size.x, SURF_MIN_WIDTH);
-      size.y = Math.max(size.y, SURF_MIN_THICKNESS);
-      size.z = Math.max(size.z, SURF_MIN_LENGTH);
-    }
-    structure.size.copy(size);
-  }
-
-  private rebuildStructureCollider(structure: IceStructure): void {
-    if (structure.body?.isValid()) {
-      this.physics.removeBody(structure.body);
-    }
-    structure.body = this.physics.createStaticBox({
-      id: structure.id,
-      position: structure.position,
-      size: structure.size,
-      rotation: structure.rotation,
-      metadata: { surface: "snow" },
+    this.melting.push({
+      blobId,
+      radius,
+      startedAt: now,
+      duration,
+      lastUpdateAt: now,
     });
   }
 
-  private addSurfSegmentCollider(structure: IceStructure, center: Vector3): void {
-    const body = this.physics.createStaticBox({
-      id: structure.id,
-      position: center,
-      size: new Vector3(SURF_MIN_WIDTH, SURF_MIN_THICKNESS, SURF_SEGMENT_COLLIDER_LENGTH),
-      rotation: structure.rotation,
-      metadata: { surface: "snow" },
-    });
-    structure.segmentBodies.push(body);
-  }
-
-  private findStructureNear(
-    kind: IceStructureKind,
-    point: Vector3,
-    radius: number,
-  ): IceStructure | null {
-    let nearest: IceStructure | null = null;
-    let nearestSq = radius * radius;
-    for (const structure of this.structures) {
-      if (structure.kind !== kind) {
+  private updateMelting(elapsed: number): void {
+    for (let i = this.melting.length - 1; i >= 0; i -= 1) {
+      const melt = this.melting[i];
+      const t = (elapsed - melt.startedAt) / melt.duration;
+      if (t >= 1) {
+        this.blobulator.removeBlob(melt.blobId);
+        this.melting.splice(i, 1);
         continue;
       }
-      for (const blob of structure.blobs) {
-        const worldPoint = structureLocalToWorld(structure, blob.localPosition);
-        const distSq = worldPoint.distanceToSquared(point);
-        if (distSq <= nearestSq) {
-          nearestSq = distSq;
-          nearest = structure;
-        }
-      }
-      if (structure.blobs.length === 0) {
-        const distSq = structure.position.distanceToSquared(point);
-        if (distSq <= nearestSq) {
-          nearestSq = distSq;
-          nearest = structure;
-        }
+      if (elapsed - melt.lastUpdateAt >= IceConfig.melt.updateInterval) {
+        const scale = 1 - t * (1 - IceConfig.melt.minScale);
+        this.blobulator.setBlobRadius(melt.blobId, melt.radius * scale);
+        melt.lastUpdateAt = elapsed;
       }
     }
-    return nearest;
   }
 
-  private findStructureById(id: string | undefined): IceStructure | null {
-    if (!id?.startsWith("ice-")) {
-      return null;
-    }
-    return this.structures.find((structure) => structure.id === id) ?? null;
-  }
-
-  private resolveSurfCenter(
-    origin: Vector3,
-    forward: Vector3,
-    state: SurfState,
-  ): Vector3 {
-    if (state.lastCenter) {
-      return state.lastCenter
-        .clone()
-        .addScaledVector(forward, SURF_STEP)
-        .addScaledVector(WORLD_UP, SURF_RISE);
-    }
-
-    const probe = origin
-      .clone()
-      .addScaledVector(forward, 1.05)
-      .addScaledVector(WORLD_UP, SURF_GROUND_CAST_HEIGHT);
-    const hit = this.raycast.cast(
-      probe,
-      WORLD_DOWN,
-      SURF_GROUND_CAST_DISTANCE,
-      undefined,
-      "player",
+  /** Daño de armas sobre el hielo: derrite rápido los blobs cerca del impacto. */
+  private carve(point: Vector3, damage: number): void {
+    const radius = Math.min(
+      IceConfig.carve.maxRadius,
+      IceConfig.carve.baseRadius + damage * IceConfig.carve.radiusPerDamage,
     );
-    if (hit && canGrowIceOn(hit.metadata)) {
-      return hit.point.clone().addScaledVector(WORLD_UP, SURF_BLOB_RADIUS * 0.45);
+    const carved: number[] = [];
+    this.blobulator.forEachBlobInSphere(point, radius, (id) => {
+      carved.push(id);
+    });
+    if (carved.length === 0) {
+      return;
     }
-
-    return origin
-      .clone()
-      .addScaledVector(forward, 1.05)
-      .addScaledVector(WORLD_UP, -1.2);
+    const carvedSet = new Set(carved);
+    for (let i = this.deposits.length - 1; i >= 0; i -= 1) {
+      if (carvedSet.has(this.deposits[i].blobId)) {
+        this.deposits.splice(i, 1);
+      }
+    }
+    for (const id of carved) {
+      if (!this.melting.some((melt) => melt.blobId === id)) {
+        this.startMelt(id, this.elapsedNow, CARVE_MELT_SECONDS);
+      }
+    }
+    this.vfx.explosion(point, { scale: 0.55, color: ICE_COLOR });
   }
 
   private applyFreeze(
@@ -596,10 +486,16 @@ export class IceGunSystem implements Disposable {
     }
 
     const targetId = metadata.ownerId ?? metadata.id;
-    const characterId = metadata.characterId;
-    if (isFreezeResistant(characterId)) {
+    const statue = this.statues.get(targetId);
+    if (statue) {
+      // Seguir rociando una estatua solo refresca su duración.
+      statue.thawAt = now + IceConfig.freeze.statueSeconds;
+      return;
+    }
+
+    if (isFreezeResistant(metadata.characterId)) {
       metadata.damageable.applyDamage(
-        BOSS_COLD_DAMAGE,
+        IceConfig.freeze.bossColdDamage,
         direction.clone(),
         metadata.bodyPart?.name,
         "player",
@@ -609,17 +505,25 @@ export class IceGunSystem implements Disposable {
     }
 
     const state = this.freezeByTarget.get(targetId) ?? {
-      targetId,
       amount: 0,
       lastHitAt: now,
-      characterId,
     };
-    state.amount = Math.min(FREEZE_THRESHOLD, state.amount + FREEZE_PER_TICK);
+    state.amount = Math.min(
+      IceConfig.freeze.threshold,
+      state.amount + IceConfig.freeze.perTick,
+    );
     state.lastHitAt = now;
-    state.characterId = characterId;
     this.freezeByTarget.set(targetId, state);
 
-    if (state.amount >= FREEZE_THRESHOLD) {
+    if (state.amount < IceConfig.freeze.threshold) {
+      return;
+    }
+    this.freezeByTarget.delete(targetId);
+    const handle = this.freezeHandles.get(targetId);
+    if (handle && handle.isAlive()) {
+      this.beginStatue(handle, now);
+    } else {
+      // Damageables sin handle de freeze (p. ej. torretas): muerte por frío.
       metadata.damageable.applyDamage(
         FREEZE_LETHAL_DAMAGE,
         direction.clone(),
@@ -627,8 +531,50 @@ export class IceGunSystem implements Disposable {
         "player",
         point,
       );
-      this.freezeByTarget.delete(targetId);
       this.vfx.explosion(point, { scale: 0.75, color: ICE_COLOR });
+    }
+  }
+
+  private beginStatue(handle: NpcFreezeHandle, now: number): void {
+    handle.setFrozen(true);
+    const shell = createIceShell(handle.radius, this.shellMaterial);
+    shell.position.copy(handle.getPosition());
+    this.scene.add(shell);
+    this.statues.set(handle.id, {
+      handle,
+      shell,
+      thawAt: now + IceConfig.freeze.statueSeconds,
+    });
+    this.eventBus.emit("ice.frozen", {
+      targetId: handle.id,
+      position: handle.getPosition().clone(),
+    });
+  }
+
+  private updateStatues(elapsed: number): void {
+    for (const [targetId, statue] of this.statues) {
+      if (!statue.handle.isAlive()) {
+        // La remataron congelada: añicos.
+        this.vfx.explosion(statue.shell.position, {
+          scale: 0.8,
+          color: ICE_COLOR,
+        });
+        this.disposeShell(statue.shell);
+        this.statues.delete(targetId);
+        continue;
+      }
+      if (elapsed >= statue.thawAt) {
+        statue.handle.setFrozen(false);
+        this.disposeShell(statue.shell);
+        this.statues.delete(targetId);
+        this.freezeByTarget.set(targetId, {
+          amount: IceConfig.freeze.refreezeAmount,
+          lastHitAt: elapsed,
+        });
+        this.eventBus.emit("ice.thawed", { targetId });
+        continue;
+      }
+      statue.shell.position.copy(statue.handle.getPosition());
     }
   }
 
@@ -638,9 +584,9 @@ export class IceGunSystem implements Disposable {
     this.scene.add(mesh);
     this.freezePatches.push({
       mesh,
-      expiresAt: now + FREEZE_PATCH_TTL,
+      expiresAt: now + IceConfig.freeze.patchTtl,
     });
-    while (this.freezePatches.length > MAX_FREEZE_PATCHES) {
+    while (this.freezePatches.length > IceConfig.freeze.maxPatches) {
       const patch = this.freezePatches.shift();
       if (patch) this.disposeFreezePatch(patch);
     }
@@ -648,10 +594,13 @@ export class IceGunSystem implements Disposable {
 
   private updateFreezes(delta: number, elapsed: number): void {
     for (const [targetId, state] of this.freezeByTarget) {
-      if (elapsed - state.lastHitAt <= FREEZE_DECAY_DELAY) {
+      if (elapsed - state.lastHitAt <= IceConfig.freeze.decayDelay) {
         continue;
       }
-      state.amount = Math.max(0, state.amount - FREEZE_DECAY_PER_SECOND * delta);
+      state.amount = Math.max(
+        0,
+        state.amount - IceConfig.freeze.decayPerSecond * delta,
+      );
       if (state.amount <= 0) {
         this.freezeByTarget.delete(targetId);
       }
@@ -668,42 +617,12 @@ export class IceGunSystem implements Disposable {
     }
   }
 
-  private damageStructure(id: string, damage: number, point: Vector3): void {
-    const index = this.structures.findIndex((structure) => structure.id === id);
-    if (index < 0) {
-      return;
-    }
-    const structure = this.structures[index];
-    structure.health -= damage;
-    if (structure.health <= 0) {
-      this.removeStructureAt(index, true, point);
-    }
-  }
-
-  private removeStructureAt(
-    index: number,
-    shatter: boolean,
-    point = this.structures[index]?.position,
+  private updateBeam(
+    sourceId: string,
+    from: Vector3,
+    to: Vector3,
+    now: number,
   ): void {
-    const [structure] = this.structures.splice(index, 1);
-    if (!structure) {
-      return;
-    }
-    if (shatter && point) {
-      this.vfx.explosion(point, { scale: 0.65, color: ICE_COLOR });
-    }
-    if (structure.body?.isValid()) {
-      this.physics.removeBody(structure.body);
-    }
-    for (const body of structure.segmentBodies) {
-      if (body.isValid()) {
-        this.physics.removeBody(body);
-      }
-    }
-    disposeObjectTree(structure.root);
-  }
-
-  private updateBeam(sourceId: string, from: Vector3, to: Vector3, now: number): void {
     let beam = this.beams.get(sourceId);
     if (!beam) {
       beam = createBeam(sourceId);
@@ -751,10 +670,19 @@ export class IceGunSystem implements Disposable {
     patch.mesh.material.dispose();
   }
 
+  private disposeShell(shell: Group): void {
+    shell.removeFromParent();
+    shell.traverse((object) => {
+      if (object instanceof Mesh) {
+        object.geometry.dispose();
+      }
+    });
+  }
+
   private getPaintState(sourceId: string): PaintState {
     let state = this.paintBySource.get(sourceId);
     if (!state) {
-      state = { lastPoint: null, lastStructureId: null, lastPaintAt: -Infinity };
+      state = { lastCenter: null, lastPaintAt: -Infinity };
       this.paintBySource.set(sourceId, state);
     }
     return state;
@@ -765,58 +693,27 @@ export class IceGunSystem implements Disposable {
     if (!state) {
       return;
     }
-    state.lastPoint = null;
-    state.lastStructureId = null;
+    state.lastCenter = null;
     state.lastPaintAt = -Infinity;
   }
 
   private getSurfState(sourceId: string): SurfState {
     let state = this.surfBySource.get(sourceId);
     if (!state) {
-      state = { lastSpawnAt: -Infinity, lastCenter: null, lastForward: null };
+      state = {
+        lastSpawnAt: -Infinity,
+        startCenter: null,
+        lastCenter: null,
+        lastForward: null,
+      };
       this.surfBySource.set(sourceId, state);
     }
     return state;
   }
-
-  private enforceLimits(): void {
-    while (this.structures.length > MAX_STRUCTURES) {
-      this.removeStructureAt(0, false);
-    }
-    while (this.getStructureBlobCount() > MAX_DEPOSITED_BLOBS && this.structures.length > 0) {
-      this.removeStructureAt(0, false);
-    }
-  }
-
-  private getStructureBlobCount(): number {
-    return this.structures.reduce(
-      (total, structure) => total + structure.blobs.length,
-      0,
-    );
-  }
-
-  private structureBodiesAreValid(structure: IceStructure): boolean {
-    if (structure.body && !structure.body.isValid()) {
-      return false;
-    }
-    return structure.segmentBodies.every((body) => body.isValid());
-  }
-}
-
-function canGrowIceOn(metadata: PhysicsMetadata | undefined): boolean {
-  return (
-    metadata?.kind === "static" ||
-    metadata?.kind === "door" ||
-    metadata?.kind === "dynamic"
-  );
 }
 
 function isFreezeResistant(characterId: CharacterId | undefined): boolean {
   return characterId === "strider" || characterId === "gunship";
-}
-
-function ttlForKind(kind: IceStructureKind): number {
-  return kind === "wall" ? WALL_TTL : SURF_TTL;
 }
 
 function normalizedOrForward(direction: Vector3): Vector3 {
@@ -828,119 +725,79 @@ function normalizedOrForward(direction: Vector3): Vector3 {
 
 function normalizedOrUp(direction: Vector3 | undefined): Vector3 {
   if (!direction || direction.lengthSq() < 1e-6) {
-    return WORLD_UP.clone();
+    return WORLD_UP;
   }
-  return direction.clone().normalize();
+  return direction.normalize();
 }
 
-function planarForward(direction: Vector3, fallback: Vector3 | null): Vector3 | null {
+function planarForward(
+  direction: Vector3,
+  fallback: Vector3 | null,
+): Vector3 | null {
   tmpForward.set(direction.x, 0, direction.z);
   if (tmpForward.lengthSq() < 0.001) {
-    return fallback?.clone() ?? null;
+    return fallback ? tmpForward.copy(fallback) : null;
   }
-  return tmpForward.normalize().clone();
+  return tmpForward.normalize();
 }
 
-function wallBlobCenter(point: Vector3, normal: Vector3, hitExistingIce: boolean): Vector3 {
-  const center = hitExistingIce
-    ? point.clone()
-    : point.clone().addScaledVector(normal, ICE_CAST_EPSILON);
-  if (normal.y > 0.55) {
-    center.addScaledVector(WORLD_UP, WALL_BLOB_RADIUS * 0.78);
-  }
-  return center;
-}
-
-function wallRotation(forward: Vector3): Quaternion {
-  tmpForward.copy(forward).normalize();
-  tmpRight.crossVectors(tmpForward, WORLD_UP);
-  if (tmpRight.lengthSq() < 0.001) {
-    tmpRight.set(1, 0, 0);
-  }
-  tmpRight.normalize();
-  return tmpQuaternion
-    .setFromRotationMatrix(tmpMatrix.makeBasis(tmpRight, WORLD_UP, tmpForward))
-    .clone();
-}
-
-function rampRotation(forward: Vector3, pitch: number): Quaternion {
-  tmpForward.copy(forward).normalize();
-  tmpRight.crossVectors(tmpForward, WORLD_UP);
-  if (tmpRight.lengthSq() < 0.001) {
-    tmpRight.set(1, 0, 0);
-  }
-  tmpRight.normalize();
-  tmpSlope
-    .copy(tmpForward)
-    .multiplyScalar(Math.cos(pitch))
-    .addScaledVector(WORLD_UP, Math.sin(pitch))
-    .normalize();
-  tmpNormal.crossVectors(tmpRight, tmpSlope).normalize();
-  return tmpQuaternion
-    .setFromRotationMatrix(tmpMatrix.makeBasis(tmpRight, tmpNormal, tmpSlope))
-    .clone();
-}
-
-function worldToStructureLocal(structure: IceStructure, point: Vector3): Vector3 {
-  const inverse = structure.rotation.clone().invert();
-  return point.clone().sub(structure.position).applyQuaternion(inverse);
-}
-
-function structureLocalToWorld(structure: IceStructure, point: Vector3): Vector3 {
-  return point.clone().applyQuaternion(structure.rotation).add(structure.position);
-}
-
-function projectWallPointToPlane(structure: IceStructure, point: Vector3): Vector3 {
-  const local = worldToStructureLocal(structure, point);
-  local.z = 0;
-  return structureLocalToWorld(structure, local);
-}
-
-function createDepositedBlobMesh(
-  kind: IceStructureKind,
-  radius: number,
-): DepositedBlobMesh {
-  const geometry = new SphereGeometry(1, 18, 12);
-  const material = new MeshPhysicalMaterial({
-    color: kind === "wall" ? 0xb9f5ff : 0xa8eeff,
+function createIceMaterial(): MeshPhysicalMaterial {
+  return new MeshPhysicalMaterial({
+    color: 0xa9e8ff,
     emissive: 0x0b3446,
-    emissiveIntensity: 0.28,
-    roughness: 0.16,
+    emissiveIntensity: 0.18,
+    roughness: 0.14,
     metalness: 0,
     transparent: true,
-    opacity: kind === "wall" ? 0.58 : 0.64,
+    opacity: 0.82,
     transmission: 0.22,
-    thickness: kind === "wall" ? 0.55 : 0.42,
-    clearcoat: 0.7,
-    clearcoatRoughness: 0.14,
+    thickness: 0.6,
+    clearcoat: 0.65,
+    clearcoatRoughness: 0.15,
+    side: FrontSide,
+  });
+}
+
+function createShellMaterial(): MeshPhysicalMaterial {
+  return new MeshPhysicalMaterial({
+    color: 0xc9f8ff,
+    emissive: 0x10475f,
+    emissiveIntensity: 0.3,
+    roughness: 0.1,
+    metalness: 0,
+    transparent: true,
+    opacity: 0.55,
+    transmission: 0.2,
+    thickness: 0.3,
+    clearcoat: 0.6,
+    clearcoatRoughness: 0.16,
     depthWrite: false,
     side: DoubleSide,
   });
-  const mesh = new Mesh(geometry, material);
-  const sx = radius * (1.05 + Math.random() * 0.22);
-  const sy = radius * (kind === "wall" ? 1.08 + Math.random() * 0.34 : 0.46 + Math.random() * 0.18);
-  const sz = radius * (kind === "wall" ? 0.5 + Math.random() * 0.16 : 1.08 + Math.random() * 0.2);
-  mesh.scale.set(sx, sy, sz);
-  mesh.renderOrder = 38;
-  return {
-    mesh,
-    colliderHalfExtents: new Vector3(
-      sx,
-      kind === "surf" ? Math.min(sy, SURF_COLLIDER_HALF_THICKNESS) : sy,
-      sz,
-    ),
-  };
 }
 
-function randomizeBlobRotation(
-  mesh: Mesh<SphereGeometry, MeshPhysicalMaterial>,
-  kind: IceStructureKind,
-): void {
-  if (kind === "wall") {
-    mesh.rotation.set(0, 0, Math.random() * Math.PI * 2);
-    return;
+/** Cascarón de estatua: elipsoides translúcidos alrededor de la cápsula. */
+function createIceShell(radius: number, material: MeshPhysicalMaterial): Group {
+  const group = new Group();
+  group.name = "ice-statue-shell";
+  const scale = radius / 0.35;
+  const offsets = [-0.55, 0, 0.55];
+  for (const offset of offsets) {
+    const mesh = new Mesh(new SphereGeometry(1, 18, 12), material);
+    mesh.position.set(
+      (Math.random() - 0.5) * 0.06 * scale,
+      offset * scale,
+      (Math.random() - 0.5) * 0.06 * scale,
+    );
+    mesh.scale.set(
+      radius * 1.7 * (0.95 + Math.random() * 0.1),
+      radius * 1.5,
+      radius * 1.7 * (0.95 + Math.random() * 0.1),
+    );
+    mesh.renderOrder = 38;
+    group.add(mesh);
   }
-  mesh.rotation.set(0, Math.random() * Math.PI * 2, 0);
+  return group;
 }
 
 function createFreezePatchMesh(): Mesh<SphereGeometry, MeshPhysicalMaterial> {
@@ -967,7 +824,11 @@ function createFreezePatchMesh(): Mesh<SphereGeometry, MeshPhysicalMaterial> {
     FREEZE_PATCH_RADIUS * (0.8 + Math.random() * 0.35),
     FREEZE_PATCH_RADIUS * (0.42 + Math.random() * 0.18),
   );
-  mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+  mesh.rotation.set(
+    Math.random() * Math.PI,
+    Math.random() * Math.PI,
+    Math.random() * Math.PI,
+  );
   mesh.renderOrder = 39;
   return mesh;
 }
@@ -1010,12 +871,20 @@ function createBeamPart(
     depthWrite: false,
     blending: AdditiveBlending,
   });
-  const mesh = new Mesh(new CylinderGeometry(radius, radius, 1, 12, 1, true), material);
+  const mesh = new Mesh(
+    new CylinderGeometry(radius, radius, 1, 12, 1, true),
+    material,
+  );
   mesh.renderOrder = renderOrder;
   return { mesh, material, baseOpacity: opacity };
 }
 
-function syncBeam(beam: BeamState, from: Vector3, to: Vector3, opacityScale: number): void {
+function syncBeam(
+  beam: BeamState,
+  from: Vector3,
+  to: Vector3,
+  opacityScale: number,
+): void {
   const delta = to.clone().sub(from);
   const length = delta.length();
   if (length < 0.05) {
@@ -1030,22 +899,6 @@ function syncBeam(beam: BeamState, from: Vector3, to: Vector3, opacityScale: num
   }
   beam.impact.position.copy(to);
   beam.impact.scale.setScalar(0.24);
-}
-
-function disposeObjectTree(root: Group): void {
-  root.removeFromParent();
-  root.traverse((object) => {
-    if (!(object instanceof Mesh)) {
-      return;
-    }
-    object.geometry.dispose();
-    const material = object.material;
-    if (Array.isArray(material)) {
-      material.forEach((entry) => entry.dispose());
-    } else {
-      material.dispose();
-    }
-  });
 }
 
 function clamp(value: number, min: number, max: number): number {

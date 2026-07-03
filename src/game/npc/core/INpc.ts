@@ -30,6 +30,12 @@ export interface AiFrameContext {
   aiLod: "near" | "mid" | "far";
   player: ActorSnapshot;
   npcs: ActorSnapshot[];
+  /**
+   * Proyecciones del player a través de portales linked (hasta 2). Comparten
+   * `id`/`entity` con `player` — el raycast portal-aware resuelve el LOS real,
+   * y el daño aplica al player de verdad.
+   */
+  portalGhosts?: ActorSnapshot[];
   tacticalMap: TacticalMap;
   squadDirector: SquadDirector;
   eventBus: GameEventBus;
@@ -151,6 +157,33 @@ export interface NpcAiDebugSnapshot {
   };
 }
 
+/**
+ * Handle mínimo para que el sistema de portales teleporte NPCs terrestres
+ * (feature flag `PortalConfig.npcTraversal`). Null en motores sin soporte
+ * (flyers, strider).
+ */
+export interface NpcPortalHandle {
+  id: string;
+  radius: number;
+  getPosition(): Vector3;
+  getVelocity(): Vector3;
+  teleport(position: Vector3, velocity: Vector3, yaw: number): void;
+  setColliderExclusions(handles: ReadonlySet<number> | null): void;
+}
+
+/**
+ * Handle mínimo para que la ice gun convierta a un NPC en estatua de hielo.
+ * Mientras está frozen, el NPC no corre percepción/brain/combate/animación
+ * (la pose queda congelada) y cualquier daño lo hace añicos.
+ */
+export interface NpcFreezeHandle {
+  id: string;
+  radius: number;
+  getPosition(): Vector3;
+  isAlive(): boolean;
+  setFrozen(frozen: boolean): void;
+}
+
 /** Interfaz uniforme que consume `Game`/`LevelLoader`. La implementa `Npc`. */
 export interface INpc {
   readonly id: string;
@@ -162,6 +195,10 @@ export interface INpc {
 
   update(ctx: AiFrameContext): void;
   syncFromPhysics(): void;
+  /** Handle de traversal por portales, o null si el motor no lo soporta. */
+  getPortalTraversalHandle(): NpcPortalHandle | null;
+  /** Handle de congelamiento (ice gun), o null si el NPC ya no está vivo. */
+  getFreezeHandle(): NpcFreezeHandle | null;
   applyDamage(
     amount: number,
     hitDirection?: Vector3,

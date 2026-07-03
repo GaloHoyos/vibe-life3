@@ -17,7 +17,9 @@ vi.mock("@engine/render/material/Materials", async () => {
 });
 
 describe("CharacterFactory", () => {
-  it("requires runtime services before creating an NPC", async () => {
+  // El primer test paga el import dinámico del grafo completo de la factory;
+  // con la suite corriendo en paralelo el default de 5 s queda justo.
+  it("requires runtime services before creating an NPC", { timeout: 15000 }, async () => {
     const { CharacterFactory } = await import("@game/characters/CharacterFactory");
     const assets = trackingAssets();
     const factory = new CharacterFactory(

@@ -6,6 +6,7 @@ import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
+import type { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
 import type { AmmoInventory } from "./AmmoInventory";
 import type { WeaponDefinition } from "./WeaponDefinition";
 import type { WeaponInventory } from "./WeaponInventory";
@@ -23,6 +24,8 @@ export interface WeaponContext {
   energyBalls: EnergyBallSystem;
   /** Sistema de hielo Blobulator-style. Lo usa el Ice Gun. */
   iceGun: IceGunSystem;
+  /** Par de portales runtime. Lo usa la Portal Gun. */
+  portals: PortalGunSystem;
   /** Reserva global de munición por tipo; las armas guardan solo cargador. */
   ammo: AmmoInventory;
   /**

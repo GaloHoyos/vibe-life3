@@ -42,6 +42,8 @@ import { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 import { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
+import { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
+import { PortalConfig } from "@game/config/portal.config";
 import { InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
 import type { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
@@ -60,7 +62,7 @@ import { TriggerSystem } from "@game/levels/TriggerSystem";
 import { CheckpointSystem, type CheckpointSnapshot } from "@game/levels/CheckpointSystem";
 import { HazardVolumeSystem } from "@game/levels/HazardVolumeSystem";
 import { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
-import type { ActorSnapshot, AiFrameContext, INpc } from "@game/npc/core/INpc";
+import type { ActorSnapshot, AiFrameContext, INpc, NpcFreezeHandle, NpcPortalHandle } from "@game/npc/core/INpc";
 import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
 import { DialogueSystem } from "@game/narrative/DialogueSystem";
 import { LevelEvents } from "@game/narrative/LevelEvents";
@@ -259,6 +261,7 @@ export class Game {
     s.resolve(GameTokens.Bolts).dispose();
     s.resolve(GameTokens.EnergyBalls).dispose();
     s.resolve(GameTokens.IceGun).dispose();
+    s.resolve(GameTokens.Portals).dispose();
     this.player?.dispose();
     this.deathScreen?.dispose();
     this.transitionOverlay?.dispose();
@@ -334,6 +337,17 @@ export class Game {
       GameTokens.NpcBloodEffects,
       new NpcBloodEffects(scene.scene, eventBus, raycast, vfx),
     );
+    // Los portales se registran antes que los proyectiles: estos reciben el
+    // raycast portal-aware para atravesar el par linked.
+    const portals = new PortalGunSystem(
+      scene.scene,
+      physics,
+      raycast,
+      eventBus,
+      s.resolve(EngineTokens.Renderer),
+      s.resolve(EngineTokens.Camera),
+    );
+    s.register(GameTokens.Portals, portals);
     const grenades = new GrenadeSystem(
       physics,
       scene.scene,
@@ -346,9 +360,20 @@ export class Game {
     s.register(GameTokens.Grenades, grenades);
     s.register(
       GameTokens.Rockets,
-      new RocketSystem(scene.scene, assets, raycast, grenades, vfx, positionalSounds),
+      new RocketSystem(
+        scene.scene,
+        assets,
+        raycast,
+        grenades,
+        vfx,
+        positionalSounds,
+        portals.throughRaycast,
+      ),
     );
-    s.register(GameTokens.Bolts, new BoltSystem(scene.scene, raycast, eventBus));
+    s.register(
+      GameTokens.Bolts,
+      new BoltSystem(scene.scene, raycast, eventBus, portals.throughRaycast),
+    );
     s.register(
       GameTokens.EnergyBalls,
       new EnergyBallSystem(
@@ -358,6 +383,7 @@ export class Game {
         grenades,
         vfx,
         positionalSounds,
+        portals.throughRaycast,
       ),
     );
     s.register(
@@ -731,6 +757,7 @@ export class Game {
       pathQueue: this.pathQueue,
       buildingRegistry: this.buildingRegistry,
       raycast,
+      losRaycast: this.engine.services.resolve(GameTokens.Portals).throughRaycast,
       tacticalMap: this.tacticalMap,
       squadDirector: this.squadDirector,
     };
@@ -995,6 +1022,9 @@ export class Game {
 
     this.tickPlaying(time);
 
+    s.resolve(GameTokens.Portals).updateRender(
+      this.player ? [this.player.weapons.getViewModelRoot()] : [],
+    );
     this.engine.renderFrame();
     input.endFrame();
   }
@@ -1050,6 +1080,7 @@ export class Game {
     const bolts = s.resolve(GameTokens.Bolts);
     const energyBalls = s.resolve(GameTokens.EnergyBalls);
     const iceGun = s.resolve(GameTokens.IceGun);
+    const portals = s.resolve(GameTokens.Portals);
     const explosiveBarrels = s.resolve(GameTokens.ExplosiveBarrels);
     const vfx = s.resolve(EngineTokens.Vfx);
 
@@ -1110,12 +1141,16 @@ export class Game {
         radius: npc.radius,
       }));
       const npcIndex = new ActorSpatialIndex(npcSnapshots);
+      const portalGhosts: ActorSnapshot[] = portals
+        .projectPointThroughPortals(playerPosition)
+        .map((position) => ({ ...playerSnapshot, position }));
       const ctx: AiFrameContext = {
         delta: time.delta,
         elapsed: time.elapsed,
         aiLod: "near",
         player: playerSnapshot,
         npcs: [],
+        portalGhosts: portalGhosts.length > 0 ? portalGhosts : undefined,
         tacticalMap: this.tacticalMap,
         squadDirector: this.squadDirector,
         eventBus: s.resolve(GameTokens.EventBus),
@@ -1137,7 +1172,22 @@ export class Game {
     rockets.update(time.delta, time.elapsed);
     bolts.update(time.delta, time.elapsed);
     energyBalls.update(time.delta, time.elapsed, this.npcs);
-    iceGun.update(time.delta, time.elapsed);
+    iceGun.update(
+      time.delta,
+      time.elapsed,
+      this.npcs
+        .map((npc) => npc.getFreezeHandle())
+        .filter((handle): handle is NpcFreezeHandle => handle !== null),
+    );
+    portals.update(time.delta, time.elapsed, this.dying ? undefined : player, camera);
+    if (PortalConfig.npcTraversal.enabled) {
+      portals.updateNpcTraversal(
+        time.elapsed,
+        this.npcs
+          .map((npc) => npc.getPortalTraversalHandle())
+          .filter((handle): handle is NpcPortalHandle => handle !== null),
+      );
+    }
     explosiveBarrels.update();
 
     playerPosition = player.getPosition();
@@ -1583,6 +1633,7 @@ export class Game {
     services.resolve(GameTokens.Bolts).clear();
     services.resolve(GameTokens.EnergyBalls).clear();
     services.resolve(GameTokens.IceGun).clear();
+    services.resolve(GameTokens.Portals).clear();
     explosiveBarrels.clear();
     vfx.clear();
     services.resolve(EngineTokens.PositionalSound).clear();
@@ -1626,6 +1677,7 @@ export class Game {
       services.resolve(GameTokens.Bolts),
       services.resolve(GameTokens.EnergyBalls),
       services.resolve(GameTokens.IceGun),
+      services.resolve(GameTokens.Portals),
     );
     if (spawn) {
       this.player.health.restore(spawn.health, spawn.armor);

@@ -9,6 +9,7 @@ const pistolUrl = new URL('../../models/weapons/pistol.glb', import.meta.url).hr
 const smgUrl = new URL('../../models/weapons/smg.glb', import.meta.url).href;
 const ar3Url = new URL('../../models/weapons/ar3.glb', import.meta.url).href;
 const gravityGunUrl = new URL('../../models/weapons/gravitygun.glb', import.meta.url).href;
+const portalGunUrl = new URL('../../models/weapons/portalgun.glb', import.meta.url).href;
 const shotgunUrl = new URL('../../models/weapons/shotgun.glb', import.meta.url).href;
 const grenadeUrl = new URL('../../models/weapons/grenade.glb', import.meta.url).href;
 const grenadePrimedUrl = new URL('../../models/weapons/grenade-primed.glb', import.meta.url).href;
@@ -104,6 +105,12 @@ export const AssetManifest = {
     gravityGun: {
       id: 'gravityGun',
       path: gravityGunUrl,
+      type: 'weapon',
+      debug: false,
+    },
+    portalGun: {
+      id: 'portalGun',
+      path: portalGunUrl,
       type: 'weapon',
       debug: false,
     },

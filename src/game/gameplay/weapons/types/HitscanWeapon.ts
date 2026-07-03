@@ -14,11 +14,31 @@ export class HitscanWeapon extends Weapon {
   protected performFire(context: WeaponFireContext): void {
     const direction = applySpread(context.direction, this.definition.spread);
     const rayOrigin = context.origin.clone().addScaledVector(direction, 0.45);
-    const hit = this.context.raycast.cast(
+    const result = this.context.portals.throughRaycast.castSegments(
       rayOrigin,
       direction,
       this.definition.range,
     );
+    const hit = result.hit;
+
+    // El beam continúa saliendo del portal de salida: un tracer por segmento
+    // extra (el primero ya lo dibuja `weapon.fired`).
+    for (let i = 1; i < result.segments.length; i++) {
+      const segment = result.segments[i];
+      const segmentDir = segment.end.clone().sub(segment.origin);
+      const length = segmentDir.length();
+      if (length < 1e-3) {
+        continue;
+      }
+      this.context.eventBus.emit("weapon.tracer", {
+        origin: segment.origin.clone(),
+        direction: segmentDir.divideScalar(length),
+        range: length,
+        sourceId: "player",
+        sourceKind: "player",
+        sourceFaction: "player",
+      });
+    }
 
     if (!hit) {
       return;
@@ -28,19 +48,30 @@ export class HitscanWeapon extends Weapon {
       return;
     }
 
+    // Tras un salto de portal, el impulso/daño empujan en la dirección del
+    // lado de salida, no en la de la boca del arma.
+    const lastSegment = result.segments[result.segments.length - 1];
+    const impactDirection = lastSegment.end
+      .clone()
+      .sub(lastSegment.origin)
+      .normalize();
+    if (impactDirection.lengthSq() < 0.5) {
+      impactDirection.copy(direction);
+    }
+
     const parent = hit.collider.parent();
     if (parent && parent.isDynamic()) {
       const impulseScale =
         hit.metadata?.kind === "ragdoll"
           ? Math.min(this.definition.impulse, 1.25)
           : this.definition.impulse;
-      this.applyImpulse(parent, direction, impulseScale);
+      this.applyImpulse(parent, impactDirection, impulseScale);
     }
 
     const damageMultiplier = hit.metadata?.bodyPart?.damageMultiplier ?? 1;
     hit.metadata?.damageable?.applyDamage(
       this.definition.damage * damageMultiplier,
-      direction.clone(),
+      impactDirection.clone(),
       hit.metadata?.bodyPart?.name,
       "player",
       hit.point,

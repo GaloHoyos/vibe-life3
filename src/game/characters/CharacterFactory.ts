@@ -35,7 +35,7 @@ import type { NpcCombatHandle } from '@game/npc/brain/NpcBrainContext';
 import type { ModelAssetId } from '@engine/assets/AssetManifest';
 import type { GameEventBus } from "@game/GameEvents";
 import type { PhysicsMetadata, PhysicsWorld } from '@engine/physics/PhysicsWorld';
-import { Raycast } from '@engine/physics/Raycast';
+import { Raycast, type RaycastSource } from '@engine/physics/Raycast';
 import { CharacterMotor } from '@engine/physics/character/CharacterMotor';
 import { DynamicFlyerMotor } from '@engine/physics/character/DynamicFlyerMotor';
 import { KinematicFlyerMotor } from '@engine/physics/character/KinematicFlyerMotor';
@@ -56,6 +56,12 @@ export interface NpcRuntimeServices {
   pathQueue: PathRequestQueue;
   buildingRegistry: BuildingRegistry;
   raycast: Raycast;
+  /**
+   * Raycast para línea de visión y disparos. Portal-aware cuando hay portales:
+   * los NPCs ven y disparan a través del par linked. La locomoción sigue
+   * usando `raycast` plano (los probes de suelo no deben cruzar portales).
+   */
+  losRaycast?: RaycastSource;
   tacticalMap: TacticalMap;
   squadDirector: SquadDirector;
 }
@@ -279,11 +285,12 @@ export class CharacterFactory {
         onStomp: () => animation.notifyAttack(),
       });
     } else if (ranged) {
+      const losRaycast = services.losRaycast ?? services.raycast;
       const realCombat = new NpcRangedCombat(
         instanceId,
         definition.faction,
         ranged,
-        services.raycast,
+        losRaycast,
         this.eventBus,
         () => animation.notifyShot(),
       );
@@ -295,7 +302,7 @@ export class CharacterFactory {
         eyeHeight: definition.perception.eyeHeight,
         effectiveRange: definition.ai.detectionRange,
         rangedConfig: ranged,
-        raycast: services.raycast,
+        raycast: losRaycast,
         onReload: (duration) => animation.notifyReload(duration),
       });
     } else {
@@ -315,6 +322,7 @@ export class CharacterFactory {
       buildingRegistry: services.buildingRegistry,
       pathQueue: services.pathQueue,
       raycast: services.raycast,
+      losRaycast: services.losRaycast,
       eventBus: this.eventBus,
       animation,
       patrolRoute: patrolPoints,

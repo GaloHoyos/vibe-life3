@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import type { Raycast } from '@engine/physics/Raycast';
+import type { RaycastSource } from '@engine/physics/Raycast';
 
 export interface PerceptionTarget {
   id: string;
@@ -66,7 +66,7 @@ export class PerceptionSystem {
     facing: Vector3,
     target: PerceptionTarget | null,
     delta: number,
-    raycast: Raycast,
+    raycast: RaycastSource,
   ): PerceptionSnapshot {
     this.memoryAge += delta;
     if (!target || !target.isAlive) {
@@ -101,7 +101,7 @@ export class PerceptionSystem {
     self: Vector3,
     facing: Vector3,
     targetActor: PerceptionTarget,
-    raycast: Raycast,
+    raycast: RaycastSource,
   ): boolean {
     return isTargetVisible(this.config, self, facing, targetActor, raycast, this.selfId);
   }
@@ -117,7 +117,7 @@ export function isTargetVisible(
   self: Vector3,
   facing: Vector3,
   targetActor: PerceptionTarget,
-  raycast: Raycast,
+  raycast: RaycastSource,
   /** Id del observador, para excluir sus propios colliders del LOS. */
   selfId?: string,
 ): boolean {

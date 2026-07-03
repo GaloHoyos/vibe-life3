@@ -6,7 +6,7 @@ import type { NavSpace } from '@engine/ai/nav/NavSpace';
 import type { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
 import { PerceptionSystem, isTargetVisible } from '@engine/ai/perception/PerceptionSystem';
 import type { PerceptionSnapshot } from '@engine/ai/perception/PerceptionSystem';
-import type { Raycast } from '@engine/physics/Raycast';
+import type { Raycast, RaycastSource } from '@engine/physics/Raycast';
 import type { NpcMotor } from '@engine/physics/character/NpcMotor';
 import { NpcLocomotion } from '@engine/ai/locomotion/NpcLocomotion';
 import type { LocomotionNeighbor, NpcLocomotionDebug } from '@engine/ai/locomotion/NpcLocomotion';
@@ -19,6 +19,8 @@ import type {
   AiFrameContext,
   INpc,
   NpcAiDebugSnapshot,
+  NpcFreezeHandle,
+  NpcPortalHandle,
 } from '@game/npc/core/INpc';
 import type {
   NpcBrainContext,
@@ -49,6 +51,8 @@ export interface NpcConstructionParams {
   buildingRegistry: BuildingRegistry;
   pathQueue: PathRequestQueue;
   raycast: Raycast;
+  /** LOS/threat scoring. Portal-aware si hay portales; default `raycast`. */
+  losRaycast?: RaycastSource;
   eventBus: GameEventBus;
   animation?: NpcAnimator | null;
   patrolRoute?: Vector3[] | null;
@@ -57,6 +61,14 @@ export interface NpcConstructionParams {
 }
 
 const tmpFacing = new Vector3();
+
+/** Capacidades que un motor necesita para cruzar portales (las implementa `CharacterMotor`). */
+interface PortalCapableMotor {
+  getVelocity(): Vector3;
+  teleport(position: Vector3, velocity: Vector3): void;
+  snapYaw(yaw: number): void;
+  setPortalExclusions(handles: ReadonlySet<number> | null): void;
+}
 
 /** Radio (m) dentro del cual un aliado vivo cuenta para `AlliesNear`. */
 const ALLIES_NEAR_RADIUS = 14;
@@ -93,6 +105,7 @@ export class Npc implements INpc {
   private readonly preset: NpcPreset;
   private readonly sliceDamage: number;
   private readonly raycast: Raycast;
+  private readonly losRaycast: RaycastSource;
   private readonly buildingRegistry: BuildingRegistry;
   private readonly navSpace: NavSpace;
   private readonly eventBus: GameEventBus;
@@ -107,6 +120,8 @@ export class Npc implements INpc {
   private readonly neighborBuffer: LocomotionNeighbor[] = [];
   private justHitTimer = 0;
   private disposed = false;
+  private frozen = false;
+  private freezeHandle: NpcFreezeHandle | null = null;
   private lastConditions = 0;
   private threatLastKnown: Vector3 | null = null;
   private currentThreat: ActorSnapshot | null = null;
@@ -129,6 +144,7 @@ export class Npc implements INpc {
     this.preset = params.preset;
     this.sliceDamage = params.sliceDamage ?? 0;
     this.raycast = params.raycast;
+    this.losRaycast = params.losRaycast ?? params.raycast;
     this.buildingRegistry = params.buildingRegistry;
     this.navSpace = params.navSpace;
     this.eventBus = params.eventBus;
@@ -173,6 +189,20 @@ export class Npc implements INpc {
 
     this.syncMeshFromMotor();
 
+    if (this.frozen) {
+      // Estatua de hielo: sin percepción/brain/combate y sin tickear el
+      // animator (la pose queda congelada). El motor sigue corriendo sin goal
+      // (gravedad + grounding) y el daño por impactos físicos aplica igual —
+      // con `frozen`, cualquier daño hace añicos la estatua.
+      this.locomotion.stop();
+      this.locomotion.update(delta);
+      const frozenImpact = this.motor.consumeImpactDamage();
+      if (frozenImpact > 0) {
+        this.applyDamage(frozenImpact, undefined, undefined, 'player');
+      }
+      return;
+    }
+
     const picked = this.pickThreat(ctx);
     if (picked?.id !== this.currentThreat?.id) {
       // Cambio de target: la memoria del anterior no aplica al nuevo.
@@ -194,7 +224,7 @@ export class Npc implements INpc {
         ? { id: this.currentThreat.id, position: this.currentThreat.position, isAlive: this.currentThreat.isAlive }
         : null,
       delta,
-      this.raycast,
+      this.losRaycast,
     );
     this.threatLastKnown = perceptionSnapshot.lastKnownPosition;
     this.lastPerception = perceptionSnapshot;
@@ -351,6 +381,60 @@ export class Npc implements INpc {
     this.syncMeshFromMotor();
   }
 
+  getPortalTraversalHandle(): NpcPortalHandle | null {
+    // Solo motores terrestres estándar (CharacterMotor, detectado por
+    // capacidades para no importar la clase): flyers/strider tienen
+    // locomoción propia y no tiene sentido teleportarlos por el disco.
+    if (!this.health.isAlive()) {
+      return null;
+    }
+    const motor = this.motor as typeof this.motor & Partial<PortalCapableMotor>;
+    const { teleport, snapYaw, setPortalExclusions, getVelocity } = motor;
+    if (
+      typeof teleport !== 'function' ||
+      typeof snapYaw !== 'function' ||
+      typeof setPortalExclusions !== 'function' ||
+      typeof getVelocity !== 'function'
+    ) {
+      return null;
+    }
+    return {
+      id: this.id,
+      radius: this.radius,
+      getPosition: () => motor.getPosition(),
+      getVelocity: () => getVelocity.call(motor),
+      teleport: (position, velocity, yaw) => {
+        teleport.call(motor, position, velocity);
+        snapYaw.call(motor, yaw);
+      },
+      setColliderExclusions: (handles) => setPortalExclusions.call(motor, handles),
+    };
+  }
+
+  getFreezeHandle(): NpcFreezeHandle | null {
+    if (!this.health.isAlive() || this.disposed) {
+      return null;
+    }
+    if (!this.freezeHandle) {
+      this.freezeHandle = {
+        id: this.id,
+        radius: this.radius,
+        getPosition: () => this.motor.getPosition(),
+        isAlive: () => this.isAlive(),
+        setFrozen: (frozen) => this.setFrozen(frozen),
+      };
+    }
+    return this.freezeHandle;
+  }
+
+  private setFrozen(frozen: boolean): void {
+    if (this.frozen === frozen) return;
+    this.frozen = frozen;
+    if (frozen) {
+      this.locomotion.stop();
+    }
+  }
+
   applyDamage(
     amount: number,
     hitDirection?: Vector3,
@@ -359,6 +443,10 @@ export class Npc implements INpc {
     hitPoint?: Vector3,
   ): void {
     if (this.disposed || !this.health.isAlive()) return;
+    if (this.frozen && amount > 0) {
+      // Congelado = quebradizo: cualquier golpe hace añicos la estatua.
+      amount = this.health.max * 10;
+    }
     const hasHitDirection = !!hitDirection && hitDirection.lengthSq() > 0.001;
     const dir =
       hasHitDirection
@@ -513,6 +601,13 @@ export class Npc implements INpc {
       isHostileTo(this.faction, ctx.player.faction)
     ) {
       candidates.push(ctx.player);
+      // Proyecciones del player a través de portales: candidatos extra cuya
+      // posición es la salida del portal. El LOS portal-aware los valida.
+      if (ctx.portalGhosts) {
+        for (const ghost of ctx.portalGhosts) {
+          candidates.push(ghost);
+        }
+      }
     }
     for (const npc of ctx.npcs) {
       if (!npc.isAlive || npc.id === this.id) continue;
@@ -549,7 +644,7 @@ export class Npc implements INpc {
         self,
         facing,
         { id: candidate.id, position: candidate.position, isAlive: candidate.isAlive },
-        this.raycast,
+        this.losRaycast,
         this.id,
       );
       if (!visible) score *= THREAT_UNSEEN_PENALTY;

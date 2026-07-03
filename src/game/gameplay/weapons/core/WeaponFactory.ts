@@ -6,6 +6,7 @@ import { GravityGunWeapon } from "@game/gameplay/weapons/types/GravityGunWeapon"
 import { GrenadeWeapon } from "@game/gameplay/weapons/types/GrenadeWeapon";
 import { HitscanWeapon } from "@game/gameplay/weapons/types/HitscanWeapon";
 import { IceGunWeapon } from "@game/gameplay/weapons/types/IceGunWeapon";
+import { PortalGunWeapon } from "@game/gameplay/weapons/types/PortalGunWeapon";
 import { Ar3Weapon } from "@game/gameplay/weapons/types/Ar3Weapon";
 import { CrossbowWeapon } from "@game/gameplay/weapons/types/CrossbowWeapon";
 import { MeleeWeapon } from "@game/gameplay/weapons/types/MeleeWeapon";
@@ -60,6 +61,8 @@ function instantiateWeapon(
       return new MeleeWeapon(definition, context);
     case "iceGun":
       return new IceGunWeapon(definition, context);
+    case "portalGun":
+      return new PortalGunWeapon(definition, context);
     case "special":
       return new GravityGunWeapon(definition, context);
   }

@@ -11,6 +11,20 @@ export interface RaycastHit {
 }
 
 /**
+ * Contrato estructural del `cast`. Permite inyectar variantes (p.ej. el
+ * raycast portal-aware) donde el consumidor solo necesita lanzar rayos.
+ */
+export interface RaycastSource {
+  cast(
+    origin: Vector3,
+    direction: Vector3,
+    maxDistance: number,
+    excludeBody?: RAPIER.RigidBody,
+    excludeId?: string,
+  ): RaycastHit | null;
+}
+
+/**
  * Lanza un rayo en el `PhysicsWorld` y devuelve el primer impacto con
  * `metadata` enriquecida (id, kind, body part). Disparos de armas, line
  * of sight de NPCs e interacciones lo usan.

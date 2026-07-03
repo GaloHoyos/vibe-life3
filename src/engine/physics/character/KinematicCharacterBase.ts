@@ -100,9 +100,32 @@ export abstract class KinematicCharacterBase {
     };
   }
 
+  /**
+   * Hard-set de posición + velocidad (portales/teleports). Usa `setTranslation`
+   * y no `setNextKinematicTranslation`: el salto debe ser instantáneo, sin que
+   * el solver interpole un frame de movimiento gigante.
+   */
+  teleport(position: Vector3, velocity: Vector3): void {
+    this.body.setTranslation(
+      { x: position.x, y: position.y, z: position.z },
+      true,
+    );
+    this.body.setNextKinematicTranslation({
+      x: position.x,
+      y: position.y,
+      z: position.z,
+    });
+    this.velocity.copy(velocity);
+    this.grounded = false;
+  }
+
   getPosition(): Vector3 {
     const p = this.body.translation();
     return new Vector3(p.x, p.y, p.z);
+  }
+
+  getVelocity(out = new Vector3()): Vector3 {
+    return out.copy(this.velocity);
   }
 
   isGrounded(): boolean {

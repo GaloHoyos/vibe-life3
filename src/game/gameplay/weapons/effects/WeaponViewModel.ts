@@ -41,6 +41,11 @@ export class WeaponViewModel {
     this.scene.add(this.root);
   }
 
+  /** Raíz del modelo en primera persona; los passes de portal la ocultan. */
+  getRoot(): Group {
+    return this.root;
+  }
+
   async equip(definition: WeaponDefinition | null): Promise<void> {
     this.equipped = definition;
     this.loadToken += 1;
@@ -152,6 +157,25 @@ export class WeaponViewModel {
       object.frustumCulled = false;
       if ("castShadow" in object) {
         object.castShadow = false;
+      }
+      // El arma en primera persona se dibuja SIEMPRE encima del mundo (sin
+      // depth test, al final del pass): si no, al apoyarse contra una pared
+      // o al entrar a un portal la geometría la oculta. Se clonan los
+      // materiales porque el GLTF los comparte con los pickups del mundo.
+      if (object instanceof Mesh) {
+        object.renderOrder = 1000;
+        const materials = Array.isArray(object.material)
+          ? object.material
+          : [object.material];
+        const patched = materials.map((material) => {
+          const clone = material.clone();
+          clone.depthTest = false;
+          clone.depthWrite = false;
+          return clone;
+        });
+        object.material = Array.isArray(object.material)
+          ? patched
+          : patched[0];
       }
     });
     this.modelRoot.add(this.model);
