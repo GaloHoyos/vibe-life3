@@ -1,6 +1,6 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { Scene, Vector3 } from "three";
+import { Group, Scene, Vector3 } from "three";
 import { EventBus } from "@engine/core/EventBus";
 import type { PhysicsMetadata } from "@engine/physics/PhysicsWorld";
 import { PhysicsWorld } from "@engine/physics/PhysicsWorld";
@@ -46,9 +46,18 @@ function setupMocked() {
   const raycast = {
     cast: vi.fn(() => hit),
   } as unknown as Raycast;
+  const removeBody = vi.fn();
+  const createDynamicBox = vi.fn(
+    () =>
+      ({
+        applyImpulseAtPoint: vi.fn(),
+        isValid: () => true,
+      }) as unknown as RAPIER.RigidBody,
+  );
   const physics = {
     createStaticTrimesh: vi.fn(),
-    removeBody: vi.fn(),
+    removeBody,
+    createDynamicBox,
   } as unknown as PhysicsWorld;
   const vfx = fakeVfx();
   const system = new IceGunSystem(scene, physics, raycast, bus, vfx);
@@ -57,17 +66,24 @@ function setupMocked() {
     bus,
     system,
     vfx,
+    removeBody,
+    createDynamicBox,
     setHit: (next: RaycastHit | null) => {
       hit = next;
     },
   };
 }
 
+/**
+ * Disparo en diagonal (45° hacia adelante): el impacto queda ~1.6 m frente al
+ * tirador, fuera de `paint.shooterClearance`. Un disparo vertical a los pies
+ * se bloquea a propósito (ver test de clearance).
+ */
 function fire(
   system: IceGunSystem,
   now: number,
   origin = new Vector3(0, 1.6, 0),
-  direction = new Vector3(0, -1, 0),
+  direction = new Vector3(0, -1, 1).normalize(),
 ) {
   return system.fire({
     origin,
@@ -90,20 +106,26 @@ function npcHit(metadata: PhysicsMetadata): RaycastHit {
 }
 
 function freezeHandle(id: string): NpcFreezeHandle & {
-  frozenCalls: boolean[];
+  freezeSolidCalls: { count: number };
   alive: { value: boolean };
 } {
-  const frozenCalls: boolean[] = [];
   const alive = { value: true };
+  const freezeSolidCalls = { count: 0 };
   return {
     id,
     radius: 0.35,
+    height: 1.8,
     getPosition: () => new Vector3(0, 1, -2),
     isAlive: () => alive.value,
-    setFrozen: (frozen: boolean) => {
-      frozenCalls.push(frozen);
+    freezeSolid: () => {
+      freezeSolidCalls.count += 1;
+      if (!alive.value) return null;
+      alive.value = false;
+      const visual = new Group();
+      visual.position.set(0, 1, -2);
+      return visual;
     },
-    frozenCalls,
+    freezeSolidCalls,
     alive,
   };
 }
@@ -117,7 +139,7 @@ describe("IceGunSystem (blobulator)", () => {
     system.flushChunks();
     physics.updateQueryPipeline();
 
-    const hit = raycast.cast(new Vector3(0, 2, 0), new Vector3(0, -1, 0), 5);
+    const hit = raycast.cast(new Vector3(0, 2, 1.6), new Vector3(0, -1, 0), 5);
     expect(hit).not.toBeNull();
     expect(hit!.metadata?.id.startsWith("ice-")).toBe(true);
     expect(hit!.metadata?.surface).toBe("snow");
@@ -127,16 +149,24 @@ describe("IceGunSystem (blobulator)", () => {
   it("spraying on top of existing ice keeps stacking (mounds grow)", async () => {
     const { system, physics, raycast } = await setupWorld();
 
+    // Ángulo bajo: la masa crece sin entrar en la zona de clearance del tirador.
+    const direction = new Vector3(0, -1, 2).normalize();
     for (let i = 0; i < 6; i += 1) {
-      fire(system, i * 0.06);
+      fire(system, i * 0.15, undefined, direction);
       system.flushChunks();
       physics.updateQueryPipeline();
     }
 
-    const hit = raycast.cast(new Vector3(0, 3, 0), new Vector3(0, -1, 0), 5);
-    expect(hit).not.toBeNull();
+    // La masa se apila remontando el rayo: escanear la franja de impacto.
+    let peak = 0;
+    for (let z = 1.2; z <= 3.6; z += 0.2) {
+      const hit = raycast.cast(new Vector3(0, 3, z), new Vector3(0, -1, 0), 5);
+      if (hit) {
+        peak = Math.max(peak, hit.point.y);
+      }
+    }
     // Tras varias capas, la masa supera con holgura un solo blob.
-    expect(hit!.point.y).toBeGreaterThan(0.5);
+    expect(peak).toBeGreaterThan(0.5);
     expect(system.getDepositedBlobCount()).toBeGreaterThanOrEqual(6);
   });
 
@@ -144,10 +174,31 @@ describe("IceGunSystem (blobulator)", () => {
     const { system } = await setupWorld();
 
     fire(system, 0, new Vector3(0, 1.6, 0));
-    fire(system, 0.06, new Vector3(1.2, 1.6, 0));
+    fire(system, 0.15, new Vector3(1.2, 1.6, 0));
 
     // 2 depósitos directos + puentes intermedios del stroke.
     expect(system.getDepositedBlobCount()).toBeGreaterThan(2);
+  });
+
+  it("throttles spray deposits to the paint interval", async () => {
+    const { system } = await setupWorld();
+
+    fire(system, 0);
+    fire(system, IceConfig.paint.interval / 2);
+    expect(system.getDepositedBlobCount()).toBe(1);
+
+    fire(system, IceConfig.paint.interval + 0.01);
+    expect(system.getDepositedBlobCount()).toBe(2);
+  });
+
+  it("skips deposits inside the shooter clearance (no clipping into the player)", async () => {
+    const { system } = await setupWorld();
+
+    // Vertical a los propios pies: el blob quedaría dentro de la cápsula.
+    expect(
+      fire(system, 0, new Vector3(0, 1.6, 0), new Vector3(0, -1, 0)),
+    ).toBe(true);
+    expect(system.getDepositedBlobCount()).toBe(0);
   });
 
   it("RMB grows an ascending ramp anchored on the ground and caps its length", async () => {
@@ -185,20 +236,20 @@ describe("IceGunSystem (blobulator)", () => {
       // grilla centrada para no salirse del piso de 60×60.
       fire(
         system,
-        i * 0.01,
+        i * 0.15,
         new Vector3((i % 16) * 2.9 - 22, 1.6, Math.floor(i / 16) * 2.9 - 22),
       );
     }
     expect(system.getDepositedBlobCount()).toBe(total);
 
-    system.update(1 / 60, total * 0.01 + IceConfig.melt.seconds + 0.2, []);
+    system.update(1 / 60, total * 0.15 + IceConfig.melt.seconds + 0.2, []);
     expect(system.getDepositedBlobCount()).toBe(IceConfig.paint.budget);
   });
 
   it("weapon damage on ice carves blobs around the impact", async () => {
     const { system, bus, vfx } = await setupWorld();
     fire(system, 0);
-    fire(system, 0.06);
+    fire(system, 0.15);
     expect(system.getDepositedBlobCount()).toBe(2);
 
     system.update(1 / 60, 1, []);
@@ -206,7 +257,7 @@ describe("IceGunSystem (blobulator)", () => {
       weaponName: "SMG",
       targetId: "ice-0,0,0",
       surfaceKind: "static",
-      point: new Vector3(0, 0.3, 0),
+      point: new Vector3(0, 0.3, 1.6),
       normal: new Vector3(0, 1, 0),
       damage: 40,
       sourceId: "player",
@@ -217,8 +268,8 @@ describe("IceGunSystem (blobulator)", () => {
     expect(vfx.explosion).toHaveBeenCalled();
   });
 
-  it("freeze meter fills on NPCs and turns them into a statue via the handle", () => {
-    const { system, bus, setHit } = setupMocked();
+  it("freeze meter fills on NPCs and kills them frozen solid (falling statue)", () => {
+    const { system, bus, setHit, createDynamicBox } = setupMocked();
     const handle = freezeHandle("combine-1");
     const frozenEvents: string[] = [];
     bus.on("ice.frozen", (payload) => frozenEvents.push(payload.targetId));
@@ -238,20 +289,20 @@ describe("IceGunSystem (blobulator)", () => {
       fire(system, i * 0.06);
     }
     expect(system.getFreezeAmount("combine-1")).toBe(98);
-    expect(handle.frozenCalls).toHaveLength(0);
+    expect(handle.freezeSolidCalls.count).toBe(0);
 
     fire(system, 0.48);
-    expect(handle.frozenCalls).toEqual([true]);
+    expect(handle.freezeSolidCalls.count).toBe(1);
+    expect(handle.alive.value).toBe(false);
     expect(system.isFrozen("combine-1")).toBe(true);
     expect(frozenEvents).toEqual(["combine-1"]);
+    // Estatua = cuerpo dinámico único (caja) que cae rígido.
+    expect(createDynamicBox).toHaveBeenCalledTimes(1);
   });
 
-  it("statues thaw after their duration and keep a residual freeze meter", () => {
-    const { system, bus, setHit } = setupMocked();
+  it("spraying an existing statue does not re-freeze it", () => {
+    const { system, setHit } = setupMocked();
     const handle = freezeHandle("combine-1");
-    const thawed: string[] = [];
-    bus.on("ice.thawed", (payload) => thawed.push(payload.targetId));
-
     setHit(
       npcHit({
         id: "combine-body",
@@ -267,17 +318,15 @@ describe("IceGunSystem (blobulator)", () => {
     }
     expect(system.isFrozen("combine-1")).toBe(true);
 
-    system.update(1 / 60, 0.5 + IceConfig.freeze.statueSeconds + 0.1, [handle]);
-    expect(handle.frozenCalls).toEqual([true, false]);
-    expect(system.isFrozen("combine-1")).toBe(false);
-    expect(thawed).toEqual(["combine-1"]);
-    expect(system.getFreezeAmount("combine-1")).toBe(
-      IceConfig.freeze.refreezeAmount,
-    );
+    for (let i = 0; i < 4; i += 1) {
+      fire(system, 1 + i * 0.06);
+    }
+    expect(handle.freezeSolidCalls.count).toBe(1);
+    expect(system.isFrozen("combine-1")).toBe(true);
   });
 
-  it("a statue killed by damage shatters with an ice burst", () => {
-    const { system, setHit, vfx } = setupMocked();
+  it("weapon hits on a statue shatter it with an ice burst", () => {
+    const { system, bus, setHit, vfx, removeBody } = setupMocked();
     const handle = freezeHandle("combine-1");
     setHit(
       npcHit({
@@ -294,10 +343,18 @@ describe("IceGunSystem (blobulator)", () => {
     }
     expect(system.isFrozen("combine-1")).toBe(true);
 
-    handle.alive.value = false;
-    system.update(1 / 60, 1, [handle]);
+    bus.emit("weapon.hit", {
+      weaponName: "SMG",
+      targetId: "ice-statue-combine-1",
+      surfaceKind: "dynamic",
+      point: new Vector3(0, 1, -2),
+      normal: new Vector3(0, 0, 1),
+      damage: 25,
+      sourceId: "player",
+    });
     expect(system.isFrozen("combine-1")).toBe(false);
     expect(vfx.explosion).toHaveBeenCalled();
+    expect(removeBody).toHaveBeenCalledTimes(1);
   });
 
   it("targets without a freeze handle die of cold at threshold (fallback)", () => {
@@ -356,7 +413,7 @@ describe("IceGunSystem (blobulator)", () => {
   it("clear removes all ice, statues and physics bodies", async () => {
     const { system, physics } = await setupWorld();
     for (let i = 0; i < 5; i += 1) {
-      fire(system, i * 0.06, new Vector3(i * 3, 1.6, 0));
+      fire(system, i * 0.15, new Vector3(i * 3, 1.6, 0));
     }
     system.flushChunks();
     expect(system.getDepositedBlobCount()).toBe(5);

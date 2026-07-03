@@ -48,10 +48,17 @@ interface ChunkEntry {
 //   val = strength / d² − SUBTRACT, surface at val = ISOLATION.
 // SUBTRACT controls blend softness; ISOLATION > 0 is mandatory (at exactly 0,
 // the polygonizer classifies empty cells as "inside" and floods the domain).
-const SUBTRACT = 12;
-const ISOLATION = 4;
+// Exported so one-shot bakes (`bakeBlobGeometry`) share the same field shape.
+export const BLOB_FIELD_SUBTRACT = 12;
+export const BLOB_FIELD_ISOLATION = 4;
 /** Field support extends past the surface radius by this factor. */
-const SUPPORT_FACTOR = Math.sqrt((SUBTRACT + ISOLATION) / SUBTRACT);
+export const BLOB_SUPPORT_FACTOR = Math.sqrt(
+  (BLOB_FIELD_SUBTRACT + BLOB_FIELD_ISOLATION) / BLOB_FIELD_SUBTRACT,
+);
+
+const SUBTRACT = BLOB_FIELD_SUBTRACT;
+const ISOLATION = BLOB_FIELD_ISOLATION;
+const SUPPORT_FACTOR = BLOB_SUPPORT_FACTOR;
 /** Weld grid (meters). Vertices come from a shared lattice, so 1 mm is safe. */
 const WELD = 1000;
 
@@ -158,8 +165,20 @@ export class Blobulator implements Disposable {
     }
   }
 
+  /**
+   * `SceneManager.clearLevel` desparenta el root en cada carga de nivel (el
+   * Blobulator vive en un servicio que se construye una sola vez); re-parentar
+   * es idempotente — mismo patrón que `NpcAiDebugOverlay`.
+   */
+  private ensureAttached(): void {
+    if (this.root.parent !== this.scene) {
+      this.scene.add(this.root);
+    }
+  }
+
   /** Rebuild throttled de chunks dirty. Llamar una vez por frame. */
   update(): void {
+    this.ensureAttached();
     let budget = this.options.maxChunkRebuildsPerFrame;
     for (const key of this.dirty) {
       this.dirty.delete(key);
@@ -173,6 +192,7 @@ export class Blobulator implements Disposable {
 
   /** Rebuild inmediato de todo lo pendiente (tests / teardown determinista). */
   flush(): void {
+    this.ensureAttached();
     for (const key of this.dirty) {
       this.rebuildChunk(key);
     }
@@ -307,7 +327,17 @@ export class Blobulator implements Disposable {
           weldIndex.set(weldKey, index);
           positions.push(wx, wy, wz);
           const o = (v + k) * 3;
-          normals.push(srcNormals[o], srcNormals[o + 1], srcNormals[o + 2]);
+          // MarchingCubes emits raw field gradients; PBR shading needs unit
+          // normals and a zero gradient would become NaN in the shader.
+          const nx = srcNormals[o];
+          const ny = srcNormals[o + 1];
+          const nz = srcNormals[o + 2];
+          const length = Math.hypot(nx, ny, nz);
+          if (length > 1e-6) {
+            normals.push(nx / length, ny / length, nz / length);
+          } else {
+            normals.push(0, 1, 0);
+          }
         }
         tri.push(index);
       }
@@ -334,7 +364,7 @@ export class Blobulator implements Disposable {
 
     const mesh = new Mesh(geometry, this.material);
     mesh.name = `${this.options.colliderIdPrefix}-${key}`;
-    mesh.castShadow = false;
+    mesh.castShadow = true;
     mesh.receiveShadow = true;
     this.root.add(mesh);
 

@@ -81,14 +81,10 @@ export interface GameEventMap {
     exitPosition: Vector3;
   };
   "portal.cleared": Record<string, never>;
-  /** Un NPC quedó estatua de hielo (ice gun al llenar el medidor de freeze). */
+  /** Un NPC murió congelado (ice gun al llenar el medidor de freeze). */
   "ice.frozen": {
     targetId: string;
     position: Vector3;
-  };
-  /** La estatua se descongeló sin que la remataran. */
-  "ice.thawed": {
-    targetId: string;
   };
   "weapon.hit": {
     weaponName: string;

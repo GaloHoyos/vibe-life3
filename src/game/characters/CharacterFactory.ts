@@ -314,6 +314,7 @@ export class CharacterFactory {
       faction: definition.faction,
       position,
       visualRoot: visualGroup,
+      height: definition.collider.height,
       motor,
       combat,
       preset,

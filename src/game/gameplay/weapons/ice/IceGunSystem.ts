@@ -12,6 +12,7 @@ import {
   Vector3,
   type Scene,
 } from "three";
+import type RAPIER from "@dimforge/rapier3d-compat";
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type {
   PhysicsMetadata,
@@ -20,6 +21,7 @@ import type {
 import type { Raycast } from "@engine/physics/Raycast";
 import type { VfxSystem } from "@engine/render/effects/VfxSystem";
 import { Blobulator } from "@engine/blob/Blobulator";
+import { bakeBlobGeometry, type BlobSpec } from "@engine/blob/bakeBlobGeometry";
 import type { GameEventBus } from "@game/GameEvents";
 import { IceConfig } from "@game/config/ice.config";
 import type { NpcFreezeHandle } from "@game/npc/core/INpc";
@@ -77,10 +79,15 @@ interface FreezePatch {
   expiresAt: number;
 }
 
+/**
+ * NPC muerto congelado: cuerpo dinámico único (caja) que cae rígido, con el
+ * visual del NPC en pose congelada y un cascarón de metaballs horneado.
+ * `PhysicsWorld` sincroniza `group` desde `body` en cada step.
+ */
 interface Statue {
-  handle: NpcFreezeHandle;
-  shell: Group;
-  thawAt: number;
+  group: Group;
+  body: RAPIER.RigidBody;
+  iceMesh: Mesh | null;
 }
 
 interface PaintState {
@@ -98,6 +105,7 @@ interface SurfState {
 const ICE_COLOR = new Color(0x8fe6ff);
 const ICE_WHITE = new Color(0xf2fdff);
 const ICE_ID_PREFIX = "ice";
+const ICE_STATUE_ID_PREFIX = "ice-statue-";
 const WORLD_UP = new Vector3(0, 1, 0);
 const WORLD_DOWN = new Vector3(0, -1, 0);
 const LOCAL_UP = new Vector3(0, 1, 0);
@@ -105,6 +113,8 @@ const FREEZE_PATCH_RADIUS = 0.2;
 const FREEZE_LETHAL_DAMAGE = 1000;
 
 const RAY_ORIGIN_OFFSET = 0.45;
+/** Largo del segmento ojos→pies para el chequeo de clearance del spray. */
+const SHOOTER_CAPSULE_DROP = 1.7;
 const BEAM_HOLD_DURATION = 0.16;
 const BEAM_CORE_RADIUS = 0.028;
 const BEAM_HALO_RADIUS = 0.09;
@@ -121,7 +131,8 @@ const tmpPoint = new Vector3();
  * blobs que se fusionan en una superficie continua de hielo (marching cubes)
  * con collider trimesh real — muros, montículos y rampas surfeables salen de la
  * misma masa. El hielo persiste por presupuesto (el más viejo se derrite) y los
- * NPCs congelados quedan estatua hasta descongelarse o hacerse añicos.
+ * NPCs congelados mueren rígidos: caen como un cuerpo dinámico único (sin
+ * ragdoll) recubierto de hielo horneado, y cualquier disparo los hace añicos.
  */
 export class IceGunSystem implements Disposable {
   private readonly blobulator: Blobulator;
@@ -160,7 +171,16 @@ export class IceGunSystem implements Disposable {
     });
     this.unsubscribers.push(
       this.eventBus.on("weapon.hit", (payload) => {
-        if (!payload.targetId?.startsWith(`${ICE_ID_PREFIX}-`)) {
+        const targetId = payload.targetId;
+        if (!targetId) {
+          return;
+        }
+        // "ice-statue-*" también matchea el prefijo "ice-": chequear primero.
+        if (targetId.startsWith(ICE_STATUE_ID_PREFIX)) {
+          this.shatterStatue(targetId.slice(ICE_STATUE_ID_PREFIX.length), payload.point);
+          return;
+        }
+        if (!targetId.startsWith(`${ICE_ID_PREFIX}-`)) {
           return;
         }
         this.carve(payload.point, Math.max(10, payload.damage));
@@ -205,7 +225,13 @@ export class IceGunSystem implements Disposable {
       return true;
     }
 
-    this.paint(options.sourceId, hit.point, hit.normal, options.now);
+    this.paint(
+      options.sourceId,
+      hit.point,
+      hit.normal,
+      options.now,
+      options.origin,
+    );
     return true;
   }
 
@@ -297,7 +323,6 @@ export class IceGunSystem implements Disposable {
       this.freezeHandles.set(handle.id, handle);
     }
     this.updateFreezes(delta, elapsed);
-    this.updateStatues(elapsed);
     this.updateBeams(elapsed);
     this.updateFreezePatches(elapsed);
     this.updateMelting(elapsed);
@@ -306,10 +331,7 @@ export class IceGunSystem implements Disposable {
 
   clear(): void {
     for (const statue of this.statues.values()) {
-      if (statue.handle.isAlive()) {
-        statue.handle.setFrozen(false);
-      }
-      this.disposeShell(statue.shell);
+      this.disposeStatue(statue);
     }
     this.statues.clear();
     this.blobulator.clear();
@@ -338,12 +360,21 @@ export class IceGunSystem implements Disposable {
     this.shellMaterial.dispose();
   }
 
+  /** Reloj de juego del último update (lo usa el hook de consola de debug). */
+  getElapsed(): number {
+    return this.elapsedNow;
+  }
+
   getFreezeAmount(targetId: string): number {
     return this.freezeByTarget.get(targetId)?.amount ?? 0;
   }
 
   getDepositedBlobCount(): number {
     return this.blobulator.getBlobCount();
+  }
+
+  getChunkCount(): number {
+    return this.blobulator.getChunkCount();
   }
 
   isFrozen(targetId: string): boolean {
@@ -360,7 +391,13 @@ export class IceGunSystem implements Disposable {
     point: Vector3,
     normal: Vector3,
     now: number,
+    shooterOrigin: Vector3,
   ): void {
+    const state = this.getPaintState(sourceId);
+    if (now - state.lastPaintAt < IceConfig.paint.interval) {
+      return;
+    }
+
     const jitter = IceConfig.paint.radiusJitter;
     const radius =
       IceConfig.paint.blobRadius * (1 - jitter / 2 + Math.random() * jitter);
@@ -371,7 +408,13 @@ export class IceGunSystem implements Disposable {
         radius * IceConfig.paint.embedFactor,
       );
 
-    const state = this.getPaintState(sourceId);
+    if (this.isTooCloseToShooter(tmpCenter, shooterOrigin)) {
+      // Cortar el stroke: sin esto el puente del próximo tick deposita
+      // igualmente dentro de la zona de exclusión.
+      this.resetPaintState(sourceId);
+      return;
+    }
+
     if (
       state.lastCenter &&
       now - state.lastPaintAt <= IceConfig.paint.strokeResetDelay
@@ -388,7 +431,9 @@ export class IceGunSystem implements Disposable {
           tmpPoint
             .copy(state.lastCenter)
             .lerp(tmpCenter, i / (steps + 1));
-          this.deposit(tmpPoint, radius * 0.9, now);
+          if (!this.isTooCloseToShooter(tmpPoint, shooterOrigin)) {
+            this.deposit(tmpPoint, radius * 0.9, now);
+          }
         }
       }
     }
@@ -396,6 +441,20 @@ export class IceGunSystem implements Disposable {
     this.deposit(tmpCenter, radius, now);
     state.lastCenter = (state.lastCenter ?? new Vector3()).copy(tmpCenter);
     state.lastPaintAt = now;
+  }
+
+  /** Cápsula del tirador aproximada como segmento vertical bajo los ojos. */
+  private isTooCloseToShooter(center: Vector3, shooterOrigin: Vector3): boolean {
+    const closestY = clamp(
+      center.y,
+      shooterOrigin.y - SHOOTER_CAPSULE_DROP,
+      shooterOrigin.y,
+    );
+    const dx = center.x - shooterOrigin.x;
+    const dy = center.y - closestY;
+    const dz = center.z - shooterOrigin.z;
+    const clearance = IceConfig.paint.shooterClearance;
+    return dx * dx + dy * dy + dz * dz < clearance * clearance;
   }
 
   private deposit(center: Vector3, radius: number, now: number): void {
@@ -486,10 +545,7 @@ export class IceGunSystem implements Disposable {
     }
 
     const targetId = metadata.ownerId ?? metadata.id;
-    const statue = this.statues.get(targetId);
-    if (statue) {
-      // Seguir rociando una estatua solo refresca su duración.
-      statue.thawAt = now + IceConfig.freeze.statueSeconds;
+    if (this.statues.has(targetId)) {
       return;
     }
 
@@ -521,7 +577,7 @@ export class IceGunSystem implements Disposable {
     this.freezeByTarget.delete(targetId);
     const handle = this.freezeHandles.get(targetId);
     if (handle && handle.isAlive()) {
-      this.beginStatue(handle, now);
+      this.beginStatue(handle, direction);
     } else {
       // Damageables sin handle de freeze (p. ej. torretas): muerte por frío.
       metadata.damageable.applyDamage(
@@ -535,47 +591,82 @@ export class IceGunSystem implements Disposable {
     }
   }
 
-  private beginStatue(handle: NpcFreezeHandle, now: number): void {
-    handle.setFrozen(true);
-    const shell = createIceShell(handle.radius, this.shellMaterial);
-    shell.position.copy(handle.getPosition());
-    this.scene.add(shell);
-    this.statues.set(handle.id, {
-      handle,
-      shell,
-      thawAt: now + IceConfig.freeze.statueSeconds,
-    });
+  /**
+   * Muerte congelada: el NPC muere rígido (sin ragdoll) y su visual pasa a un
+   * cuerpo dinámico único que cae/se tumba como un objeto físico, recubierto
+   * por un cascarón de metaballs (mismo campo que el blobulator).
+   */
+  private beginStatue(handle: NpcFreezeHandle, direction: Vector3): void {
+    const visual = handle.freezeSolid();
+    if (!visual) {
+      return;
+    }
+    const group = new Group();
+    group.name = `${ICE_STATUE_ID_PREFIX}${handle.id}`;
+    group.position.copy(visual.position);
+    group.quaternion.copy(visual.quaternion);
+    visual.position.set(0, 0, 0);
+    visual.quaternion.identity();
+    group.add(visual);
+
+    let iceMesh: Mesh | null = null;
+    const geometry = bakeBlobGeometry(
+      statueBlobs(handle.radius, handle.height),
+      IceConfig.blob.cellSize,
+    );
+    if (geometry) {
+      iceMesh = new Mesh(geometry, this.shellMaterial);
+      iceMesh.renderOrder = 38;
+      group.add(iceMesh);
+    }
+    this.scene.add(group);
+
+    const statueCfg = IceConfig.freeze.statue;
+    const width = handle.radius * statueCfg.widthFactor;
+    const body = this.physics.createDynamicBox(
+      {
+        id: `${ICE_STATUE_ID_PREFIX}${handle.id}`,
+        position: group.position.clone(),
+        size: new Vector3(width, handle.height * 0.96, width),
+        mass: statueCfg.mass,
+      },
+      group,
+    );
+    // Empujón a la altura del torso en la dirección del spray: la estatua se
+    // tumba en vez de quedar parada en equilibrio.
+    tmpForward.set(direction.x, 0, direction.z);
+    if (tmpForward.lengthSq() > 1e-4) {
+      tmpForward.normalize().multiplyScalar(statueCfg.mass * statueCfg.tipSpeed);
+      body.applyImpulseAtPoint(
+        { x: tmpForward.x, y: 0, z: tmpForward.z },
+        {
+          x: group.position.x,
+          y: group.position.y + handle.height * 0.35,
+          z: group.position.z,
+        },
+        true,
+      );
+    }
+
+    this.statues.set(handle.id, { group, body, iceMesh });
     this.eventBus.emit("ice.frozen", {
       targetId: handle.id,
-      position: handle.getPosition().clone(),
+      position: group.position.clone(),
     });
   }
 
-  private updateStatues(elapsed: number): void {
-    for (const [targetId, statue] of this.statues) {
-      if (!statue.handle.isAlive()) {
-        // La remataron congelada: añicos.
-        this.vfx.explosion(statue.shell.position, {
-          scale: 0.8,
-          color: ICE_COLOR,
-        });
-        this.disposeShell(statue.shell);
-        this.statues.delete(targetId);
-        continue;
-      }
-      if (elapsed >= statue.thawAt) {
-        statue.handle.setFrozen(false);
-        this.disposeShell(statue.shell);
-        this.statues.delete(targetId);
-        this.freezeByTarget.set(targetId, {
-          amount: IceConfig.freeze.refreezeAmount,
-          lastHitAt: elapsed,
-        });
-        this.eventBus.emit("ice.thawed", { targetId });
-        continue;
-      }
-      statue.shell.position.copy(statue.handle.getPosition());
+  /** Congelado = quebradizo: cualquier disparo hace añicos la estatua. */
+  private shatterStatue(targetId: string, point?: Vector3): void {
+    const statue = this.statues.get(targetId);
+    if (!statue) {
+      return;
     }
+    this.statues.delete(targetId);
+    this.vfx.explosion(point ?? statue.group.position, {
+      scale: 0.85,
+      color: ICE_COLOR,
+    });
+    this.disposeStatue(statue);
   }
 
   private addFreezePatch(point: Vector3, now: number): void {
@@ -670,13 +761,14 @@ export class IceGunSystem implements Disposable {
     patch.mesh.material.dispose();
   }
 
-  private disposeShell(shell: Group): void {
-    shell.removeFromParent();
-    shell.traverse((object) => {
-      if (object instanceof Mesh) {
-        object.geometry.dispose();
-      }
-    });
+  private disposeStatue(statue: Statue): void {
+    if (statue.body.isValid()) {
+      this.physics.removeBody(statue.body);
+    }
+    statue.group.removeFromParent();
+    // Solo la geometría horneada es nuestra: el modelo del NPC comparte
+    // recursos con la caché de assets y no se dispone.
+    statue.iceMesh?.geometry.dispose();
   }
 
   private getPaintState(sourceId: string): PaintState {
@@ -741,19 +833,18 @@ function planarForward(
   return tmpForward.normalize();
 }
 
+// Sin `transmission`: el transmission pass de three no dibuja con
+// `logarithmicDepthBuffer` activo (Renderer) y el hielo quedaba invisible.
+// Hielo escarchado opaco estilo Ep3 en lugar de vidrio.
 function createIceMaterial(): MeshPhysicalMaterial {
   return new MeshPhysicalMaterial({
-    color: 0xa9e8ff,
+    color: 0xbfeaff,
     emissive: 0x0b3446,
-    emissiveIntensity: 0.18,
-    roughness: 0.14,
+    emissiveIntensity: 0.15,
+    roughness: 0.22,
     metalness: 0,
-    transparent: true,
-    opacity: 0.82,
-    transmission: 0.22,
-    thickness: 0.6,
-    clearcoat: 0.65,
-    clearcoatRoughness: 0.15,
+    clearcoat: 0.7,
+    clearcoatRoughness: 0.25,
     side: FrontSide,
   });
 }
@@ -762,13 +853,11 @@ function createShellMaterial(): MeshPhysicalMaterial {
   return new MeshPhysicalMaterial({
     color: 0xc9f8ff,
     emissive: 0x10475f,
-    emissiveIntensity: 0.3,
+    emissiveIntensity: 0.38,
     roughness: 0.1,
     metalness: 0,
     transparent: true,
-    opacity: 0.55,
-    transmission: 0.2,
-    thickness: 0.3,
+    opacity: 0.62,
     clearcoat: 0.6,
     clearcoatRoughness: 0.16,
     depthWrite: false,
@@ -776,28 +865,28 @@ function createShellMaterial(): MeshPhysicalMaterial {
   });
 }
 
-/** Cascarón de estatua: elipsoides translúcidos alrededor de la cápsula. */
-function createIceShell(radius: number, material: MeshPhysicalMaterial): Group {
-  const group = new Group();
-  group.name = "ice-statue-shell";
-  const scale = radius / 0.35;
-  const offsets = [-0.55, 0, 0.55];
-  for (const offset of offsets) {
-    const mesh = new Mesh(new SphereGeometry(1, 18, 12), material);
-    mesh.position.set(
-      (Math.random() - 0.5) * 0.06 * scale,
-      offset * scale,
-      (Math.random() - 0.5) * 0.06 * scale,
-    );
-    mesh.scale.set(
-      radius * 1.7 * (0.95 + Math.random() * 0.1),
-      radius * 1.5,
-      radius * 1.7 * (0.95 + Math.random() * 0.1),
-    );
-    mesh.renderOrder = 38;
-    group.add(mesh);
+/**
+ * Blobs locales del cascarón de estatua: espina de metaballs a lo largo de la
+ * cápsula con jitter para que cada estatua salga distinta.
+ */
+function statueBlobs(radius: number, height: number): BlobSpec[] {
+  const blobs: BlobSpec[] = [];
+  const half = height / 2;
+  const bottom = -half + radius * 0.7;
+  const top = half - radius * 0.55;
+  const count = Math.max(2, Math.round((top - bottom) / (radius * 1.05)) + 1);
+  for (let i = 0; i < count; i += 1) {
+    const t = i / (count - 1);
+    blobs.push({
+      position: new Vector3(
+        (Math.random() - 0.5) * radius * 0.5,
+        bottom + (top - bottom) * t,
+        (Math.random() - 0.5) * radius * 0.5,
+      ),
+      radius: radius * (1.25 + Math.random() * 0.2),
+    });
   }
-  return group;
+  return blobs;
 }
 
 function createFreezePatchMesh(): Mesh<SphereGeometry, MeshPhysicalMaterial> {
@@ -806,13 +895,11 @@ function createFreezePatchMesh(): Mesh<SphereGeometry, MeshPhysicalMaterial> {
     new MeshPhysicalMaterial({
       color: 0xc9f8ff,
       emissive: 0x10475f,
-      emissiveIntensity: 0.32,
+      emissiveIntensity: 0.4,
       roughness: 0.12,
       metalness: 0,
       transparent: true,
-      opacity: 0.52,
-      transmission: 0.18,
-      thickness: 0.18,
+      opacity: 0.58,
       clearcoat: 0.62,
       clearcoatRoughness: 0.16,
       depthWrite: false,

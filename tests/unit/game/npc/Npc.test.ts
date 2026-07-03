@@ -88,6 +88,7 @@ function createNpc() {
       faction: "zombies",
       position,
       visualRoot: new Group(),
+      height: 1.8,
       motor: fakeMotor(position),
       combat,
       preset,
@@ -128,12 +129,11 @@ describe("Npc.applyDamage", () => {
       amount: 100,
       health: 0,
     });
-    expect(killed).toEqual([
-      {
-        id: "npc-1",
-        characterId: "test-npc",
-      },
-    ]);
+    expect(killed).toHaveLength(1);
+    expect(killed[0]).toMatchObject({
+      id: "npc-1",
+      characterId: "test-npc",
+    });
 
     npc.applyDamage(100);
     expect(damaged).toHaveLength(2);

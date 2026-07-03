@@ -42,6 +42,8 @@ export interface NpcConstructionParams {
   faction: Faction;
   position: Vector3;
   visualRoot: Group;
+  /** Altura de la cápsula (misma fuente que el motor); la usa el freeze handle. */
+  height: number;
   motor: NpcMotor;
   combat: NpcCombatHandle;
   preset: NpcPreset;
@@ -118,9 +120,11 @@ export class Npc implements INpc {
   private readonly squadDirector: SquadDirector | null;
   private readonly patrolRoute: Vector3[] | null;
   private readonly neighborBuffer: LocomotionNeighbor[] = [];
+  private readonly height: number;
   private justHitTimer = 0;
   private disposed = false;
-  private frozen = false;
+  /** Muerto congelado: sin ragdoll; el visual lo mueve la estatua del ice gun. */
+  private frozenSolid = false;
   private freezeHandle: NpcFreezeHandle | null = null;
   private lastConditions = 0;
   private threatLastKnown: Vector3 | null = null;
@@ -139,6 +143,7 @@ export class Npc implements INpc {
     this.mesh = params.visualRoot;
     this.position = params.position;
     this.radius = params.preset.radius;
+    this.height = params.height;
     this.health = new Health(params.preset.maxHealth);
     this.motor = params.motor;
     this.preset = params.preset;
@@ -180,6 +185,10 @@ export class Npc implements INpc {
     if (this.aggroTimer > 0) this.aggroTimer = Math.max(0, this.aggroTimer - delta);
 
     if (!this.health.isAlive()) {
+      if (this.frozenSolid) {
+        // La estatua física del ice gun es dueña del visual: no tocarlo.
+        return;
+      }
       // El cadaver del flyer dinamico sigue cayendo por fisica: sincronizar el
       // visual aunque la IA ya no corra.
       this.syncMeshFromMotor();
@@ -188,20 +197,6 @@ export class Npc implements INpc {
     }
 
     this.syncMeshFromMotor();
-
-    if (this.frozen) {
-      // Estatua de hielo: sin percepción/brain/combate y sin tickear el
-      // animator (la pose queda congelada). El motor sigue corriendo sin goal
-      // (gravedad + grounding) y el daño por impactos físicos aplica igual —
-      // con `frozen`, cualquier daño hace añicos la estatua.
-      this.locomotion.stop();
-      this.locomotion.update(delta);
-      const frozenImpact = this.motor.consumeImpactDamage();
-      if (frozenImpact > 0) {
-        this.applyDamage(frozenImpact, undefined, undefined, 'player');
-      }
-      return;
-    }
 
     const picked = this.pickThreat(ctx);
     if (picked?.id !== this.currentThreat?.id) {
@@ -378,6 +373,7 @@ export class Npc implements INpc {
   }
 
   syncFromPhysics(): void {
+    if (this.frozenSolid) return;
     this.syncMeshFromMotor();
   }
 
@@ -419,20 +415,23 @@ export class Npc implements INpc {
       this.freezeHandle = {
         id: this.id,
         radius: this.radius,
+        height: this.height,
         getPosition: () => this.motor.getPosition(),
         isAlive: () => this.isAlive(),
-        setFrozen: (frozen) => this.setFrozen(frozen),
+        freezeSolid: () => this.freezeSolid(),
       };
     }
     return this.freezeHandle;
   }
 
-  private setFrozen(frozen: boolean): void {
-    if (this.frozen === frozen) return;
-    this.frozen = frozen;
-    if (frozen) {
-      this.locomotion.stop();
-    }
+  private freezeSolid(): Group | null {
+    if (this.disposed || !this.health.isAlive()) return null;
+    this.frozenSolid = true;
+    // La muerte pasa por applyDamage (eventos, squad, motor.disable), pero con
+    // `frozenSolid` se omite el ragdoll: la pose queda rígida tal como está.
+    this.applyDamage(this.health.max * 10, undefined, undefined, 'player');
+    this.animation?.disable();
+    return this.mesh;
   }
 
   applyDamage(
@@ -443,10 +442,6 @@ export class Npc implements INpc {
     hitPoint?: Vector3,
   ): void {
     if (this.disposed || !this.health.isAlive()) return;
-    if (this.frozen && amount > 0) {
-      // Congelado = quebradizo: cualquier golpe hace añicos la estatua.
-      amount = this.health.max * 10;
-    }
     const hasHitDirection = !!hitDirection && hitDirection.lengthSq() > 0.001;
     const dir =
       hasHitDirection
@@ -479,8 +474,10 @@ export class Npc implements INpc {
         characterId: this.preset.id,
         position: this.motor.getPosition().clone(),
       });
-      const deathVelocity = this.motor.getVelocity();
-      this.animation?.notifyDeath(dir, deathVelocity, hitPartName);
+      if (!this.frozenSolid) {
+        const deathVelocity = this.motor.getVelocity();
+        this.animation?.notifyDeath(dir, deathVelocity, hitPartName);
+      }
       this.coverSensor?.dispose();
       this.squadDirector?.unregister(this.id);
       this.locomotion.stop();

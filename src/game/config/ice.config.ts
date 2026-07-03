@@ -16,6 +16,13 @@ export const IceConfig = {
     /** Radio base de cada depósito del spray. */
     blobRadius: 0.44,
     radiusJitter: 0.1,
+    /** Intervalo mínimo entre depósitos (el beam sigue al fireRate del arma). */
+    interval: 0.12,
+    /**
+     * No depositar si el centro del blob queda a menos de esto de la cápsula
+     * del tirador: evita que la masa crezca hasta clipear dentro del player.
+     */
+    shooterClearance: 1.0,
     /** El centro se entierra `radius * embedFactor` en la superficie. */
     embedFactor: 0.35,
     /** Paso del puente entre ticks consecutivos del stroke. */
@@ -61,13 +68,20 @@ export const IceConfig = {
     threshold: 100,
     decayDelay: 1.2,
     decayPerSecond: 28,
-    /** Segundos que el NPC queda estatua antes de descongelarse. */
-    statueSeconds: 5,
-    /** Medidor residual tras descongelarse (re-congelar es más rápido). */
-    refreezeAmount: 55,
     /** Daño por tick a jefes resistentes al congelamiento. */
     bossColdDamage: 4,
     patchTtl: 2.2,
     maxPatches: 48,
+    /**
+     * Estatua congelada: el NPC muere rígido y cae como un cuerpo dinámico
+     * único (sin ragdoll), recubierto por un cascarón de metaballs horneado.
+     */
+    statue: {
+      mass: 75,
+      /** Empujón horizontal (m/s) a la altura del torso para que se tumbe. */
+      tipSpeed: 1.6,
+      /** Ancho del collider de caja relativo al radio de la cápsula. */
+      widthFactor: 1.5,
+    },
   },
 } as const;

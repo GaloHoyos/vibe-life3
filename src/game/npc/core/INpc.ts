@@ -173,15 +173,22 @@ export interface NpcPortalHandle {
 
 /**
  * Handle mínimo para que la ice gun convierta a un NPC en estatua de hielo.
- * Mientras está frozen, el NPC no corre percepción/brain/combate/animación
- * (la pose queda congelada) y cualquier daño lo hace añicos.
+ * Congelarse es letal: `freezeSolid()` mata sin ragdoll y la estatua física
+ * (cuerpo rígido único) pasa a ser dueña del visual.
  */
 export interface NpcFreezeHandle {
   id: string;
   radius: number;
+  /** Altura de la cápsula del personaje (dimensiona la estatua física). */
+  height: number;
   getPosition(): Vector3;
   isAlive(): boolean;
-  setFrozen(frozen: boolean): void;
+  /**
+   * Muerte congelada: mata al NPC sin ragdoll (la pose queda rígida) y cede
+   * el visual al caller — el NPC deja de tocar su mesh, que pasa a moverlo la
+   * estatua física de la ice gun. Null si ya estaba muerto.
+   */
+  freezeSolid(): Group | null;
 }
 
 /** Interfaz uniforme que consume `Game`/`LevelLoader`. La implementa `Npc`. */
