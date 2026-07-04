@@ -74,7 +74,7 @@ interface PlacedPortal {
 
 // Disc sits slightly off the wall to avoid z-fighting; portal math keeps
 // using the exact surface plane stored in the frame.
-const SURFACE_LIFT = 0.02;
+const SURFACE_LIFT = 0.0001;
 
 // Edge fade: the colored rim and glow ring dissolve as the camera lines up
 // and closes on the portal plane, so the exit view reaches the physical edge
