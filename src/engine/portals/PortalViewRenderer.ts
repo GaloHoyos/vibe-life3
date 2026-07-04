@@ -37,6 +37,12 @@ export interface PortalViewTarget {
   exit: PortalFrame;
   /** Disc material of the entry portal, receives the rendered view. */
   material: PortalSurfaceMaterial;
+  /**
+   * Surface mesh of the EXIT portal. The virtual camera sits behind the exit
+   * plane, INSIDE the exit portal's extruded plug; hiding it for this pass
+   * stops the double-sided plug from wrapping the camera in swirl.
+   */
+  exitSurface: Object3D;
 }
 
 // Clip plane sits 1 cm behind the exit surface so the wall backing the exit
@@ -179,6 +185,8 @@ export class PortalViewRenderer {
     for (const object of hidden) {
       object.visible = false;
     }
+    const exitSurfaceWasVisible = view.exitSurface.visible;
+    view.exitSurface.visible = false;
 
     const previousTarget = this.renderer.getRenderTarget();
     this.renderer.clippingPlanes = [this.clipPlane];
@@ -187,6 +195,7 @@ export class PortalViewRenderer {
     this.renderer.setRenderTarget(previousTarget);
     this.renderer.clippingPlanes = [];
 
+    view.exitSurface.visible = exitSurfaceWasVisible;
     hidden.forEach((object, index) => {
       object.visible = previousVisibility[index];
     });

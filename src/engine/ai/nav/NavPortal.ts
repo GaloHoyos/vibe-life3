@@ -13,9 +13,10 @@ export type NavPortalKind = 'door' | 'open' | 'jump' | 'stairs' | 'warp';
  * - `stairs`: secuencia de escalones precomputada. La cadena de celdas que
  *   compone la escalera se conecta linealmente; el portal `stairs` marca la
  *   entrada/salida con metadata para steering (reducir avoidance lateral).
- * - `warp`: teleport entre celdas NO adyacentes (portal gun). Declarado para
- *   links dinamicos futuros; hoy los NPCs cruzan portales por proximidad
- *   fisica (persiguiendo ghosts), sin planificarlos en A*.
+ * - `warp`: teleport entre celdas NO adyacentes (portal gun). Se inyecta en
+ *   runtime via `NavSpace.setDynamicLinks`; `position` es el punto de cruce
+ *   fisico del lado de entrada (el NPC camina hasta ahi y la fisica de
+ *   traversal lo teletransporta al cruzar el plano).
  */
 export interface NavPortal {
   id: string;

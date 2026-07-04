@@ -4,12 +4,18 @@
  */
 
 export const PlayerConfig = {
-  /** Cápsula del jugador y offsets de cámara. */
+  /**
+   * Cápsula del jugador y offsets de cámara. Altura normalizada a escala humana
+   * como los NPCs (el humanoide mide 1.75 m): capsule = 2·(halfHeight+radius) =
+   * 2·(0.55+0.35) = 1.80 m. Los `eyeHeight` son offsets desde el CENTRO de la
+   * cápsula (`getEyePosition` = center + eyeOffset), calibrados para dejar el
+   * ojo en ~1.65 m (center 0.90 + 0.75).
+   */
   collider: {
     radius: 0.35,
-    standingHalfHeight: 0.7,
+    standingHalfHeight: 0.55,
     crouchHalfHeight: 0.3,
-    standingEyeHeight: 0.62,
+    standingEyeHeight: 0.75,
     crouchEyeHeight: 0.22,
   },
   /**

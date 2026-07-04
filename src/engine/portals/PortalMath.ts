@@ -7,12 +7,47 @@ const ROT_Y_180 = new Quaternion(0, 1, 0, 0);
 
 const TMP_INV_Q = new Quaternion();
 const TMP_DELTA_Q = new Quaternion();
+const TMP_THROUGH_Q = new Quaternion();
 const TMP_NORMAL = new Vector3();
 const TMP_TO_PLANE = new Vector3();
 const TMP_LOCAL = new Vector3();
 
 export function portalNormal(frame: PortalFrame, out = new Vector3()): Vector3 {
   return out.set(0, 0, 1).applyQuaternion(frame.quaternion);
+}
+
+/**
+ * Writes into `out` a copy of `frame` shifted `offset` metres along its outward
+ * normal (a trigger plane in front of / behind the disc). `out` is a caller-owned
+ * frame reused across calls.
+ */
+export function shiftPortalFrame(
+  frame: PortalFrame,
+  offset: number,
+  out: PortalFrame,
+): PortalFrame {
+  portalNormal(frame, TMP_NORMAL);
+  out.position.copy(frame.position).addScaledVector(TMP_NORMAL, offset);
+  out.quaternion.copy(frame.quaternion);
+  out.halfWidth = frame.halfWidth;
+  out.halfHeight = frame.halfHeight;
+  return out;
+}
+
+/** Pushes `position` so it sits at least `clearance` in front of the exit plane. */
+export function enforceExitClearance(
+  position: Vector3,
+  exitPosition: Vector3,
+  exitNormal: Vector3,
+  clearance: number,
+): void {
+  const depth =
+    (position.x - exitPosition.x) * exitNormal.x +
+    (position.y - exitPosition.y) * exitNormal.y +
+    (position.z - exitPosition.z) * exitNormal.z;
+  if (depth < clearance) {
+    position.addScaledVector(exitNormal, clearance - depth);
+  }
 }
 
 export function portalUp(frame: PortalFrame, out = new Vector3()): Vector3 {
@@ -59,8 +94,12 @@ export function transformQuaternionThroughPortal(
   exit: PortalFrame,
   out = new Quaternion(),
 ): Quaternion {
+  // Alias-safe: callers pass the body's rotation as both input and `out` (one
+  // scratch quaternion). Snapshot the input before overwriting `out` with the
+  // delta, or the result collapses to delta² and the body loses its rotation.
+  TMP_THROUGH_Q.copy(quaternion);
   portalDeltaQuaternion(entry, exit, out);
-  return out.multiply(quaternion);
+  return out.multiply(TMP_THROUGH_Q);
 }
 
 /**

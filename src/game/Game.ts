@@ -44,6 +44,7 @@ import { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 import { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
 import { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
+import { computePortalNavLinks } from "@game/gameplay/weapons/portal/PortalNavLinks";
 import { PortalConfig } from "@game/config/portal.config";
 import { InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
@@ -442,6 +443,18 @@ export class Game {
     eventBus.on("player.hazard", ({ amount, kind }) => {
       this.player?.health.takeDamage(amount, kind);
     });
+    // Links warp del NavSpace: cada colocación/limpieza del par re-deriva los
+    // edges dinámicos para que los NPCs planeen rutas a través de los portales.
+    const refreshPortalNavLinks = (): void => {
+      if (!this.navSpace || !PortalConfig.npcTraversal.enabled) {
+        return;
+      }
+      this.navSpace.setDynamicLinks(
+        computePortalNavLinks(portals.pair, this.navSpace),
+      );
+    };
+    eventBus.on("portal.placed", refreshPortalNavLinks);
+    eventBus.on("portal.cleared", refreshPortalNavLinks);
   }
 
   /**

@@ -19,6 +19,18 @@ export interface NavPath {
 }
 
 /**
+ * Link runtime entre dos celdas NO adyacentes (portal gun u otro teleport).
+ * Se materializa como edge dirigido `fromCell -> toCell` con un `NavPortal`
+ * kind `warp` cuyo `position` es el punto de cruce fisico del lado de entrada.
+ */
+export interface NavDynamicLink {
+  fromCell: number;
+  toCell: number;
+  cost: number;
+  portal: NavPortal;
+}
+
+/**
  * Contenedor del grafo navegable post-build. No se modifica en runtime salvo
  * por las queries A* (que reusan buffers internos). Las puertas abriendose o
  * cerrandose NO modifican el grafo: el costo extra se aplica via PathFilter
@@ -31,12 +43,16 @@ export interface NavPath {
 export class NavSpace {
   private readonly hash = new Map<number, number[]>();
   private readonly astar = new AStar();
+  // Overlay runtime sobre el grafo estatico: edges warp de la portal gun.
+  private readonly dynamicEdges = new Map<number, NavEdge[]>();
+  private allPortals: readonly NavPortal[];
 
   constructor(
     private readonly cells: readonly NavCell[],
     private readonly edges: readonly NavEdge[],
     private readonly portals: readonly NavPortal[],
   ) {
+    this.allPortals = portals;
     for (let i = 0; i < cells.length; i += 1) {
       const c = cells[i];
       const key = hashKey(c.center[0], c.center[2]);
@@ -55,7 +71,46 @@ export class NavSpace {
   }
 
   getPortals(): readonly NavPortal[] {
-    return this.portals;
+    return this.allPortals;
+  }
+
+  /**
+   * Reemplaza el set completo de links dinamicos (idempotente; pasar [] para
+   * limpiar). Los edges resultantes participan del A* como cualquier otro,
+   * pero pueden cruzar componentes desconectados del grafo estatico.
+   */
+  setDynamicLinks(links: readonly NavDynamicLink[]): void {
+    this.dynamicEdges.clear();
+    const valid = links.filter(
+      (link) =>
+        link.fromCell >= 0 &&
+        link.fromCell < this.cells.length &&
+        link.toCell >= 0 &&
+        link.toCell < this.cells.length &&
+        link.fromCell !== link.toCell,
+    );
+    this.allPortals =
+      valid.length === 0
+        ? this.portals
+        : [...this.portals, ...valid.map((link) => link.portal)];
+    valid.forEach((link, i) => {
+      const edge: NavEdge = {
+        toCell: link.toCell,
+        cost: link.cost,
+        portalIndex: this.portals.length + i,
+      };
+      const bucket = this.dynamicEdges.get(link.fromCell);
+      if (bucket) bucket.push(edge);
+      else this.dynamicEdges.set(link.fromCell, [edge]);
+    });
+  }
+
+  hasDynamicLinks(): boolean {
+    return this.dynamicEdges.size > 0;
+  }
+
+  getDynamicEdges(cellIndex: number): readonly NavEdge[] | undefined {
+    return this.dynamicEdges.get(cellIndex);
   }
 
   cellCount(): number {
@@ -105,6 +160,12 @@ export class NavSpace {
     let goal = this.cellAt(to);
     if (!start || !goal) return null;
     if (goal.componentId !== start.componentId) {
+      // Los links warp pueden puentear componentes desconectados: intentar el
+      // path directo antes de degradar el goal.
+      if (this.hasDynamicLinks()) {
+        const direct = this.findPathBetween(start.index, goal.index, filter);
+        if (direct) return direct;
+      }
       // La celda mas cercana al goal puede ser una micro-isla (tope de un
       // sandbag, techo sin acceso). En vez de fallar, ir al punto alcanzable
       // mas proximo al objetivo dentro del componente del NPC.
@@ -150,13 +211,27 @@ export class NavSpace {
     for (let i = 0; i < indices.length - 1; i += 1) {
       const a = this.cells[indices[i]];
       const b = this.cells[indices[i + 1]];
-      portals.push(findEdgePortal(this.edges, a, b.index));
+      portals.push(this.edgePortalIndex(a, b.index));
       const dx = a.center[0] - b.center[0];
       const dy = a.center[1] - b.center[1];
       const dz = a.center[2] - b.center[2];
       length += Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
     return { cells: indices, portals, length };
+  }
+
+  private edgePortalIndex(from: NavCell, toIndex: number): number {
+    const end = from.edgeStart + from.edgeCount;
+    for (let i = from.edgeStart; i < end; i += 1) {
+      if (this.edges[i].toCell === toIndex) return this.edges[i].portalIndex;
+    }
+    const dynamic = this.dynamicEdges.get(from.index);
+    if (dynamic) {
+      for (const edge of dynamic) {
+        if (edge.toCell === toIndex) return edge.portalIndex;
+      }
+    }
+    return -1;
   }
 }
 
@@ -168,10 +243,3 @@ function packCoord(cx: number, cz: number): number {
   return ((cx & 0xffff) << 16) | (cz & 0xffff);
 }
 
-function findEdgePortal(edges: readonly NavEdge[], from: NavCell, toIndex: number): number {
-  const end = from.edgeStart + from.edgeCount;
-  for (let i = from.edgeStart; i < end; i += 1) {
-    if (edges[i].toCell === toIndex) return edges[i].portalIndex;
-  }
-  return -1;
-}

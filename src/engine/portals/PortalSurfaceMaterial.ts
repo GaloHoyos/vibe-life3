@@ -1,4 +1,4 @@
-import { Color, ShaderMaterial, type Texture, Vector2 } from "three";
+import { Color, DoubleSide, ShaderMaterial, type Texture, Vector2 } from "three";
 
 export const PortalSurfaceMode = {
   /** Animated swirl — the portal exists but the pair is not linked. */
@@ -34,6 +34,9 @@ const FRAGMENT_SHADER = /* glsl */ `
   uniform float uTime;
   uniform sampler2D uView;
   uniform vec2 uResolution;
+  // 1 = full colored rim (portal seen from afar); 0 = no rim, so the exit view
+  // reaches the physical edge for a seamless pass while the camera crosses.
+  uniform float uEdgeFade;
   varying vec2 vUv;
 
   vec3 swirl(vec2 centered, float r, float dim) {
@@ -56,7 +59,7 @@ const FRAGMENT_SHADER = /* glsl */ `
       vec2 screenUv = gl_FragCoord.xy / uResolution;
       vec3 view = texture2D(uView, screenUv).rgb;
       float rim = pow(smoothstep(0.78, 1.0, r), 2.0);
-      gl_FragColor = vec4(mix(view, uColor, rim * 0.6), 1.0);
+      gl_FragColor = vec4(mix(view, uColor, rim * 0.6 * uEdgeFade), 1.0);
     } else {
       gl_FragColor = vec4(swirl(centered, r, 0.6), 1.0);
     }
@@ -81,11 +84,16 @@ export class PortalSurfaceMaterial extends ShaderMaterial {
         uTime: { value: 0 },
         uView: { value: null },
         uResolution: { value: new Vector2(1, 1) },
+        uEdgeFade: { value: 1 },
       },
       // three skips tone mapping when rendering into a render target, so the
       // portal view texture holds linear values; this material applies the
       // renderer's tone mapping itself so the view matches the main pass.
       toneMapped: true,
+      // The surface is an extruded plug, not a flat disc: while the camera
+      // crosses the plane it sits INSIDE the plug and must see its interior
+      // faces, or the near plane slices a hole straight into the wall.
+      side: DoubleSide,
     });
   }
 
@@ -104,5 +112,13 @@ export class PortalSurfaceMaterial extends ShaderMaterial {
   setView(texture: Texture | null, width: number, height: number): void {
     this.uniforms.uView.value = texture;
     (this.uniforms.uResolution.value as Vector2).set(width, height);
+  }
+
+  /**
+   * Drives the rim tint: 1 keeps the full colored edge, 0 removes it so the
+   * exit view reaches the disc edge (seamless while the camera crosses).
+   */
+  setEdgeFade(value: number): void {
+    this.uniforms.uEdgeFade.value = value;
   }
 }

@@ -46,7 +46,14 @@ export class AStar {
     const n = cells.length;
     if (startCell < 0 || startCell >= n || goalCell < 0 || goalCell >= n) return null;
     if (startCell === goalCell) return [startCell];
-    if (cells[startCell].componentId !== cells[goalCell].componentId) return null;
+    // Los links dinamicos (warp) pueden puentear componentes: el early-out por
+    // componente solo vale sobre el grafo estatico puro.
+    if (
+      cells[startCell].componentId !== cells[goalCell].componentId &&
+      !navSpace.hasDynamicLinks()
+    ) {
+      return null;
+    }
 
     this.ensureCapacity(n);
     const gen = ++this.generation;
@@ -62,8 +69,29 @@ export class AStar {
     this.closed[startCell] = 0;
     this.heap.push(startCell, heuristic(start, goal));
 
+    // Una sola closure por query (no por nodo): lee `current` de la variable
+    // mutada por el while, preservando el diseño sin allocations del A*.
+    let current = -1;
+    const relax = (edge: NavEdge): void => {
+      const portal = edge.portalIndex >= 0 ? portals[edge.portalIndex] : null;
+      if (!filter.canTraverse(edge, portal)) return;
+      const cost = edge.cost + (filter.extraCost?.(edge, portal) ?? 0);
+      const tentative = this.gScore[current] + cost;
+      const neighbor = edge.toCell;
+      if (this.gen[neighbor] !== gen) {
+        this.gen[neighbor] = gen;
+        this.gScore[neighbor] = Infinity;
+        this.closed[neighbor] = 0;
+      }
+      if (tentative >= this.gScore[neighbor]) return;
+      this.gScore[neighbor] = tentative;
+      this.cameFrom[neighbor] = current;
+      const f = tentative + heuristic(cells[neighbor].center, goal);
+      this.heap.push(neighbor, f);
+    };
+
     while (this.heap.size() > 0) {
-      const current = this.heap.pop();
+      current = this.heap.pop();
       if (current === goalCell) {
         return reconstruct(this.cameFrom, goalCell);
       }
@@ -72,24 +100,14 @@ export class AStar {
 
       const cell = cells[current];
       const end = cell.edgeStart + cell.edgeCount;
-      const currentG = this.gScore[current];
       for (let i = cell.edgeStart; i < end; i += 1) {
-        const edge = edges[i];
-        const portal = edge.portalIndex >= 0 ? portals[edge.portalIndex] : null;
-        if (!filter.canTraverse(edge, portal)) continue;
-        const cost = edge.cost + (filter.extraCost?.(edge, portal) ?? 0);
-        const tentative = currentG + cost;
-        const neighbor = edge.toCell;
-        if (this.gen[neighbor] !== gen) {
-          this.gen[neighbor] = gen;
-          this.gScore[neighbor] = Infinity;
-          this.closed[neighbor] = 0;
+        relax(edges[i]);
+      }
+      const dynamic = navSpace.getDynamicEdges(current);
+      if (dynamic) {
+        for (const edge of dynamic) {
+          relax(edge);
         }
-        if (tentative >= this.gScore[neighbor]) continue;
-        this.gScore[neighbor] = tentative;
-        this.cameFrom[neighbor] = current;
-        const f = tentative + heuristic(cells[neighbor].center, goal);
-        this.heap.push(neighbor, f);
       }
     }
     return null;

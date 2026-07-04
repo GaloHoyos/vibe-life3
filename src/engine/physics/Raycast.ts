@@ -21,6 +21,7 @@ export interface RaycastSource {
     maxDistance: number,
     excludeBody?: RAPIER.RigidBody,
     excludeId?: string,
+    filter?: (metadata: PhysicsMetadata | undefined) => boolean,
   ): RaycastHit | null;
 }
 
@@ -44,6 +45,12 @@ export class Raycast {
      * todos. Sin esto, el LOS de un cuerpo gigante choca consigo mismo.
      */
     excludeId?: string,
+    /**
+     * Filtro por metadata: devolver false ignora el collider (el rayo lo
+     * atraviesa). Lo usa el disparo de portales para pasar por props/entidades
+     * y pegar sólo en la geometría estática de atrás.
+     */
+    filter?: (metadata: PhysicsMetadata | undefined) => boolean,
   ): RaycastHit | null {
     const normalizedDirection = direction.clone().normalize();
     const ray = new RAPIER.Ray(
@@ -54,6 +61,21 @@ export class Raycast {
         z: normalizedDirection.z,
       },
     );
+    const predicate =
+      excludeId !== undefined || filter !== undefined
+        ? (collider: RAPIER.Collider) => {
+            const meta = this.physics.getColliderMetadata(collider);
+            // Por ownerId (la cápsula y sus hitboxes lo comparten), con fallback
+            // a id para colliders sin ownerId.
+            if (
+              excludeId !== undefined &&
+              (meta?.ownerId ?? meta?.id) === excludeId
+            ) {
+              return false;
+            }
+            return filter === undefined || filter(meta);
+          }
+        : undefined;
     const hit = this.physics.world.castRayAndGetNormal(
       ray,
       maxDistance,
@@ -62,14 +84,7 @@ export class Raycast {
       undefined,
       undefined,
       excludeBody,
-      excludeId
-        ? (collider) => {
-            const meta = this.physics.getColliderMetadata(collider);
-            // Por ownerId (la cápsula y sus hitboxes lo comparten), con fallback
-            // a id para colliders sin ownerId.
-            return (meta?.ownerId ?? meta?.id) !== excludeId;
-          }
-        : undefined,
+      predicate,
     );
 
     if (!hit) {

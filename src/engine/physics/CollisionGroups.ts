@@ -24,3 +24,14 @@ export const RAGDOLL_COLLISION_GROUPS = interactionGroups(
   CollisionGroup.Ragdoll,
   ALL_GROUPS & ~CollisionGroup.Actor,
 );
+
+/**
+ * Portal aperture patch (the physical hole objects tumble through): collides
+ * with dynamic props only, never with player/NPC capsules or ragdolls, so it
+ * cannot interfere with character traversal — only props rest on / pivot over
+ * its real edge.
+ */
+export const APERTURE_COLLISION_GROUPS = interactionGroups(
+  CollisionGroup.Default,
+  ALL_GROUPS & ~CollisionGroup.Actor & ~CollisionGroup.Ragdoll,
+);

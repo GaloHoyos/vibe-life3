@@ -69,11 +69,35 @@ describe("computePortalPlacement", () => {
     expect(result!.backingColliders.length).toBeGreaterThan(0);
   });
 
-  it("rejects a shot too close to the wall edge (footprint probes miss)", async () => {
+  it("bumps a near-edge shot down so the oval fits on the wall", async () => {
     const { raycast } = await worldWithWallAndFloor();
     const result = computePortalPlacement(
       raycast,
       new Vector3(0, 9.8, 5),
+      new Vector3(0, 0, -1),
+      OPTIONS,
+    );
+    expect(result).not.toBeNull();
+    const frame = result!.frame;
+    // Bumped down so the whole oval sits within the wall (top edge at y=10).
+    expect(frame.position.y + OPTIONS.halfHeight).toBeLessThanOrEqual(10 + 1e-3);
+    // Still on the wall plane and near where it was aimed.
+    expect(frame.position.z).toBeCloseTo(0.5, 3);
+    expect(frame.position.y).toBeGreaterThan(9.8 - 1.6);
+  });
+
+  it("fails on a surface too small for the oval, even with bumping", async () => {
+    const { physics, raycast } = await worldWithWallAndFloor();
+    // A small isolated pillar face, much smaller than the oval footprint.
+    physics.createStaticBox({
+      id: "pillar",
+      position: new Vector3(30, 5, 0),
+      size: new Vector3(0.3, 0.3, 1),
+    });
+    physics.updateQueryPipeline();
+    const result = computePortalPlacement(
+      raycast,
+      new Vector3(30, 5, 5),
       new Vector3(0, 0, -1),
       OPTIONS,
     );
@@ -137,6 +161,49 @@ describe("computePortalPlacement", () => {
       OPTIONS,
     );
     expect(result).toBeNull();
+  });
+
+  it("shoots through a prop and lands on the static wall behind it", async () => {
+    const { physics, raycast } = await worldWithWallAndFloor();
+    // A non-static prop right in front of the wall centre.
+    physics.createStaticBox({
+      id: "prop",
+      position: new Vector3(0, 5, 2),
+      size: new Vector3(1.2, 1.2, 1.2),
+      metadata: { kind: "dynamic" },
+    });
+    physics.updateQueryPipeline();
+    const result = computePortalPlacement(
+      raycast,
+      new Vector3(0, 5, 5),
+      new Vector3(0, 0, -1),
+      OPTIONS,
+    );
+    expect(result).not.toBeNull();
+    // Passed through the prop (front face z=2.6) and hit the wall (z=0.5).
+    expect(result!.frame.position.z).toBeCloseTo(0.5, 3);
+  });
+
+  it("bumps aside so it does not overlap the sibling portal", async () => {
+    const { raycast } = await worldWithWallAndFloor();
+    const sibling: PortalFrame = {
+      position: new Vector3(0, 5, 0.5),
+      quaternion: new Quaternion(),
+      halfWidth: OPTIONS.halfWidth,
+      halfHeight: OPTIONS.halfHeight,
+    };
+    // Aim just to the right of the sibling's centre.
+    const result = computePortalPlacement(
+      raycast,
+      new Vector3(0.3, 5, 5),
+      new Vector3(0, 0, -1),
+      { ...OPTIONS, sibling },
+    );
+    expect(result).not.toBeNull();
+    expect(portalsOverlap(result!.frame, sibling)).toBe(false);
+    // Bumped to the right (away from the sibling), still on the wall.
+    expect(result!.frame.position.x).toBeGreaterThan(0.3);
+    expect(result!.frame.position.z).toBeCloseTo(0.5, 3);
   });
 });
 

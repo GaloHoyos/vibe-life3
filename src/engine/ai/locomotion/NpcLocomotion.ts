@@ -72,6 +72,13 @@ const SEPARATION_ATTENUATION_RADIUS = 1.5;
  */
 const VERTICAL_REACH_TOLERANCE = 2.0;
 
+/**
+ * Salto de posicion entre frames mayor a esto = teleport (portal gun): los
+ * waypoints viejos quedaron del otro lado, hay que re-planear desde la salida.
+ * Ningun desplazamiento legitimo por fisica se acerca a 4 m en un frame.
+ */
+const TELEPORT_REPATH_DISTANCE = 4;
+
 /** Altura sobre el waypoint para el LOS del lookahead-skip (el centro del
  * cuerpo del NPC queda ~0.9 sobre sus pies — mismo plano que el ray). */
 const SKIP_LOS_LIFT = 0.9;
@@ -257,6 +264,17 @@ export class NpcLocomotion {
     }
     const pos = this.tmpPos.copy(this.motor.getPosition());
     this.repathCooldown -= delta;
+    if (this.hasLast && planar2D(pos, this.tmpLast) > TELEPORT_REPATH_DISTANCE) {
+      this.waypoints = [];
+      this.waypointStair = [];
+      this.waypointIdx = 0;
+      this.hasLast = false;
+      this.stuckTimer = 0;
+      if (!this.pathPending) {
+        this.goalAtPlan.copy(this.goal);
+        this.requestPath(this.goal);
+      }
+    }
     // Repath si la meta vigente se alejo de la meta con la que se planeo.
     if (!this.pathPending && planar2D(this.goal, this.goalAtPlan) > this.opts.repathThreshold) {
       this.goalAtPlan.copy(this.goal);

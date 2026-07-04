@@ -79,6 +79,9 @@ export class AmmoPickup {
 
   dispose(): void {
     this.object.removeFromParent();
+    if (this.body) {
+      this.physics.clearBodyVisual(this.body);
+    }
     this.collider?.setEnabled(false);
     this.body?.setEnabled(false);
   }
@@ -119,6 +122,8 @@ export class AmmoPickup {
       id: this.options.id,
       kind: "weaponPickup",
     });
+    // Registra el visual para que el clon de portales lo replique al cruzar.
+    this.physics.setBodyVisual(this.body, this.object);
   }
 
   private syncFromPhysics(): void {

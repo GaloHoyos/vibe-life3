@@ -67,6 +67,39 @@ describe("PortalMath — transforms", () => {
     expect(Math.abs(back.dot(q))).toBeCloseTo(1, 10);
   });
 
+  it("quaternion transform is alias-safe when out === input", () => {
+    // teleportDynamicBody passes the body's rotation as both input and out
+    // (one scratch quaternion). Aliasing must not collapse the result to delta²
+    // — that is the bug where a dynamic object loses its rotation on crossing.
+    const a = wallA();
+    const b = floorA();
+    const tilt = () =>
+      new Quaternion().setFromEuler(new Euler(0.4, 0.2, -1.1, "YXZ"));
+    const expected = transformQuaternionThroughPortal(tilt(), a, b);
+    const aliased = tilt();
+    transformQuaternionThroughPortal(aliased, a, b, aliased);
+    expect(Math.abs(aliased.dot(expected))).toBeCloseTo(1, 10);
+  });
+
+  it("preserves a fallen object's tilt (no upright reset) through a wall pair", () => {
+    const a = wallA();
+    const b = wallB();
+    // Object lying on its side: local up (+Y) rotated to horizontal.
+    const fallen = new Quaternion().setFromEuler(new Euler(0, 0, -Math.PI / 2));
+    const localUp = new Vector3(0, 1, 0);
+    const upBefore = localUp.clone().applyQuaternion(fallen);
+    expect(Math.abs(upBefore.y)).toBeLessThan(1e-10); // horizontal, i.e. fallen
+
+    const through = transformQuaternionThroughPortal(fallen, a, b);
+    const upAfter = localUp.clone().applyQuaternion(through);
+    // The tilt is carried through (equals the direction transform of the up
+    // axis), not snapped upright.
+    const expectedUp = transformDirectionThroughPortal(upBefore, a, b);
+    expect(upAfter.distanceTo(expectedUp)).toBeLessThan(1e-10);
+    // Both wall portals share world-up, so a fallen object stays fallen.
+    expect(Math.abs(upAfter.y)).toBeLessThan(1e-10);
+  });
+
   it("entry velocity into a wall portal exits along the paired portal's normal", () => {
     const a = wallA();
     const b = wallB();

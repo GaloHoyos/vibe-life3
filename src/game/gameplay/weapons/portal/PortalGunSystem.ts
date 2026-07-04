@@ -1,14 +1,15 @@
 import type RAPIER from "@dimforge/rapier3d-compat";
 import {
   AdditiveBlending,
-  CircleGeometry,
   DoubleSide,
   Group,
+  MathUtils,
   Mesh,
   MeshBasicMaterial,
   Quaternion,
   RingGeometry,
   Vector3,
+  type BufferGeometry,
   type Object3D,
   type Scene,
 } from "three";
@@ -27,24 +28,27 @@ import {
   type PortalSlot,
 } from "@engine/portals/PortalFrame";
 import {
+  enforceExitClearance,
   lookDirectionToYawPitch,
   portalNormal,
   segmentCrossesPortal,
+  shiftPortalFrame,
   transformDirectionThroughPortal,
   transformPointThroughPortal,
-  transformQuaternionThroughPortal,
 } from "@engine/portals/PortalMath";
 import {
   PortalSurfaceMaterial,
   PortalSurfaceMode,
 } from "@engine/portals/PortalSurfaceMaterial";
+import { createPortalPlugGeometry } from "@engine/portals/PortalPlugGeometry";
+import { PortalTravellerSystem } from "@engine/portals/PortalTravellerSystem";
 import type { GameEventBus } from "@game/GameEvents";
 import { PortalConfig } from "@game/config/portal.config";
 import { PlayerConfig } from "@game/config/gameplay.config";
 import type { Player } from "@game/gameplay/player/Player";
 import type { NpcPortalHandle } from "@game/npc/core/INpc";
 import type { Disposable } from "@shared/types/lifecycle";
-import { computePortalPlacement, portalsOverlap } from "./PortalPlacement";
+import { computePortalPlacement } from "./PortalPlacement";
 
 export interface PortalFireOptions {
   slot: PortalSlot;
@@ -57,7 +61,7 @@ interface PlacedPortal {
   slot: PortalSlot;
   frame: PortalFrame;
   root: Group;
-  surface: Mesh<CircleGeometry, PortalSurfaceMaterial>;
+  surface: Mesh<BufferGeometry, PortalSurfaceMaterial>;
   ring: Mesh<RingGeometry, MeshBasicMaterial>;
   backingColliders: RAPIER.Collider[];
 }
@@ -65,6 +69,15 @@ interface PlacedPortal {
 // Disc sits slightly off the wall to avoid z-fighting; portal math keeps
 // using the exact surface plane stored in the frame.
 const SURFACE_LIFT = 0.02;
+
+// Edge fade: the colored rim and glow ring dissolve as the camera lines up
+// and closes on the portal plane, so the exit view reaches the physical edge
+// and the pass looks seamless (like walking through a hole, not a framed
+// picture). Full frame past FAR, gone by NEAR; only engages when the camera is
+// roughly aimed into the mouth (within LATERAL² of the unit ellipse).
+const EDGE_FADE_NEAR = 0.12;
+const EDGE_FADE_FAR = 0.6;
+const EDGE_FADE_LATERAL = 1.6;
 
 const TMP_FORWARD = new Vector3();
 const TMP_UP = new Vector3();
@@ -76,10 +89,8 @@ const TMP_INV_Q = new Quaternion();
 const TMP_EXIT_POS = new Vector3();
 const TMP_VELOCITY = new Vector3();
 const TMP_PREV = new Vector3();
-const TMP_BODY_POS = new Vector3();
-const TMP_ANGVEL = new Vector3();
-const TMP_ROT_Q = new Quaternion();
-const TMP_ENTRY_NORMAL = new Vector3();
+const TMP_GROUND_ORIGIN = new Vector3();
+const TMP_DOWN = new Vector3(0, -1, 0);
 // Reusable frame for the trigger plane shifted in front of the portal.
 const TMP_TRIGGER_FRAME: PortalFrame = {
   position: new Vector3(),
@@ -87,33 +98,6 @@ const TMP_TRIGGER_FRAME: PortalFrame = {
   halfWidth: 1,
   halfHeight: 1,
 };
-
-function shiftedTriggerFrame(entry: PortalFrame, offset: number): PortalFrame {
-  portalNormal(entry, TMP_ENTRY_NORMAL);
-  TMP_TRIGGER_FRAME.position
-    .copy(entry.position)
-    .addScaledVector(TMP_ENTRY_NORMAL, offset);
-  TMP_TRIGGER_FRAME.quaternion.copy(entry.quaternion);
-  TMP_TRIGGER_FRAME.halfWidth = entry.halfWidth;
-  TMP_TRIGGER_FRAME.halfHeight = entry.halfHeight;
-  return TMP_TRIGGER_FRAME;
-}
-
-/** Empuja `position` para que quede al menos `clearance` delante del plano de salida. */
-function enforceExitClearance(
-  position: Vector3,
-  exitPosition: Vector3,
-  exitNormal: Vector3,
-  clearance: number,
-): void {
-  const depth =
-    (position.x - exitPosition.x) * exitNormal.x +
-    (position.y - exitPosition.y) * exitNormal.y +
-    (position.z - exitPosition.z) * exitNormal.z;
-  if (depth < clearance) {
-    position.addScaledVector(exitNormal, clearance - depth);
-  }
-}
 
 /**
  * Runtime portal pair: placement, visuals and lifecycle. Traversal and the
@@ -126,16 +110,13 @@ export class PortalGunSystem implements Disposable {
   readonly throughRaycast: PortalRaycast;
 
   private readonly portals = new Map<PortalSlot, PlacedPortal>();
-  private readonly surfaceGeometry = new CircleGeometry(1, 48);
+  private readonly surfaceGeometry = createPortalPlugGeometry(48);
   private readonly ringGeometry = new RingGeometry(1.0, 1.14, 48);
+  /** Física de props a través de portales (agujero real + teleport/clon). */
+  private readonly traveller: PortalTravellerSystem;
   private readonly playerPrev = new Vector3();
   private playerPrevValid = false;
   private playerCooldownUntil = 0;
-  private readonly dynamicStates = new Map<
-    number,
-    { prev: Vector3; cooldownUntil: number; seenFrame: number }
-  >();
-  private dynamicFrame = 0;
   private readonly npcStates = new Map<
     string,
     { prev: Vector3; cooldownUntil: number; seenFrame: number; excluding: boolean }
@@ -157,6 +138,28 @@ export class PortalGunSystem implements Disposable {
       maxViewDistance: PortalConfig.view.maxViewDistance,
     });
     this.throughRaycast = new PortalRaycast(raycast, this.pair);
+    // Props a través de portales: cada portal linked tiene un agujero físico
+    // real (parche con óvalo recortado) por el que el objeto se vuelca y cae; al
+    // cruzar el centro se teleporta al portal de salida.
+    this.traveller = new PortalTravellerSystem(this.physics, this.scene, this.pair, {
+      apertureRadius: PortalConfig.dynamicClone.apertureRadius,
+      apertureThickness: PortalConfig.dynamicClone.apertureThickness,
+      proximity: PortalConfig.dynamicClone.proximity,
+      cloneEnabled: PortalConfig.dynamicClone.enabled,
+      crossingMargin: PortalConfig.traversal.crossingMargin,
+      dynamicTriggerOffset: PortalConfig.traversal.dynamicTriggerOffset,
+      cooldownSeconds: PortalConfig.traversal.cooldownSeconds,
+      minExitSpeed: PortalConfig.traversal.minExitSpeed,
+      dynamicExitClearance: PortalConfig.traversal.dynamicExitClearance,
+      dynamicQueryRadius: PortalConfig.traversal.dynamicQueryRadius,
+      onTeleport: (entityId, exitPosition) => {
+        this.eventBus.emit("portal.teleported", {
+          entityKind: "dynamic",
+          entityId,
+          exitPosition,
+        });
+      },
+    });
   }
 
   /**
@@ -183,8 +186,18 @@ export class PortalGunSystem implements Disposable {
     }
 
     const views: PortalViewTarget[] = [
-      { entry: a.frame, exit: b.frame, material: a.surface.material },
-      { entry: b.frame, exit: a.frame, material: b.surface.material },
+      {
+        entry: a.frame,
+        exit: b.frame,
+        material: a.surface.material,
+        exitSurface: b.surface,
+      },
+      {
+        entry: b.frame,
+        exit: a.frame,
+        material: b.surface.material,
+        exitSurface: a.surface,
+      },
     ];
     this.viewRenderer.render(
       this.scene,
@@ -207,6 +220,7 @@ export class PortalGunSystem implements Disposable {
 
   /** Places (or moves) one portal. Returns false when the surface is invalid. */
   fire(options: PortalFireOptions): boolean {
+    const sibling = this.pair.get(options.slot === "a" ? "b" : "a");
     const placement = computePortalPlacement(
       this.raycast,
       options.origin,
@@ -217,15 +231,11 @@ export class PortalGunSystem implements Disposable {
         halfHeight: PortalConfig.ellipse.halfHeight,
         planarForward: this.computePlanarForward(options.cameraQuaternion),
         excludeId: "player",
+        // El bump reubica el óvalo para no pisar el portal par (como en Portal).
+        sibling: sibling ?? undefined,
       },
     );
     if (!placement) {
-      this.eventBus.emit("portal.placementfailed", { slot: options.slot });
-      return false;
-    }
-
-    const sibling = this.pair.get(options.slot === "a" ? "b" : "a");
-    if (sibling && portalsOverlap(placement.frame, sibling)) {
       this.eventBus.emit("portal.placementfailed", { slot: options.slot });
       return false;
     }
@@ -253,112 +263,41 @@ export class PortalGunSystem implements Disposable {
       if (portal.surface.material.getMode() === PortalSurfaceMode.fallback) {
         portal.surface.material.setMode(PortalSurfaceMode.idle);
       }
+      this.applyEdgeFade(portal);
     }
 
     if (player && camera) {
       this.updatePlayerTraversal(elapsed, player, camera);
     }
-    this.updateDynamicTraversal(elapsed, _delta);
+    this.traveller.update(elapsed, _delta);
   }
 
   /**
-   * Swept crossing for dynamic bodies near the portals (crates, barrels,
-   * grenades, pickups). Gravity-gun-held props are kinematic and ragdolls
-   * are multi-body, so both are excluded.
+   * Dissolves a portal's colored rim and glow ring as the camera lines up and
+   * closes on the plane, so the exit view reaches the disc edge and the pass
+   * reads as an open hole instead of a framed picture. Only linked portals can
+   * be crossed, so unlinked ones keep the full frame.
    */
-  private updateDynamicTraversal(elapsed: number, delta: number): void {
-    if (!this.pair.linked) {
-      if (this.dynamicStates.size > 0) {
-        this.dynamicStates.clear();
-      }
-      return;
-    }
-
-    this.dynamicFrame++;
-    const radiusSq = PortalConfig.traversal.dynamicQueryRadius ** 2;
-    this.physics.world.bodies.forEach((body) => {
-      if (!body.isDynamic()) {
-        return;
-      }
-      const translation = body.translation();
-      TMP_BODY_POS.set(translation.x, translation.y, translation.z);
-      let near = false;
-      for (const portal of this.portals.values()) {
-        if (
-          TMP_BODY_POS.distanceToSquared(portal.frame.position) <= radiusSq
-        ) {
-          near = true;
-          break;
-        }
-      }
-      if (!near) {
-        return;
-      }
-      const collider = body.numColliders() > 0 ? body.collider(0) : null;
-      const metadata = collider
-        ? this.physics.getColliderMetadata(collider)
-        : undefined;
-      if (metadata?.kind === "ragdoll") {
-        return;
-      }
-
-      let state = this.dynamicStates.get(body.handle);
-      if (!state) {
-        // Synthetic prev from the current velocity: fast bodies entering the
-        // radius get a valid swept segment on their first tracked frame.
-        const linvel = body.linvel();
-        state = {
-          prev: new Vector3(
-            TMP_BODY_POS.x - linvel.x * delta,
-            TMP_BODY_POS.y - linvel.y * delta,
-            TMP_BODY_POS.z - linvel.z * delta,
-          ),
-          cooldownUntil: 0,
-          seenFrame: 0,
-        };
-        this.dynamicStates.set(body.handle, state);
-      }
-      state.seenFrame = this.dynamicFrame;
-
-      if (elapsed >= state.cooldownUntil) {
-        for (const slot of ["a", "b"] as const) {
-          const entry = this.pair.get(slot);
-          const exit = this.pair.exitFor(slot);
-          if (!entry || !exit) {
-            continue;
-          }
-          // Trigger bien adelante del disco: los cuerpos dinámicos NO tienen
-          // filtro contra la pared de respaldo, así que hay que teleportarlos
-          // antes de que el solver resuelva el contacto y los haga rebotar.
-          if (
-            !segmentCrossesPortal(
-              state.prev,
-              TMP_BODY_POS,
-              shiftedTriggerFrame(
-                entry,
-                PortalConfig.traversal.dynamicTriggerOffset,
-              ),
-              PortalConfig.traversal.crossingMargin,
-            )
-          ) {
-            continue;
-          }
-          this.teleportDynamicBody(body, entry, exit, metadata?.id);
-          state.cooldownUntil =
-            elapsed + PortalConfig.traversal.cooldownSeconds;
-          const moved = body.translation();
-          TMP_BODY_POS.set(moved.x, moved.y, moved.z);
-          break;
-        }
-      }
-      state.prev.copy(TMP_BODY_POS);
-    });
-
-    for (const [handle, state] of this.dynamicStates) {
-      if (state.seenFrame !== this.dynamicFrame) {
-        this.dynamicStates.delete(handle);
+  private applyEdgeFade(portal: PlacedPortal): void {
+    let fade = 1;
+    if (this.pair.linked) {
+      const frame = portal.frame;
+      const camera = this.cameraSystem.camera.position;
+      portalNormal(frame, TMP_NORMAL);
+      TMP_DELTA.copy(camera).sub(frame.position);
+      const perpendicular = Math.abs(TMP_DELTA.dot(TMP_NORMAL));
+      TMP_INV_Q.copy(frame.quaternion).invert();
+      TMP_LOCAL.copy(TMP_DELTA).applyQuaternion(TMP_INV_Q);
+      const ex = TMP_LOCAL.x / frame.halfWidth;
+      const ey = TMP_LOCAL.y / frame.halfHeight;
+      // Only fade when the camera is aimed into the mouth, not when merely
+      // walking past a portal on an adjacent wall.
+      if (ex * ex + ey * ey <= EDGE_FADE_LATERAL) {
+        fade = MathUtils.smoothstep(perpendicular, EDGE_FADE_NEAR, EDGE_FADE_FAR);
       }
     }
+    portal.surface.material.setEdgeFade(fade);
+    portal.ring.material.opacity = fade;
   }
 
   /**
@@ -517,71 +456,6 @@ export class PortalGunSystem implements Disposable {
     });
   }
 
-  private teleportDynamicBody(
-    body: RAPIER.RigidBody,
-    entry: PortalFrame,
-    exit: PortalFrame,
-    entityId?: string,
-  ): void {
-    portalNormal(exit, TMP_EXIT_NORMAL);
-    const translation = body.translation();
-    TMP_BODY_POS.set(translation.x, translation.y, translation.z);
-    transformPointThroughPortal(TMP_BODY_POS, entry, exit, TMP_EXIT_POS);
-    enforceExitClearance(
-      TMP_EXIT_POS,
-      exit.position,
-      TMP_EXIT_NORMAL,
-      PortalConfig.traversal.dynamicExitClearance,
-    );
-
-    const linvel = body.linvel();
-    TMP_VELOCITY.set(linvel.x, linvel.y, linvel.z);
-    // Des-rebote: si el solver ya lo hizo picar contra la pared en este mismo
-    // step, la velocidad apunta hacia afuera; espejamos la componente normal
-    // para recuperar la velocidad de entrada.
-    portalNormal(entry, TMP_ENTRY_NORMAL);
-    const bounced = TMP_VELOCITY.dot(TMP_ENTRY_NORMAL);
-    if (bounced > 0) {
-      TMP_VELOCITY.addScaledVector(TMP_ENTRY_NORMAL, -2 * bounced);
-    }
-    transformDirectionThroughPortal(TMP_VELOCITY, entry, exit, TMP_VELOCITY);
-    const alongNormal = TMP_VELOCITY.dot(TMP_EXIT_NORMAL);
-    if (alongNormal < PortalConfig.traversal.minExitSpeed) {
-      TMP_VELOCITY.addScaledVector(
-        TMP_EXIT_NORMAL,
-        PortalConfig.traversal.minExitSpeed - alongNormal,
-      );
-    }
-
-    const angvel = body.angvel();
-    TMP_ANGVEL.set(angvel.x, angvel.y, angvel.z);
-    transformDirectionThroughPortal(TMP_ANGVEL, entry, exit, TMP_ANGVEL);
-
-    const rotation = body.rotation();
-    TMP_ROT_Q.set(rotation.x, rotation.y, rotation.z, rotation.w);
-    transformQuaternionThroughPortal(TMP_ROT_Q, entry, exit, TMP_ROT_Q);
-
-    body.setTranslation(
-      { x: TMP_EXIT_POS.x, y: TMP_EXIT_POS.y, z: TMP_EXIT_POS.z },
-      true,
-    );
-    body.setLinvel(
-      { x: TMP_VELOCITY.x, y: TMP_VELOCITY.y, z: TMP_VELOCITY.z },
-      true,
-    );
-    body.setAngvel({ x: TMP_ANGVEL.x, y: TMP_ANGVEL.y, z: TMP_ANGVEL.z }, true);
-    body.setRotation(
-      { x: TMP_ROT_Q.x, y: TMP_ROT_Q.y, z: TMP_ROT_Q.z, w: TMP_ROT_Q.w },
-      true,
-    );
-
-    this.eventBus.emit("portal.teleported", {
-      entityKind: "dynamic",
-      entityId,
-      exitPosition: TMP_EXIT_POS.clone(),
-    });
-  }
-
   private updatePlayerTraversal(
     elapsed: number,
     player: Player,
@@ -595,6 +469,7 @@ export class PortalGunSystem implements Disposable {
     }
 
     this.updatePassThroughFilter(player, position);
+    this.constrainToPortalHole(player, position);
 
     // Snapshot BEFORE overwriting: playerPrev is a persistent vector, so the
     // swept segment needs its own copy of last frame's position.
@@ -619,13 +494,23 @@ export class PortalGunSystem implements Disposable {
         !segmentCrossesPortal(
           TMP_PREV,
           position,
-          shiftedTriggerFrame(
+          shiftPortalFrame(
             entry,
             PortalConfig.traversal.playerTriggerOffset,
+            TMP_TRIGGER_FRAME,
           ),
           PortalConfig.traversal.crossingMargin,
         )
       ) {
+        // Anti-túnel: un paso rápido/diagonal puede cruzar el plano de la
+        // pared JUSTO por fuera del hueco mientras el collider de respaldo
+        // está filtrado. Devolvemos la cápsula al frente para que no se cuele
+        // por la pared sólida.
+        if (this.blockWallEscape(player, entry, position)) {
+          this.playerPrev.copy(position);
+          this.updatePassThroughFilter(player, position);
+          break;
+        }
         continue;
       }
 
@@ -668,6 +553,11 @@ export class PortalGunSystem implements Disposable {
         TMP_EXIT_NORMAL,
         capsule + 0.05,
       );
+    } else {
+      // Salida por pared: si el mapeo exacto deja los pies bajo el piso (entrar
+      // por un portal elevado desde abajo), subir la cápsula a apoyarse. Ver
+      // `traversal.exitGroundSnap`.
+      this.liftPlayerOntoGround(TMP_EXIT_POS);
     }
 
     transformDirectionThroughPortal(
@@ -706,6 +596,144 @@ export class PortalGunSystem implements Disposable {
       entityId: "player",
       exitPosition: TMP_EXIT_POS.clone(),
     });
+  }
+
+  /**
+   * Sube (nunca baja) el centro de la cápsula de salida para que los pies
+   * apoyen en el piso si el mapeo exacto los dejó embebidos. Castea hacia abajo
+   * desde la cabeza; si no hay piso dentro del rango, la salida es aérea
+   * (caída legítima) y no se toca.
+   */
+  private liftPlayerOntoGround(exitPos: Vector3): void {
+    const halfExtent =
+      PlayerConfig.collider.standingHalfHeight + PlayerConfig.collider.radius;
+    TMP_GROUND_ORIGIN.copy(exitPos);
+    TMP_GROUND_ORIGIN.y += halfExtent;
+    const maxDistance = 2 * halfExtent + PortalConfig.traversal.exitGroundSnap;
+    const hit = this.raycast.cast(
+      TMP_GROUND_ORIGIN,
+      TMP_DOWN,
+      maxDistance,
+      undefined,
+      "player",
+    );
+    if (!hit) {
+      return;
+    }
+    const neededCenterY = hit.point.y + halfExtent;
+    if (neededCenterY > exitPos.y) {
+      exitPos.y = neededCenterY;
+    }
+  }
+
+  /**
+   * "Portal environment" de Valve: la pared detrás del portal es un agujero,
+   * no una ausencia de pared. Mientras la cápsula penetra el plano con el
+   * filtro pass-through activo, su centro queda confinado al óvalo — sin esto
+   * se puede strafear dentro de la pared y caminar por el interior del nivel.
+   * También actúa de "funnel": empuja lateralmente hacia la boca del portal.
+   */
+  private constrainToPortalHole(player: Player, position: Vector3): void {
+    if (!this.pair.linked) {
+      return;
+    }
+    const radius = PlayerConfig.collider.radius;
+    for (const portal of this.portals.values()) {
+      const frame = portal.frame;
+      TMP_DELTA.copy(position).sub(frame.position);
+      if (
+        TMP_DELTA.lengthSq() >
+        PortalConfig.traversal.passThroughProximity ** 2
+      ) {
+        continue;
+      }
+      portalNormal(frame, TMP_NORMAL);
+      const depth = TMP_DELTA.dot(TMP_NORMAL);
+      // Solo cuando la cápsula penetra de verdad el plano de la pared; el
+      // contacto normal deslizando por la pared queda en depth >= radius.
+      if (depth > radius - 0.05) {
+        continue;
+      }
+      TMP_INV_Q.copy(frame.quaternion).invert();
+      TMP_LOCAL.copy(TMP_DELTA).applyQuaternion(TMP_INV_Q);
+      const fx = TMP_LOCAL.x / (frame.halfWidth + radius);
+      const fy = TMP_LOCAL.y / (frame.halfHeight + radius);
+      if (fx * fx + fy * fy > 1) {
+        continue;
+      }
+      const holeHalfWidth = Math.max(frame.halfWidth - radius, 0.05);
+      let clampedX = Math.min(
+        holeHalfWidth,
+        Math.max(-holeHalfWidth, TMP_LOCAL.x),
+      );
+      let clampedY = TMP_LOCAL.y;
+      if (Math.abs(TMP_NORMAL.y) > 0.7) {
+        // Piso/techo: ambos ejes locales son horizontales; confinar la
+        // cápsula completa a la elipse del hueco.
+        const holeHalfHeight = Math.max(frame.halfHeight - radius, 0.05);
+        const overflow =
+          (TMP_LOCAL.x / holeHalfWidth) ** 2 +
+          (TMP_LOCAL.y / holeHalfHeight) ** 2;
+        if (overflow > 1) {
+          const scale = 1 / Math.sqrt(overflow);
+          clampedX = TMP_LOCAL.x * scale;
+          clampedY = TMP_LOCAL.y * scale;
+        } else {
+          clampedX = TMP_LOCAL.x;
+        }
+      }
+      if (clampedX === TMP_LOCAL.x && clampedY === TMP_LOCAL.y) {
+        continue;
+      }
+      TMP_LOCAL.x = clampedX;
+      TMP_LOCAL.y = clampedY;
+      TMP_LOCAL.applyQuaternion(frame.quaternion).add(frame.position);
+      position.copy(TMP_LOCAL);
+      player.controller.setPosition(position);
+    }
+  }
+
+  /**
+   * Safety net against tunneling: when a swept step crosses a portal's wall
+   * plane front-to-behind WITHOUT triggering a teleport (the crossing point
+   * missed the hole), the capsule is inside the solid wall — but its backing
+   * collider is filtered out, so the controller never stopped it. If the
+   * crossing lands within the filtered footprint (where the wall is
+   * non-solid), snap the capsule back in front of the wall. Returns true when
+   * it acted.
+   */
+  private blockWallEscape(
+    player: Player,
+    entry: PortalFrame,
+    position: Vector3,
+  ): boolean {
+    portalNormal(entry, TMP_NORMAL);
+    const d0 = TMP_DELTA.copy(TMP_PREV).sub(entry.position).dot(TMP_NORMAL);
+    const d1 = TMP_DELTA.copy(position).sub(entry.position).dot(TMP_NORMAL);
+    // Only a front-to-behind crossing escapes; behind-to-front is emerging.
+    if (d0 < 0 || d1 >= 0) {
+      return false;
+    }
+    const radius = PlayerConfig.collider.radius;
+    const t = d0 / (d0 - d1);
+    TMP_INV_Q.copy(entry.quaternion).invert();
+    TMP_LOCAL.copy(position)
+      .sub(TMP_PREV)
+      .multiplyScalar(t)
+      .add(TMP_PREV)
+      .sub(entry.position)
+      .applyQuaternion(TMP_INV_Q);
+    const fx = TMP_LOCAL.x / (entry.halfWidth + radius);
+    const fy = TMP_LOCAL.y / (entry.halfHeight + radius);
+    if (fx * fx + fy * fy > 1) {
+      // Crossed where the wall stays solid; the controller already stopped it.
+      return false;
+    }
+    // Inside the non-solid footprint but outside the hole: lift the capsule
+    // center back to the front face (depth = +radius) along the wall normal.
+    position.addScaledVector(TMP_NORMAL, radius - d1);
+    player.controller.setPosition(position);
+    return true;
   }
 
   /**
@@ -785,12 +813,14 @@ export class PortalGunSystem implements Disposable {
     this.portals.clear();
     this.pair.clear();
     this.playerPrevValid = false;
+    this.traveller.clear();
     this.restoreShadowPolicy();
     this.eventBus.emit("portal.cleared", {});
   }
 
   dispose(): void {
     this.clear();
+    this.traveller.dispose();
     this.viewRenderer.dispose();
     this.surfaceGeometry.dispose();
     this.ringGeometry.dispose();
@@ -813,6 +843,7 @@ export class PortalGunSystem implements Disposable {
     this.pair.set(slot, frame);
     // A moved portal invalidates last frame's swept segment.
     this.playerPrevValid = false;
+    this.traveller.setPortal(slot, frame, backingColliders);
 
     portalNormal(frame, TMP_NORMAL);
     portal.root.position
@@ -834,7 +865,13 @@ export class PortalGunSystem implements Disposable {
       this.surfaceGeometry,
       new PortalSurfaceMaterial(color),
     );
-    surface.scale.set(frame.halfWidth, frame.halfHeight, 1);
+    // La geometría es un tapón unitario extruido hacia -Z: la escala Z lo
+    // hunde `surfacePlugDepth` metros dentro de la pared (ver PortalConfig).
+    surface.scale.set(
+      frame.halfWidth,
+      frame.halfHeight,
+      PortalConfig.view.surfacePlugDepth,
+    );
     root.add(surface);
 
     const ring = new Mesh(

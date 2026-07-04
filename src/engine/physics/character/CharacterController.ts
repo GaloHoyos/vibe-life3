@@ -325,6 +325,9 @@ export class CharacterController extends KinematicCharacterBase {
         undefined,
         undefined,
         this.body,
+        // Respeta el mismo filtro que el movimiento: parado dentro de un portal,
+        // el backing wall está excluido, así que no debe bloquear el levantarse.
+        this.collisionFilter ?? undefined,
       );
       if (hit !== null) {
         return false;

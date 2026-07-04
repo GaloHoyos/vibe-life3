@@ -57,6 +57,8 @@ export class WeaponPickup {
       id: options.id,
       kind: 'weaponPickup',
     });
+    // Registra el visual para que el clon de portales lo replique al cruzar.
+    this.physics.setBodyVisual(this.body, this.object);
   }
 
   static async create(
@@ -92,6 +94,7 @@ export class WeaponPickup {
 
   dispose(): void {
     this.object.removeFromParent();
+    this.physics.clearBodyVisual(this.body);
     this.collider.setEnabled(false);
     this.body.setEnabled(false);
   }

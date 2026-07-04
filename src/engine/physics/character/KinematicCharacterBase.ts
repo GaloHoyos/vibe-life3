@@ -119,6 +119,22 @@ export abstract class KinematicCharacterBase {
     this.grounded = false;
   }
 
+  /**
+   * Corrección posicional dura sin tocar velocidad ni grounded (clamp del
+   * hueco de un portal). A diferencia de `teleport`, preserva el momentum.
+   */
+  setPosition(position: Vector3): void {
+    this.body.setTranslation(
+      { x: position.x, y: position.y, z: position.z },
+      true,
+    );
+    this.body.setNextKinematicTranslation({
+      x: position.x,
+      y: position.y,
+      z: position.z,
+    });
+  }
+
   getPosition(): Vector3 {
     const p = this.body.translation();
     return new Vector3(p.x, p.y, p.z);

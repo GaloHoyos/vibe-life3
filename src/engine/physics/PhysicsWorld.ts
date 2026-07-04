@@ -73,12 +73,34 @@ export interface PhysicsHeightfieldOptions {
  * `init()` es async porque Rapier carga su WASM al arrancar; el motor lo
  * llama una sola vez antes de cualquier creaciÃ³n de cuerpos.
  */
+/**
+ * Filtro de pares de contacto (physics hooks de Rapier). Devuelve null para
+ * suprimir el contacto; solo se consulta para pares donde al menos un collider
+ * tiene `ActiveHooks.FILTER_CONTACT_PAIRS` activo.
+ */
+export type ContactPairFilter = (
+  collider1: number,
+  collider2: number,
+  body1: number,
+  body2: number,
+) => RAPIER.SolverFlags | null;
+
 export class PhysicsWorld {
   world!: RAPIER.World;
 
   private readonly bindings: PhysicsBinding[] = [];
   private readonly metadataByCollider = new Map<number, PhysicsMetadata>();
+  /**
+   * Visual de un body cuyo dueño sincroniza su propia malla (pickups, etc.) y
+   * por eso no está en `bindings`. Lo consulta `getBoundMesh` para que sistemas
+   * como el clon de portales puedan replicar su visual.
+   */
+  private readonly bodyVisuals = new Map<number, Object3D>();
   private initialized = false;
+  private hooks: RAPIER.PhysicsHooks | null = null;
+  // Rapier-compat solo aplica hooks via `stepWithEvents`, que exige una
+  // EventQueue aunque nadie consuma los eventos (autoDrain la vacía).
+  private eventQueue: RAPIER.EventQueue | null = null;
 
   async init(): Promise<void> {
     if (this.initialized) {
@@ -101,6 +123,7 @@ export class PhysicsWorld {
     this.world = new RAPIER.World(GRAVITY);
     this.bindings.length = 0;
     this.metadataByCollider.clear();
+    this.bodyVisuals.clear();
   }
 
   createStaticBox(options: PhysicsBoxOptions): RAPIER.RigidBody {
@@ -203,13 +226,84 @@ export class PhysicsWorld {
     this.metadataByCollider.set(collider.handle, metadata);
   }
 
+  /** Malla ligada a un rigid body (para sistemas que necesitan clonar su visual). */
+  getBoundMesh(body: RAPIER.RigidBody): Object3D | undefined {
+    return (
+      this.bindings.find((b) => b.rigidBody === body)?.mesh ??
+      this.bodyVisuals.get(body.handle)
+    );
+  }
+
+  /**
+   * Registra la malla de un body que sincroniza su propio visual (no usa
+   * `bindings`), para que `getBoundMesh` la encuentre. El dueño debe limpiarla
+   * con `clearBodyVisual` al disponerse.
+   */
+  setBodyVisual(body: RAPIER.RigidBody, mesh: Object3D): void {
+    this.bodyVisuals.set(body.handle, mesh);
+  }
+
+  clearBodyVisual(body: RAPIER.RigidBody): void {
+    this.bodyVisuals.delete(body.handle);
+  }
+
+  /**
+   * Crea un cuerpo dinámico con los MISMOS colliders (forma, densidad, grupos)
+   * que `source`, en la pose dada. Lo usa el clon de portal: el mismo objeto
+   * representado del otro lado. No registra metadata ni binding de malla (es
+   * temporal; el dueño lo gestiona). Removerlo con `removeBody`.
+   */
+  createDynamicClone(
+    source: RAPIER.RigidBody,
+    position: Vector3,
+    rotation: Quaternion,
+  ): RAPIER.RigidBody {
+    const body = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(position.x, position.y, position.z)
+        .setRotation({ x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w }),
+    );
+    for (let i = 0; i < source.numColliders(); i += 1) {
+      const src = source.collider(i);
+      const desc = cloneColliderDesc(src)
+        .setDensity(src.density())
+        .setCollisionGroups(src.collisionGroups());
+      this.world.createCollider(desc, body);
+    }
+    return body;
+  }
+
   getColliderMetadata(collider: RAPIER.Collider): PhysicsMetadata | undefined {
     return this.metadataByCollider.get(collider.handle);
   }
 
+  /**
+   * Registra (o remueve con null) el filtro de contactos usado por los hooks
+   * de Rapier en cada `step()`. Un solo filtro global: el consumidor que lo
+   * registre debe multiplexar sus propios casos.
+   */
+  setContactPairFilter(filter: ContactPairFilter | null): void {
+    this.hooks = filter
+      ? {
+          filterContactPair: filter,
+          filterIntersectionPair: () => true,
+        }
+      : null;
+  }
+
   step(delta: number): void {
     this.world.timestep = Math.min(delta, 1 / 30);
-    this.world.step();
+    if (this.hooks) {
+      // Lazy: la EventQueue necesita el WASM de Rapier cargado, que recién
+      // está garantizado en el primer step (post-`init`), no al registrar el
+      // filtro (puede correr antes de `init`).
+      if (!this.eventQueue) {
+        this.eventQueue = new RAPIER.EventQueue(true);
+      }
+      this.world.step(this.eventQueue, this.hooks);
+    } else {
+      this.world.step();
+    }
     this.syncMeshes();
   }
 
@@ -237,6 +331,7 @@ export class PhysicsWorld {
     if (index >= 0) {
       this.bindings.splice(index, 1);
     }
+    this.bodyVisuals.delete(body.handle);
     for (let i = 0; i < body.numColliders(); i += 1) {
       this.metadataByCollider.delete(body.collider(i).handle);
     }
@@ -263,6 +358,27 @@ export class PhysicsWorld {
 function applyRotation(desc: RAPIER.RigidBodyDesc, rotation: Quaternion | undefined): RAPIER.RigidBodyDesc {
   if (!rotation) return desc;
   return desc.setRotation({ x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w });
+}
+
+/** Reconstruye un ColliderDesc con la misma forma que un collider existente. */
+function cloneColliderDesc(collider: RAPIER.Collider): RAPIER.ColliderDesc {
+  const shape = collider.shape;
+  switch (shape.type) {
+    case RAPIER.ShapeType.Cuboid: {
+      const h = (shape as RAPIER.Cuboid).halfExtents;
+      return RAPIER.ColliderDesc.cuboid(h.x, h.y, h.z);
+    }
+    case RAPIER.ShapeType.Ball:
+      return RAPIER.ColliderDesc.ball((shape as RAPIER.Ball).radius);
+    case RAPIER.ShapeType.Capsule: {
+      const capsule = shape as RAPIER.Capsule;
+      return RAPIER.ColliderDesc.capsule(capsule.halfHeight, capsule.radius);
+    }
+    default:
+      // Props del juego son cajas/esferas/cápsulas; otras formas (raras) usan
+      // una caja chica como aproximación.
+      return RAPIER.ColliderDesc.cuboid(0.25, 0.25, 0.25);
+  }
 }
 
 function buildTerrainTrimesh(
