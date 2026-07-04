@@ -15,7 +15,7 @@ beforeAll(async () => {
 const OPTIONS: PortalTravellerOptions = {
   apertureRadius: 2.2,
   apertureThickness: 0.1,
-  proximity: 2.2,
+  suppressMinIntoSpeed: 1.2,
   cloneEnabled: false,
   crossingMargin: 1.15,
   dynamicTriggerOffset: 0.25,
@@ -164,6 +164,35 @@ describe("PortalTravellerSystem — aperture hole", () => {
 
     // Well outside the aperture radius: rests on the real floor.
     expect(box.translation().y).toBeGreaterThan(0.8);
+
+    traveller.dispose();
+  });
+
+  it("a stationary box near a wall portal keeps floor contact when backing collider is shared", async () => {
+    const { physics, floor } = await makeWorld();
+    const pair = new PortalPairState();
+    const entry = wallPortal(0, 1);
+    const exit = floorPortal(6, 0);
+    pair.set("a", entry);
+    pair.set("b", exit);
+
+    const traveller = new PortalTravellerSystem(physics, new Scene(), pair, {
+      ...OPTIONS,
+      cloneEnabled: true,
+    });
+    traveller.setPortal("a", entry, [floor]);
+    traveller.setPortal("b", exit, []);
+
+    const box = physics.createDynamicBox(
+      { id: "near-wall", position: new Vector3(0.6, 1.0, 0), size: new Vector3(0.8, 0.8, 0.8), mass: 1 },
+      new Object3D(),
+    );
+
+    simulate(physics, traveller, 120);
+
+    expect(countDynamic(physics)).toBe(1);
+    expect(box.translation().y).toBeGreaterThan(0.8);
+    expect(box.translation().x).toBeGreaterThan(0.2);
 
     traveller.dispose();
   });

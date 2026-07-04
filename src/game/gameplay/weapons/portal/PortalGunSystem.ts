@@ -42,6 +42,12 @@ import {
 } from "@engine/portals/PortalSurfaceMaterial";
 import { createPortalPlugGeometry } from "@engine/portals/PortalPlugGeometry";
 import { PortalTravellerSystem } from "@engine/portals/PortalTravellerSystem";
+import {
+  constrainPlayerPortalPosition,
+  isInsidePlayerPortalFootprint,
+  playerPortalPassThroughMargin,
+  type PortalPlayerTraversalTuning,
+} from "@engine/portals/PortalPlayerTraversal";
 import type { GameEventBus } from "@game/GameEvents";
 import { PortalConfig } from "@game/config/portal.config";
 import { PlayerConfig } from "@game/config/gameplay.config";
@@ -123,6 +129,13 @@ export class PortalGunSystem implements Disposable {
   >();
   private npcFrame = 0;
   private readonly viewRenderer: PortalViewRenderer;
+  private readonly playerPortalTuning: PortalPlayerTraversalTuning = {
+    radius: PlayerConfig.collider.radius,
+    radiusForgiveness: PortalConfig.traversal.playerRadiusForgiveness,
+    passThroughProximity: PortalConfig.traversal.passThroughProximity,
+    funnelDepth: PortalConfig.traversal.playerFunnelDepth,
+    funnelStrength: PortalConfig.traversal.playerFunnelStrength,
+  };
   private shadowPolicyActive = false;
 
   constructor(
@@ -144,7 +157,7 @@ export class PortalGunSystem implements Disposable {
     this.traveller = new PortalTravellerSystem(this.physics, this.scene, this.pair, {
       apertureRadius: PortalConfig.dynamicClone.apertureRadius,
       apertureThickness: PortalConfig.dynamicClone.apertureThickness,
-      proximity: PortalConfig.dynamicClone.proximity,
+      suppressMinIntoSpeed: PortalConfig.dynamicClone.suppressMinIntoSpeed,
       cloneEnabled: PortalConfig.dynamicClone.enabled,
       crossingMargin: PortalConfig.traversal.crossingMargin,
       dynamicTriggerOffset: PortalConfig.traversal.dynamicTriggerOffset,
@@ -637,57 +650,17 @@ export class PortalGunSystem implements Disposable {
     if (!this.pair.linked) {
       return;
     }
-    const radius = PlayerConfig.collider.radius;
     for (const portal of this.portals.values()) {
-      const frame = portal.frame;
-      TMP_DELTA.copy(position).sub(frame.position);
       if (
-        TMP_DELTA.lengthSq() >
-        PortalConfig.traversal.passThroughProximity ** 2
+        !constrainPlayerPortalPosition(
+          position,
+          portal.frame,
+          this.playerPortalTuning,
+          TMP_LOCAL,
+        )
       ) {
         continue;
       }
-      portalNormal(frame, TMP_NORMAL);
-      const depth = TMP_DELTA.dot(TMP_NORMAL);
-      // Solo cuando la cápsula penetra de verdad el plano de la pared; el
-      // contacto normal deslizando por la pared queda en depth >= radius.
-      if (depth > radius - 0.05) {
-        continue;
-      }
-      TMP_INV_Q.copy(frame.quaternion).invert();
-      TMP_LOCAL.copy(TMP_DELTA).applyQuaternion(TMP_INV_Q);
-      const fx = TMP_LOCAL.x / (frame.halfWidth + radius);
-      const fy = TMP_LOCAL.y / (frame.halfHeight + radius);
-      if (fx * fx + fy * fy > 1) {
-        continue;
-      }
-      const holeHalfWidth = Math.max(frame.halfWidth - radius, 0.05);
-      let clampedX = Math.min(
-        holeHalfWidth,
-        Math.max(-holeHalfWidth, TMP_LOCAL.x),
-      );
-      let clampedY = TMP_LOCAL.y;
-      if (Math.abs(TMP_NORMAL.y) > 0.7) {
-        // Piso/techo: ambos ejes locales son horizontales; confinar la
-        // cápsula completa a la elipse del hueco.
-        const holeHalfHeight = Math.max(frame.halfHeight - radius, 0.05);
-        const overflow =
-          (TMP_LOCAL.x / holeHalfWidth) ** 2 +
-          (TMP_LOCAL.y / holeHalfHeight) ** 2;
-        if (overflow > 1) {
-          const scale = 1 / Math.sqrt(overflow);
-          clampedX = TMP_LOCAL.x * scale;
-          clampedY = TMP_LOCAL.y * scale;
-        } else {
-          clampedX = TMP_LOCAL.x;
-        }
-      }
-      if (clampedX === TMP_LOCAL.x && clampedY === TMP_LOCAL.y) {
-        continue;
-      }
-      TMP_LOCAL.x = clampedX;
-      TMP_LOCAL.y = clampedY;
-      TMP_LOCAL.applyQuaternion(frame.quaternion).add(frame.position);
       position.copy(TMP_LOCAL);
       player.controller.setPosition(position);
     }
@@ -715,6 +688,7 @@ export class PortalGunSystem implements Disposable {
       return false;
     }
     const radius = PlayerConfig.collider.radius;
+    const margin = playerPortalPassThroughMargin(this.playerPortalTuning);
     const t = d0 / (d0 - d1);
     TMP_INV_Q.copy(entry.quaternion).invert();
     TMP_LOCAL.copy(position)
@@ -723,8 +697,8 @@ export class PortalGunSystem implements Disposable {
       .add(TMP_PREV)
       .sub(entry.position)
       .applyQuaternion(TMP_INV_Q);
-    const fx = TMP_LOCAL.x / (entry.halfWidth + radius);
-    const fy = TMP_LOCAL.y / (entry.halfHeight + radius);
+    const fx = TMP_LOCAL.x / (entry.halfWidth + margin);
+    const fy = TMP_LOCAL.y / (entry.halfHeight + margin);
     if (fx * fx + fy * fy > 1) {
       // Crossed where the wall stays solid; the controller already stopped it.
       return false;
@@ -748,19 +722,13 @@ export class PortalGunSystem implements Disposable {
         break;
       }
       const frame = portal.frame;
-      TMP_DELTA.copy(position).sub(frame.position);
       if (
-        TMP_DELTA.lengthSq() >
-        PortalConfig.traversal.passThroughProximity ** 2
+        !isInsidePlayerPortalFootprint(
+          position,
+          frame,
+          this.playerPortalTuning,
+        )
       ) {
-        continue;
-      }
-      TMP_INV_Q.copy(frame.quaternion).invert();
-      TMP_LOCAL.copy(TMP_DELTA).applyQuaternion(TMP_INV_Q);
-      const margin = PlayerConfig.collider.radius;
-      const ex = TMP_LOCAL.x / (frame.halfWidth + margin);
-      const ey = TMP_LOCAL.y / (frame.halfHeight + margin);
-      if (ex * ex + ey * ey > 1) {
         continue;
       }
       for (const collider of portal.backingColliders) {

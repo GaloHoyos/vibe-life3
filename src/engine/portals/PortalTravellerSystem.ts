@@ -23,8 +23,8 @@ export interface PortalTravellerOptions {
   apertureRadius: number;
   /** Espesor (m) del parche hundido en la superficie. */
   apertureThickness: number;
-  /** Distancia lateral/axial (m) desde el portal en que un prop entra a la zona. */
-  proximity: number;
+  /** Velocidad minima hacia adentro del plano para activar portales de pared. */
+  suppressMinIntoSpeed: number;
   crossingMargin: number;
   dynamicTriggerOffset: number;
   cooldownSeconds: number;
@@ -189,7 +189,8 @@ export class PortalTravellerSystem {
         : undefined;
       if (metadata?.kind === "ragdoll") return;
 
-      if (this.inApertureZone(TMP_BODY_POS)) {
+      const boundingRadius = this.bodyBoundingRadius(body);
+      if (this.inApertureZone(body, TMP_BODY_POS, boundingRadius)) {
         for (let i = 0; i < body.numColliders(); i += 1) {
           nextHolePass.add(body.collider(i).handle);
         }
@@ -207,7 +208,14 @@ export class PortalTravellerSystem {
       // vez, con swap de dueño por el centro de masa, hasta colapsar. Maneja el
       // cruce; el teleport instantáneo queda de fallback para cuerpos rápidos.
       if (this.options.cloneEnabled) {
-        const handled = this.updateClone(body, state, elapsed, keptClones, spawnQueue);
+        const handled = this.updateClone(
+          body,
+          state,
+          elapsed,
+          keptClones,
+          spawnQueue,
+          boundingRadius,
+        );
         if (handled) {
           state.prev.copy(TMP_BODY_POS);
           return;
@@ -301,13 +309,17 @@ export class PortalTravellerSystem {
     elapsed: number,
     keptClones: Set<number>,
     spawnQueue: SpawnRequest[],
+    boundingRadius: number,
   ): boolean {
     const p = body.translation();
     TMP_C_READ.set(p.x, p.y, p.z);
-    const straddle = this.straddlingPortal(TMP_C_READ, this.bodyBoundingRadius(body));
+    const straddle = this.straddlingPortal(TMP_C_READ, boundingRadius);
 
     if (straddle) {
       const record = this.clones.get(body.handle);
+      const canOpen =
+        !!record || this.shouldOpenPortalForBody(body, straddle.entry, straddle.depth);
+      if (!canOpen) return false;
       if (record) {
         if (straddle.depth >= 0) {
           // Centro de masa del lado de entrada: el primary es la autoridad.
@@ -325,7 +337,7 @@ export class PortalTravellerSystem {
           slot: straddle.slot,
           entry: straddle.entry,
           exit: straddle.exit,
-          radius: this.bodyBoundingRadius(body),
+          radius: boundingRadius,
         });
       }
       keptClones.add(body.handle);
@@ -555,12 +567,15 @@ export class PortalTravellerSystem {
   }
 
   /**
-   * True si el centro cae en la zona de apertura de algún portal: cerca del
-   * plano y dentro del radio del parche. Ahí se suprime el respaldo original
-   * para que el prop apoye en el parche con hueco.
+   * True si el cuerpo intersecta el ovalo de entrada y esta entrando al
+   * portal. Ahi se suprime el respaldo original para que el prop apoye en el
+   * parche con hueco.
    */
-  private inApertureZone(point: Vector3): boolean {
-    const radius = this.options.apertureRadius;
+  private inApertureZone(
+    body: RAPIER.RigidBody,
+    point: Vector3,
+    boundingRadius: number,
+  ): boolean {
     for (const state of this.portals.values()) {
       const frame = state.frame;
       TMP_LOCAL.set(
@@ -570,12 +585,32 @@ export class PortalTravellerSystem {
       );
       TMP_INV_Q.copy(frame.quaternion).invert();
       TMP_LOCAL.applyQuaternion(TMP_INV_Q);
-      if (Math.abs(TMP_LOCAL.z) > this.options.proximity) continue;
-      if (TMP_LOCAL.x * TMP_LOCAL.x + TMP_LOCAL.y * TMP_LOCAL.y <= radius * radius) {
+      const axialReach =
+        boundingRadius + this.options.dynamicTriggerOffset + STRADDLE_MARGIN;
+      if (Math.abs(TMP_LOCAL.z) > axialReach) continue;
+      const ex = TMP_LOCAL.x / (frame.halfWidth + boundingRadius);
+      const ey = TMP_LOCAL.y / (frame.halfHeight + boundingRadius);
+      if (
+        ex * ex + ey * ey <= 1 &&
+        this.shouldOpenPortalForBody(body, frame, TMP_LOCAL.z)
+      ) {
         return true;
       }
     }
     return false;
+  }
+
+  private shouldOpenPortalForBody(
+    body: RAPIER.RigidBody,
+    frame: PortalFrame,
+    localDepth: number,
+  ): boolean {
+    if (localDepth < 0) return true;
+    portalNormal(frame, TMP_NORMAL);
+    if (TMP_NORMAL.y > 0.7) return true;
+    const linvel = body.linvel();
+    TMP_VELOCITY.set(linvel.x, linvel.y, linvel.z);
+    return TMP_VELOCITY.dot(TMP_NORMAL) <= -this.options.suppressMinIntoSpeed;
   }
 
   private teleportBody(

@@ -54,6 +54,15 @@ export const PortalConfig = {
     passThroughProximity: 1.5,
     /** Ellipse margin factor for the crossing test. */
     crossingMargin: 1.15,
+    /**
+     * Margen de perdon solo para entrada del PLAYER: no cambia su collider real,
+     * pero evita que el borde del ovalo se sienta pixel-perfect.
+     */
+    playerRadiusForgiveness: 0.12,
+    /** Distancia frontal (m) donde un portal de pared empieza a centrar al player. */
+    playerFunnelDepth: 0.75,
+    /** Peso del centrado suave antes de tocar el plano del portal. */
+    playerFunnelStrength: 0.9,
     /** Radius of the ball query that collects dynamic-body candidates. */
     dynamicQueryRadius: 2,
     /** Push-out along the exit normal for teleported dynamic bodies. */
@@ -96,8 +105,13 @@ export const PortalConfig = {
     apertureRadius: 2.2,
     /** Espesor (m) del parche hundido en la superficie (borde de pivoteo). */
     apertureThickness: 0.1,
-    /** Distancia del centro del prop al portal para entrar en la zona de traversal. */
-    proximity: 2.2,
+    /**
+     * Velocidad mínima (m/s) hacia adentro del plano para que un objeto se
+     * considere "cruzando" un portal de PARED (no de piso). Debajo de esto, un
+     * objeto apoyado quieto cerca de un portal de pared NO se suprime ni clona
+     * (evita que se caiga por el piso si piso y pared comparten collider).
+     */
+    suppressMinIntoSpeed: 1.2,
     /** Peso del blend de posición del clon hacia el primary al reconciliar. */
     blendPosition: 0.5,
     /** Peso del blend de rotación (slerp) del clon hacia el primary. */
