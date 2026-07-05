@@ -70,11 +70,19 @@ interface ActiveRocket {
   hardExpiresAt: number;
   mesh: Object3D;
   exploded: boolean;
+  /** Portal jumps ya realizados; indexa el waypoint del láser a perseguir. */
+  portalJumps: number;
 }
 
 interface ActiveLaser {
   sourceId: string;
-  target: Vector3;
+  /**
+   * Fin de cada tramo del láser (>1 cuando el haz salta portales). El cohete
+   * persigue el waypoint de SU lado del portal: el punto de cruce sobre el
+   * disco antes de saltar, el punto final después. Perseguir siempre el punto
+   * final en línea recta lo haría volver hacia la boca del portal.
+   */
+  waypoints: Vector3[];
   dot: Mesh;
   visible: boolean;
 }
@@ -119,6 +127,7 @@ export class RocketSystem implements Disposable {
       hardExpiresAt: options.now + HARD_LIFETIME,
       mesh,
       exploded: false,
+      portalJumps: 0,
     };
     this.rockets.push(rocket);
     this.syncMesh(rocket);
@@ -129,10 +138,10 @@ export class RocketSystem implements Disposable {
 
   updateLaser(sourceId: string, origin: Vector3, direction: Vector3): void {
     const laser = this.getOrCreateLaser(sourceId);
-    laser.target.copy(this.resolveLaserTarget(origin, direction, sourceId));
+    laser.waypoints = this.resolveLaserPath(origin, direction, sourceId);
     laser.visible = true;
     laser.dot.visible = true;
-    laser.dot.position.copy(laser.target);
+    laser.dot.position.copy(laser.waypoints[laser.waypoints.length - 1]);
   }
 
   hideLaser(sourceId: string): void {
@@ -187,6 +196,7 @@ export class RocketSystem implements Disposable {
         hit ? hit.toi : null,
       );
       if (leftover !== null && leftover !== undefined) {
+        rocket.portalJumps += 1;
         rocket.position.addScaledVector(rocket.direction, leftover);
         this.syncMesh(rocket);
         continue;
@@ -225,11 +235,12 @@ export class RocketSystem implements Disposable {
   private applyHoming(rocket: ActiveRocket): void {
     const laser =
       rocket.sourceId !== undefined ? this.lasers.get(rocket.sourceId) : undefined;
-    if (!laser?.visible) {
+    if (!laser?.visible || laser.waypoints.length === 0) {
       return;
     }
 
-    tmpTargetDir.copy(laser.target).sub(rocket.position);
+    const index = Math.min(rocket.portalJumps, laser.waypoints.length - 1);
+    tmpTargetDir.copy(laser.waypoints[index]).sub(rocket.position);
     if (tmpTargetDir.lengthSq() < 1e-4) {
       return;
     }
@@ -301,19 +312,49 @@ export class RocketSystem implements Disposable {
     this.disposeRocketMesh(rocket.mesh);
   }
 
-  private resolveLaserTarget(
+  private resolveLaserPath(
     origin: Vector3,
     direction: Vector3,
     sourceId: string,
-  ): Vector3 {
+  ): Vector3[] {
     const dir = normalizedOrForward(direction);
     tmpCastOrigin.copy(origin).addScaledVector(dir, 0.25);
     let remaining = LASER_RANGE;
 
     for (let i = 0; i < MAX_IGNORED_HITS && remaining > 0; i += 1) {
-      // Portal-aware: el punto láser aparece del otro lado del portal, y el
-      // homing arrastra el cohete hacia el disco (que también lo atraviesa).
-      const hit = (this.portals ?? this.raycast).cast(
+      // Portal-aware: el haz salta el par linked y devuelve un waypoint por
+      // tramo (el cruce sobre el disco + el punto final del otro lado).
+      if (this.portals) {
+        const result = this.portals.castSegments(
+          tmpCastOrigin,
+          dir,
+          remaining,
+          undefined,
+          sourceId,
+        );
+        const hit = result.hit;
+        if (hit?.metadata?.kind === "weaponPickup") {
+          const advance = Math.min(
+            remaining,
+            Math.max(hit.toi + ROCKET_CAST_EPSILON, ROCKET_CAST_EPSILON),
+          );
+          tmpCastOrigin.addScaledVector(dir, advance);
+          remaining -= advance;
+          continue;
+        }
+        const waypoints = result.segments.map((segment) => segment.end.clone());
+        if (hit && waypoints.length > 0) {
+          waypoints[waypoints.length - 1] = hit.point
+            .clone()
+            .addScaledVector(hit.normal ?? dir, 0.025);
+        }
+        if (waypoints.length > 0) {
+          return waypoints;
+        }
+        break;
+      }
+
+      const hit = this.raycast.cast(
         tmpCastOrigin,
         dir,
         remaining,
@@ -332,10 +373,10 @@ export class RocketSystem implements Disposable {
         remaining -= advance;
         continue;
       }
-      return hit.point.clone().addScaledVector(hit.normal ?? dir, 0.025);
+      return [hit.point.clone().addScaledVector(hit.normal ?? dir, 0.025)];
     }
 
-    return origin.clone().addScaledVector(dir, LASER_RANGE);
+    return [origin.clone().addScaledVector(dir, LASER_RANGE)];
   }
 
   private getOrCreateLaser(sourceId: string): ActiveLaser {
@@ -361,7 +402,7 @@ export class RocketSystem implements Disposable {
 
     const laser: ActiveLaser = {
       sourceId,
-      target: new Vector3(),
+      waypoints: [],
       dot,
       visible: false,
     };

@@ -31,6 +31,14 @@ interface AttachedSound {
 export class PositionalSoundManager {
   private readonly listener: AudioListener;
   private readonly attached = new Map<Object3D, AttachedSound[]>();
+  /**
+   * `attachToObject` es async (espera el buffer): si `stopAttached` llega
+   * durante la carga, un loop huérfano arrancaría sobre un objeto ya sacado
+   * de escena y no habría forma de frenarlo. La generación por objeto (y el
+   * epoch global para `clear`) invalidan esos attaches en vuelo.
+   */
+  private readonly attachGeneration = new WeakMap<Object3D, number>();
+  private epoch = 0;
 
   constructor(
     private readonly audioSystem: AudioSystem,
@@ -63,6 +71,7 @@ export class PositionalSoundManager {
         anchor.remove(audio);
         anchor.removeFromParent();
       };
+      return true;
     });
   }
 
@@ -82,6 +91,7 @@ export class PositionalSoundManager {
       audio.onEnded = () => {
         object.remove(audio);
       };
+      return true;
     });
   }
 
@@ -90,17 +100,23 @@ export class PositionalSoundManager {
     object: Object3D,
     options: PositionalAudioOptions = {},
   ): void {
+    const generation = this.attachGeneration.get(object) ?? 0;
     void this.spawnAudio(soundId, options, (audio) => {
+      if ((this.attachGeneration.get(object) ?? 0) !== generation) {
+        return false;
+      }
       object.add(audio);
       if (!this.attached.has(object)) {
         this.attached.set(object, []);
       }
       this.attached.get(object)?.push({ audio, object });
+      return true;
     });
   }
 
   /** Frena y desacopla todos los sonidos atachados (recarga de nivel in-place). */
   clear(): void {
+    this.epoch += 1;
     this.attached.forEach((entries) => {
       entries.forEach((entry) => {
         entry.audio.stop();
@@ -111,6 +127,10 @@ export class PositionalSoundManager {
   }
 
   stopAttached(object: Object3D): void {
+    this.attachGeneration.set(
+      object,
+      (this.attachGeneration.get(object) ?? 0) + 1,
+    );
     const entries = this.attached.get(object);
     if (!entries) {
       return;
@@ -123,14 +143,16 @@ export class PositionalSoundManager {
     this.attached.delete(object);
   }
 
+  /** `onReady` decide si el sonido sigue vigente; si devuelve false no suena. */
   private async spawnAudio(
     soundId: string,
     options: PositionalAudioOptions,
-    onReady: (audio: PositionalAudio) => void,
+    onReady: (audio: PositionalAudio) => boolean,
   ): Promise<void> {
+    const epoch = this.epoch;
     this.audioSystem.unlock();
     const buffer = await this.sounds.getBuffer(soundId);
-    if (!buffer) {
+    if (!buffer || epoch !== this.epoch) {
       return;
     }
 
@@ -142,9 +164,10 @@ export class PositionalSoundManager {
     audio.setRolloffFactor(options.rolloffFactor ?? 1.2);
     audio.setVolume(options.volume ?? 1);
     this.routeToBus(audio, options.bus ?? "sfx");
+    if (!onReady(audio)) {
+      return;
+    }
     audio.play();
-
-    onReady(audio);
   }
 
   /**
