@@ -9,6 +9,7 @@ import type {
 import {
   enforceExitClearance,
   lookDirectionToYawPitch,
+  portalDeltaQuaternion,
   portalNormal,
   segmentCrossesPortal,
   shiftPortalFrame,
@@ -42,7 +43,16 @@ export interface PortalTransitController {
 export interface PortalTransitCamera {
   getForwardDirection(): Vector3;
   getOrientation(out: Quaternion): Quaternion;
-  setLook(yaw: number, pitch: number): void;
+  /**
+   * `continuousOrientation`: orientación completa transformada por el portal;
+   * la cámara la respeta este frame y des-rolea el residuo suavemente (sin
+   * snap al salir de portales de piso/techo).
+   */
+  setLook(
+    yaw: number,
+    pitch: number,
+    continuousOrientation?: Quaternion,
+  ): void;
   syncToPosition(position: Vector3): void;
 }
 
@@ -81,6 +91,8 @@ const TMP_PREV = new Vector3();
 const TMP_FORWARD = new Vector3();
 const TMP_UP = new Vector3();
 const TMP_CAM_Q = new Quaternion();
+const TMP_CONT_Q = new Quaternion();
+const TMP_DELTA_Q = new Quaternion();
 const TMP_GROUND_ORIGIN = new Vector3();
 const TMP_DOWN = new Vector3(0, -1, 0);
 const TMP_TRIGGER_FRAME: PortalFrame = {
@@ -406,6 +418,13 @@ export class PortalPlayerTransitSystem {
 
     controller.teleport(TMP_EXIT_POS, TMP_VELOCITY);
 
+    // Orientación completa transformada (incluye el roll que el mapeo del
+    // portal implica): la cámara la mantiene EXACTA este frame — cruce
+    // continuo, sin snap — y des-rolea el residuo suavemente (Source:
+    // cl_reorient_rate).
+    portalDeltaQuaternion(entry, exit, TMP_DELTA_Q);
+    TMP_CONT_Q.copy(camera.getOrientation(TMP_CAM_Q)).premultiply(TMP_DELTA_Q);
+
     transformDirectionThroughPortal(
       camera.getForwardDirection(),
       entry,
@@ -415,7 +434,7 @@ export class PortalPlayerTransitSystem {
     TMP_UP.set(0, 1, 0).applyQuaternion(camera.getOrientation(TMP_CAM_Q));
     transformDirectionThroughPortal(TMP_UP, entry, exit, TMP_UP);
     const look = lookDirectionToYawPitch(TMP_FORWARD, TMP_UP);
-    camera.setLook(look.yaw, look.pitch);
+    camera.setLook(look.yaw, look.pitch, TMP_CONT_Q);
     camera.syncToPosition(controller.getEyePosition());
 
     this.options.onTeleported?.(TMP_EXIT_POS.clone());

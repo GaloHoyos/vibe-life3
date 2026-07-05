@@ -361,6 +361,8 @@ export class Game {
       eventBus,
       positionalSounds,
       vfx,
+      // Las granadas impact no detonan contra la boca de un portal linked.
+      portals.pair,
     );
     s.register(GameTokens.Grenades, grenades);
     s.register(
@@ -1108,6 +1110,7 @@ export class Game {
       this.updateDeath(time.delta);
     } else if (input.isPointerLocked()) {
       camera.updateLook(input);
+      camera.updateReorient(time.delta);
       player.update(time.delta, input, controls, camera, time.elapsed);
     }
 

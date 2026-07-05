@@ -186,7 +186,8 @@ export class PortalGunSystem implements Disposable {
     this.transitCamera = {
       getForwardDirection: () => this.cameraSystem.getForwardDirection(),
       getOrientation: (out) => out.copy(this.cameraSystem.camera.quaternion),
-      setLook: (yaw, pitch) => this.cameraSystem.setLook(yaw, pitch),
+      setLook: (yaw, pitch, continuousOrientation) =>
+        this.cameraSystem.setLook(yaw, pitch, continuousOrientation),
       syncToPosition: (position) => this.cameraSystem.syncToPosition(position),
     };
   }

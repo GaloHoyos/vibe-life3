@@ -271,6 +271,107 @@ describe("PortalTravellerSystem — aperture hole", () => {
     }
   });
 
+  it("a CCD ball (SMG grenade-like) fired at a wall portal crosses instead of stopping", async () => {
+    const { physics, floor } = await makeWorld();
+    const wallBody = physics.createStaticBox({
+      id: "wall",
+      position: new Vector3(-0.5, 2, 0),
+      size: new Vector3(1, 4, 10),
+    });
+    const wall = wallBody.collider(0);
+
+    const pair = new PortalPairState();
+    const entry = wallPortal(0, 1.5);
+    const exit = floorPortal(6, 0);
+    pair.set("a", entry);
+    pair.set("b", exit);
+
+    let teleports = 0;
+    const traveller = new PortalTravellerSystem(physics, new Scene(), pair, {
+      ...OPTIONS,
+      cloneEnabled: true,
+      onTeleport: () => {
+        teleports += 1;
+      },
+    });
+    traveller.setPortal("a", entry, [wall, floor]);
+    traveller.setPortal("b", exit, [floor]);
+
+    // Réplica del body de la granada del SMG: bola chica, densa, con CCD.
+    const body = physics.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(2.0, 1.5, 0)
+        .setLinvel(-40, 0, 0)
+        .setCcdEnabled(true),
+    );
+    const collider = physics.world.createCollider(
+      RAPIER.ColliderDesc.ball(0.11).setDensity(800),
+      body,
+    );
+    physics.registerCollider(collider, { id: "nade", kind: "dynamic" });
+
+    simulate(physics, traveller, 120);
+
+    expect(teleports).toBeGreaterThanOrEqual(1);
+    // Cruzó y salió por el portal de piso lejano; no quedó frenada en la boca.
+    expect(body.translation().x).toBeGreaterThan(4);
+
+    traveller.dispose();
+  });
+
+  it("a fast angled shot exits at the mirrored crossing point, flush with the exit plane", async () => {
+    const { physics, floor } = await makeWorld();
+    const wallBody = physics.createStaticBox({
+      id: "wall",
+      position: new Vector3(-0.5, 2, 0),
+      size: new Vector3(1, 4, 10),
+    });
+    const wall = wallBody.collider(0);
+
+    const pair = new PortalPairState();
+    const entry = wallPortal(0, 1.5);
+    const exit = floorPortal(6, 0);
+    pair.set("a", entry);
+    pair.set("b", exit);
+
+    const exits: Vector3[] = [];
+    const traveller = new PortalTravellerSystem(physics, new Scene(), pair, {
+      ...OPTIONS,
+      cloneEnabled: true,
+      onTeleport: (_id, exitPosition) => {
+        exits.push(exitPosition.clone());
+      },
+    });
+    traveller.setPortal("a", entry, [wall, floor]);
+    traveller.setPortal("b", exit, [floor]);
+
+    // Tiro en DIAGONAL: cruza el plano de entrada en su local x = -0.3 (world
+    // z = +0.3). El espejo del portal invierte x local → debe salir en el
+    // local x = +0.3 del portal de piso (world x = 6.3), pegado al plano.
+    const body = physics.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(1.5, 1.5, -0.45)
+        .setLinvel(-20, 0, 10)
+        .setCcdEnabled(true),
+    );
+    const collider = physics.world.createCollider(
+      RAPIER.ColliderDesc.ball(0.11).setDensity(800),
+      body,
+    );
+    physics.registerCollider(collider, { id: "nade", kind: "dynamic" });
+
+    simulate(physics, traveller, 30);
+
+    expect(exits.length).toBeGreaterThanOrEqual(1);
+    const first = exits[0];
+    // Pegado al plano de salida (piso en y=0.5), no medio metro arriba.
+    expect(first.y).toBeLessThan(0.75);
+    // Punto lateral espejado del cruce real (no corrido por el trigger predictivo).
+    expect(Math.abs(first.x - 6.3)).toBeLessThan(0.25);
+
+    traveller.dispose();
+  });
+
   it("a box resting away from the portal keeps its floor contact", async () => {
     const { physics, floor } = await makeWorld();
     const pair = new PortalPairState();

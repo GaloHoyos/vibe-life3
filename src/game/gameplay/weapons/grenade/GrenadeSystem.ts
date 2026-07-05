@@ -4,6 +4,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   Object3D,
+  Quaternion,
   type Scene,
   Vector3,
 } from "three";
@@ -11,6 +12,8 @@ import type { AssetManager } from "@engine/assets/AssetManager";
 import type { PositionalSoundManager } from "@engine/audio/core/PositionalSoundManager";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
+import type { PortalPairState } from "@engine/portals/PortalFrame";
+import { intersectRayPortal } from "@engine/portals/PortalMath";
 import type { VfxSystem } from "@engine/render/effects/VfxSystem";
 import type { Damageable, Disposable } from "@shared/types/lifecycle";
 import type { GameEventBus } from "@game/GameEvents";
@@ -38,6 +41,11 @@ const tmpExplosionPos = new Vector3();
 const tmpOffset = new Vector3();
 const tmpDirection = new Vector3();
 const tmpRayDir = new Vector3();
+const tmpPortalLocal = new Vector3();
+const tmpPortalInvQ = new Quaternion();
+/** Holgura lateral/axial del gate "cruzando un portal" del detector de impacto. */
+const PORTAL_MOUTH_MARGIN = 0.25;
+const PORTAL_MOUTH_DEPTH = 0.6;
 
 interface SpawnedMesh {
   root: Object3D;
@@ -75,6 +83,8 @@ export class GrenadeSystem implements Disposable {
     private readonly eventBus: GameEventBus,
     private readonly positionalSounds: PositionalSoundManager,
     private readonly vfx: VfxSystem,
+    /** Par de portales linked: las granadas `impact` no detonan al entrar. */
+    private readonly portalPair: PortalPairState | null = null,
   ) {
     void this.assets.loadModel("grenadePrimed");
   }
@@ -88,6 +98,10 @@ export class GrenadeSystem implements Disposable {
       options.origin.z,
     );
     this.scene.add(meshHandle.root);
+
+    // Visual registrado por body: el sistema de clones de portales lo usa para
+    // que la granada asome por los dos lados mientras cruza, como todo prop.
+    this.physics.setBodyVisual(body, meshHandle.root);
 
     const id = `grenade-${this.nextId++}`;
     const fuseSeconds =
@@ -187,6 +201,17 @@ export class GrenadeSystem implements Disposable {
   }
 
   private tickImpact(grenade: ActiveGrenade, delta: number): void {
+    // Cruzando la boca de un portal (straddle/clon): el detector se desarma —
+    // el rayo saldría desde dentro de la pared suprimida (toi 0) y detonaría
+    // a mitad del cruce.
+    {
+      const pos = grenade.body.translation();
+      tmpExplosionPos.set(pos.x, pos.y, pos.z);
+      if (this.insidePortalMouth(tmpExplosionPos)) {
+        return;
+      }
+    }
+
     const v = grenade.body.linvel();
     const speed = Math.hypot(v.x, v.y, v.z);
     if (speed < 0.05) {
@@ -213,8 +238,59 @@ export class GrenadeSystem implements Disposable {
     if (hit.metadata?.kind === "weaponPickup") {
       return;
     }
+    // El "hit" es la pared de respaldo DENTRO de la boca de un portal linked
+    // (el hueco es supresión de contactos; los raycasts ven la pared sólida).
+    // No detonar: la granada cruza el portal como cualquier cuerpo dinámico.
+    if (this.rayEntersPortal(tmpExplosionPos, tmpRayDir, hit.toi)) {
+      return;
+    }
 
     this.explode(grenade, hit.point);
+  }
+
+  /** True si el rayo entra por el óvalo de un portal linked antes del hit. */
+  private rayEntersPortal(
+    origin: Vector3,
+    direction: Vector3,
+    hitToi: number,
+  ): boolean {
+    if (!this.portalPair?.linked) {
+      return false;
+    }
+    for (const frame of [this.portalPair.a, this.portalPair.b]) {
+      if (!frame) {
+        continue;
+      }
+      if (intersectRayPortal(origin, direction, hitToi + 0.05, frame) !== null) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** True si el centro está dentro del óvalo de un portal linked, cerca del plano. */
+  private insidePortalMouth(position: Vector3): boolean {
+    if (!this.portalPair?.linked) {
+      return false;
+    }
+    for (const frame of [this.portalPair.a, this.portalPair.b]) {
+      if (!frame) {
+        continue;
+      }
+      tmpPortalLocal
+        .copy(position)
+        .sub(frame.position)
+        .applyQuaternion(tmpPortalInvQ.copy(frame.quaternion).invert());
+      if (Math.abs(tmpPortalLocal.z) > PORTAL_MOUTH_DEPTH) {
+        continue;
+      }
+      const ex = tmpPortalLocal.x / (frame.halfWidth + PORTAL_MOUTH_MARGIN);
+      const ey = tmpPortalLocal.y / (frame.halfHeight + PORTAL_MOUTH_MARGIN);
+      if (ex * ex + ey * ey <= 1) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -403,6 +479,7 @@ export class GrenadeSystem implements Disposable {
   }
 
   private removeQuietly(grenade: ActiveGrenade): void {
+    this.physics.clearBodyVisual(grenade.body);
     this.scene.remove(grenade.mesh);
     grenade.mesh.traverse((object) => {
       if (object instanceof Mesh) {
@@ -470,6 +547,7 @@ export class GrenadeSystem implements Disposable {
       }
     });
     grenade.mesh = fresh;
+    this.physics.setBodyVisual(grenade.body, fresh);
   }
 
   private syncMeshToBody(grenade: ActiveGrenade): void {

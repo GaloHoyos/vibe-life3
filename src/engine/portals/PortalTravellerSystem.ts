@@ -84,6 +84,7 @@ const APERTURE_INSET = 0.01;
 const TMP_BODY_POS = new Vector3();
 const TMP_PREDICT = new Vector3();
 const TMP_LOCAL_VEL = new Vector3();
+const TMP_CROSSING = new Vector3();
 const TMP_EXIT_POS = new Vector3();
 const TMP_EXIT_NORMAL = new Vector3();
 const TMP_ENTRY_NORMAL = new Vector3();
@@ -111,6 +112,11 @@ const TMP_C_LOCAL = new Vector3();
 const TMP_C_INV_Q = new Quaternion();
 // Margen extra (m) más allá del radio envolvente para detectar el straddle.
 const STRADDLE_MARGIN = 0.1;
+// Clearance mínimo del punto de salida cuando el teleport parte del cruce
+// exacto de la trayectoria con el plano: el cuerpo aparece PEGADO al plano de
+// salida (medio embebido, con la pared suprimida) y emerge por el hueco — la
+// salida se ve continua en vez de "aparecer" medio metro adelante.
+const EXIT_PLANE_EPSILON = 0.02;
 
 /**
  * Física de props a través de portales estilo Portal. Cada portal linked tiene
@@ -336,7 +342,7 @@ export class PortalTravellerSystem {
       ) {
         continue;
       }
-      this.teleportBody(body, entry, exit, entityId);
+      this.teleportBody(body, entry, exit, entityId, state.prev, TMP_PREDICT);
       state.cooldownUntil = elapsed + this.options.cooldownSeconds;
       const moved = body.translation();
       TMP_BODY_POS.set(moved.x, moved.y, moved.z);
@@ -693,16 +699,44 @@ export class PortalTravellerSystem {
     entry: PortalFrame,
     exit: PortalFrame,
     entityId: string | undefined,
+    segFrom?: Vector3,
+    segTo?: Vector3,
   ): void {
     portalNormal(exit, TMP_EXIT_NORMAL);
     const translation = body.translation();
     TMP_BODY_POS.set(translation.x, translation.y, translation.z);
-    transformPointThroughPortal(TMP_BODY_POS, entry, exit, TMP_EXIT_POS);
+    // Punto de partida del mapeo: el CRUCE exacto de la trayectoria con el
+    // plano de entrada (extrapolado si el trigger predictivo disparó antes).
+    // Mapear la posición actual — que puede estar casi un step antes del
+    // plano — corría el punto de salida lateralmente en tiros en ángulo y
+    // hacía "aparecer" el cuerpo lejos de la boca.
+    let source = TMP_BODY_POS;
+    let clearance = this.options.dynamicExitClearance;
+    if (segFrom && segTo) {
+      portalNormal(entry, TMP_ENTRY_NORMAL);
+      const d0 =
+        (segFrom.x - entry.position.x) * TMP_ENTRY_NORMAL.x +
+        (segFrom.y - entry.position.y) * TMP_ENTRY_NORMAL.y +
+        (segFrom.z - entry.position.z) * TMP_ENTRY_NORMAL.z;
+      const d1 =
+        (segTo.x - entry.position.x) * TMP_ENTRY_NORMAL.x +
+        (segTo.y - entry.position.y) * TMP_ENTRY_NORMAL.y +
+        (segTo.z - entry.position.z) * TMP_ENTRY_NORMAL.z;
+      const denom = d0 - d1;
+      if (d0 >= 0 && denom > 1e-6) {
+        // t > 1 extrapola: aún no llegó al plano pero va a cruzarlo este step.
+        const t = d0 / denom;
+        TMP_CROSSING.copy(segTo).sub(segFrom).multiplyScalar(t).add(segFrom);
+        source = TMP_CROSSING;
+        clearance = EXIT_PLANE_EPSILON;
+      }
+    }
+    transformPointThroughPortal(source, entry, exit, TMP_EXIT_POS);
     enforceExitClearance(
       TMP_EXIT_POS,
       exit.position,
       TMP_EXIT_NORMAL,
-      this.options.dynamicExitClearance,
+      clearance,
     );
 
     const linvel = body.linvel();
