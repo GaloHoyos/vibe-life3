@@ -29,10 +29,8 @@ import {
 } from "@engine/portals/PortalFrame";
 import {
   enforceExitClearance,
-  lookDirectionToYawPitch,
   portalNormal,
   segmentCrossesPortal,
-  shiftPortalFrame,
   transformDirectionThroughPortal,
   transformPointThroughPortal,
 } from "@engine/portals/PortalMath";
@@ -43,11 +41,9 @@ import {
 import { createPortalPlugGeometry } from "@engine/portals/PortalPlugGeometry";
 import { PortalTravellerSystem } from "@engine/portals/PortalTravellerSystem";
 import {
-  constrainPlayerPortalPosition,
-  isInsidePlayerPortalFootprint,
-  playerPortalPassThroughMargin,
-  type PortalPlayerTraversalTuning,
-} from "@engine/portals/PortalPlayerTraversal";
+  PortalPlayerTransitSystem,
+  type PortalTransitCamera,
+} from "@engine/portals/PortalPlayerTransitSystem";
 import type { GameEventBus } from "@game/GameEvents";
 import { PortalConfig } from "@game/config/portal.config";
 import { PlayerConfig } from "@game/config/gameplay.config";
@@ -94,16 +90,6 @@ const TMP_LOCAL = new Vector3();
 const TMP_INV_Q = new Quaternion();
 const TMP_EXIT_POS = new Vector3();
 const TMP_VELOCITY = new Vector3();
-const TMP_PREV = new Vector3();
-const TMP_GROUND_ORIGIN = new Vector3();
-const TMP_DOWN = new Vector3(0, -1, 0);
-// Reusable frame for the trigger plane shifted in front of the portal.
-const TMP_TRIGGER_FRAME: PortalFrame = {
-  position: new Vector3(),
-  quaternion: new Quaternion(),
-  halfWidth: 1,
-  halfHeight: 1,
-};
 
 /**
  * Runtime portal pair: placement, visuals and lifecycle. Traversal and the
@@ -120,22 +106,15 @@ export class PortalGunSystem implements Disposable {
   private readonly ringGeometry = new RingGeometry(1.0, 1.14, 48);
   /** Física de props a través de portales (agujero real + teleport/clon). */
   private readonly traveller: PortalTravellerSystem;
-  private readonly playerPrev = new Vector3();
-  private playerPrevValid = false;
-  private playerCooldownUntil = 0;
+  /** Tránsito del jugador (filtro, funnel, cruce, teleport). Engine-puro. */
+  private readonly transit: PortalPlayerTransitSystem;
+  private readonly transitCamera: PortalTransitCamera;
   private readonly npcStates = new Map<
     string,
     { prev: Vector3; cooldownUntil: number; seenFrame: number; excluding: boolean }
   >();
   private npcFrame = 0;
   private readonly viewRenderer: PortalViewRenderer;
-  private readonly playerPortalTuning: PortalPlayerTraversalTuning = {
-    radius: PlayerConfig.collider.radius,
-    radiusForgiveness: PortalConfig.traversal.playerRadiusForgiveness,
-    passThroughProximity: PortalConfig.traversal.passThroughProximity,
-    funnelDepth: PortalConfig.traversal.playerFunnelDepth,
-    funnelStrength: PortalConfig.traversal.playerFunnelStrength,
-  };
   private shadowPolicyActive = false;
 
   constructor(
@@ -158,6 +137,7 @@ export class PortalGunSystem implements Disposable {
       apertureRadius: PortalConfig.dynamicClone.apertureRadius,
       apertureThickness: PortalConfig.dynamicClone.apertureThickness,
       suppressMinIntoSpeed: PortalConfig.dynamicClone.suppressMinIntoSpeed,
+      suppressLookaheadSeconds: PortalConfig.dynamicClone.suppressLookaheadSeconds,
       cloneEnabled: PortalConfig.dynamicClone.enabled,
       crossingMargin: PortalConfig.traversal.crossingMargin,
       dynamicTriggerOffset: PortalConfig.traversal.dynamicTriggerOffset,
@@ -173,6 +153,36 @@ export class PortalGunSystem implements Disposable {
         });
       },
     });
+    this.transit = new PortalPlayerTransitSystem(raycast, this.pair, {
+      tuning: {
+        radius: PlayerConfig.collider.radius,
+        radiusForgiveness: PortalConfig.traversal.playerRadiusForgiveness,
+        passThroughProximity: PortalConfig.traversal.passThroughProximity,
+        funnelDepth: PortalConfig.traversal.playerFunnelDepth,
+        funnelStrength: PortalConfig.traversal.playerFunnelStrength,
+      },
+      capsuleHalfExtent:
+        PlayerConfig.collider.standingHalfHeight + PlayerConfig.collider.radius,
+      triggerOffset: PortalConfig.traversal.playerTriggerOffset,
+      crossingMargin: PortalConfig.traversal.crossingMargin,
+      cooldownSeconds: PortalConfig.traversal.cooldownSeconds,
+      minExitSpeed: PortalConfig.traversal.minExitSpeed,
+      exitGroundSnap: PortalConfig.traversal.exitGroundSnap,
+      raycastExcludeId: "player",
+      onTeleported: (exitPosition) => {
+        this.eventBus.emit("portal.teleported", {
+          entityKind: "player",
+          entityId: "player",
+          exitPosition,
+        });
+      },
+    });
+    this.transitCamera = {
+      getForwardDirection: () => this.cameraSystem.getForwardDirection(),
+      getOrientation: (out) => out.copy(this.cameraSystem.camera.quaternion),
+      setLook: (yaw, pitch) => this.cameraSystem.setLook(yaw, pitch),
+      syncToPosition: (position) => this.cameraSystem.syncToPosition(position),
+    };
   }
 
   /**
@@ -280,7 +290,7 @@ export class PortalGunSystem implements Disposable {
     }
 
     if (player && camera) {
-      this.updatePlayerTraversal(elapsed, player, camera);
+      this.transit.update(elapsed, player.controller, this.transitCamera);
     }
     this.traveller.update(elapsed, _delta);
   }
@@ -469,278 +479,6 @@ export class PortalGunSystem implements Disposable {
     });
   }
 
-  private updatePlayerTraversal(
-    elapsed: number,
-    player: Player,
-    camera: CameraSystem,
-  ): void {
-    const position = player.getPosition();
-    if (!this.pair.linked) {
-      player.controller.setCollisionFilter(null);
-      this.playerPrevValid = false;
-      return;
-    }
-
-    this.updatePassThroughFilter(player, position);
-    this.constrainToPortalHole(player, position);
-
-    // Snapshot BEFORE overwriting: playerPrev is a persistent vector, so the
-    // swept segment needs its own copy of last frame's position.
-    const hadPrev = this.playerPrevValid;
-    TMP_PREV.copy(this.playerPrev);
-    this.playerPrev.copy(position);
-    this.playerPrevValid = true;
-    if (!hadPrev || elapsed < this.playerCooldownUntil) {
-      return;
-    }
-
-    for (const slot of ["a", "b"] as const) {
-      const entry = this.pair.get(slot);
-      const exit = this.pair.exitFor(slot);
-      if (!entry || !exit) {
-        continue;
-      }
-      // Trigger adelantado: cruzar un plano 15 cm DELANTE del disco evita
-      // que la cámara llegue a meterse en la pared (arma oculta / blink de
-      // near-plane contra el disco) antes del teleport.
-      if (
-        !segmentCrossesPortal(
-          TMP_PREV,
-          position,
-          shiftPortalFrame(
-            entry,
-            PortalConfig.traversal.playerTriggerOffset,
-            TMP_TRIGGER_FRAME,
-          ),
-          PortalConfig.traversal.crossingMargin,
-        )
-      ) {
-        // Anti-túnel: un paso rápido/diagonal puede cruzar el plano de la
-        // pared JUSTO por fuera del hueco mientras el collider de respaldo
-        // está filtrado. Devolvemos la cápsula al frente para que no se cuele
-        // por la pared sólida.
-        if (this.blockWallEscape(player, entry, position)) {
-          this.playerPrev.copy(position);
-          this.updatePassThroughFilter(player, position);
-          break;
-        }
-        continue;
-      }
-
-      this.teleportPlayer(player, camera, entry, exit);
-      this.playerCooldownUntil =
-        elapsed + PortalConfig.traversal.cooldownSeconds;
-      // Re-seed the swept check from the exit side so the same displacement
-      // is not re-tested against the exit portal.
-      this.playerPrev.copy(player.getPosition());
-      // Refresh the filter from the exit-side position NOW: the capsule lands
-      // buried in the exit wall and the next physics step must already ignore
-      // it, or the controller pushes the player back out.
-      this.updatePassThroughFilter(player, this.playerPrev);
-      break;
-    }
-  }
-
-  private teleportPlayer(
-    player: Player,
-    camera: CameraSystem,
-    entry: PortalFrame,
-    exit: PortalFrame,
-  ): void {
-    portalNormal(exit, TMP_EXIT_NORMAL);
-    transformPointThroughPortal(player.getPosition(), entry, exit, TMP_EXIT_POS);
-    // Salida por pared: mapeo EXACTO, sin push-out ni boost de velocidad. El
-    // jugador aparece enterrado en la pared de salida y emerge caminando (el
-    // filtro pass-through excluye la pared de respaldo, y las mallas cerradas
-    // son invisibles desde adentro). Eso hace el cruce continuo a cualquier
-    // velocidad. Salida vertical (piso/techo): ahí sí hay que despejar el
-    // plano y garantizar velocidad de salida, porque si la gravedad te
-    // devuelve detrás del plano caés fuera del mundo.
-    const verticalExit = Math.abs(TMP_EXIT_NORMAL.y) > 0.7;
-    if (verticalExit) {
-      const capsule =
-        PlayerConfig.collider.standingHalfHeight + PlayerConfig.collider.radius;
-      enforceExitClearance(
-        TMP_EXIT_POS,
-        exit.position,
-        TMP_EXIT_NORMAL,
-        capsule + 0.05,
-      );
-    } else {
-      // Salida por pared: si el mapeo exacto deja los pies bajo el piso (entrar
-      // por un portal elevado desde abajo), subir la cápsula a apoyarse. Ver
-      // `traversal.exitGroundSnap`.
-      this.liftPlayerOntoGround(TMP_EXIT_POS);
-    }
-
-    transformDirectionThroughPortal(
-      player.controller.getVelocity(),
-      entry,
-      exit,
-      TMP_VELOCITY,
-    );
-    if (verticalExit) {
-      const alongNormal = TMP_VELOCITY.dot(TMP_EXIT_NORMAL);
-      if (alongNormal < PortalConfig.traversal.minExitSpeed) {
-        TMP_VELOCITY.addScaledVector(
-          TMP_EXIT_NORMAL,
-          PortalConfig.traversal.minExitSpeed - alongNormal,
-        );
-      }
-    }
-
-    player.controller.teleport(TMP_EXIT_POS, TMP_VELOCITY);
-
-    transformDirectionThroughPortal(
-      camera.getForwardDirection(),
-      entry,
-      exit,
-      TMP_FORWARD,
-    );
-    TMP_UP.set(0, 1, 0)
-      .applyQuaternion(camera.camera.quaternion);
-    transformDirectionThroughPortal(TMP_UP, entry, exit, TMP_UP);
-    const look = lookDirectionToYawPitch(TMP_FORWARD, TMP_UP);
-    camera.setLook(look.yaw, look.pitch);
-    camera.syncToPosition(player.getEyePosition());
-
-    this.eventBus.emit("portal.teleported", {
-      entityKind: "player",
-      entityId: "player",
-      exitPosition: TMP_EXIT_POS.clone(),
-    });
-  }
-
-  /**
-   * Sube (nunca baja) el centro de la cápsula de salida para que los pies
-   * apoyen en el piso si el mapeo exacto los dejó embebidos. Castea hacia abajo
-   * desde la cabeza; si no hay piso dentro del rango, la salida es aérea
-   * (caída legítima) y no se toca.
-   */
-  private liftPlayerOntoGround(exitPos: Vector3): void {
-    const halfExtent =
-      PlayerConfig.collider.standingHalfHeight + PlayerConfig.collider.radius;
-    TMP_GROUND_ORIGIN.copy(exitPos);
-    TMP_GROUND_ORIGIN.y += halfExtent;
-    const maxDistance = 2 * halfExtent + PortalConfig.traversal.exitGroundSnap;
-    const hit = this.raycast.cast(
-      TMP_GROUND_ORIGIN,
-      TMP_DOWN,
-      maxDistance,
-      undefined,
-      "player",
-    );
-    if (!hit) {
-      return;
-    }
-    const neededCenterY = hit.point.y + halfExtent;
-    if (neededCenterY > exitPos.y) {
-      exitPos.y = neededCenterY;
-    }
-  }
-
-  /**
-   * "Portal environment" de Valve: la pared detrás del portal es un agujero,
-   * no una ausencia de pared. Mientras la cápsula penetra el plano con el
-   * filtro pass-through activo, su centro queda confinado al óvalo — sin esto
-   * se puede strafear dentro de la pared y caminar por el interior del nivel.
-   * También actúa de "funnel": empuja lateralmente hacia la boca del portal.
-   */
-  private constrainToPortalHole(player: Player, position: Vector3): void {
-    if (!this.pair.linked) {
-      return;
-    }
-    for (const portal of this.portals.values()) {
-      if (
-        !constrainPlayerPortalPosition(
-          position,
-          portal.frame,
-          this.playerPortalTuning,
-          TMP_LOCAL,
-        )
-      ) {
-        continue;
-      }
-      position.copy(TMP_LOCAL);
-      player.controller.setPosition(position);
-    }
-  }
-
-  /**
-   * Safety net against tunneling: when a swept step crosses a portal's wall
-   * plane front-to-behind WITHOUT triggering a teleport (the crossing point
-   * missed the hole), the capsule is inside the solid wall — but its backing
-   * collider is filtered out, so the controller never stopped it. If the
-   * crossing lands within the filtered footprint (where the wall is
-   * non-solid), snap the capsule back in front of the wall. Returns true when
-   * it acted.
-   */
-  private blockWallEscape(
-    player: Player,
-    entry: PortalFrame,
-    position: Vector3,
-  ): boolean {
-    portalNormal(entry, TMP_NORMAL);
-    const d0 = TMP_DELTA.copy(TMP_PREV).sub(entry.position).dot(TMP_NORMAL);
-    const d1 = TMP_DELTA.copy(position).sub(entry.position).dot(TMP_NORMAL);
-    // Only a front-to-behind crossing escapes; behind-to-front is emerging.
-    if (d0 < 0 || d1 >= 0) {
-      return false;
-    }
-    const radius = PlayerConfig.collider.radius;
-    const margin = playerPortalPassThroughMargin(this.playerPortalTuning);
-    const t = d0 / (d0 - d1);
-    TMP_INV_Q.copy(entry.quaternion).invert();
-    TMP_LOCAL.copy(position)
-      .sub(TMP_PREV)
-      .multiplyScalar(t)
-      .add(TMP_PREV)
-      .sub(entry.position)
-      .applyQuaternion(TMP_INV_Q);
-    const fx = TMP_LOCAL.x / (entry.halfWidth + margin);
-    const fy = TMP_LOCAL.y / (entry.halfHeight + margin);
-    if (fx * fx + fy * fy > 1) {
-      // Crossed where the wall stays solid; the controller already stopped it.
-      return false;
-    }
-    // Inside the non-solid footprint but outside the hole: lift the capsule
-    // center back to the front face (depth = +radius) along the wall normal.
-    position.addScaledVector(TMP_NORMAL, radius - d1);
-    player.controller.setPosition(position);
-    return true;
-  }
-
-  /**
-   * While the capsule overlaps a linked portal's footprint, the character
-   * controller must ignore the colliders backing that portal so the capsule
-   * can move into the wall and cross the plane.
-   */
-  private updatePassThroughFilter(player: Player, position: Vector3): void {
-    const excluded = new Set<number>();
-    for (const portal of this.portals.values()) {
-      if (!this.pair.linked) {
-        break;
-      }
-      const frame = portal.frame;
-      if (
-        !isInsidePlayerPortalFootprint(
-          position,
-          frame,
-          this.playerPortalTuning,
-        )
-      ) {
-        continue;
-      }
-      for (const collider of portal.backingColliders) {
-        excluded.add(collider.handle);
-      }
-    }
-
-    player.controller.setCollisionFilter(
-      excluded.size === 0 ? null : (collider) => !excluded.has(collider.handle),
-    );
-  }
-
   getPortal(slot: PortalSlot): PlacedPortal | undefined {
     return this.portals.get(slot);
   }
@@ -780,7 +518,7 @@ export class PortalGunSystem implements Disposable {
     }
     this.portals.clear();
     this.pair.clear();
-    this.playerPrevValid = false;
+    this.transit.clear();
     this.traveller.clear();
     this.restoreShadowPolicy();
     this.eventBus.emit("portal.cleared", {});
@@ -809,8 +547,7 @@ export class PortalGunSystem implements Disposable {
       portal.backingColliders = backingColliders;
     }
     this.pair.set(slot, frame);
-    // A moved portal invalidates last frame's swept segment.
-    this.playerPrevValid = false;
+    this.transit.setPortal(slot, frame, backingColliders);
     this.traveller.setPortal(slot, frame, backingColliders);
 
     portalNormal(frame, TMP_NORMAL);

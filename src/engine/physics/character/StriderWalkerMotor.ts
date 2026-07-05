@@ -202,11 +202,13 @@ export class StriderWalkerMotor implements NpcMotor {
       this.velocity.z * delta,
     );
 
+    // filterGroups explícito: sin esto la query ignora los collision groups
+    // del collider movido (ver KinematicCharacterBase.stepMovement).
     this.controller.computeColliderMovement(
       this.collider,
       tmpMove,
       RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-      undefined,
+      this.collider.collisionGroups(),
       (collider) => this.shouldCollideWith(collider),
     );
     const corrected = this.controller.computedMovement();

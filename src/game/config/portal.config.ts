@@ -25,6 +25,8 @@ export const PortalConfig = {
     bumpStep: 0.12,
     /** Muestras angulares por anillo de la búsqueda de bump. */
     bumpAngularSamples: 12,
+    /** Holgura mínima (m) con el portal par (1 unidad de Source ≈ 0.019 m). */
+    siblingSeparationPad: 0.02,
   },
   traversal: {
     /** Per-entity seconds before the same body can teleport again. */
@@ -112,6 +114,12 @@ export const PortalConfig = {
      * (evita que se caiga por el piso si piso y pared comparten collider).
      */
     suppressMinIntoSpeed: 1.2,
+    /**
+     * Lookahead (s) que extiende la zona de supresión según la velocidad de
+     * entrada: un punt de gravity gun (~40 m/s) recorre la zona base en menos
+     * de un frame y rebotaría contra la pared antes de quedar suprimido.
+     */
+    suppressLookaheadSeconds: 0.1,
     /** Peso del blend de posición del clon hacia el primary al reconciliar. */
     blendPosition: 0.5,
     /** Peso del blend de rotación (slerp) del clon hacia el primary. */

@@ -225,6 +225,17 @@ describe("portalsOverlap", () => {
     expect(portalsOverlap(frameAt(0, 1, 0), frameAt(3, 1, 0))).toBe(false);
   });
 
+  it("allows side-by-side portals clear on the width axis", () => {
+    // |dx| >= halfWidths sum + pad (1.1 + 0.02).
+    expect(portalsOverlap(frameAt(0, 1, 0), frameAt(1.15, 1, 0))).toBe(false);
+  });
+
+  it("rejects tight diagonal placement (Source rectangle rule)", () => {
+    // Fuera de la elipse combinada (regla vieja) pero sin ningún eje libre:
+    // Portal bumpearía este placement.
+    expect(portalsOverlap(frameAt(0, 1, 0), frameAt(0.9, 2.6, 0))).toBe(true);
+  });
+
   it("ignores portals on different planes", () => {
     const wall = frameAt(0, 1, 0);
     const floor: PortalFrame = {

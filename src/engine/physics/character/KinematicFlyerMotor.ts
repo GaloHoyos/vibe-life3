@@ -114,11 +114,13 @@ export class KinematicFlyerMotor implements NpcMotor {
     this.velocity.lerp(this.desiredVelocity, blend);
 
     const desiredMove = this.velocity.clone().multiplyScalar(delta);
+    // filterGroups explícito: sin esto la query ignora los collision groups
+    // del collider movido (ver KinematicCharacterBase.stepMovement).
     this.controller.computeColliderMovement(
       this.collider,
       desiredMove,
       RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-      undefined,
+      this.collider.collisionGroups(),
       (collider) => this.shouldCollideWith(collider),
     );
     const corrected = this.controller.computedMovement();

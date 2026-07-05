@@ -186,10 +186,12 @@ function probeFootprint(
 }
 
 /**
- * True cuando dos portales coplanares (misma orientación) se solapan. Test de
- * elipse (no bounding-circle): permite colocarlos borde con borde como en
- * Portal — se solapan sólo si el centro del uno cae dentro del óvalo del otro
- * agrandado por sus semiejes.
+ * True cuando dos portales coplanares (misma orientación) quedan demasiado
+ * cerca. Regla de Source (CProp_Portal::IsPortalOverlappingOtherPortals): las
+ * proyecciones del offset sobre right/up se comparan contra el ancho/alto
+ * COMPLETOS más un padding chico (1 unidad en Source); el par debe quedar
+ * libre en al menos un eje. Es más estricta que un test de elipse: Portal
+ * nunca deja dos óvalos en contacto diagonal apretado.
  */
 export function portalsOverlap(a: PortalFrame, b: PortalFrame): boolean {
   const normalA = new Vector3(0, 0, 1).applyQuaternion(a.quaternion);
@@ -202,7 +204,9 @@ export function portalsOverlap(a: PortalFrame, b: PortalFrame): boolean {
     return false;
   }
   const local = offset.applyQuaternion(a.quaternion.clone().invert());
-  const sx = local.x / (a.halfWidth + b.halfWidth);
-  const sy = local.y / (a.halfHeight + b.halfHeight);
-  return sx * sx + sy * sy < 1;
+  const pad = PortalConfig.placement.siblingSeparationPad;
+  return (
+    Math.abs(local.x) < a.halfWidth + b.halfWidth + pad &&
+    Math.abs(local.y) < a.halfHeight + b.halfHeight + pad
+  );
 }

@@ -322,7 +322,9 @@ export class CharacterController extends KinematicCharacterBase {
         clearance + 0.05,
         true,
         RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-        undefined,
+        // Mismos groups que el movimiento: ignora colliders que excluyen Actor
+        // (parche de apertura de portales, ragdolls).
+        this.collider.collisionGroups(),
         undefined,
         this.body,
         // Respeta el mismo filtro que el movimiento: parado dentro de un portal,

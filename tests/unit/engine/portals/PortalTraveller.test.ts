@@ -16,6 +16,7 @@ const OPTIONS: PortalTravellerOptions = {
   apertureRadius: 2.2,
   apertureThickness: 0.1,
   suppressMinIntoSpeed: 1.2,
+  suppressLookaheadSeconds: 0.1,
   cloneEnabled: false,
   crossingMargin: 1.15,
   dynamicTriggerOffset: 0.25,
@@ -141,6 +142,133 @@ describe("PortalTravellerSystem — aperture hole", () => {
     expect(Math.abs(plank.translation().x)).toBeLessThan(1);
 
     traveller.dispose();
+  });
+
+  it("a box falls through a floor portal whose pair sits right beside it", async () => {
+    const { physics, floor } = await makeWorld();
+    const pair = new PortalPairState();
+    // Portales adyacentes en el MISMO piso: el anillo de apertura de "a"
+    // (radio 2.2) tapa el óvalo de "b"; sin la supresión por slot el prop
+    // queda apoyado en aire sólido invisible sobre la boca de "b".
+    const a = floorPortal(0, 0);
+    const b = floorPortal(1.5, 0);
+    pair.set("a", a);
+    pair.set("b", b);
+
+    let teleports = 0;
+    const traveller = new PortalTravellerSystem(physics, new Scene(), pair, {
+      ...OPTIONS,
+      onTeleport: () => {
+        teleports += 1;
+      },
+    });
+    traveller.setPortal("a", a, [floor]);
+    traveller.setPortal("b", b, [floor]);
+
+    physics.createDynamicBox(
+      { id: "crate", position: new Vector3(1.5, 1.0, 0), size: new Vector3(0.8, 0.8, 0.8), mass: 1 },
+      new Object3D(),
+    );
+
+    simulate(physics, traveller, 240);
+
+    expect(teleports).toBeGreaterThanOrEqual(1);
+    expect(countDynamic(physics)).toBe(1);
+
+    traveller.dispose();
+  });
+
+  it("a thrown box crosses a wall portal whose pair sits right beside it", async () => {
+    const { physics, floor } = await makeWorld();
+    // Pared con cara frontal en x = 0 (normal +X).
+    const wallBody = physics.createStaticBox({
+      id: "wall",
+      position: new Vector3(-0.5, 2, 0),
+      size: new Vector3(1, 4, 10),
+    });
+    const wall = wallBody.collider(0);
+
+    const pair = new PortalPairState();
+    const a = wallPortal(0, 1.5);
+    // Par adyacente sobre la MISMA pared (el ancho corre a lo largo de Z).
+    const b: PortalFrame = { ...wallPortal(0, 1.5), position: new Vector3(0, 1.5, 1.5) };
+    pair.set("a", a);
+    pair.set("b", b);
+
+    let teleports = 0;
+    const traveller = new PortalTravellerSystem(physics, new Scene(), pair, {
+      ...OPTIONS,
+      cloneEnabled: true,
+      onTeleport: () => {
+        teleports += 1;
+      },
+    });
+    traveller.setPortal("a", a, [wall, floor]);
+    traveller.setPortal("b", b, [wall, floor]);
+
+    const box = physics.createDynamicBox(
+      { id: "thrown", position: new Vector3(1.5, 1.5, 0), size: new Vector3(0.4, 0.4, 0.4), mass: 1 },
+      new Object3D(),
+    );
+    box.setLinvel({ x: -10, y: 0, z: 0 }, true);
+
+    simulate(physics, traveller, 240);
+
+    expect(teleports).toBeGreaterThanOrEqual(1);
+    // Salió por "b" hacia +X (no quedó rebotando delante de "a" ni dentro de la pared).
+    expect(box.translation().x).toBeGreaterThan(0.1);
+    expect(countDynamic(physics)).toBe(1);
+
+    traveller.dispose();
+  });
+
+  it("a gravity-gun-speed punt teleports at EVERY approach phase", async () => {
+    // A ~40 m/s la caja recorre >0.6 m por step: sin cruce predictivo ni
+    // lookahead de supresión, que pase o rebote depende de la fase del step
+    // (el bug de "a veces pasan y a veces no" de la gravity gun).
+    for (const startX of [1.6, 1.75, 1.9, 2.05]) {
+      const { physics, floor } = await makeWorld();
+      const wallBody = physics.createStaticBox({
+        id: "wall",
+        position: new Vector3(-0.5, 2, 0),
+        size: new Vector3(1, 4, 10),
+      });
+      const wall = wallBody.collider(0);
+
+      const pair = new PortalPairState();
+      const entry = wallPortal(0, 1.5);
+      const exit = floorPortal(6, 0);
+      pair.set("a", entry);
+      pair.set("b", exit);
+
+      let teleports = 0;
+      const traveller = new PortalTravellerSystem(physics, new Scene(), pair, {
+        ...OPTIONS,
+        cloneEnabled: true,
+        onTeleport: () => {
+          teleports += 1;
+        },
+      });
+      traveller.setPortal("a", entry, [wall, floor]);
+      traveller.setPortal("b", exit, [floor]);
+
+      const box = physics.createDynamicBox(
+        { id: "punted", position: new Vector3(startX, 1.5, 0), size: new Vector3(0.3, 0.3, 0.3), mass: 1 },
+        new Object3D(),
+      );
+      box.setLinvel({ x: -40, y: 0, z: 0 }, true);
+
+      simulate(physics, traveller, 120);
+
+      expect(
+        teleports,
+        `fase startX=${startX}: sin teleport (pos ${box.translation().x.toFixed(2)}, ${box.translation().y.toFixed(2)}, ${box.translation().z.toFixed(2)})`,
+      ).toBeGreaterThanOrEqual(1);
+      // Salió por el portal de piso lejano, no quedó rebotando contra la pared.
+      expect(box.translation().x).toBeGreaterThan(4);
+
+      traveller.dispose();
+    }
   });
 
   it("a box resting away from the portal keeps its floor contact", async () => {

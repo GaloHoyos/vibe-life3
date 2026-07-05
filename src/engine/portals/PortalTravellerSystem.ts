@@ -25,6 +25,13 @@ export interface PortalTravellerOptions {
   apertureThickness: number;
   /** Velocidad minima hacia adentro del plano para activar portales de pared. */
   suppressMinIntoSpeed: number;
+  /**
+   * Lookahead (s) que extiende la zona de supresión a lo largo de la normal
+   * según la velocidad de entrada del prop. Sin esto, un prop rápido (punt de
+   * gravity gun ~40 m/s) cruza toda la zona en menos de un frame y toca la
+   * pared ANTES de que el hook suprima el contacto → rebota según la fase.
+   */
+  suppressLookaheadSeconds: number;
   crossingMargin: number;
   dynamicTriggerOffset: number;
   cooldownSeconds: number;
@@ -60,6 +67,7 @@ interface TravellerPortalState {
   frame: PortalFrame;
   backingColliders: RAPIER.Collider[];
   apertureBody: RAPIER.RigidBody;
+  apertureColliderHandle: number;
 }
 
 interface DynamicState {
@@ -74,6 +82,8 @@ interface DynamicState {
 const APERTURE_INSET = 0.01;
 
 const TMP_BODY_POS = new Vector3();
+const TMP_PREDICT = new Vector3();
+const TMP_LOCAL_VEL = new Vector3();
 const TMP_EXIT_POS = new Vector3();
 const TMP_EXIT_NORMAL = new Vector3();
 const TMP_ENTRY_NORMAL = new Vector3();
@@ -117,12 +127,24 @@ const STRADDLE_MARGIN = 0.1;
 export class PortalTravellerSystem {
   private readonly portals = new Map<PortalSlot, TravellerPortalState>();
   private readonly hookedBackingHandles = new Set<number>();
+  /** Collider del parche de apertura → slot dueño (lookup puro para el hook). */
+  private readonly apertureSlotByHandle = new Map<number, PortalSlot>();
   /**
    * Colliders de props dentro de una zona de apertura: el hook suprime su
    * contacto con la superficie de respaldo. Recomputado FUERA del step (el hook
    * debe ser puro; ver ContactPairFilter.test).
    */
   private holePassHandles = new Set<number>();
+  /**
+   * Colliders de props con el centro DENTRO del óvalo de cada slot: el hook
+   * suprime su contacto con el parche de apertura del slot hermano. Sin esto,
+   * con portales adyacentes el anillo de un portal tapa físicamente el hueco
+   * del otro y el prop queda apoyado en aire sólido invisible.
+   */
+  private insideHoleHandles: Record<PortalSlot, Set<number>> = {
+    a: new Set(),
+    b: new Set(),
+  };
   private readonly dynamicStates = new Map<number, DynamicState>();
   /** Clon activo por handle del cuerpo primario que está cruzando. */
   private readonly clones = new Map<number, CloneRecord>();
@@ -149,12 +171,19 @@ export class PortalTravellerSystem {
     this.destroyAllClones();
     const existing = this.portals.get(slot);
     if (existing) {
+      this.apertureSlotByHandle.delete(existing.apertureColliderHandle);
       this.physics.world.removeRigidBody(existing.apertureBody);
       this.portals.delete(slot);
     }
     if (frame) {
-      const apertureBody = this.createAperture(frame);
-      this.portals.set(slot, { frame, backingColliders, apertureBody });
+      const aperture = this.createAperture(frame);
+      this.portals.set(slot, {
+        frame,
+        backingColliders,
+        apertureBody: aperture.body,
+        apertureColliderHandle: aperture.colliderHandle,
+      });
+      this.apertureSlotByHandle.set(aperture.colliderHandle, slot);
     }
     this.refreshBackingHooks();
     if (frame && this.pair.linked) {
@@ -166,12 +195,17 @@ export class PortalTravellerSystem {
     if (!this.pair.linked) {
       if (this.dynamicStates.size > 0) this.dynamicStates.clear();
       if (this.holePassHandles.size > 0) this.holePassHandles = new Set();
+      this.insideHoleHandles = { a: new Set(), b: new Set() };
       if (this.clones.size > 0) this.destroyAllClones();
       return;
     }
 
     this.frameCounter++;
     const nextHolePass = new Set<number>();
+    const nextInsideHole: Record<PortalSlot, Set<number>> = {
+      a: new Set(),
+      b: new Set(),
+    };
     const keptClones = new Set<number>();
     // Crear/quitar rigid bodies DENTRO de world.bodies.forEach corrompe el
     // iterador WASM de Rapier: los spawns se difieren a después del loop.
@@ -190,11 +224,13 @@ export class PortalTravellerSystem {
       if (metadata?.kind === "ragdoll") return;
 
       const boundingRadius = this.bodyBoundingRadius(body);
-      if (this.inApertureZone(body, TMP_BODY_POS, boundingRadius)) {
-        for (let i = 0; i < body.numColliders(); i += 1) {
-          nextHolePass.add(body.collider(i).handle);
-        }
-      }
+      this.collectApertureZones(
+        body,
+        TMP_BODY_POS,
+        boundingRadius,
+        nextHolePass,
+        nextInsideHole,
+      );
 
       // El clon en sí es un cuerpo dinámico cerca del portal: computa su hole-pass
       // (para que emerja por el hueco de salida) pero NO se lo trata como primary
@@ -223,7 +259,7 @@ export class PortalTravellerSystem {
       }
 
       if (elapsed >= state.cooldownUntil) {
-        this.tryTeleport(body, metadata?.id, state, elapsed);
+        this.tryTeleport(body, metadata?.id, state, elapsed, delta);
       }
       state.prev.copy(TMP_BODY_POS);
     });
@@ -245,6 +281,7 @@ export class PortalTravellerSystem {
       }
     }
     this.holePassHandles = nextHolePass;
+    this.insideHoleHandles = nextInsideHole;
   }
 
   private trackState(body: RAPIER.RigidBody, delta: number): DynamicState {
@@ -271,20 +308,31 @@ export class PortalTravellerSystem {
     entityId: string | undefined,
     state: DynamicState,
     elapsed: number,
+    delta: number,
   ): void {
+    // Cruce PREDICTIVO (como el trigger volumétrico de Portal): el segmento se
+    // extiende un step hacia adelante con la velocidad actual, así un prop
+    // rápido teleporta ANTES del step que lo estrellaría contra la pared (el
+    // solver corre antes que este update; sin predicción el rebote ya ocurrió).
+    const linvel = body.linvel();
+    TMP_PREDICT.set(
+      TMP_BODY_POS.x + linvel.x * delta,
+      TMP_BODY_POS.y + linvel.y * delta,
+      TMP_BODY_POS.z + linvel.z * delta,
+    );
     for (const slot of ["a", "b"] as const) {
       const entry = this.pair.get(slot);
       const exit = this.pair.exitFor(slot);
       if (!entry || !exit) continue;
       const crossedShifted = segmentCrossesPortal(
         state.prev,
-        TMP_BODY_POS,
+        TMP_PREDICT,
         shiftPortalFrame(entry, this.options.dynamicTriggerOffset, TMP_TRIGGER),
         this.options.crossingMargin,
       );
       if (
         !crossedShifted &&
-        !segmentCrossesPortal(state.prev, TMP_BODY_POS, entry, this.options.crossingMargin)
+        !segmentCrossesPortal(state.prev, TMP_PREDICT, entry, this.options.crossingMargin)
       ) {
         continue;
       }
@@ -519,8 +567,10 @@ export class PortalTravellerSystem {
       this.physics.world.removeRigidBody(state.apertureBody);
     }
     this.portals.clear();
+    this.apertureSlotByHandle.clear();
     this.dynamicStates.clear();
     this.holePassHandles = new Set();
+    this.insideHoleHandles = { a: new Set(), b: new Set() };
     this.refreshBackingHooks();
   }
 
@@ -529,7 +579,10 @@ export class PortalTravellerSystem {
     this.physics.setContactPairFilter(null);
   }
 
-  private createAperture(frame: PortalFrame): RAPIER.RigidBody {
+  private createAperture(frame: PortalFrame): {
+    body: RAPIER.RigidBody;
+    colliderHandle: number;
+  } {
     const mesh = createPortalApertureMesh(
       frame.halfWidth,
       frame.halfHeight,
@@ -548,13 +601,16 @@ export class PortalTravellerSystem {
           w: frame.quaternion.w,
         }),
     );
-    this.physics.world.createCollider(
+    const collider = this.physics.world.createCollider(
       RAPIER.ColliderDesc.trimesh(mesh.vertices, mesh.indices).setCollisionGroups(
         APERTURE_COLLISION_GROUPS,
       ),
       body,
     );
-    return body;
+    // El hook debe ver los pares parche-vs-prop para poder abrir el hueco del
+    // portal hermano cuando los portales quedan adyacentes.
+    collider.setActiveHooks(RAPIER.ActiveHooks.FILTER_CONTACT_PAIRS);
+    return { body, colliderHandle: collider.handle };
   }
 
   private nearAnyPortal(point: Vector3, radiusSq: number): boolean {
@@ -567,16 +623,21 @@ export class PortalTravellerSystem {
   }
 
   /**
-   * True si el cuerpo intersecta el ovalo de entrada y esta entrando al
-   * portal. Ahi se suprime el respaldo original para que el prop apoye en el
-   * parche con hueco.
+   * Clasifica el cuerpo respecto a cada portal: si intersecta el óvalo y está
+   * entrando, sus colliders van a `holePass` (se suprime el respaldo original
+   * para que apoye en el parche con hueco); si además su CENTRO cae dentro del
+   * óvalo de un slot, van a `insideHole[slot]` (se suprime el parche del slot
+   * hermano, que con portales adyacentes tapa este hueco).
    */
-  private inApertureZone(
+  private collectApertureZones(
     body: RAPIER.RigidBody,
     point: Vector3,
     boundingRadius: number,
-  ): boolean {
-    for (const state of this.portals.values()) {
+    holePass: Set<number>,
+    insideHole: Record<PortalSlot, Set<number>>,
+  ): void {
+    const linvel = body.linvel();
+    for (const [slot, state] of this.portals) {
       const frame = state.frame;
       TMP_LOCAL.set(
         point.x - frame.position.x,
@@ -585,19 +646,33 @@ export class PortalTravellerSystem {
       );
       TMP_INV_Q.copy(frame.quaternion).invert();
       TMP_LOCAL.applyQuaternion(TMP_INV_Q);
-      const axialReach =
+      let axialReach =
         boundingRadius + this.options.dynamicTriggerOffset + STRADDLE_MARGIN;
+      if (TMP_LOCAL.z >= 0) {
+        // Delante del plano: la velocidad de entrada extiende la zona para que
+        // un prop rápido quede suprimido ANTES del step que tocaría la pared.
+        // Sólo del lado frontal: extenderla detrás abriría la pared para props
+        // que se acercan por el otro lado de una pared finita.
+        TMP_LOCAL_VEL.set(linvel.x, linvel.y, linvel.z).applyQuaternion(TMP_INV_Q);
+        axialReach +=
+          Math.max(0, -TMP_LOCAL_VEL.z) * this.options.suppressLookaheadSeconds;
+      }
       if (Math.abs(TMP_LOCAL.z) > axialReach) continue;
       const ex = TMP_LOCAL.x / (frame.halfWidth + boundingRadius);
       const ey = TMP_LOCAL.y / (frame.halfHeight + boundingRadius);
-      if (
-        ex * ex + ey * ey <= 1 &&
-        this.shouldOpenPortalForBody(body, frame, TMP_LOCAL.z)
-      ) {
-        return true;
+      if (ex * ex + ey * ey > 1) continue;
+      if (!this.shouldOpenPortalForBody(body, frame, TMP_LOCAL.z)) continue;
+      for (let i = 0; i < body.numColliders(); i += 1) {
+        holePass.add(body.collider(i).handle);
+      }
+      const hx = TMP_LOCAL.x / frame.halfWidth;
+      const hy = TMP_LOCAL.y / frame.halfHeight;
+      if (hx * hx + hy * hy <= 1) {
+        for (let i = 0; i < body.numColliders(); i += 1) {
+          insideHole[slot].add(body.collider(i).handle);
+        }
       }
     }
-    return false;
   }
 
   private shouldOpenPortalForBody(
@@ -715,6 +790,22 @@ export class PortalTravellerSystem {
   ): RAPIER.SolverFlags | null => {
     if (this.holePassHandles.size === 0) {
       return RAPIER.SolverFlags.COMPUTE_IMPULSE;
+    }
+    // Parche de apertura del slot X vs prop metido en el óvalo del hermano:
+    // suprimir, o con portales adyacentes el anillo de X tapa el hueco vecino.
+    const apertureSlot1 = this.apertureSlotByHandle.get(collider1);
+    if (
+      apertureSlot1 !== undefined &&
+      this.insideHoleHandles[apertureSlot1 === "a" ? "b" : "a"].has(collider2)
+    ) {
+      return null;
+    }
+    const apertureSlot2 = this.apertureSlotByHandle.get(collider2);
+    if (
+      apertureSlot2 !== undefined &&
+      this.insideHoleHandles[apertureSlot2 === "a" ? "b" : "a"].has(collider1)
+    ) {
+      return null;
     }
     const backingIs1 = this.hookedBackingHandles.has(collider1);
     const backingIs2 = this.hookedBackingHandles.has(collider2);

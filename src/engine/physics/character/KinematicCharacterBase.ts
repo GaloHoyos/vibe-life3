@@ -76,11 +76,15 @@ export abstract class KinematicCharacterBase {
     filter?: (collider: RAPIER.Collider) => boolean,
   ): { corrected: Vector3; grounded: boolean } {
     const desired = this.velocity.clone().multiplyScalar(delta);
+    // filterGroups explícito: computeColliderMovement NO respeta los collision
+    // groups del collider movido por sí solo. Sin esto la cápsula choca con
+    // colliders que la excluyen por grupo (parche de apertura de portales,
+    // ragdolls) y se frena contra "paredes invisibles".
     this.controller.computeColliderMovement(
       this.collider,
       desired,
       RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-      undefined,
+      this.collider.collisionGroups(),
       filter,
     );
     const out = this.controller.computedMovement();
