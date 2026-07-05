@@ -32,6 +32,13 @@ export const PortalConfig = {
     /** Per-entity seconds before the same body can teleport again. */
     cooldownSeconds: 0.15,
     /**
+     * Cooldown del JUGADOR: 0 como en Portal — volver a entrar al portal
+     * inmediatamente después de salir teleporta de nuevo, sin ventana muerta.
+     * (Si se sube, el transit devuelve la cápsula al frente durante la
+     * ventana; jamás ignora un cruce, que era lo que dejaba salir del mundo.)
+     */
+    playerCooldownSeconds: 0,
+    /**
      * The player teleports when crossing the EXACT portal plane (offset 0,
      * like Portal/Lague): a point crossed just behind the entry plane maps to
      * just IN FRONT of the exit plane, so the player never lands buried in

@@ -153,7 +153,7 @@ export class PortalPlayerTransitSystem {
     TMP_PREV.copy(this.prev);
     this.prev.copy(position);
     this.prevValid = true;
-    if (!hadPrev || elapsed < this.cooldownUntil || !active) {
+    if (!hadPrev || !active) {
       return;
     }
 
@@ -175,6 +175,29 @@ export class PortalPlayerTransitSystem {
       // está filtrado. Devolvemos la cápsula al frente para que no se cuele
       // por la pared sólida.
       if (this.blockWallEscape(controller, entry, position)) {
+        this.prev.copy(position);
+        this.updatePassThroughFilter(
+          controller,
+          position,
+          this.selectActivePortal(position),
+        );
+      }
+      return;
+    }
+
+    // El cooldown NUNCA puede tragarse un cruce: si no vamos a teleportar, la
+    // cápsula tampoco puede quedar del lado sólido del plano (re-entrar rápido
+    // dejaba caminar por dentro de la pared y caer fuera del mundo). Se la
+    // devuelve al frente como hace el anti-túnel.
+    if (elapsed < this.cooldownUntil) {
+      portalNormal(entry, TMP_NORMAL);
+      const depth = TMP_DELTA.copy(position).sub(entry.position).dot(TMP_NORMAL);
+      if (depth < this.options.tuning.radius) {
+        position.addScaledVector(
+          TMP_NORMAL,
+          this.options.tuning.radius - depth,
+        );
+        controller.setPosition(position);
         this.prev.copy(position);
         this.updatePassThroughFilter(
           controller,

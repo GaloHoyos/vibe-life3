@@ -46,7 +46,9 @@ interface World {
   teleports: Vector3[];
 }
 
-async function makeWorld(): Promise<World> {
+async function makeWorld(
+  cooldownSeconds: number = PortalConfig.traversal.playerCooldownSeconds,
+): Promise<World> {
   const physics = new PhysicsWorld();
   await physics.init();
   physics.createStaticBox({
@@ -76,7 +78,7 @@ async function makeWorld(): Promise<World> {
       PlayerConfig.collider.standingHalfHeight + PlayerConfig.collider.radius,
     triggerOffset: PortalConfig.traversal.playerTriggerOffset,
     crossingMargin: PortalConfig.traversal.crossingMargin,
-    cooldownSeconds: PortalConfig.traversal.cooldownSeconds,
+    cooldownSeconds,
     minExitSpeed: PortalConfig.traversal.minExitSpeed,
     exitGroundSnap: PortalConfig.traversal.exitGroundSnap,
     raycastExcludeId: "player",
@@ -197,6 +199,68 @@ describe("PortalPlayerTransitSystem — pared, par separado (control)", () => {
     // Salió del lado frontal del portal de salida, cerca de su boca.
     expect(end.z).toBeGreaterThan(WALL_Z - 0.6);
     expect(Math.abs(end.x - exitAt.x)).toBeLessThan(1.2);
+  });
+});
+
+describe("PortalPlayerTransitSystem — re-entrada rápida (out of bounds)", () => {
+  /**
+   * Oscilación continua: la cámara del harness nunca gira, así que tras cada
+   * teleport el jugador emerge del portal de salida (misma pared) y el input
+   * lo vuelve a empujar adentro — la re-entrada más rápida posible, como
+   * entrar y salir repetidas veces en el juego.
+   */
+  function oscillate(
+    world: World,
+    controller: CharacterController,
+    seconds: number,
+  ): { minZ: number; minY: number; final: Vector3 } {
+    const frames = Math.round(seconds / DT);
+    let minZ = Infinity;
+    let minY = Infinity;
+    for (let i = 0; i < frames; i += 1) {
+      controller.update(DT, FORWARD, controllerCamera);
+      world.physics.step(DT);
+      world.transit.update(i * DT, controller, transitCamera);
+      world.traveller.update(i * DT, DT);
+      const p = controller.getPosition();
+      minZ = Math.min(minZ, p.z);
+      minY = Math.min(minY, p.y);
+    }
+    return { minZ, minY, final: controller.getPosition() };
+  }
+
+  it("con cooldown 0 (config del juego) oscila teleportando sin escapar", async () => {
+    const world = await makeWorld();
+    const enterAt = placePortal(world, "a", -4);
+    placePortal(world, "b", 4);
+    const controller = makeController(
+      world,
+      new Vector3(enterAt.x, 0.9, WALL_Z + 2),
+    );
+
+    const { minZ, minY } = oscillate(world, controller, 8);
+
+    expect(world.teleports.length).toBeGreaterThanOrEqual(2);
+    // Jamás caminó dentro/detrás de la pared (cara trasera en z = -4).
+    expect(minZ).toBeGreaterThan(WALL_Z - 0.6);
+    expect(minY).toBeGreaterThan(0.3);
+  });
+
+  it("un cruce durante el cooldown NUNCA deja la cápsula del lado sólido", async () => {
+    // Cooldown alto a propósito: toda re-entrada cae dentro de la ventana.
+    const world = await makeWorld(1.0);
+    const enterAt = placePortal(world, "a", -4);
+    placePortal(world, "b", 4);
+    const controller = makeController(
+      world,
+      new Vector3(enterAt.x, 0.9, WALL_Z + 2),
+    );
+
+    const { minZ, minY } = oscillate(world, controller, 8);
+
+    expect(world.teleports.length).toBeGreaterThanOrEqual(2);
+    expect(minZ).toBeGreaterThan(WALL_Z - 0.6);
+    expect(minY).toBeGreaterThan(0.3);
   });
 });
 

@@ -69,8 +69,14 @@ interface PlacedPortal {
 }
 
 // Disc sits slightly off the wall to avoid z-fighting; portal math keeps
-// using the exact surface plane stored in the frame.
-const SURFACE_LIFT = 0.0001;
+// using the exact surface plane stored in the frame. 1 mm: invisible a ojo
+// pero robusto contra el shimmer del depth buffer logarítmico.
+const SURFACE_LIFT = 0.001;
+// Overhang (m) del tapón visual más allá del óvalo físico: la tapa frontal
+// pisa la pared alrededor del hueco, así el near plane nunca expone una línea
+// de pared/hueco entre el borde del disco y la superficie al atravesar (el
+// "seam"). El tubo agrandado queda oculto dentro de la pared.
+const PLUG_OVERHANG = 0.02;
 
 // Edge fade: the colored rim and glow ring dissolve as the camera lines up
 // and closes on the portal plane, so the exit view reaches the physical edge
@@ -165,7 +171,7 @@ export class PortalGunSystem implements Disposable {
         PlayerConfig.collider.standingHalfHeight + PlayerConfig.collider.radius,
       triggerOffset: PortalConfig.traversal.playerTriggerOffset,
       crossingMargin: PortalConfig.traversal.crossingMargin,
-      cooldownSeconds: PortalConfig.traversal.cooldownSeconds,
+      cooldownSeconds: PortalConfig.traversal.playerCooldownSeconds,
       minExitSpeed: PortalConfig.traversal.minExitSpeed,
       exitGroundSnap: PortalConfig.traversal.exitGroundSnap,
       raycastExcludeId: "player",
@@ -572,9 +578,11 @@ export class PortalGunSystem implements Disposable {
     );
     // La geometría es un tapón unitario extruido hacia -Z: la escala Z lo
     // hunde `surfacePlugDepth` metros dentro de la pared (ver PortalConfig).
+    // XY con overhang: el disco visible pisa la pared unos mm alrededor del
+    // óvalo físico para que el cruce no muestre seam (ver PLUG_OVERHANG).
     surface.scale.set(
-      frame.halfWidth,
-      frame.halfHeight,
+      frame.halfWidth + PLUG_OVERHANG,
+      frame.halfHeight + PLUG_OVERHANG,
       PortalConfig.view.surfacePlugDepth,
     );
     root.add(surface);
