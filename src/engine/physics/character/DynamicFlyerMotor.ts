@@ -2,6 +2,13 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { Euler, Quaternion, Vector3 } from "three";
 import { createCapsuleCollider } from "@engine/physics/Colliders";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
+import type { PortalPairState, PortalSlot } from "@engine/portals/PortalFrame";
+import {
+  intersectRayPortal,
+  portalNormal,
+  transformDirectionThroughPortal,
+  transformPointThroughPortal,
+} from "@engine/portals/PortalMath";
 import type { CharacterMotorSnapshot, NpcMotor, SliceHit } from "./NpcMotor";
 
 export interface DynamicFlyerConfig {
@@ -16,6 +23,14 @@ export interface DynamicFlyerConfig {
   /** Tasa de giro del yaw mientras vuela (lambda). */
   turnSpeed: number;
   metadata: PhysicsMetadata;
+  /**
+   * Par de portales linked: el sweep predictivo cruza el disco (teleport) en
+   * vez de rebotar contra la pared de respaldo. Sin esto el flyer trata el
+   * portal como pared solida.
+   */
+  portals?: PortalPairState;
+  /** Notificacion de cruce (la capa game emite su evento con esto). */
+  onPortalTeleport?: (exitPosition: Vector3) => void;
 }
 
 const Y_AXIS = new Vector3(0, 1, 0);
@@ -65,6 +80,18 @@ const RIGHTING_RATE = 6;
 const STUCK_TOI = 0.004;
 /** Tiempo (s) trabado antes de meter una escapada random. */
 const STUCK_ESCAPE_TIME = 0.25;
+/** El disco es coplanar con la pared: el portal gana empates contra el sweep. */
+const PORTAL_COPLANAR_EPSILON = 0.02;
+/** Ventana (s) sin re-chequear portales tras un cruce (anti ping-pong). */
+const PORTAL_COOLDOWN = 0.2;
+/** Clearance (m) extra del centro mas alla del radio al salir del portal. */
+const PORTAL_EXIT_PAD = 0.05;
+/** Distancia frontal (m) al plano dentro de la cual el funnel redirige el aim. */
+const PORTAL_FUNNEL_RANGE = 10;
+/** Inflado de la elipse para aceptar que el segmento al target "pasa por" el portal. */
+const PORTAL_FUNNEL_LATERAL = 4;
+/** El punto de aim del funnel queda esta profundidad DETRAS del disco. */
+const PORTAL_FUNNEL_DEPTH = 1.0;
 
 /**
  * Motor del manhack: un cuerpo fisico **poseido por la IA**, no un dron que
@@ -109,6 +136,7 @@ export class DynamicFlyerMotor implements NpcMotor {
   private chaosTimer = 0;
   private attackPauseTimer = 0;
   private stuckTimer = 0;
+  private portalCooldown = 0;
   private pendingSelfDamage = 0;
   private readonly sliceHits: SliceHit[] = [];
 
@@ -117,6 +145,11 @@ export class DynamicFlyerMotor implements NpcMotor {
   private readonly tmpNoise = new Vector3();
   private readonly tmpN = new Vector3();
   private readonly tmpAway = new Vector3();
+  private readonly tmpPortalPos = new Vector3();
+  private readonly tmpPortalDir = new Vector3();
+  private readonly tmpFunnel = new Vector3();
+  private readonly tmpLocal = new Vector3();
+  private readonly tmpInvQ = new Quaternion();
   private readonly tmpQuatCur = new Quaternion();
   private readonly tmpQuatTarget = new Quaternion();
   private readonly tmpEuler = new Euler(0, 0, 0, "YXZ");
@@ -174,6 +207,7 @@ export class DynamicFlyerMotor implements NpcMotor {
     if (this.thrownTimer > 0) this.thrownTimer -= delta;
     if (this.chaosTimer > 0) this.chaosTimer -= delta;
     if (this.attackPauseTimer > 0) this.attackPauseTimer -= delta;
+    if (this.portalCooldown > 0) this.portalCooldown -= delta;
 
     const lv = this.body.linvel();
     this.vel.set(lv.x, lv.y, lv.z);
@@ -200,8 +234,12 @@ export class DynamicFlyerMotor implements NpcMotor {
   private steer(delta: number, target: Vector3 | null, wantsMove: boolean): void {
     const pos = this.body.translation();
     if (wantsMove && target) {
-      this.desiredVel.set(target.x - pos.x, target.y - pos.y, target.z - pos.z);
       this.distanceToTarget = Math.hypot(target.x - pos.x, target.z - pos.z);
+      // Objetivo del otro lado de un portal linked: volar al DISCO, no a la
+      // pared que lo respalda (el ruido/bumps sacan del eje y sin funnel el
+      // flyer orbita rebotando al lado de la boca sin entrar nunca).
+      const aim = this.resolvePortalFunnel(pos, target) ?? target;
+      this.desiredVel.set(aim.x - pos.x, aim.y - pos.y, aim.z - pos.z);
       const d = this.desiredVel.length();
       const max = this.config.maxSpeed * this.speedMultiplier;
       if (d > 1e-4) this.desiredVel.multiplyScalar(Math.min(max, d * APPROACH_GAIN) / d);
@@ -250,6 +288,16 @@ export class DynamicFlyerMotor implements NpcMotor {
       undefined,
       this.body,
     );
+    // Un portal linked en el paso barrido gana sobre la pared que lo respalda
+    // (coplanar): cruzar en vez de rebotar. El alcance del rayo suma el radio
+    // del sweep: la bola toca la pared un radio antes de que el centro llegue
+    // al plano, y el portal debe ganar también en ese caso.
+    const hitDistance = hit ? hit.time_of_impact * speed : null;
+    const portalReach = speed * maxToi + this.config.radius + PORTAL_COPLANAR_EPSILON;
+    if (this.tryPortalTeleport(pos, speed, portalReach, hitDistance)) {
+      this.stuckTimer = 0;
+      return;
+    }
     if (!hit) {
       this.stuckTimer = 0;
       return;
@@ -269,6 +317,125 @@ export class DynamicFlyerMotor implements NpcMotor {
     }
     this.bump(hit.normal1, speed);
     if (hitBody && hitBody.isDynamic()) this.pushProp(hitBody);
+  }
+
+  /**
+   * Si el segmento hacia el target cruza el plano de un portal linked (con la
+   * elipse inflada), devuelve un punto de aim sustituto detrás del disco. El
+   * flyer entra por la boca y el teleport del sweep hace el resto. Null si el
+   * target está de este lado o el cruce queda lejos del óvalo.
+   */
+  private resolvePortalFunnel(
+    pos: { x: number; y: number; z: number },
+    target: Vector3,
+  ): Vector3 | null {
+    const pair = this.config.portals;
+    if (!pair || !pair.linked || this.portalCooldown > 0) return null;
+    for (const slot of ["a", "b"] as const) {
+      const frame = pair.get(slot);
+      if (!frame) continue;
+      portalNormal(frame, this.tmpN);
+      const dSelf =
+        (pos.x - frame.position.x) * this.tmpN.x +
+        (pos.y - frame.position.y) * this.tmpN.y +
+        (pos.z - frame.position.z) * this.tmpN.z;
+      const dTarget =
+        (target.x - frame.position.x) * this.tmpN.x +
+        (target.y - frame.position.y) * this.tmpN.y +
+        (target.z - frame.position.z) * this.tmpN.z;
+      if (dSelf <= 0 || dSelf > PORTAL_FUNNEL_RANGE || dTarget >= 0) continue;
+      const t = dSelf / (dSelf - dTarget);
+      this.tmpFunnel.set(
+        pos.x + (target.x - pos.x) * t,
+        pos.y + (target.y - pos.y) * t,
+        pos.z + (target.z - pos.z) * t,
+      );
+      this.tmpInvQ.copy(frame.quaternion).invert();
+      this.tmpLocal
+        .copy(this.tmpFunnel)
+        .sub(frame.position)
+        .applyQuaternion(this.tmpInvQ);
+      const ex = this.tmpLocal.x / (frame.halfWidth * PORTAL_FUNNEL_LATERAL);
+      const ey = this.tmpLocal.y / (frame.halfHeight * PORTAL_FUNNEL_LATERAL);
+      if (ex * ex + ey * ey > 1) continue;
+      return this.tmpFunnel
+        .copy(frame.position)
+        .addScaledVector(this.tmpN, -PORTAL_FUNNEL_DEPTH);
+    }
+    return null;
+  }
+
+  /**
+   * Cruce de portal predictivo: si el paso barrido entra al óvalo de un portal
+   * linked antes (o a la par, coplanar) de tocar la pared, teleporta el cuerpo
+   * al portal de salida con posición/velocidad/yaw transformados. Necesario
+   * porque el sweep es una QUERY: no pasa por el hook de contactos que abre el
+   * hueco, así que sin esto el flyer rebota contra la pared de respaldo.
+   */
+  private tryPortalTeleport(
+    pos: { x: number; y: number; z: number },
+    speed: number,
+    maxDistance: number,
+    hitDistance: number | null,
+  ): boolean {
+    const pair = this.config.portals;
+    if (!pair || !pair.linked || this.portalCooldown > 0) return false;
+    this.tmpPortalPos.set(pos.x, pos.y, pos.z);
+    this.tmpPortalDir.copy(this.vel).divideScalar(speed);
+    let entrySlot: PortalSlot | null = null;
+    let entryT = Infinity;
+    for (const slot of ["a", "b"] as const) {
+      const frame = pair.get(slot);
+      if (!frame) continue;
+      const t = intersectRayPortal(
+        this.tmpPortalPos,
+        this.tmpPortalDir,
+        maxDistance,
+        frame,
+      );
+      if (t !== null && t < entryT) {
+        entrySlot = slot;
+        entryT = t;
+      }
+    }
+    if (entrySlot === null) return false;
+    // El sweep es una bola: contra la pared que respalda el disco se frena un
+    // radio ANTES del punto de cruce del rayo. El portal gana si el hit quedó
+    // a menos de un radio del cruce (coplanar); un hit claramente anterior es
+    // otra pared en el camino.
+    if (
+      hitDistance !== null &&
+      hitDistance + this.config.radius + PORTAL_COPLANAR_EPSILON < entryT
+    ) {
+      return false;
+    }
+    const entry = pair.get(entrySlot);
+    const exit = pair.exitFor(entrySlot);
+    if (!entry || !exit) return false;
+
+    this.tmpPortalPos.addScaledVector(this.tmpPortalDir, entryT);
+    transformPointThroughPortal(this.tmpPortalPos, entry, exit, this.tmpPortalPos);
+    transformDirectionThroughPortal(this.vel, entry, exit, this.vel);
+    portalNormal(exit, this.tmpN);
+    this.tmpPortalPos.addScaledVector(
+      this.tmpN,
+      this.config.height / 2 + PORTAL_EXIT_PAD,
+    );
+    this.body.setTranslation(
+      { x: this.tmpPortalPos.x, y: this.tmpPortalPos.y, z: this.tmpPortalPos.z },
+      true,
+    );
+    // `update()` aplica `this.vel` (ya transformada) con setLinvel al cierre.
+    if (this.vel.x * this.vel.x + this.vel.z * this.vel.z > 1e-4) {
+      this.yaw = Math.atan2(this.vel.x, this.vel.z);
+      this.targetYaw = this.yaw;
+      this.tmpQuatCur.setFromAxisAngle(Y_AXIS, this.yaw);
+      this.body.setRotation(this.tmpQuatCur, true);
+      this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    }
+    this.portalCooldown = PORTAL_COOLDOWN;
+    this.config.onPortalTeleport?.(this.tmpPortalPos.clone());
+    return true;
   }
 
   /** Cuchillazo dirigido al objetivo cercano (no depende de la velocidad). */

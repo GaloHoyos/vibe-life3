@@ -234,7 +234,7 @@ export class PortalTravellerSystem {
       const metadata = collider
         ? this.physics.getColliderMetadata(collider)
         : undefined;
-      if (metadata?.kind === "ragdoll") return;
+      if (metadata?.kind === "ragdoll" || metadata?.selfPortalTraversal) return;
 
       const boundingRadius = this.bodyBoundingRadius(body);
       // El clon en sí es un cuerpo dinámico cerca del portal: computa su

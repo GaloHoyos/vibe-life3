@@ -1,7 +1,7 @@
 import { Vector3 } from 'three';
 import type { Task, TaskStatus } from '@engine/ai/brain/Task';
 import { task } from '@engine/ai/brain/Task';
-import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
+import { threatNavPosition, type NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
 
 type NpcTask = Task<NpcBrainContext>;
 
@@ -45,7 +45,9 @@ export function createMoveToThreatTask(tolerance = 1.5, gait: 'walk' | 'sprint' 
     id: 'moveToThreat',
     init: () => {},
     tick: (ctx): TaskStatus => {
-      const target = ctx.threat?.position ?? ctx.threatLastKnown;
+      // Goal navegable: contra un ghost de portal se persigue la posición real
+      // y el A* elige la ruta (por el portal si es más corta).
+      const target = threatNavPosition(ctx);
       if (!target) {
         ctx.locomotion.stop();
         return 'failure';

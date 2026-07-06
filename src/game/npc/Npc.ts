@@ -614,8 +614,11 @@ export class Npc implements INpc {
     }
     if (candidates.length === 0) return null;
 
+    // El player y sus ghosts de portal comparten id: resolver el vigente por
+    // cercanía a la posición previa, o el sticky saltaría del ghost (visible
+    // a través del portal) al player real (detrás de la pared) entre evals.
     const current = this.currentThreat
-      ? (candidates.find((c) => c.id === this.currentThreat?.id) ?? null)
+      ? nearestWithId(candidates, this.currentThreat.id, this.currentThreat.position)
       : null;
 
     if (this.aggroTimer > 0 && this.aggroAttackerId && this.aggroAttackerId !== current?.id) {
@@ -780,6 +783,25 @@ const COND_NAMES = [
   'EnemyInLeapRange',
   'Tipped',
 ];
+
+/** Candidato con `id` dado más cercano a `position` (desambigua player vs sus ghosts). */
+function nearestWithId(
+  candidates: readonly ActorSnapshot[],
+  id: string,
+  position: Vector3,
+): ActorSnapshot | null {
+  let best: ActorSnapshot | null = null;
+  let bestDistSq = Infinity;
+  for (const candidate of candidates) {
+    if (candidate.id !== id) continue;
+    const distSq = candidate.position.distanceToSquared(position);
+    if (distSq < bestDistSq) {
+      bestDistSq = distSq;
+      best = candidate;
+    }
+  }
+  return best;
+}
 
 const tmpUp = new Vector3();
 

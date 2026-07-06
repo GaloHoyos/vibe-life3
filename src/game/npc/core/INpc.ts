@@ -18,6 +18,14 @@ export interface ActorSnapshot {
   entity: Damageable;
   isAlive: boolean;
   radius: number;
+  /**
+   * Posición real NAVEGABLE del actor cuando `position` es una proyección
+   * (ghost de portal: `position` queda detrás del disco, correcta para
+   * apuntar/encarar pero inútil como goal de pathfinding). Los tasks de
+   * persecución terrestre usan esta y el A* decide si la ruta más corta
+   * cruza el par de portales (links warp).
+   */
+  navPosition?: Vector3;
 }
 
 /**

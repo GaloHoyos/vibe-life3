@@ -48,6 +48,81 @@ function buildTwoComponents(): NavSpace {
   return new NavSpace(cells, edges, []);
 }
 
+/**
+ * Línea conectada de celdas x=0..30 (un solo componente): siempre existe el
+ * camino a pie. El warp une x=0 con x=29.
+ */
+function buildConnectedLine(): NavSpace {
+  const cells: NavCell[] = [];
+  const edges: NavEdge[] = [];
+  const count = 31;
+  for (let i = 0; i < count; i += 1) {
+    const neighbors: number[] = [];
+    if (i > 0) neighbors.push(i - 1);
+    if (i < count - 1) neighbors.push(i + 1);
+    const edgeStart = edges.length;
+    for (const n of neighbors) {
+      edges.push({ toCell: n, cost: 1, portalIndex: -1 });
+    }
+    cells.push({
+      index: i,
+      center: [i, 0, 0],
+      surface: "floor",
+      roomId: null,
+      buildingId: null,
+      componentId: 0,
+      edgeStart,
+      edgeCount: neighbors.length,
+    });
+  }
+  return new NavSpace(cells, edges, []);
+}
+
+const LINE_WARP: NavDynamicLink = {
+  fromCell: 0,
+  toCell: 29,
+  cost: 2,
+  portal: {
+    id: "warp-line",
+    kind: "warp",
+    width: 1.1,
+    height: 1.9,
+    position: [0, 0, 0],
+    normal: [-1, 0, 0],
+  },
+};
+
+describe("A* heuristica warp-aware", () => {
+  it("elige el warp cuando la ruta por el portal es mas corta, aunque la entrada quede a contramano", () => {
+    const nav = buildConnectedLine();
+    nav.setDynamicLinks([LINE_WARP]);
+
+    // Desde x=10 hasta x=30: a pie cuesta 20; retroceder al warp cuesta
+    // 10 + 2 + 1 = 13. Sin heuristica warp-aware, la octile directa
+    // sobreestima la ruta via portal y el A* devuelve el camino largo.
+    const path = nav.findPath(new Vector3(10, 0, 0), new Vector3(30, 0, 0));
+    expect(path).not.toBeNull();
+    expect(path!.cells).toContain(0);
+    expect(path!.cells).toContain(29);
+  });
+
+  it("sin links sigue el camino directo", () => {
+    const nav = buildConnectedLine();
+    const path = nav.findPath(new Vector3(10, 0, 0), new Vector3(30, 0, 0));
+    expect(path).not.toBeNull();
+    expect(path!.cells).not.toContain(0);
+    expect(path!.cells.length).toBe(21);
+  });
+
+  it("con warp mas caro que el camino directo sigue yendo a pie", () => {
+    const nav = buildConnectedLine();
+    nav.setDynamicLinks([{ ...LINE_WARP, cost: 40 }]);
+    const path = nav.findPath(new Vector3(10, 0, 0), new Vector3(30, 0, 0));
+    expect(path).not.toBeNull();
+    expect(path!.cells).not.toContain(0);
+  });
+});
+
 describe("NavSpace dynamic warp links", () => {
   it("sin links no hay camino entre componentes desconectados", () => {
     const nav = buildTwoComponents();

@@ -33,6 +33,16 @@ import type { CheckpointSystem } from './CheckpointSystem';
 import type { HazardVolumeSystem } from './HazardVolumeSystem';
 import type { ExplosiveBarrelSystem } from '@game/gameplay/hazards/ExplosiveBarrelSystem';
 
+/**
+ * Wiring de portales para los NPCs del nivel (LOS/disparo portal-aware, cruce
+ * de flyers). Vive en el caller (Game) porque el par y el raycast through son
+ * del sistema de portales, no del nivel.
+ */
+export type NpcPortalServices = Pick<
+  NpcRuntimeServices,
+  'losRaycast' | 'portals' | 'onFlyerPortalTeleport'
+>;
+
 export interface LoadedLevel {
   npcs: INpc[];
   doors: SlidingDoor[];
@@ -64,6 +74,7 @@ export class LevelLoader {
     private readonly explosiveBarrels: ExplosiveBarrelSystem,
     private readonly characters: CharacterFactory,
     private readonly assets: AssetManager,
+    private readonly npcPortalServices: NpcPortalServices,
   ) {}
 
   async load(level: LevelDefinition): Promise<LoadedLevel> {
@@ -219,6 +230,7 @@ export class LevelLoader {
       pathQueue,
       buildingRegistry,
       raycast: sharedRaycast,
+      ...this.npcPortalServices,
       tacticalMap,
       squadDirector,
     };

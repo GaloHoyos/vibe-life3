@@ -58,7 +58,7 @@ import type {
   NPCDefinition,
   TriggerAction,
 } from "@game/levels/LevelDefinition";
-import { LevelLoader } from "@game/levels/LevelLoader";
+import { LevelLoader, type NpcPortalServices } from "@game/levels/LevelLoader";
 import { getLevel, LevelRegistry, type LevelId } from "@game/levels/LevelRegistry";
 import { TriggerSystem } from "@game/levels/TriggerSystem";
 import { CheckpointSystem, type CheckpointSnapshot } from "@game/levels/CheckpointSystem";
@@ -776,9 +776,31 @@ export class Game {
       pathQueue: this.pathQueue,
       buildingRegistry: this.buildingRegistry,
       raycast,
-      losRaycast: this.engine.services.resolve(GameTokens.Portals).throughRaycast,
+      ...this.buildNpcPortalServices(),
       tacticalMap: this.tacticalMap,
       squadDirector: this.squadDirector,
+    };
+  }
+
+  /**
+   * Wiring de portales que TODO camino de spawn de NPCs debe proveer (LOS y
+   * disparo portal-aware, cruce de flyers). Centralizado: cuando cada caller
+   * lo armaba a mano, LevelLoader lo omitió y los NPCs del nivel no veían por
+   * los portales.
+   */
+  private buildNpcPortalServices(): NpcPortalServices {
+    const portals = this.engine.services.resolve(GameTokens.Portals);
+    const eventBus = this.engine.services.resolve(GameTokens.EventBus);
+    return {
+      losRaycast: portals.throughRaycast,
+      portals: portals.pair,
+      onFlyerPortalTeleport: (npcId, exitPosition) => {
+        eventBus.emit("portal.teleported", {
+          entityKind: "npc",
+          entityId: npcId,
+          exitPosition,
+        });
+      },
     };
   }
 
@@ -1166,7 +1188,11 @@ export class Game {
       const npcIndex = new ActorSpatialIndex(npcSnapshots);
       const portalGhosts: ActorSnapshot[] = portals
         .projectPointThroughPortals(playerPosition)
-        .map((position) => ({ ...playerSnapshot, position }));
+        .map((position) => ({
+          ...playerSnapshot,
+          position,
+          navPosition: playerSnapshot.position,
+        }));
       const ctx: AiFrameContext = {
         delta: time.delta,
         elapsed: time.elapsed,
@@ -1635,6 +1661,7 @@ export class Game {
       explosiveBarrels,
       characters,
       assets,
+      this.buildNpcPortalServices(),
     );
 
     // Teardown completo del nivel anterior para cargar in-place (transición

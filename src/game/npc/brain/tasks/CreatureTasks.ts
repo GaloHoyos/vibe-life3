@@ -1,5 +1,5 @@
 import type { Task, TaskStatus } from '@engine/ai/brain/Task';
-import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
+import { threatNavPosition, type NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
 import type { NpcLeapProfile } from '@game/npc/presets/NpcPreset';
 
 type NpcTask = Task<NpcBrainContext>;
@@ -16,7 +16,8 @@ export function createChargeAttackTask(gait: 'walk' | 'sprint' = 'sprint'): NpcT
     id: 'chargeAttack',
     init: () => {},
     tick: (ctx): TaskStatus => {
-      const target = ctx.threat?.position ?? ctx.threatLastKnown;
+      // Terrestre: persigue la posición navegable real (ghost → ruta por A*).
+      const target = threatNavPosition(ctx);
       if (!target) {
         ctx.locomotion.stop();
         return 'failure';

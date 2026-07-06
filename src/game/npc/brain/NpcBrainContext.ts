@@ -94,6 +94,19 @@ export interface NpcCombatHandle {
   effectiveRange(): number;
 }
 
+/**
+ * Punto del threat para MOVERSE (goal de pathfinding). Los ghosts de portal
+ * proyectan `position` detrás del disco — correcto para apuntar/encarar, pero
+ * como goal de A* cae en celdas del lado equivocado de la pared. `navPosition`
+ * trae la posición real y el A* decide si la ruta más corta cruza el par
+ * (links warp). Los flyers NO deben usar esto: steerean directo al ghost y el
+ * motor cruza el disco.
+ */
+export function threatNavPosition(ctx: NpcBrainContext): Vector3 | null {
+  if (ctx.threat) return ctx.threat.navPosition ?? ctx.threat.position;
+  return ctx.threatLastKnown;
+}
+
 export interface NpcBrainContext {
   delta: number;
   elapsed: number;

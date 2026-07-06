@@ -43,6 +43,7 @@ import { StriderWalkerMotor } from '@engine/physics/character/StriderWalkerMotor
 import { StationaryDynamicMotor } from '@engine/physics/character/StationaryDynamicMotor';
 import type { NpcMotor } from '@engine/physics/character/NpcMotor';
 import type { NavSpace } from '@engine/ai/nav/NavSpace';
+import type { PortalPairState } from '@engine/portals/PortalFrame';
 import type { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
 import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
 import type { TacticalMap } from '@game/npc/ai/TacticalMap';
@@ -57,11 +58,17 @@ export interface NpcRuntimeServices {
   buildingRegistry: BuildingRegistry;
   raycast: Raycast;
   /**
-   * Raycast para línea de visión y disparos. Portal-aware cuando hay portales:
-   * los NPCs ven y disparan a través del par linked. La locomoción sigue
-   * usando `raycast` plano (los probes de suelo no deben cruzar portales).
+   * Raycast para línea de visión y disparos. Portal-aware: los NPCs ven y
+   * disparan a través del par linked. La locomoción sigue usando `raycast`
+   * plano (los probes de suelo no deben cruzar portales). REQUERIDO a
+   * propósito: cuando era opcional, LevelLoader lo omitió y ningún NPC del
+   * nivel veía por los portales.
    */
-  losRaycast?: RaycastSource;
+  losRaycast: RaycastSource;
+  /** Par de portales linked: los flyers (manhack) cruzan con su propio motor. */
+  portals: PortalPairState;
+  /** Cruce de portal de un flyer (para emitir `portal.teleported`). */
+  onFlyerPortalTeleport?: (npcId: string, exitPosition: Vector3) => void;
   tacticalMap: TacticalMap;
   squadDirector: SquadDirector;
 }
@@ -207,7 +214,12 @@ export class CharacterFactory {
           maxSpeed: preset.movement.walkSpeed,
           acceleration: preset.movement.acceleration,
           turnSpeed: preset.movement.turnSpeed,
-          metadata,
+          // El motor cruza portales por su cuenta (sweep predictivo): el
+          // traveller de props debe ignorar este cuerpo (flag en metadata).
+          metadata: { ...metadata, selfPortalTraversal: true },
+          portals: services.portals,
+          onPortalTeleport: (exitPosition) =>
+            services.onFlyerPortalTeleport?.(instanceId, exitPosition),
         })
       : new CharacterMotor(this.physics, {
           id: instanceId,
@@ -285,7 +297,7 @@ export class CharacterFactory {
         onStomp: () => animation.notifyAttack(),
       });
     } else if (ranged) {
-      const losRaycast = services.losRaycast ?? services.raycast;
+      const losRaycast = services.losRaycast;
       const realCombat = new NpcRangedCombat(
         instanceId,
         definition.faction,

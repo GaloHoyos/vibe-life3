@@ -61,13 +61,34 @@ export class AStar {
 
     const goal = cells[goalCell].center;
     const start = cells[startCell].center;
+    // Heuristica warp-aware: un link warp acorta el espacio, asi que la octile
+    // directa puede SOBREestimar el costo real (inadmisible) y el A* elegiria
+    // el camino largo a pie aunque el portal sea mas corto. El minimo con la
+    // ruta "hasta la entrada + costo del warp + desde la salida" restaura la
+    // admisibilidad (un nivel alcanza: usar los dos links del par es ida y
+    // vuelta, nunca mas corto).
+    const warps = navSpace.getDynamicLinkEndpoints();
+    const estimate =
+      warps.length === 0
+        ? (center: readonly number[]): number => heuristic(center, goal)
+        : (center: readonly number[]): number => {
+            let best = heuristic(center, goal);
+            for (const warp of warps) {
+              const viaWarp =
+                heuristic(center, warp.fromCenter) +
+                warp.cost +
+                heuristic(warp.toCenter, goal);
+              if (viaWarp < best) best = viaWarp;
+            }
+            return best;
+          };
     this.gScore[startCell] = 0;
     this.cameFrom[startCell] = -1;
     this.gen[startCell] = gen;
     // Sin esto, un closed=1 stale de una query anterior descarta el start en
     // el primer pop (gen ya coincide) y el path falla deterministicamente.
     this.closed[startCell] = 0;
-    this.heap.push(startCell, heuristic(start, goal));
+    this.heap.push(startCell, estimate(start));
 
     // Una sola closure por query (no por nodo): lee `current` de la variable
     // mutada por el while, preservando el diseño sin allocations del A*.
@@ -86,7 +107,7 @@ export class AStar {
       if (tentative >= this.gScore[neighbor]) return;
       this.gScore[neighbor] = tentative;
       this.cameFrom[neighbor] = current;
-      const f = tentative + heuristic(cells[neighbor].center, goal);
+      const f = tentative + estimate(cells[neighbor].center);
       this.heap.push(neighbor, f);
     };
 

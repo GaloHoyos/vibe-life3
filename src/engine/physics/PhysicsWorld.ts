@@ -26,6 +26,11 @@ export interface PhysicsMetadata {
   faction?: Faction;
   /** Superficie física (para pasos e impactos). La derivan loader/builders del material. */
   surface?: SurfaceType;
+  /**
+   * El dueño del cuerpo maneja sus propios cruces de portal (motor de flyer):
+   * el traveller de props debe ignorarlo o lo teleportaría dos veces.
+   */
+  selfPortalTraversal?: boolean;
   bodyPart?: {
     name: string;
     damageMultiplier: number;

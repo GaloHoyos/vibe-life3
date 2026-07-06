@@ -30,6 +30,13 @@ export interface NavDynamicLink {
   portal: NavPortal;
 }
 
+/** Extremos de un link dinamico, para la heuristica warp-aware del A*. */
+export interface NavDynamicLinkEndpoints {
+  fromCenter: readonly number[];
+  toCenter: readonly number[];
+  cost: number;
+}
+
 /**
  * Contenedor del grafo navegable post-build. No se modifica en runtime salvo
  * por las queries A* (que reusan buffers internos). Las puertas abriendose o
@@ -45,6 +52,7 @@ export class NavSpace {
   private readonly astar = new AStar();
   // Overlay runtime sobre el grafo estatico: edges warp de la portal gun.
   private readonly dynamicEdges = new Map<number, NavEdge[]>();
+  private dynamicLinkEndpoints: NavDynamicLinkEndpoints[] = [];
   private allPortals: readonly NavPortal[];
 
   constructor(
@@ -89,6 +97,11 @@ export class NavSpace {
         link.toCell < this.cells.length &&
         link.fromCell !== link.toCell,
     );
+    this.dynamicLinkEndpoints = valid.map((link) => ({
+      fromCenter: this.cells[link.fromCell].center,
+      toCenter: this.cells[link.toCell].center,
+      cost: link.cost,
+    }));
     this.allPortals =
       valid.length === 0
         ? this.portals
@@ -107,6 +120,10 @@ export class NavSpace {
 
   hasDynamicLinks(): boolean {
     return this.dynamicEdges.size > 0;
+  }
+
+  getDynamicLinkEndpoints(): readonly NavDynamicLinkEndpoints[] {
+    return this.dynamicLinkEndpoints;
   }
 
   getDynamicEdges(cellIndex: number): readonly NavEdge[] | undefined {
