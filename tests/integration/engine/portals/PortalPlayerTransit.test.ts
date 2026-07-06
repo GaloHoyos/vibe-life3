@@ -48,6 +48,7 @@ interface World {
 
 async function makeWorld(
   cooldownSeconds: number = PortalConfig.traversal.playerCooldownSeconds,
+  wallThickness = 1,
 ): Promise<World> {
   const physics = new PhysicsWorld();
   await physics.init();
@@ -58,8 +59,8 @@ async function makeWorld(
   });
   physics.createStaticBox({
     id: "wall",
-    position: new Vector3(0, 2.5, WALL_Z - 0.5),
-    size: new Vector3(16, 5, 1),
+    position: new Vector3(0, 2.5, WALL_Z - wallThickness / 2),
+    size: new Vector3(16, 5, wallThickness),
   });
   physics.updateQueryPipeline();
 
@@ -261,6 +262,50 @@ describe("PortalPlayerTransitSystem — re-entrada rápida (out of bounds)", () 
     expect(world.teleports.length).toBeGreaterThanOrEqual(2);
     expect(minZ).toBeGreaterThan(WALL_Z - 0.6);
     expect(minY).toBeGreaterThan(0.3);
+  });
+});
+
+describe("PortalPlayerTransitSystem — entrada por detrás (pared de casa)", () => {
+  const BACK: MovementInput = { ...FORWARD, forward: false, back: true };
+  /** Pared fina como las de BuildingBuilder; cara trasera en z = -3.2. */
+  const THIN = 0.2;
+
+  it("la pared finita sigue sólida al acercarse por la cara trasera del portal", async () => {
+    const world = await makeWorld(
+      PortalConfig.traversal.playerCooldownSeconds,
+      THIN,
+    );
+    const enterAt = placePortal(world, "a", -4);
+    placePortal(world, "b", 4);
+    // Del otro lado de la pared, caminando +Z contra la espalda del portal.
+    const controller = makeController(
+      world,
+      new Vector3(enterAt.x, 0.9, WALL_Z - 2),
+    );
+
+    const end = walkForward(world, controller, 3, BACK);
+
+    expect(world.teleports.length).toBe(0);
+    // Bloqueado por la cara trasera: la cápsula (radio 0.35) nunca la penetra.
+    expect(end.z).toBeLessThan(WALL_Z - THIN - 0.25);
+  });
+
+  it("en la misma pared finita la entrada por el FRENTE sigue funcionando", async () => {
+    const world = await makeWorld(
+      PortalConfig.traversal.playerCooldownSeconds,
+      THIN,
+    );
+    const enterAt = placePortal(world, "a", -4);
+    const exitAt = placePortal(world, "b", 4);
+    const controller = makeController(
+      world,
+      new Vector3(enterAt.x, 0.9, WALL_Z + 2),
+    );
+
+    const end = walkForward(world, controller, 3);
+
+    expect(world.teleports.length).toBe(1);
+    expect(Math.abs(end.x - exitAt.x)).toBeLessThan(1.2);
   });
 });
 

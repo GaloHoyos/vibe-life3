@@ -80,6 +80,9 @@ interface TransitPortal {
   backingColliders: RAPIER.Collider[];
 }
 
+/** Tolerancia (m) delante del plano para que un portal pueda engancharse. */
+const ENGAGE_DEPTH_EPSILON = 0.02;
+
 const TMP_NORMAL = new Vector3();
 const TMP_EXIT_NORMAL = new Vector3();
 const TMP_DELTA = new Vector3();
@@ -114,6 +117,8 @@ export class PortalPlayerTransitSystem {
   private readonly prev = new Vector3();
   private prevValid = false;
   private cooldownUntil = 0;
+  /** Slot enganchado por histéresis; ver `resolveEngagedPortal`. */
+  private engagedSlot: PortalSlot | null = null;
 
   constructor(
     private readonly raycast: Raycast,
@@ -135,6 +140,7 @@ export class PortalPlayerTransitSystem {
   clear(): void {
     this.portals.clear();
     this.prevValid = false;
+    this.engagedSlot = null;
   }
 
   update(
@@ -146,6 +152,7 @@ export class PortalPlayerTransitSystem {
     if (!this.pair.linked) {
       controller.setCollisionFilter(null);
       this.prevValid = false;
+      this.engagedSlot = null;
       return;
     }
 
@@ -155,7 +162,7 @@ export class PortalPlayerTransitSystem {
     // huellas se solapan en la costura, y aplicar los dos a la vez hace que
     // los funnels peleen por la cápsula y que el anti-túnel de uno corte la
     // entrada del otro.
-    const active = this.selectActivePortal(position);
+    const active = this.resolveEngagedPortal(position);
     this.updatePassThroughFilter(controller, position, active);
     this.constrainToPortalHole(controller, position, active);
 
@@ -191,7 +198,7 @@ export class PortalPlayerTransitSystem {
         this.updatePassThroughFilter(
           controller,
           position,
-          this.selectActivePortal(position),
+          this.resolveEngagedPortal(position),
         );
       }
       return;
@@ -214,7 +221,7 @@ export class PortalPlayerTransitSystem {
         this.updatePassThroughFilter(
           controller,
           position,
-          this.selectActivePortal(position),
+          this.resolveEngagedPortal(position),
         );
       }
       return;
@@ -222,6 +229,9 @@ export class PortalPlayerTransitSystem {
 
     this.teleport(controller, camera, entry, exit);
     this.cooldownUntil = elapsed + this.options.cooldownSeconds;
+    // El jugador aterriza ENTERRADO detrás del plano de salida: por el frente
+    // jamás calificaría, así que el enganche al portal de salida se fuerza acá.
+    this.engagedSlot = active.slot === "a" ? "b" : "a";
     // Re-seed the swept check from the exit side so the same displacement
     // is not re-tested against the exit portal.
     this.prev.copy(controller.getPosition());
@@ -231,7 +241,7 @@ export class PortalPlayerTransitSystem {
     this.updatePassThroughFilter(
       controller,
       this.prev,
-      this.selectActivePortal(this.prev),
+      this.resolveEngagedPortal(this.prev),
     );
   }
 
@@ -262,6 +272,48 @@ export class PortalPlayerTransitSystem {
       }
     }
     return best;
+  }
+
+  /**
+   * Portal "enganchado" de la cápsula este frame. Los portales son de UN solo
+   * lado: el enganche sólo nace estando DELANTE del plano — detrás de una
+   * pared finita la huella elíptica también da adentro, y sin este gate el
+   * filtro pass-through dejaba atravesar la pared entrando por atrás. Una vez
+   * enganchado persiste por histéresis mientras la cápsula siga en la huella:
+   * cubre el cruce (profundidad negativa) y el emerger enterrado en la pared
+   * de salida tras el teleport (ahí `engagedSlot` se fuerza al slot de salida).
+   */
+  private resolveEngagedPortal(position: Vector3): TransitPortal | null {
+    if (this.engagedSlot !== null) {
+      const engaged = this.portals.get(this.engagedSlot);
+      if (
+        engaged &&
+        isInsidePlayerPortalFootprint(
+          position,
+          engaged.frame,
+          this.options.tuning,
+        )
+      ) {
+        return engaged;
+      }
+      this.engagedSlot = null;
+    }
+    const active = this.selectActivePortal(position);
+    if (
+      !active ||
+      !isInsidePlayerPortalFootprint(position, active.frame, this.options.tuning)
+    ) {
+      return null;
+    }
+    portalNormal(active.frame, TMP_NORMAL);
+    const depth = TMP_DELTA.copy(position)
+      .sub(active.frame.position)
+      .dot(TMP_NORMAL);
+    if (depth < -ENGAGE_DEPTH_EPSILON) {
+      return null;
+    }
+    this.engagedSlot = active.slot;
+    return active;
   }
 
   /**

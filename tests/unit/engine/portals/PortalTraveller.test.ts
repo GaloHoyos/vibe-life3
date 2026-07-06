@@ -265,7 +265,10 @@ describe("PortalTravellerSystem — aperture hole", () => {
         `fase startX=${startX}: sin teleport (pos ${box.translation().x.toFixed(2)}, ${box.translation().y.toFixed(2)}, ${box.translation().z.toFixed(2)})`,
       ).toBeGreaterThanOrEqual(1);
       // Salió por el portal de piso lejano, no quedó rebotando contra la pared.
-      expect(box.translation().x).toBeGreaterThan(4);
+      expect(
+        box.translation().x,
+        `fase startX=${startX}: no salió por el portal de piso (pos ${box.translation().x.toFixed(2)}, ${box.translation().y.toFixed(2)}, ${box.translation().z.toFixed(2)})`,
+      ).toBeGreaterThan(4);
 
       traveller.dispose();
     }
@@ -368,6 +371,50 @@ describe("PortalTravellerSystem — aperture hole", () => {
     expect(first.y).toBeLessThan(0.75);
     // Punto lateral espejado del cruce real (no corrido por el trigger predictivo).
     expect(Math.abs(first.x - 6.3)).toBeLessThan(0.25);
+
+    traveller.dispose();
+  });
+
+  it("a box punted at the BACK of a thin wall portal stays behind the wall", async () => {
+    const { physics, floor } = await makeWorld();
+    // Pared FINA (0.2 m) con cara frontal en x = 0: detrás (x < -0.2) la caja
+    // queda dentro de la zona axial de la apertura, el caso del backdoor.
+    const wallBody = physics.createStaticBox({
+      id: "wall",
+      position: new Vector3(-0.1, 2, 0),
+      size: new Vector3(0.2, 4, 10),
+    });
+    const wall = wallBody.collider(0);
+
+    const pair = new PortalPairState();
+    const entry = wallPortal(0, 1.5);
+    const exit = floorPortal(6, 0);
+    pair.set("a", entry);
+    pair.set("b", exit);
+
+    let teleports = 0;
+    const traveller = new PortalTravellerSystem(physics, new Scene(), pair, {
+      ...OPTIONS,
+      cloneEnabled: true,
+      onTeleport: () => {
+        teleports += 1;
+      },
+    });
+    traveller.setPortal("a", entry, [wall, floor]);
+    traveller.setPortal("b", exit, [floor]);
+
+    const box = physics.createDynamicBox(
+      { id: "backdoor", position: new Vector3(-2.5, 1.5, 0), size: new Vector3(0.4, 0.4, 0.4), mass: 1 },
+      new Object3D(),
+    );
+    box.setLinvel({ x: 10, y: 0, z: 0 }, true);
+
+    simulate(physics, traveller, 180);
+
+    expect(teleports).toBe(0);
+    // Rebotó contra la cara trasera (x = -0.2): jamás apareció del lado frontal.
+    expect(box.translation().x).toBeLessThan(-0.35);
+    expect(countDynamic(physics)).toBe(1);
 
     traveller.dispose();
   });

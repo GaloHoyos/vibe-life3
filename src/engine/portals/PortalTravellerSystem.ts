@@ -74,6 +74,13 @@ interface DynamicState {
   prev: Vector3;
   cooldownUntil: number;
   seenFrame: number;
+  /**
+   * Histéresis por slot: si el frame pasado el cuerpo tenía la apertura
+   * abierta, detrás del plano la conserva (está a mitad de cruce). Un cuerpo
+   * visto por primera vez DETRÁS jamás abre (cierra el backdoor de empujar
+   * props a través de la cara trasera de una pared finita).
+   */
+  engaged: Record<PortalSlot, boolean>;
 }
 
 // El parche se hunde un poco DETRÁS de la superficie: así los raycasts (armas,
@@ -230,20 +237,21 @@ export class PortalTravellerSystem {
       if (metadata?.kind === "ragdoll") return;
 
       const boundingRadius = this.bodyBoundingRadius(body);
+      // El clon en sí es un cuerpo dinámico cerca del portal: computa su
+      // hole-pass sin estado (emerge por el hueco de salida) pero NO se lo
+      // trata como primary (nada de clon-de-clon ni teleport instantáneo).
+      const state = this.cloneHandles.has(body.handle)
+        ? null
+        : this.trackState(body, delta);
       this.collectApertureZones(
         body,
         TMP_BODY_POS,
         boundingRadius,
         nextHolePass,
         nextInsideHole,
+        state,
       );
-
-      // El clon en sí es un cuerpo dinámico cerca del portal: computa su hole-pass
-      // (para que emerja por el hueco de salida) pero NO se lo trata como primary
-      // (nada de clon-de-clon ni teleport instantáneo).
-      if (this.cloneHandles.has(body.handle)) return;
-
-      const state = this.trackState(body, delta);
+      if (!state) return;
       state.seenFrame = this.frameCounter;
 
       // Clon (dual-body): un prop que atraviesa lento existe a ambos lados a la
@@ -276,6 +284,15 @@ export class PortalTravellerSystem {
       const record = this.spawnClone(req.body, req.slot, req.entry, req.exit, req.radius);
       this.clones.set(req.body.handle, record);
       this.cloneHandles.add(record.cloneBody.handle);
+      // El primer step del clon corre ANTES de la próxima recolección de
+      // zonas: sin sembrar sus handles acá nace embebido en el respaldo de
+      // salida con el contacto sin suprimir y el solver le mata la velocidad.
+      const exitSlot = req.slot === "a" ? "b" : "a";
+      for (let i = 0; i < record.cloneBody.numColliders(); i += 1) {
+        const handle = record.cloneBody.collider(i).handle;
+        nextHolePass.add(handle);
+        nextInsideHole[exitSlot].add(handle);
+      }
     }
     for (const handle of [...this.clones.keys()]) {
       if (!keptClones.has(handle)) this.resolveClone(handle, elapsed);
@@ -303,6 +320,7 @@ export class PortalTravellerSystem {
         ),
         cooldownUntil: 0,
         seenFrame: 0,
+        engaged: { a: false, b: false },
       };
       this.dynamicStates.set(body.handle, state);
     }
@@ -372,7 +390,9 @@ export class PortalTravellerSystem {
     if (straddle) {
       const record = this.clones.get(body.handle);
       const canOpen =
-        !!record || this.shouldOpenPortalForBody(body, straddle.entry, straddle.depth);
+        !!record ||
+        state.engaged[straddle.slot] ||
+        this.shouldOpenPortalForBody(body, straddle.entry, straddle.depth);
       if (!canOpen) return false;
       if (record) {
         if (straddle.depth >= 0) {
@@ -448,6 +468,10 @@ export class PortalTravellerSystem {
     TMP_C_READ_Q.set(r.x, r.y, r.z, r.w);
     transformQuaternionThroughPortal(TMP_C_READ_Q, entry, exit, TMP_C_QUAT);
     const cloneBody = this.physics.createDynamicClone(body, TMP_C_POS, TMP_C_QUAT);
+    // createDynamicClone no copia velocidades: sin este mirror inicial, un
+    // straddle de UN solo frame (prop rápido) colapsa al clon antes de su
+    // primer mirrorState y el primary hereda una pose con velocidad cero.
+    this.mirrorState(body, cloneBody, entry, exit);
     const sourceMesh = this.physics.getBoundMesh(body);
     let cloneMesh: Object3D | null = null;
     if (sourceMesh) {
@@ -641,10 +665,11 @@ export class PortalTravellerSystem {
     boundingRadius: number,
     holePass: Set<number>,
     insideHole: Record<PortalSlot, Set<number>>,
+    state: DynamicState | null,
   ): void {
     const linvel = body.linvel();
-    for (const [slot, state] of this.portals) {
-      const frame = state.frame;
+    for (const [slot, portalState] of this.portals) {
+      const frame = portalState.frame;
       TMP_LOCAL.set(
         point.x - frame.position.x,
         point.y - frame.position.y,
@@ -663,11 +688,25 @@ export class PortalTravellerSystem {
         axialReach +=
           Math.max(0, -TMP_LOCAL_VEL.z) * this.options.suppressLookaheadSeconds;
       }
-      if (Math.abs(TMP_LOCAL.z) > axialReach) continue;
+      if (Math.abs(TMP_LOCAL.z) > axialReach) {
+        if (state) state.engaged[slot] = false;
+        continue;
+      }
       const ex = TMP_LOCAL.x / (frame.halfWidth + boundingRadius);
       const ey = TMP_LOCAL.y / (frame.halfHeight + boundingRadius);
-      if (ex * ex + ey * ey > 1) continue;
-      if (!this.shouldOpenPortalForBody(body, frame, TMP_LOCAL.z)) continue;
+      if (ex * ex + ey * ey > 1) {
+        if (state) state.engaged[slot] = false;
+        continue;
+      }
+      // Detrás del plano sólo abren los que ya venían abiertos (histéresis:
+      // están a mitad de cruce) o los clones, que emergen enterrados detrás
+      // del plano de salida. Delante rige la regla direccional por frame.
+      const open =
+        TMP_LOCAL.z < 0
+          ? state === null || state.engaged[slot]
+          : this.shouldOpenPortalForBody(body, frame, TMP_LOCAL.z);
+      if (state) state.engaged[slot] = open;
+      if (!open) continue;
       for (let i = 0; i < body.numColliders(); i += 1) {
         holePass.add(body.collider(i).handle);
       }
@@ -686,7 +725,11 @@ export class PortalTravellerSystem {
     frame: PortalFrame,
     localDepth: number,
   ): boolean {
-    if (localDepth < 0) return true;
+    // Sólo se abre desde el FRENTE: detrás del plano una pared finita sería
+    // atravesable empujando el prop contra su cara trasera. Los cuerpos a
+    // mitad de cruce conservan la apertura por histéresis (state.engaged) y
+    // los clones que emergen por la salida tienen bypass en el call site.
+    if (localDepth < 0) return false;
     portalNormal(frame, TMP_NORMAL);
     if (TMP_NORMAL.y > 0.7) return true;
     const linvel = body.linvel();
