@@ -96,8 +96,6 @@ Half-Life completo. Ordenado por impacto. Marcá cada ítem al cerrarlo.
   - [ ] **Pendiente:** audio propio de headcrab/manhack/torreta
     (faltan clips del artista — la torreta usa placeholders), VFX de muerte del manhack
     (chispa/explosión) y GLB del modelo de la torreta (hoy procedural).
-  - Encuentro de muestra cableado en `Sector2Ambush` (oleada de headcrabs + manhacks + una torreta
-    cubriendo el patio).
 - [x] **Peligros ambientales** *(hecho)*
   - **Daño por caída:** `CharacterController` captura la velocidad de impacto en el flanco
     aire→suelo (`consumeLandingImpact`); `Player` la mapea a daño vía `PlayerConfig.fallDamage`
