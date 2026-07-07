@@ -428,3 +428,118 @@ describe("PortalPlayerTransitSystem — portales adyacentes (screenshot bug)", (
     }
   });
 });
+
+describe("PortalPlayerTransitSystem — piso + techo (túnel infinito)", () => {
+  /** Techo con cara inferior en y = CEILING_Y (normal -Y). */
+  const CEILING_Y = 3;
+
+  async function makeVerticalWorld(ceilingY = CEILING_Y): Promise<World> {
+    const world = await makeWorld();
+    world.physics.createStaticBox({
+      id: "ceiling",
+      position: new Vector3(0, ceilingY + 0.5, 0),
+      size: new Vector3(40, 1, 40),
+    });
+    world.physics.updateQueryPipeline();
+    return world;
+  }
+
+  function placeVerticalPortal(
+    world: World,
+    slot: PortalSlot,
+    origin: Vector3,
+    direction: Vector3,
+  ): Vector3 {
+    const sibling = world.pair.get(slot === "a" ? "b" : "a");
+    const placement = computePortalPlacement(world.raycast, origin, direction, {
+      range: PortalConfig.placement.range,
+      halfWidth: PortalConfig.ellipse.halfWidth,
+      halfHeight: PortalConfig.ellipse.halfHeight,
+      planarForward: new Vector3(0, 0, -1),
+      excludeId: "player",
+      sibling: sibling ?? undefined,
+    });
+    expect(placement).not.toBeNull();
+    world.pair.set(slot, placement!.frame);
+    world.transit.setPortal(slot, placement!.frame, placement!.backingColliders);
+    world.traveller.setPortal(slot, placement!.frame, placement!.backingColliders);
+    return placement!.frame.position.clone();
+  }
+
+  const HALF_EXTENT =
+    PlayerConfig.collider.standingHalfHeight + PlayerConfig.collider.radius;
+
+  it("al caer por el piso, la cámara emerge DEBAJO del techo (no lo atraviesa)", async () => {
+    const world = await makeVerticalWorld();
+    // Portal de piso a los pies (normal +Y) y de techo justo arriba (normal -Y).
+    placeVerticalPortal(world, "a", new Vector3(0, 1.2, 0), new Vector3(0, -1, 0));
+    placeVerticalPortal(world, "b", new Vector3(0, 1.2, 0), new Vector3(0, 1, 0));
+    const controller = makeController(world, new Vector3(0, HALF_EXTENT, 0));
+
+    const frames = Math.round(3 / DT);
+    let teleportFrame = -1;
+    let maxEyeAfterTeleport = -Infinity;
+    let centerAtTeleport = NaN;
+    for (let i = 0; i < frames; i += 1) {
+      controller.update(DT, { ...FORWARD, forward: false }, controllerCamera);
+      world.physics.step(DT);
+      world.transit.update(i * DT, controller, transitCamera);
+      world.traveller.update(i * DT, DT);
+      if (world.teleports.length >= 1 && teleportFrame < 0) {
+        teleportFrame = i;
+        centerAtTeleport = controller.getPosition().y;
+      }
+      // Tras emerger del techo, seguí la caída ~0.3 s registrando el ojo: el
+      // bug dejaba la cámara SOBRE el plano del techo ~13 frames (veías el
+      // vacío alrededor del disco). Con el cruce disparado por la cámara, el
+      // ojo emerge ya debajo del techo y nunca lo sobrepasa.
+      if (teleportFrame >= 0 && i <= teleportFrame + 18) {
+        maxEyeAfterTeleport = Math.max(
+          maxEyeAfterTeleport,
+          controller.getEyePosition().y,
+        );
+      }
+      // Segunda vuelta del loop infinito: ya validado el patrón, cortar.
+      if (world.teleports.length >= 2) {
+        break;
+      }
+    }
+
+    expect(world.teleports.length).toBeGreaterThanOrEqual(1);
+    // Emergió DEL TECHO (mapeo correcto), no cayó al piso.
+    expect(centerAtTeleport).toBeGreaterThan(CEILING_Y / 2);
+    // La cámara nunca asoma por encima del techo mientras baja: no se ve el
+    // vacío a través del techo (el fix central de este bug).
+    expect(maxEyeAfterTeleport).toBeLessThan(CEILING_Y);
+  });
+
+  it("a alta velocidad no traspasa el piso (sala alta, caída larga)", async () => {
+    // Sala alta para que la caída acumule velocidad extrema (~90 m/s), donde el
+    // centro se hundía >passThroughProximity detrás del plano en el lag
+    // ojo→centro y el portal se des-enganchaba dejando caer por el piso.
+    const TALL = 30;
+    const world = await makeVerticalWorld(TALL);
+    placeVerticalPortal(world, "a", new Vector3(0, 1.2, 0), new Vector3(0, -1, 0));
+    placeVerticalPortal(
+      world,
+      "b",
+      new Vector3(0, TALL - 0.6, 0),
+      new Vector3(0, 1, 0),
+    );
+    const controller = makeController(world, new Vector3(0, TALL - 3, 0));
+
+    let minCenterY = Infinity;
+    const frames = Math.round(20 / DT);
+    for (let i = 0; i < frames; i += 1) {
+      controller.update(DT, { ...FORWARD, forward: false }, controllerCamera);
+      world.physics.step(DT);
+      world.transit.update(i * DT, controller, transitCamera);
+      world.traveller.update(i * DT, DT);
+      minCenterY = Math.min(minCenterY, controller.getPosition().y);
+    }
+
+    // Siguió teleportando el loop entero; nunca se coló bajo el piso (y=0).
+    expect(world.teleports.length).toBeGreaterThan(5);
+    expect(minCenterY).toBeGreaterThan(-HALF_EXTENT);
+  });
+});

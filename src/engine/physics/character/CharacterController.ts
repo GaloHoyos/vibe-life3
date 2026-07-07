@@ -114,8 +114,15 @@ export class CharacterController extends KinematicCharacterBase {
     const wasGrounded = this.grounded;
     const fallSpeed = -this.velocity.y;
     this.stepMovement(delta, this.collisionFilter ?? undefined);
+    // Sin daño por caída mientras se transita un portal: el filtro pass-through
+    // (que sólo lo activan los portales) significa que la cápsula está sobre la
+    // boca de un portal y va a atravesarlo, no a impactar. El snap-to-ground
+    // puede engancharla en el borde del hueco y marcar un aterrizaje falso; en
+    // Portal caer DENTRO de un portal nunca lastima porque no golpeás nada.
     this.landingImpact =
-      !wasGrounded && this.grounded && fallSpeed > 0 ? fallSpeed : 0;
+      !wasGrounded && this.grounded && fallSpeed > 0 && this.collisionFilter === null
+        ? fallSpeed
+        : 0;
   }
 
   /** Velocidad de impacto si el jugador aterrizó este frame; 0 si no. Limpia tras leer. */

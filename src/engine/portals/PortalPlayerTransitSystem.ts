@@ -91,6 +91,10 @@ const TMP_INV_Q = new Quaternion();
 const TMP_EXIT_POS = new Vector3();
 const TMP_VELOCITY = new Vector3();
 const TMP_PREV = new Vector3();
+const TMP_EYE = new Vector3();
+const TMP_PREV_EYE = new Vector3();
+const TMP_CROSS_FROM = new Vector3();
+const TMP_CROSS_TO = new Vector3();
 const TMP_FORWARD = new Vector3();
 const TMP_UP = new Vector3();
 const TMP_CAM_Q = new Quaternion();
@@ -115,6 +119,8 @@ const TMP_TRIGGER_FRAME: PortalFrame = {
 export class PortalPlayerTransitSystem {
   private readonly portals = new Map<PortalSlot, TransitPortal>();
   private readonly prev = new Vector3();
+  /** Ojo (cámara) del frame anterior; el cruce vertical se testea con éste. */
+  private readonly prevEye = new Vector3();
   private prevValid = false;
   private cooldownUntil = 0;
   /** Slot enganchado por histéresis; ver `resolveEngagedPortal`. */
@@ -167,10 +173,16 @@ export class PortalPlayerTransitSystem {
     this.constrainToPortalHole(controller, position, active);
 
     // Snapshot BEFORE overwriting: prev is a persistent vector, so the swept
-    // segment needs its own copy of last frame's position.
+    // segment needs its own copy of last frame's position. Se rastrea también
+    // el OJO: en portales de piso/techo el cruce se dispara cuando cruza la
+    // CÁMARA, no el centro (el offset ojo→centro va a lo largo de la normal,
+    // así que la cabeza va 0.75 m por delante/detrás del centro).
+    TMP_EYE.copy(controller.getEyePosition());
     const hadPrev = this.prevValid;
     TMP_PREV.copy(this.prev);
+    TMP_PREV_EYE.copy(this.prevEye);
     this.prev.copy(position);
+    this.prevEye.copy(TMP_EYE);
     this.prevValid = true;
     if (!hadPrev || !active) {
       return;
@@ -181,19 +193,32 @@ export class PortalPlayerTransitSystem {
     if (!exit) {
       return;
     }
+    portalNormal(entry, TMP_NORMAL);
+    const entryVertical = Math.abs(TMP_NORMAL.y) > 0.7;
+    if (entryVertical) {
+      TMP_CROSS_FROM.copy(TMP_PREV_EYE);
+      TMP_CROSS_TO.copy(TMP_EYE);
+    } else {
+      TMP_CROSS_FROM.copy(TMP_PREV);
+      TMP_CROSS_TO.copy(position);
+    }
     if (
       !segmentCrossesPortal(
-        TMP_PREV,
-        position,
+        TMP_CROSS_FROM,
+        TMP_CROSS_TO,
         shiftPortalFrame(entry, this.options.triggerOffset, TMP_TRIGGER_FRAME),
         this.options.crossingMargin,
       )
     ) {
-      // Anti-túnel: un paso rápido/diagonal puede cruzar el plano de la
-      // pared JUSTO por fuera del hueco mientras el collider de respaldo
-      // está filtrado. Devolvemos la cápsula al frente para que no se cuele
-      // por la pared sólida.
-      if (this.blockWallEscape(controller, entry, position)) {
+      // Anti-túnel de PARED: un paso rápido/diagonal puede cruzar el plano
+      // JUSTO por fuera del hueco mientras el collider de respaldo está
+      // filtrado. Devolvemos la cápsula al frente para que no se cuele por la
+      // pared sólida. En portales verticales no aplica: el centro cruza el
+      // plano ANTES que el ojo (transitando por el hueco, confinado por
+      // `constrainToPortalHole`), y el lift lo empujaría de vuelta arriba
+      // impidiendo la caída; ahí el piso sólido de alrededor ya frena
+      // cualquier escape real.
+      if (!entryVertical && this.blockWallEscape(controller, entry, position)) {
         this.prev.copy(position);
         this.updatePassThroughFilter(
           controller,
@@ -235,6 +260,7 @@ export class PortalPlayerTransitSystem {
     // Re-seed the swept check from the exit side so the same displacement
     // is not re-tested against the exit portal.
     this.prev.copy(controller.getPosition());
+    this.prevEye.copy(controller.getEyePosition());
     // Refresh the filter from the exit-side position NOW: the capsule lands
     // buried in the exit wall and the next physics step must already ignore
     // it, or the controller pushes the player back out.
@@ -275,25 +301,55 @@ export class PortalPlayerTransitSystem {
   }
 
   /**
+   * ¿La cápsula está sobre la boca de este portal (para PERSISTIR enganche y
+   * filtro)? En paredes usa la huella esférica estándar. En portales de
+   * piso/techo usa una "columna" tolerante en profundidad: el cruce lo dispara
+   * la cámara, que va 0.75 m detrás del centro a lo largo de la normal, así que
+   * a alta velocidad el centro se hunde varios metros tras el plano ANTES de
+   * que el ojo cruce. Con la huella esférica (radio `passThroughProximity`) el
+   * portal se des-engancharía en ese lag, se apagaría el filtro y el jugador
+   * caería por el piso sólido. Mientras siga lateralmente dentro de la boca y
+   * no más allá de `behindLimit` detrás, sigue enganchado hasta que el ojo
+   * cruza y teleporta.
+   */
+  private isPlayerOverPortalMouth(
+    position: Vector3,
+    frame: PortalFrame,
+  ): boolean {
+    portalNormal(frame, TMP_NORMAL);
+    if (Math.abs(TMP_NORMAL.y) <= 0.7) {
+      return isInsidePlayerPortalFootprint(position, frame, this.options.tuning);
+    }
+    const tuning = this.options.tuning;
+    TMP_DELTA.copy(position).sub(frame.position);
+    const depth = TMP_DELTA.dot(TMP_NORMAL);
+    const behindLimit =
+      2 * tuning.passThroughProximity + this.options.capsuleHalfExtent;
+    if (depth > tuning.passThroughProximity || depth < -behindLimit) {
+      return false;
+    }
+    TMP_INV_Q.copy(frame.quaternion).invert();
+    TMP_LOCAL.copy(TMP_DELTA).applyQuaternion(TMP_INV_Q);
+    const margin = playerPortalPassThroughMargin(tuning);
+    const ex = TMP_LOCAL.x / (frame.halfWidth + margin);
+    const ey = TMP_LOCAL.y / (frame.halfHeight + margin);
+    return ex * ex + ey * ey <= 1;
+  }
+
+  /**
    * Portal "enganchado" de la cápsula este frame. Los portales son de UN solo
    * lado: el enganche sólo nace estando DELANTE del plano — detrás de una
    * pared finita la huella elíptica también da adentro, y sin este gate el
    * filtro pass-through dejaba atravesar la pared entrando por atrás. Una vez
-   * enganchado persiste por histéresis mientras la cápsula siga en la huella:
-   * cubre el cruce (profundidad negativa) y el emerger enterrado en la pared
-   * de salida tras el teleport (ahí `engagedSlot` se fuerza al slot de salida).
+   * enganchado persiste por histéresis mientras la cápsula siga en la boca
+   * (`isPlayerOverPortalMouth`): cubre el cruce (profundidad negativa) y el
+   * emerger enterrado en la pared de salida tras el teleport (ahí `engagedSlot`
+   * se fuerza al slot de salida).
    */
   private resolveEngagedPortal(position: Vector3): TransitPortal | null {
     if (this.engagedSlot !== null) {
       const engaged = this.portals.get(this.engagedSlot);
-      if (
-        engaged &&
-        isInsidePlayerPortalFootprint(
-          position,
-          engaged.frame,
-          this.options.tuning,
-        )
-      ) {
+      if (engaged && this.isPlayerOverPortalMouth(position, engaged.frame)) {
         return engaged;
       }
       this.engagedSlot = null;
@@ -331,7 +387,7 @@ export class PortalPlayerTransitSystem {
     if (
       !this.pair.linked ||
       !active ||
-      !isInsidePlayerPortalFootprint(position, active.frame, this.options.tuning)
+      !this.isPlayerOverPortalMouth(position, active.frame)
     ) {
       controller.setCollisionFilter(null);
       return;
@@ -425,28 +481,50 @@ export class PortalPlayerTransitSystem {
     exit: PortalFrame,
   ): void {
     portalNormal(exit, TMP_EXIT_NORMAL);
-    transformPointThroughPortal(
-      controller.getPosition(),
-      entry,
-      exit,
-      TMP_EXIT_POS,
-    );
-    // Salida por pared: mapeo EXACTO, sin push-out ni boost de velocidad. El
-    // jugador aparece enterrado en la pared de salida y emerge caminando (el
-    // filtro pass-through excluye la pared de respaldo, y las mallas cerradas
-    // son invisibles desde adentro). Eso hace el cruce continuo a cualquier
-    // velocidad. Salida vertical (piso/techo): ahí sí hay que despejar el
-    // plano y garantizar velocidad de salida, porque si la gravedad te
-    // devuelve detrás del plano caés fuera del mundo.
-    const verticalExit = Math.abs(TMP_EXIT_NORMAL.y) > 0.7;
-    if (verticalExit) {
+    // Salida vertical (piso/techo): el offset ojo→centro (world-up ~0.75 m)
+    // queda A LO LARGO de la normal de salida. Mapear el CENTRO dejaría la
+    // cámara ~0.75 m del lado equivocado del plano y verías a través del techo
+    // (o bajo el piso) en vez del túnel. Se mapea el OJO —el punto de vista—
+    // para que la cámara cruce continua, y el cuerpo (siempre erguido) se
+    // cuelga ese offset por debajo. En salidas de PARED el offset es tangente
+    // al plano, así que mapear el centro ya deja la cámara del lado correcto.
+    const exitVertical = Math.abs(TMP_EXIT_NORMAL.y) > 0.7;
+    if (exitVertical) {
+      const eye = controller.getEyePosition();
+      const eyeOffsetY = eye.y - controller.getPosition().y;
+      transformPointThroughPortal(eye, entry, exit, TMP_EXIT_POS);
+      TMP_EXIT_POS.y -= eyeOffsetY;
+    } else {
+      transformPointThroughPortal(
+        controller.getPosition(),
+        entry,
+        exit,
+        TMP_EXIT_POS,
+      );
+    }
+    // Mapeo EXACTO por defecto, sin push-out ni boost de velocidad: el jugador
+    // aparece enterrado en la superficie de salida y emerge (el filtro
+    // pass-through excluye la pared de respaldo, y las mallas cerradas son
+    // invisibles desde adentro). Eso hace el cruce continuo a cualquier
+    // velocidad. Sólo la salida CONTRA la gravedad (portal de piso, emergés
+    // hacia arriba) necesita despejar el plano y garantizar velocidad de
+    // salida: ahí la gravedad puede devolverte detrás del plano —cuya pared de
+    // respaldo está filtrada— y caés fuera del mundo. La salida A FAVOR de la
+    // gravedad (portal de techo, emergés hacia abajo) NO se toca: la gravedad
+    // te aleja del plano sola, así que el mapeo exacto mantiene el momentum y
+    // el cruce es continuo (el "infinite loop" suave de Portal). El push-out
+    // incondicional viejo tiraba la cápsula ~1 m bajo el techo en cada vuelta
+    // y se sentía como teleport en vez de caída.
+    const exitUpward = TMP_EXIT_NORMAL.y > 0.7;
+    const exitDownward = TMP_EXIT_NORMAL.y < -0.7;
+    if (exitUpward) {
       enforceExitClearance(
         TMP_EXIT_POS,
         exit.position,
         TMP_EXIT_NORMAL,
         this.options.capsuleHalfExtent + 0.05,
       );
-    } else {
+    } else if (!exitDownward) {
       // Salida por pared: si el mapeo exacto deja los pies bajo el piso (entrar
       // por un portal elevado desde abajo), subir la cápsula a apoyarse.
       this.liftOntoGround(TMP_EXIT_POS);
@@ -458,7 +536,7 @@ export class PortalPlayerTransitSystem {
       exit,
       TMP_VELOCITY,
     );
-    if (verticalExit) {
+    if (exitUpward) {
       const alongNormal = TMP_VELOCITY.dot(TMP_EXIT_NORMAL);
       if (alongNormal < this.options.minExitSpeed) {
         TMP_VELOCITY.addScaledVector(
