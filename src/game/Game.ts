@@ -24,6 +24,7 @@ import { GameTokens } from "./ServiceTokens";
 import { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
 import { installIceConsole } from "@game/debug/IceConsole";
 import { installNpcConsole } from "@game/debug/NpcConsole";
+import { installPlayerModelConsole } from "@game/debug/PlayerModelConsole";
 import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
 import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
 import { NpcsModule } from "@game/ui/overlay/debug/modules/NpcsModule";
@@ -33,6 +34,8 @@ import { StatsModule } from "@game/ui/overlay/debug/modules/StatsModule";
 import { WeaponsModule } from "@game/ui/overlay/debug/modules/WeaponsModule";
 import { Controls } from "@game/gameplay/player/Controls";
 import { Player } from "@game/gameplay/player/Player";
+import { PlayerModelSystem } from "@game/gameplay/player/PlayerModelSystem";
+import { resolvePlayerModel } from "@game/config/playermodel.config";
 import { DeathSequence } from "@game/gameplay/player/DeathSequence";
 import { DeathScreen } from "@game/ui/overlay/DeathScreen";
 import { TransitionOverlay } from "@game/ui/overlay/TransitionOverlay";
@@ -46,7 +49,7 @@ import { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
 import { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
 import { computePortalNavLinks } from "@game/gameplay/weapons/portal/PortalNavLinks";
 import { PortalConfig } from "@game/config/portal.config";
-import { InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
+import { GrabSystem, InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
 import type { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
 import type { NavSpace } from "@engine/ai/nav/NavSpace";
@@ -64,6 +67,7 @@ import { TriggerSystem } from "@game/levels/TriggerSystem";
 import { CheckpointSystem, type CheckpointSnapshot } from "@game/levels/CheckpointSystem";
 import { HazardVolumeSystem } from "@game/levels/HazardVolumeSystem";
 import { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
+import { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 import type { ActorSnapshot, AiFrameContext, INpc, NpcFreezeHandle, NpcPortalHandle } from "@game/npc/core/INpc";
 import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
 import { DialogueSystem } from "@game/narrative/DialogueSystem";
@@ -134,8 +138,10 @@ export class Game {
   private gameState: GameMenuState = "mainMenu";
   private currentLevel: LevelDefinition | null = null;
   private player: Player | null = null;
+  private playerModel: PlayerModelSystem | null = null;
   private uninstallNpcConsole: (() => void) | null = null;
   private uninstallIceConsole: (() => void) | null = null;
+  private uninstallPlayerModelConsole: (() => void) | null = null;
   private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
@@ -256,6 +262,8 @@ export class Game {
     this.uninstallNpcConsole = null;
     this.uninstallIceConsole?.();
     this.uninstallIceConsole = null;
+    this.uninstallPlayerModelConsole?.();
+    this.uninstallPlayerModelConsole = null;
 
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
@@ -401,7 +409,15 @@ export class Game {
       GameTokens.ExplosiveBarrels,
       new ExplosiveBarrelSystem(physics, scene.scene, grenades),
     );
+    const propImpacts = s.register(
+      GameTokens.PropImpacts,
+      new PropImpactSystem(physics, raycast, eventBus),
+    );
     s.register(GameTokens.InteractSystem, new InteractSystem(eventBus));
+    s.register(
+      GameTokens.GrabSystem,
+      new GrabSystem(eventBus, physics, raycast, portals.pair, propImpacts),
+    );
     s.register(GameTokens.TriggerSystem, new TriggerSystem(eventBus));
     s.register(GameTokens.CheckpointSystem, new CheckpointSystem(eventBus));
     s.register(GameTokens.HazardVolumes, new HazardVolumeSystem(eventBus, vfx));
@@ -969,6 +985,9 @@ export class Game {
     this.uninstallIceConsole = installIceConsole(() =>
       s.resolve(GameTokens.IceGun),
     );
+    this.uninstallPlayerModelConsole = installPlayerModelConsole(
+      () => this.playerModel,
+    );
 
     const debugMenu = new DebugMenu(this.root, input, controls, eventBus);
     debugMenu.register(new StatsModule());
@@ -1068,6 +1087,7 @@ export class Game {
 
     s.resolve(GameTokens.Portals).updateRender(
       this.player ? [this.player.weapons.getViewModelRoot()] : [],
+      this.playerModel?.getPortalRevealObjects() ?? [],
     );
     this.engine.renderFrame();
     input.endFrame();
@@ -1128,13 +1148,30 @@ export class Game {
     const explosiveBarrels = s.resolve(GameTokens.ExplosiveBarrels);
     const vfx = s.resolve(EngineTokens.Vfx);
 
+    const grabSystem = s.resolve(GameTokens.GrabSystem);
     if (this.dying) {
+      grabSystem.clear();
       this.updateDeath(time.delta);
     } else if (input.isPointerLocked()) {
       camera.updateLook(input);
       camera.updateReorient(time.delta);
+      // Antes de player.update: el carry decide si este frame LMB empuja el
+      // prop en vez de disparar el arma equipada.
+      grabSystem.update(
+        time.delta,
+        time.elapsed,
+        camera.camera.position,
+        camera.getForwardDirection(),
+        camera.camera.quaternion,
+        player.getPosition(),
+        controls,
+        input,
+        player.weapons,
+        interactSystem.getFocused() !== null,
+      );
       player.update(time.delta, input, controls, camera, time.elapsed);
     }
+    this.playerModel?.update(time.delta, time.elapsed, player, camera);
 
     if (controls.wasPressed("spawnDebugCombine")) {
       void this.spawnDebugCombineAtAim();
@@ -1215,6 +1252,7 @@ export class Game {
     this.doors.forEach((door) => door.update(time.delta));
     physics.step(time.delta);
     this.npcs.forEach((npc) => npc.syncFromPhysics());
+    s.resolve(GameTokens.PropImpacts).update(time.delta, time.elapsed);
     this.updateGunshipCrashes(time.elapsed, raycast, grenades);
     this.updateStriderCollapses(time.elapsed, raycast, grenades);
     grenades.update(time.delta, time.elapsed);
@@ -1676,6 +1714,8 @@ export class Game {
     this.itemPickups.forEach((pickup) => pickup.dispose());
     this.ammoPickups.forEach((pickup) => pickup.dispose());
     this.player?.dispose();
+    this.playerModel?.dispose();
+    this.playerModel = null;
     services.resolve(GameTokens.WeaponEffects).clear();
     services.resolve(GameTokens.NpcBloodEffects).clear();
     services.resolve(GameTokens.Grenades).clear();
@@ -1692,6 +1732,8 @@ export class Game {
     triggerSystem.clear();
     checkpointSystem.clear();
     hazardVolumes.clear();
+    services.resolve(GameTokens.GrabSystem).clear();
+    services.resolve(GameTokens.PropImpacts).clear();
     physics.reset();
     sceneManager.clearLevel([...lighting.getLights(), ...vfx.getPersistentObjects()]);
 
@@ -1728,6 +1770,7 @@ export class Game {
       services.resolve(GameTokens.EnergyBalls),
       services.resolve(GameTokens.IceGun),
       services.resolve(GameTokens.Portals),
+      services.resolve(GameTokens.PropImpacts),
     );
     if (spawn) {
       this.player.health.restore(spawn.health, spawn.armor);
@@ -1737,6 +1780,8 @@ export class Game {
         spawn.ammo,
       );
     }
+    this.playerModel = new PlayerModelSystem(sceneManager.scene, assets, physics);
+    await this.playerModel.load(resolvePlayerModel(level.playerModel));
     this.chargers.forEach((charger) => charger.bind(this.player!.health));
 
     // Reaparecer en este checkpoint si el jugador muere antes de cruzar otro.

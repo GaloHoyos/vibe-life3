@@ -3,6 +3,7 @@ import type { EditorEntity } from "@game/editor/EditorDocument";
 import type { StaticBoxDefinition } from "@game/levels/LevelDefinition";
 import { testEditorDocument } from "@tests/support/fixtures";
 import { toLevelDefinition } from "@game/editor/codegen/toLevelDefinition";
+import { fromLevelDefinition } from "@game/editor/codegen/fromLevelDefinition";
 
 describe("toLevelDefinition", () => {
   it("preserva entidades y rotaciones del documento", () => {
@@ -71,6 +72,21 @@ describe("toLevelDefinition", () => {
       ammoId: "smg",
       rotation: [0, 0.5, 0],
     });
+  });
+
+  it("round-trip del playerModel: meta → nivel → meta", () => {
+    const doc = testEditorDocument({});
+    doc.meta.playerModel = "postHumanGordon";
+
+    const level = toLevelDefinition(doc);
+    expect(level.playerModel).toBe("postHumanGordon");
+
+    const roundTripped = fromLevelDefinition(level);
+    expect(roundTripped.meta.playerModel).toBe("postHumanGordon");
+
+    // Omitido queda omitido (el default gordon lo resuelve el runtime).
+    const plain = toLevelDefinition(testEditorDocument({}));
+    expect(plain.playerModel).toBeUndefined();
   });
 
   it("falla con ids duplicados", () => {

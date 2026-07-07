@@ -15,6 +15,11 @@ export class InteractSystem {
     this.interactables.push(interactable);
   }
 
+  /** Interactable enfocado este frame; el GrabSystem le cede la prioridad. */
+  getFocused(): Interactable | null {
+    return this.current;
+  }
+
   /** Vacía el registro (al recargar nivel) — evita interactables huérfanos. */
   clear(): void {
     this.endHeld();

@@ -18,7 +18,18 @@ export interface WeaponAttachmentPose {
   worldScale: number;
 }
 
-export type WeaponAttachmentKey = "ar3" | "pistol" | "smg" | "crowbar" | "shotgun";
+export type WeaponAttachmentKey =
+  | "ar3"
+  | "pistol"
+  | "smg"
+  | "crowbar"
+  | "shotgun"
+  | "revolver"
+  | "crossbow"
+  | "rpg"
+  | "grenade"
+  | "gravityGun"
+  | "portalGun";
 
 export const WeaponAttachmentTuning: Record<WeaponAttachmentKey, WeaponAttachmentPose> = {
   ar3: {
@@ -69,6 +80,63 @@ export const WeaponAttachmentTuning: Record<WeaponAttachmentKey, WeaponAttachmen
     rotationZ: -0.22,
     worldScale: 0.28,
   },
+  // Armas que sólo usa el playermodel del jugador (los NPCs no las llevan). El
+  // `worldScale` es irrelevante acá: el playermodel pisa la escala con el
+  // `pickupScale` del arma. Rotación/posición calibradas por screenshot.
+  revolver: {
+    positionX: -0.01,
+    positionY: 0.23,
+    positionZ: 0.02,
+    rotationX: 0.15,
+    rotationY: 0.22,
+    rotationZ: -1.31,
+    worldScale: 0.22,
+  },
+  crossbow: {
+    positionX: 0.06,
+    positionY: 0.2,
+    positionZ: 0,
+    rotationX: 0.1,
+    rotationY: 0.22,
+    rotationZ: -1.57,
+    worldScale: 0.43,
+  },
+  rpg: {
+    positionX: 0.06,
+    positionY: 0.2,
+    positionZ: 0,
+    rotationX: 0.1,
+    rotationY: 0.22,
+    rotationZ: -1.57,
+    worldScale: 0.5,
+  },
+  grenade: {
+    positionX: -0.01,
+    positionY: 0.23,
+    positionZ: 0.02,
+    rotationX: 0.15,
+    rotationY: 0.22,
+    rotationZ: -1.31,
+    worldScale: 0.085,
+  },
+  gravityGun: {
+    positionX: 0.06,
+    positionY: 0.2,
+    positionZ: 0,
+    rotationX: 0.1,
+    rotationY: 0.22,
+    rotationZ: -1.57,
+    worldScale: 0.375,
+  },
+  portalGun: {
+    positionX: 0.06,
+    positionY: 0.2,
+    positionZ: 0,
+    rotationX: 0.1,
+    rotationY: 0.22,
+    rotationZ: -1.57,
+    worldScale: 0.375,
+  },
 };
 
 interface RegisteredAttachment {
@@ -78,6 +146,12 @@ interface RegisteredAttachment {
   accumulatedScale: number;
   /** `'hand'` aplica position/rotation/scale; `'pickup'` solo scale. */
   kind: "hand" | "pickup";
+  /**
+   * Tamaño mundo (m) que pisa el `worldScale` del tuning. Lo usa el playermodel
+   * para reusar el `pickupScale` del arma (ya calibrado para todas las armas,
+   * no solo las 5 con tuning de mano).
+   */
+  worldScaleOverride?: number;
 }
 
 const REGISTRY = new Set<RegisteredAttachment>();
@@ -99,8 +173,9 @@ export function applyToAttachment(entry: RegisteredAttachment): void {
   const tuning = WeaponAttachmentTuning[entry.weaponId];
   if (!tuning) return;
 
+  const worldScale = entry.worldScaleOverride ?? tuning.worldScale;
   if (entry.kind === "pickup") {
-    entry.weapon.scale.setScalar(tuning.worldScale);
+    entry.weapon.scale.setScalar(worldScale);
     return;
   }
 
@@ -110,9 +185,7 @@ export function applyToAttachment(entry: RegisteredAttachment): void {
     .divideScalar(scaleFactor);
   entry.weapon.rotation.set(tuning.rotationX, tuning.rotationY, tuning.rotationZ);
   const localScale =
-    entry.accumulatedScale > 0
-      ? tuning.worldScale / entry.accumulatedScale
-      : tuning.worldScale;
+    entry.accumulatedScale > 0 ? worldScale / entry.accumulatedScale : worldScale;
   entry.weapon.scale.setScalar(localScale);
 }
 

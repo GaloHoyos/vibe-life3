@@ -82,7 +82,8 @@ export class PortalViewRenderer {
    * Renders up to two portal views. Call once per frame before the main
    * render. `allMaterials` is every live portal disc (they swap to fallback
    * during passes); `hidden` objects (e.g. the first-person viewmodel) are
-   * invisible inside the views.
+   * invisible inside the views; `revealed` objects (e.g. the player's body,
+   * kept invisible in first person) are visible ONLY inside the views.
    */
   render(
     scene: Scene,
@@ -90,6 +91,7 @@ export class PortalViewRenderer {
     views: readonly PortalViewTarget[],
     allMaterials: readonly PortalSurfaceMaterial[],
     hidden: readonly Object3D[] = [],
+    revealed: readonly Object3D[] = [],
   ): void {
     this.renderer.getDrawingBufferSize(TMP_SIZE);
     const width = Math.max(1, Math.floor(TMP_SIZE.x * this.options.renderScale));
@@ -115,7 +117,7 @@ export class PortalViewRenderer {
         target.setSize(width, height);
       }
 
-      this.renderView(scene, camera, view, target, allMaterials, hidden);
+      this.renderView(scene, camera, view, target, allMaterials, hidden, revealed);
       view.material.setView(target.texture, screenWidth, screenHeight);
       view.material.setMode(PortalSurfaceMode.linked);
     }
@@ -148,6 +150,7 @@ export class PortalViewRenderer {
     target: WebGLRenderTarget,
     allMaterials: readonly PortalSurfaceMaterial[],
     hidden: readonly Object3D[],
+    revealed: readonly Object3D[],
   ): void {
     const vcam = this.virtualCamera;
     vcam.fov = camera.fov;
@@ -185,6 +188,10 @@ export class PortalViewRenderer {
     for (const object of hidden) {
       object.visible = false;
     }
+    const previousRevealVisibility = revealed.map((object) => object.visible);
+    for (const object of revealed) {
+      object.visible = true;
+    }
     const exitSurfaceWasVisible = view.exitSurface.visible;
     view.exitSurface.visible = false;
 
@@ -196,6 +203,9 @@ export class PortalViewRenderer {
     this.renderer.clippingPlanes = [];
 
     view.exitSurface.visible = exitSurfaceWasVisible;
+    revealed.forEach((object, index) => {
+      object.visible = previousRevealVisibility[index];
+    });
     hidden.forEach((object, index) => {
       object.visible = previousVisibility[index];
     });

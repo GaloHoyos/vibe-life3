@@ -187,8 +187,10 @@ export class DynamicFlyerMotor implements NpcMotor {
   ): void {
     if (!this.enabled) return;
 
-    // Sostenido por la gravity gun (kinematic): el arma maneja el cuerpo.
-    if (!this.body.isDynamic()) {
+    // Sostenido por un grab controller (shadow hold dinámico) o convertido a
+    // kinemático por un sistema externo: el dueño maneja el cuerpo, el motor
+    // no pelea las velocidades.
+    if (this.physics.isHeldBody(this.body.handle) || !this.body.isDynamic()) {
       this.held = true;
       this.syncYawFromBody();
       this.vel.set(0, 0, 0);

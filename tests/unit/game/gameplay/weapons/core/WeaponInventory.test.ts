@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { Quaternion, Vector3 } from "three";
 import { EventBus } from "@engine/core/EventBus";
+import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { GameEventMap } from "@game/GameEvents";
+import type { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
@@ -22,7 +24,9 @@ function setup() {
   const inventory = new WeaponInventory(bus, ammo);
   const context: WeaponContext = {
     eventBus: bus,
+    physics: {} as PhysicsWorld,
     raycast: {} as Raycast,
+    propImpacts: { registerLaunch: () => undefined } as unknown as PropImpactSystem,
     grenades: { spawn: () => undefined } as unknown as GrenadeSystem,
     rockets: {
       spawn: () => "rocket-test",

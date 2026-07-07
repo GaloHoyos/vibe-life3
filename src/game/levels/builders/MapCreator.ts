@@ -22,6 +22,7 @@ import type {
 } from '@game/levels/LevelDefinition';
 import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
 import type { ExplosiveBarrelDefinition } from '@game/gameplay/hazards/ExplosiveBarrel';
+import type { PlayerModelId } from '@game/config/playermodel.config';
 import { buildBuilding, type BuildingSpec } from './BuildingBuilder';
 import { buildHouse, type HouseSpec } from './HouseBuilder';
 import { buildRamp, type RampSpec } from './RampBuilder';
@@ -41,6 +42,8 @@ export interface MapMeta {
   skybox?: SkyboxId;
   sun?: SunOptions;
   playerStart: VectorTuple;
+  /** Playermodel del jugador. Ver `LevelDefinition.playerModel`. */
+  playerModel?: PlayerModelId;
   audio: LevelAudioDefinition;
 }
 
@@ -320,6 +323,7 @@ export class MapBuilder {
       skybox: this.meta.skybox,
       sun: this.meta.sun,
       playerStart: this.meta.playerStart,
+      playerModel: this.meta.playerModel,
       audio: this.meta.audio,
       terrain: this.terrainDef,
       staticBoxes: this.staticBoxList,

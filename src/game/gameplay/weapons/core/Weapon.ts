@@ -1,6 +1,8 @@
 ﻿import { Quaternion, Vector3 } from "three";
 import type { GameEventBus } from "@game/GameEvents";
+import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
+import type { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
@@ -14,6 +16,10 @@ import type { WeaponInventory } from "./WeaponInventory";
 export interface WeaponContext {
   eventBus: GameEventBus;
   raycast: Raycast;
+  /** Mundo físico. Lo usan armas que manipulan cuerpos (gravity gun). */
+  physics: PhysicsWorld;
+  /** Atribución de daño por impacto de props lanzados por el jugador. */
+  propImpacts: PropImpactSystem;
   /** Sistema de granadas activas. Lo usan `GrenadeWeapon` y el secundario del SMG. */
   grenades: GrenadeSystem;
   /** Sistema de cohetes guiados. Lo usa el RPG del jugador. */

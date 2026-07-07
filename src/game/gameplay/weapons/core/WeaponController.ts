@@ -2,7 +2,9 @@
 import type { GameEventBus, WeaponSelectorState } from "@game/GameEvents";
 import type { Input } from "@engine/input/Input";
 import type { CameraSystem } from "@engine/render/CameraSystem";
+import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
+import type { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 import { Quaternion, Vector3, type Object3D, type Scene } from "three";
 import { WEAPON_ORDER, WEAPON_SLOT_COUNT } from "@game/config/weapons.config";
 import {
@@ -74,10 +76,21 @@ export class WeaponController {
     return this.viewModel.getRoot();
   }
 
+  /**
+   * Bloquea fire y alt-fire del próximo `update` (un solo frame). Debe
+   * llamarse antes del `update` del frame; lo usa el `GrabSystem` mientras el
+   * jugador carga un prop con E.
+   */
+  suppressFireThisFrame(): void {
+    this.fireSuppressedThisFrame = true;
+  }
+
   private readonly recoil = new Recoil();
   private readonly viewModel: WeaponViewModel;
   private selector: SelectorState | null = null;
   private suppressFireUntilRelease = false;
+  /** Seteado desde afuera ANTES de `update` (carry con E: LMB empuja, no dispara). */
+  private fireSuppressedThisFrame = false;
   private readonly tmpUpdateOrigin = new Vector3();
   private readonly tmpUpdateDir = new Vector3();
   private readonly tmpUpdateQuat = new Quaternion();
@@ -87,6 +100,7 @@ export class WeaponController {
 
   constructor(
     private readonly eventBus: GameEventBus,
+    private readonly physics: PhysicsWorld,
     private readonly raycast: Raycast,
     assets: AssetManager,
     scene: Scene,
@@ -96,6 +110,7 @@ export class WeaponController {
     private readonly energyBalls: EnergyBallSystem,
     private readonly iceGun: IceGunSystem,
     private readonly portals: PortalGunSystem,
+    private readonly propImpacts: PropImpactSystem,
   ) {
     this.inventory = new WeaponInventory(eventBus, this.ammo);
     this.viewModel = new WeaponViewModel(scene, assets);
@@ -161,6 +176,7 @@ export class WeaponController {
     if (
       activeWeapon &&
       !this.selector &&
+      !this.fireSuppressedThisFrame &&
       this.canFireAfterSwitch(elapsed) &&
       input.wasMousePressed(2)
     ) {
@@ -188,6 +204,7 @@ export class WeaponController {
       activeWeapon &&
       !this.selector &&
       !this.suppressFireUntilRelease &&
+      !this.fireSuppressedThisFrame &&
       this.canFireAfterSwitch(elapsed) &&
       this.shouldFireWeapon(activeWeapon.definition.fireMode, input)
     ) {
@@ -204,6 +221,7 @@ export class WeaponController {
     }
 
     this.switchAwayFromUnavailableActiveWeapon(elapsed);
+    this.fireSuppressedThisFrame = false;
   }
 
   /**
@@ -335,7 +353,9 @@ export class WeaponController {
   private instantiateWeapon(id: WeaponId): Weapon {
     return createWeapon(id, {
       eventBus: this.eventBus,
+      physics: this.physics,
       raycast: this.raycast,
+      propImpacts: this.propImpacts,
       grenades: this.grenades,
       rockets: this.rockets,
       bolts: this.bolts,

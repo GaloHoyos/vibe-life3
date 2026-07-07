@@ -21,7 +21,10 @@ export interface RaycastSource {
     maxDistance: number,
     excludeBody?: RAPIER.RigidBody,
     excludeId?: string,
-    filter?: (metadata: PhysicsMetadata | undefined) => boolean,
+    filter?: (
+      metadata: PhysicsMetadata | undefined,
+      collider: RAPIER.Collider,
+    ) => boolean,
   ): RaycastHit | null;
 }
 
@@ -48,9 +51,13 @@ export class Raycast {
     /**
      * Filtro por metadata: devolver false ignora el collider (el rayo lo
      * atraviesa). Lo usa el disparo de portales para pasar por props/entidades
-     * y pegar sólo en la geometría estática de atrás.
+     * y pegar sólo en la geometría estática de atrás. Recibe también el
+     * collider para filtros por forma/sensor (clamp del grab).
      */
-    filter?: (metadata: PhysicsMetadata | undefined) => boolean,
+    filter?: (
+      metadata: PhysicsMetadata | undefined,
+      collider: RAPIER.Collider,
+    ) => boolean,
   ): RaycastHit | null {
     const normalizedDirection = direction.clone().normalize();
     const ray = new RAPIER.Ray(
@@ -73,7 +80,7 @@ export class Raycast {
             ) {
               return false;
             }
-            return filter === undefined || filter(meta);
+            return filter === undefined || filter(meta, collider);
           }
         : undefined;
     const hit = this.physics.world.castRayAndGetNormal(

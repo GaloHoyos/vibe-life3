@@ -21,6 +21,7 @@ export function fromLevelDefinition(level: LevelDefinition): EditorDocument {
     skybox: level.skybox,
     sun: level.sun,
     playerStart: [...level.playerStart],
+    playerModel: level.playerModel,
     audio: structuredClone(level.audio),
   };
 

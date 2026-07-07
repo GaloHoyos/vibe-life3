@@ -31,6 +31,7 @@ export const ITEM_IDS: readonly ItemId[] = Object.keys(ItemDefinitions) as ItemI
 export const CHARGER_KINDS: readonly ChargerKind[] = Object.keys(ChargerTypes) as ChargerKind[];
 export const SKYBOX_IDS: readonly SkyboxId[] = Object.keys(SkyboxManifest) as SkyboxId[];
 export const SOUNDSCAPE_IDS: readonly SoundscapeId[] = Object.keys(Soundscapes) as SoundscapeId[];
+export { PLAYER_MODEL_IDS } from '@game/config/playermodel.config';
 export const LEVEL_ACTIONS: readonly LevelActionKind[] = ['respawnEncounters', 'spawnAllWeapons'];
 export const TRIGGER_ACTION_KINDS: readonly TriggerAction['kind'][] = [
   'dialogue', 'spawnNpcs', 'door', 'levelAction', 'soundscape', 'objective', 'endLevel',

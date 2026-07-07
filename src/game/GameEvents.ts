@@ -81,6 +81,15 @@ export interface GameEventMap {
     exitPosition: Vector3;
   };
   "portal.cleared": Record<string, never>;
+  /** Un prop físico rápido impactó a un NPC (daño por impacto global). */
+  "prop.impact": {
+    targetId?: string;
+    point: Vector3;
+    normal?: Vector3;
+    damage: number;
+    /** Atacante atribuido ("player" si lo lanzó el jugador); undefined = entorno. */
+    sourceId?: string;
+  };
   /** Un NPC murió congelado (ice gun al llenar el medidor de freeze). */
   "ice.frozen": {
     targetId: string;
@@ -304,6 +313,24 @@ export interface GameEventMap {
     label: string;
   };
   "interaction.blur": Record<string, never>;
+  /** El jugador levantó un prop con E (+USE). */
+  "carry.grabbed": {
+    id?: string;
+  };
+  "carry.dropped": {
+    id?: string;
+    reason:
+      | "manual"
+      | "obstructed"
+      | "invalid"
+      | "portalClosed"
+      | "distance"
+      | "weapon";
+  };
+  /** Empuje suave con LMB del prop cargado. */
+  "carry.pushed": {
+    id?: string;
+  };
   "subtitle.show": {
     speaker?: string;
     text: string;

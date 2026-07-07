@@ -3,8 +3,10 @@ import { BoxGeometry, Mesh, MeshBasicMaterial, Quaternion, Scene, Vector3 } from
 import { EventBus } from "@engine/core/EventBus";
 import type { AssetManager, ModelInstance } from "@engine/assets/AssetManager";
 import type { ModelAssetId } from "@engine/assets/AssetManifest";
+import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { GameEventMap } from "@game/GameEvents";
+import type { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
@@ -18,6 +20,7 @@ function setup() {
   const bus = new EventBus<GameEventMap>();
   const controller = new WeaponController(
     bus,
+    {} as PhysicsWorld,
     { cast: () => null } as unknown as Raycast,
     fakeAssets(),
     new Scene(),
@@ -38,6 +41,7 @@ function setup() {
         castSegments: () => ({ hit: null, segments: [] }),
       },
     } as unknown as PortalGunSystem,
+    { registerLaunch: vi.fn() } as unknown as PropImpactSystem,
   );
   return {
     controller,

@@ -76,3 +76,50 @@ export const InteractionsConfig = {
   /** Distancia máxima (m) a la que un botón es interactuable. */
   doorButtonRange: 3,
 } as const;
+
+/**
+ * Daño por impacto físico de props contra NPCs. Global: aplica a cualquier
+ * prop dinámico rápido sin importar la causa (punt/throw de la gravity gun,
+ * empuje del carry, salida de un portal a velocidad, explosión).
+ * `damage = clamp(speed × (1 + mass × massWeight) × speedFactor, min, max) × bodyPartMul`.
+ */
+export const PropImpactConfig = {
+  /** Velocidad mínima para considerar al prop dañino. */
+  minDangerousSpeed: 5,
+  speedFactor: 1.8,
+  massWeight: 0.5,
+  damageMin: 15,
+  damageMax: 150,
+  /** Tiempo (s) que un prop lanzado conserva la atribución de su atacante. */
+  attributionDuration: 3,
+  /** Anti-duplicado: silencio (s) por prop después de cada impacto dañino. */
+  hitCooldown: 0.4,
+} as const;
+
+/**
+ * Carry con E (+USE de HL2): versión débil del agarre de la gravity gun.
+ * Solo objetos livianos, carry corto, sin punt ni pull; LMB empuja suave.
+ */
+export const CarryConfig = {
+  /** Masa máxima que se puede levantar con las manos. */
+  maxMass: 35,
+  /** Alcance del raycast de adquisición. */
+  range: 2.4,
+  /** Si el cuerpo queda más lejos del jugador que esto, se suelta. */
+  maxCarryPlayerDistance: 3.2,
+  /** Velocidad del empuje suave con click izquierdo. */
+  softPushSpeed: 7,
+  softPushLift: 1,
+  hold: {
+    holdDistance: 1.5,
+    minHoldDistance: 0.8,
+    wallClampMargin: 0.25,
+    maxLinearSpeed: 7,
+    linearGain: 10,
+    maxAngularSpeed: 10,
+    angularGain: 8,
+    dropErrorDistance: 0.7,
+    dropErrorTime: 0.35,
+    teleportGraceSeconds: 0.3,
+  },
+} as const;

@@ -1,85 +1,64 @@
-﻿import RAPIER from "@dimforge/rapier3d-compat";
-import { Quaternion, Vector3 } from "three";
+import type RAPIER from "@dimforge/rapier3d-compat";
+import { Vector3 } from "three";
+import { PhysicsGrabController } from "@engine/physics/grab/PhysicsGrabController";
+import type { RaycastHit } from "@engine/physics/Raycast";
+import { GravityGunConfig } from "@game/config/gravitygun.config";
 import {
   Weapon,
   type WeaponAlternateFireContext,
+  type WeaponContext,
   type WeaponFireContext,
   type WeaponUpdateContext,
 } from "@game/gameplay/weapons/core/Weapon";
+import type { WeaponDefinition } from "@game/gameplay/weapons/core/WeaponDefinition";
+import {
+  grabRayFilter,
+  resolveGrabbable,
+} from "@game/gameplay/weapons/core/grabFilter";
 
-const CONFIG = {
-  /** Alcance del raycast tanto para grab como para punt directo. */
-  reachRange: 4.0,
-  pullRange: 11.0,
-  pullFarSpeed: 1.8,
-  pullNearSpeed: 11,
-  pullFarResponse: 1.2,
-  pullNearResponse: 8.5,
-  airDownDropPitch: -0.55,
-  /** Origin offset del raycast (escapa la cÃ¡psula del player, radius 0.35). */
-  rayOriginOffset: 0.55,
-  /** Distancia del prop holdeado al ojo del jugador. */
-  holdDistance: 2.4,
-  /** Velocidad horizontal de un punt. */
-  puntSpeed: 38,
-  /** Componente vertical extra al puntear (arco corto). */
-  puntLift: 5,
-  /** Velocidad al lanzar desde holding. */
-  throwSpeed: 42,
-  throwLift: 4,
-  /** Tiempo (s) que un prop sigue siendo "letal" despuÃ©s de ser lanzado. */
-  launchedDuration: 3,
-  /** Velocidad mÃ­nima para considerar al prop daÃ±ino. */
-  minDangerousSpeed: 5,
-  /** Damage = clamp(speed Ã— (1 + mass Ã— massWeight) Ã— speedFactor, min, max). */
-  speedFactor: 1.8,
-  massWeight: 0.5,
-  damageMin: 15,
-  damageMax: 150,
-};
-
-interface LaunchedProp {
-  body: RAPIER.RigidBody;
-  expiresAt: number;
-}
-
-interface HeldProp {
-  body: RAPIER.RigidBody;
-  /** RotaciÃ³n del prop relativa a la cÃ¡mara al momento del grab. */
-  rotationOffset: Quaternion;
-}
+const CONFIG = GravityGunConfig;
+const ZERO_VELOCITY = new Vector3();
 
 interface PullTarget {
   body: RAPIER.RigidBody;
 }
 
 /**
- * Gravity Gun HL2-style.
+ * Gravity Gun HL2-style (physcannon).
  *
- * - LMB sin holding: punt â€” raycast forward; si pega a dynamic body le seta
- *   linvel directa (no impulse) para que props pesados tambiÃ©n salgan rÃ¡pido.
- * - RMB sin holding: graba el body a Kinematic si estÃ¡ en rango; si estÃ¡
- *   mÃ¡s lejos, lo atrae mientras RMB siga sostenido hasta poder agarrarlo.
- * - LMB con holding: lanza el body con linvel forward (throw).
+ * - LMB sin holding: punt — raycast forward; si pega a un agarrable le setea
+ *   linvel directa (no impulse) para que props pesados también salgan rápido.
+ * - RMB sin holding: agarra si está en rango; más lejos, lo atrae mientras
+ *   RMB siga sostenido hasta poder agarrarlo.
+ * - LMB con holding: lanza el cuerpo con linvel forward (throw).
  * - RMB con holding o switch de arma: dropea sin velocidad.
  *
- * El damage tracking funciona por polling: cada frame, para cada prop lanzado,
- * raycast desde su posiciÃ³n en direcciÃ³n de su velocidad. Si pega a NPC,
- * `damage = clamp(speed Ã— (1 + mass Ã— 0.5) Ã— 1.8, 15, 150) Ã— bodyPartMul`.
- * Excluye al prop mismo del raycast (sin filtro empezarÃ­a dentro del collider
- * y devolverÃ­a toi 0).
+ * El hold es un shadow controller dinámico (`PhysicsGrabController`): el
+ * cuerpo persigue el target con velocidades y sigue colisionando (no atraviesa
+ * paredes); si queda obstruido se suelta solo, y cruza portales sosteniéndose.
+ * El daño de los props lanzados lo aplica el `PropImpactSystem` global; acá
+ * solo se registra la atribución del jugador.
  */
 export class GravityGunWeapon extends Weapon {
-  private held: HeldProp | null = null;
+  private readonly grab: PhysicsGrabController;
   private pullTarget: PullTarget | null = null;
-  private readonly launched: LaunchedProp[] = [];
   private readonly tmpDirection = new Vector3();
   private readonly tmpOrigin = new Vector3();
   private readonly tmpHoldTarget = new Vector3();
-  private readonly tmpHoldRotation = new Quaternion();
+  private readonly tmpThrowVelocity = new Vector3();
+
+  constructor(definition: WeaponDefinition, context: WeaponContext) {
+    super(definition, context);
+    this.grab = new PhysicsGrabController(
+      context.physics,
+      context.raycast,
+      CONFIG.hold,
+      context.portals.pair,
+    );
+  }
 
   protected performFire(context: WeaponFireContext): void {
-    if (this.held) {
+    if (this.grab.isHolding()) {
       this.throwHeld(context);
     } else {
       this.punt(context);
@@ -89,8 +68,8 @@ export class GravityGunWeapon extends Weapon {
   override tryAlternateFire(context: WeaponAlternateFireContext): void {
     if (!context.pressed) return;
     let acted = false;
-    if (this.held) {
-      this.drop();
+    if (this.grab.isHolding()) {
+      this.grab.release(ZERO_VELOCITY);
       acted = true;
     } else {
       acted = this.tryGrabOrPull(context);
@@ -109,84 +88,28 @@ export class GravityGunWeapon extends Weapon {
     }
   }
 
-  override update(_delta: number, context: WeaponUpdateContext): void {
-    if (this.held && !this.held.body.isValid()) {
-      this.held = null;
-    }
-    if (this.held) {
+  override update(delta: number, context: WeaponUpdateContext): void {
+    if (this.grab.isHolding()) {
       if (!context.ownerGrounded && context.direction.y < CONFIG.airDownDropPitch) {
-        this.drop();
+        this.grab.release(ZERO_VELOCITY);
       } else {
-        this.updateHeld(context);
+        this.grab.update(
+          delta,
+          context.origin,
+          context.direction,
+          context.cameraQuaternion,
+        );
       }
     }
 
-    if (!this.held) {
+    if (!this.grab.isHolding()) {
       this.updatePullTarget(context);
-    }
-
-    for (let i = this.launched.length - 1; i >= 0; i -= 1) {
-      const prop = this.launched[i];
-      if (context.elapsed > prop.expiresAt || !prop.body.isValid()) {
-        this.launched.splice(i, 1);
-        continue;
-      }
-
-      const v = prop.body.linvel();
-      const speed = Math.hypot(v.x, v.y, v.z);
-      if (speed < CONFIG.minDangerousSpeed) {
-        this.launched.splice(i, 1);
-        continue;
-      }
-
-      this.tmpDirection.set(v.x / speed, v.y / speed, v.z / speed);
-      const pos = prop.body.translation();
-      this.tmpOrigin.set(pos.x, pos.y, pos.z);
-      const castDistance = Math.max(0.6, speed * context.delta * 2);
-      const hit = this.context.raycast.cast(
-        this.tmpOrigin,
-        this.tmpDirection,
-        castDistance,
-        prop.body,
-      );
-
-      if (!hit) continue;
-      if (hit.metadata?.kind !== "npc" && hit.metadata?.kind !== "ragdoll") {
-        continue;
-      }
-
-      const mass = prop.body.mass();
-      const bodyPartMul = hit.metadata.bodyPart?.damageMultiplier ?? 1;
-      const raw = speed * (1 + mass * CONFIG.massWeight) * CONFIG.speedFactor;
-      const damage =
-        Math.min(CONFIG.damageMax, Math.max(CONFIG.damageMin, raw)) * bodyPartMul;
-      hit.metadata.damageable?.applyDamage(
-        damage,
-        this.tmpDirection.clone(),
-        hit.metadata.bodyPart?.name,
-        "player",
-        hit.point,
-      );
-      this.context.eventBus.emit("weapon.hit", {
-        weaponName: this.name,
-        targetId: hit.metadata.id,
-        surfaceKind: hit.metadata.kind,
-        point: hit.point,
-        normal: hit.normal,
-        damage,
-        sourceId: "player",
-        sourceKind: "player",
-        sourceFaction: "player",
-      });
-      this.launched.splice(i, 1);
     }
   }
 
   override onUnequip(): void {
     this.pullTarget = null;
-    if (this.held) {
-      this.drop();
-    }
+    this.grab.release(ZERO_VELOCITY);
   }
 
   private tryGrabOrPull(context: WeaponAlternateFireContext): boolean {
@@ -197,57 +120,22 @@ export class GravityGunWeapon extends Weapon {
       origin,
       context.direction,
       CONFIG.pullRange,
+      undefined,
+      undefined,
+      grabRayFilter,
     );
     if (!hit) return false;
-    const body = hit.collider.parent();
-    if (!body || !body.isDynamic()) return false;
+    const grabbable = resolveGrabbable(hit);
+    if (!grabbable || grabbable.body.mass() > CONFIG.grabMaxMass) return false;
 
     if (hit.toi <= CONFIG.reachRange) {
-      this.grabBody(body, context);
+      this.grab.grab(grabbable.body, context.cameraQuaternion);
+      this.pullTarget = null;
       return true;
     }
 
-    this.pullTarget = { body };
+    this.pullTarget = { body: grabbable.body };
     return true;
-  }
-
-  private grabBody(
-    body: RAPIER.RigidBody,
-    context: Pick<WeaponUpdateContext, "cameraQuaternion">,
-  ): void {
-    const propRot = body.rotation();
-    const propQ = new Quaternion(propRot.x, propRot.y, propRot.z, propRot.w);
-    const rotationOffset = context.cameraQuaternion
-      .clone()
-      .invert()
-      .multiply(propQ);
-
-    body.setLinvel({ x: 0, y: 0, z: 0 }, true);
-    body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-    body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
-    this.held = { body, rotationOffset };
-    this.pullTarget = null;
-  }
-
-  private updateHeld(context: WeaponUpdateContext): void {
-    if (!this.held) return;
-    this.tmpHoldTarget
-      .copy(context.origin)
-      .addScaledVector(context.direction, CONFIG.holdDistance);
-    this.held.body.setNextKinematicTranslation({
-      x: this.tmpHoldTarget.x,
-      y: this.tmpHoldTarget.y,
-      z: this.tmpHoldTarget.z,
-    });
-    this.tmpHoldRotation
-      .copy(context.cameraQuaternion)
-      .multiply(this.held.rotationOffset);
-    this.held.body.setNextKinematicRotation({
-      x: this.tmpHoldRotation.x,
-      y: this.tmpHoldRotation.y,
-      z: this.tmpHoldRotation.z,
-      w: this.tmpHoldRotation.w,
-    });
   }
 
   private updatePullTarget(context: WeaponUpdateContext): void {
@@ -264,7 +152,7 @@ export class GravityGunWeapon extends Weapon {
 
     this.tmpHoldTarget
       .copy(context.origin)
-      .addScaledVector(context.direction, CONFIG.holdDistance);
+      .addScaledVector(context.direction, CONFIG.hold.holdDistance);
     const translation = body.translation();
     this.tmpDirection.set(
       this.tmpHoldTarget.x - translation.x,
@@ -276,7 +164,8 @@ export class GravityGunWeapon extends Weapon {
       this.tmpOrigin.set(translation.x, translation.y, translation.z),
     );
     if (distanceToPlayer <= CONFIG.reachRange) {
-      this.grabBody(body, context);
+      this.grab.grab(body, context.cameraQuaternion);
+      this.pullTarget = null;
       return;
     }
     if (distanceToTarget <= 0.05) {
@@ -309,33 +198,22 @@ export class GravityGunWeapon extends Weapon {
     );
   }
 
-  private drop(): void {
-    if (!this.held) return;
-    this.held.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
-    this.held.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
-    this.held = null;
-    this.pullTarget = null;
-  }
-
   private throwHeld(context: WeaponFireContext): void {
-    if (!this.held) return;
-    const body = this.held.body;
-    this.held = null;
+    this.tmpThrowVelocity
+      .copy(context.direction)
+      .multiplyScalar(CONFIG.throwSpeed);
+    this.tmpThrowVelocity.y += CONFIG.throwLift;
+    // release transforma la velocidad si el hold estaba a través del portal.
+    const body = this.grab.release(this.tmpThrowVelocity);
     this.pullTarget = null;
-
-    body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
-    body.setLinvel(
-      {
-        x: context.direction.x * CONFIG.throwSpeed,
-        y: context.direction.y * CONFIG.throwSpeed + CONFIG.throwLift,
-        z: context.direction.z * CONFIG.throwSpeed,
-      },
-      true,
-    );
-    this.launched.push({
-      body,
-      expiresAt: context.now + CONFIG.launchedDuration,
-    });
+    if (body) {
+      this.context.propImpacts.registerLaunch(
+        body,
+        "player",
+        this.name,
+        context.now,
+      );
+    }
   }
 
   private punt(context: WeaponFireContext): void {
@@ -346,12 +224,18 @@ export class GravityGunWeapon extends Weapon {
       origin,
       context.direction,
       CONFIG.reachRange,
+      undefined,
+      undefined,
+      grabRayFilter,
     );
     if (!hit) return;
-    const body = hit.collider.parent();
-    if (!body || !body.isDynamic()) return;
+    const grabbable = resolveGrabbable(hit);
+    if (!grabbable) {
+      this.puntShoveNpc(hit, context);
+      return;
+    }
 
-    body.setLinvel(
+    grabbable.body.setLinvel(
       {
         x: context.direction.x * CONFIG.puntSpeed,
         y: context.direction.y * CONFIG.puntSpeed + CONFIG.puntLift,
@@ -359,9 +243,40 @@ export class GravityGunWeapon extends Weapon {
       },
       true,
     );
-    this.launched.push({
-      body,
-      expiresAt: context.now + CONFIG.launchedDuration,
+    this.context.propImpacts.registerLaunch(
+      grabbable.body,
+      "player",
+      this.name,
+      context.now,
+    );
+  }
+
+  /**
+   * Punt directo sobre un NPC terrestre vivo (no agarrable): empujón con daño
+   * chico, como la physcannon contra headcrabs. `applyDamage` ya dispara el
+   * descontrol del motor (reactToHit) con la dirección del golpe.
+   */
+  private puntShoveNpc(hit: RaycastHit, context: WeaponFireContext): void {
+    if (hit.metadata?.kind !== "npc" || !hit.metadata.damageable?.isAlive()) {
+      return;
+    }
+    hit.metadata.damageable.applyDamage(
+      CONFIG.puntNpcDamage,
+      context.direction.clone(),
+      hit.metadata.bodyPart?.name,
+      "player",
+      hit.point,
+    );
+    this.context.eventBus.emit("weapon.hit", {
+      weaponName: this.name,
+      targetId: hit.metadata.id,
+      surfaceKind: hit.metadata.kind,
+      point: hit.point,
+      normal: hit.normal,
+      damage: CONFIG.puntNpcDamage,
+      sourceId: "player",
+      sourceKind: "player",
+      sourceFaction: "player",
     });
   }
 }

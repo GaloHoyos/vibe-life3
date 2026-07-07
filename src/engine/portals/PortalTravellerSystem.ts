@@ -395,8 +395,11 @@ export class PortalTravellerSystem {
         this.shouldOpenPortalForBody(body, straddle.entry, straddle.depth);
       if (!canOpen) return false;
       if (record) {
-        if (straddle.depth >= 0) {
+        if (this.physics.isHeldBody(body.handle) || straddle.depth >= 0) {
           // Centro de masa del lado de entrada: el primary es la autoridad.
+          // Un cuerpo sostenido (shadow hold) conserva SIEMPRE la autoridad:
+          // el swap pisaría las velocidades del grab a mitad de cruce; el
+          // colapso del clon hace el teleport cuando termina de cruzar.
           this.mirrorState(body, record.cloneBody, straddle.entry, straddle.exit);
         } else {
           // Ya cruzó a la salida: el clon es la autoridad.
@@ -730,6 +733,10 @@ export class PortalTravellerSystem {
     // mitad de cruce conservan la apertura por histéresis (state.engaged) y
     // los clones que emergen por la salida tienen bypass en el call site.
     if (localDepth < 0) return false;
+    // Un cuerpo sostenido (shadow hold) empujado contra la boca entra aunque
+    // llegue lento: es intención explícita del jugador. El umbral de
+    // velocidad es para props apoyados por accidente contra el disco.
+    if (this.physics.isHeldBody(body.handle)) return true;
     portalNormal(frame, TMP_NORMAL);
     if (TMP_NORMAL.y > 0.7) return true;
     const linvel = body.linvel();

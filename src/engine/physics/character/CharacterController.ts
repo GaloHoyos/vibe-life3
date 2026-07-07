@@ -167,6 +167,21 @@ export class CharacterController extends KinematicCharacterBase {
     return this.crouchProgress > 0.5;
   }
 
+  /** Progreso continuo del crouch (0 = parado, 1 = agachado completo). */
+  getCrouchProgress(): number {
+    return this.crouchProgress;
+  }
+
+  /** Base de la cápsula (los pies). Ancla del modelo visual del jugador. */
+  getFeetPosition(out = new Vector3()): Vector3 {
+    const t = this.body.translation();
+    return out.set(
+      t.x,
+      t.y - this.currentHalfHeight - this.options.radius,
+      t.z,
+    );
+  }
+
   isSprinting(): boolean {
     return this.moveState === "sprint";
   }

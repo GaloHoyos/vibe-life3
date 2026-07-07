@@ -14,6 +14,7 @@ import type { CheckpointDefinition } from '@game/levels/CheckpointSystem';
 import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
 import type { ExplosiveBarrelDefinition } from '@game/gameplay/hazards/ExplosiveBarrel';
 import type { LevelId } from '@game/levels/LevelRegistry';
+import type { PlayerModelId } from '@game/config/playermodel.config';
 
 /** Rotacion Euler XYZ en radianes. Omitida = alineado a los ejes. */
 type RotationTuple = VectorTuple;
@@ -201,6 +202,8 @@ export interface LevelDefinition {
   /** ConfiguraciÃ³n del sol (luz direccional principal). Si se omite, usa los defaults. */
   sun?: SunOptions;
   playerStart: VectorTuple;
+  /** Playermodel del jugador (visible en las vistas de portal). Omitido = gordon. */
+  playerModel?: PlayerModelId;
   audio: LevelAudioDefinition;
   /** Terreno opcional. Cuando estÃ¡ definido, agrega un heightfield (mesh + collider). */
   terrain?: TerrainDefinition;

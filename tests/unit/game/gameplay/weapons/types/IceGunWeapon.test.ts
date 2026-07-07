@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { Quaternion, Vector3 } from "three";
 import { EventBus } from "@engine/core/EventBus";
+import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { GameEventMap } from "@game/GameEvents";
+import type { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
 import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
@@ -26,7 +28,9 @@ function setup() {
   };
   const context: WeaponContext = {
     eventBus: bus,
+    physics: {} as PhysicsWorld,
     raycast: { cast: () => null } as unknown as Raycast,
+    propImpacts: { registerLaunch: vi.fn() } as unknown as PropImpactSystem,
     grenades: { spawn: vi.fn() } as unknown as GrenadeSystem,
     rockets: {
       spawn: vi.fn(() => "rocket-test"),

@@ -118,6 +118,12 @@ export const WorkshopStrings = {
     count > 0 ? `${avg.toFixed(1)} / 5 (${count} ${count === 1 ? "voto" : "votos"})` : "Sin votos",
 } as const;
 
+/** Labels del prompt `[E]` para el agarre de objetos físicos. */
+export const InteractionStrings = {
+  grab: "Agarrar objeto",
+  drop: "Soltar objeto",
+} as const;
+
 export const HudStrings = {
   unarmed: "DESARMADO",
   weaponPickedUp: (weaponName: string): string => `arma adquirida: ${weaponName}`,

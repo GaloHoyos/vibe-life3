@@ -1,6 +1,8 @@
 const zombieUrl = new URL('../../models/characters/zombie/zombie.glb', import.meta.url).href;
 const headcrabUrl = new URL('../../models/characters/headcrab/headcrab.glb', import.meta.url).href;
 const alyxUrl = new URL('../../models/characters/alyx/alyx.glb', import.meta.url).href;
+const gordonUrl = new URL('../../models/characters/gordon/gordon.glb', import.meta.url).href;
+const postHumanGordonUrl = new URL('../../models/characters/post-human-gordon/post-human-gordon.glb', import.meta.url).href;
 const combineUrl = new URL('../../models/characters/combine-soldier/combine-soldier.glb', import.meta.url).href;
 const combineShotgunnerUrl = new URL('../../models/characters/combine-shotgunner/combine-shotgunner.glb', import.meta.url).href;
 const combineEliteUrl = new URL('../../models/characters/combine-elite/combine-elite.glb', import.meta.url).href;
@@ -57,6 +59,18 @@ export const AssetManifest = {
     alyx: {
       id: 'alyx',
       path: alyxUrl,
+      type: 'character',
+      debug: false,
+    },
+    gordon: {
+      id: 'gordon',
+      path: gordonUrl,
+      type: 'character',
+      debug: false,
+    },
+    postHumanGordon: {
+      id: 'postHumanGordon',
+      path: postHumanGordonUrl,
       type: 'character',
       debug: false,
     },

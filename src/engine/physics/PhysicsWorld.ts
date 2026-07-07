@@ -101,6 +101,12 @@ export class PhysicsWorld {
    * como el clon de portales puedan replicar su visual.
    */
   private readonly bodyVisuals = new Map<number, Object3D>();
+  /**
+   * Cuerpos sostenidos por un grab controller (gravity gun / carry). Señal
+   * neutra para motores dueños de su propio steering (flyers): mientras el
+   * cuerpo figure acá no deben escribirle velocidades.
+   */
+  private readonly heldBodyHandles = new Set<number>();
   private initialized = false;
   private hooks: RAPIER.PhysicsHooks | null = null;
   // Rapier-compat solo aplica hooks via `stepWithEvents`, que exige una
@@ -129,6 +135,19 @@ export class PhysicsWorld {
     this.bindings.length = 0;
     this.metadataByCollider.clear();
     this.bodyVisuals.clear();
+    this.heldBodyHandles.clear();
+  }
+
+  markHeld(body: RAPIER.RigidBody, held: boolean): void {
+    if (held) {
+      this.heldBodyHandles.add(body.handle);
+    } else {
+      this.heldBodyHandles.delete(body.handle);
+    }
+  }
+
+  isHeldBody(handle: number): boolean {
+    return this.heldBodyHandles.has(handle);
   }
 
   createStaticBox(options: PhysicsBoxOptions): RAPIER.RigidBody {

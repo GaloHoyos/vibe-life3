@@ -196,7 +196,10 @@ export class PortalGunSystem implements Disposable {
    * Portal view passes. Call once per frame right before the main render so
    * both render targets hold this frame's world state.
    */
-  updateRender(hidden: readonly Object3D[] = []): void {
+  updateRender(
+    hidden: readonly Object3D[] = [],
+    revealed: readonly Object3D[] = [],
+  ): void {
     const gl = this.renderer.renderer;
     if (this.portals.size === 0) {
       this.restoreShadowPolicy();
@@ -235,6 +238,7 @@ export class PortalGunSystem implements Disposable {
       views,
       [a.surface.material, b.surface.material],
       hidden,
+      revealed,
     );
   }
 
