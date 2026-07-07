@@ -591,6 +591,14 @@ export class PortalPlayerTransitSystem {
     if (!hit) {
       return;
     }
+    // Sólo apoyar los pies en piso que esté DEBAJO del centro. Al salir por una
+    // pared con un techo justo encima, el origen del rayo (la cabeza) puede
+    // arrancar DENTRO del techo; un raycast sólido devuelve toi=0 en el origen y
+    // "levantaría" la cápsula hacia arriba, empujándola a través del techo. El
+    // piso que sostiene los pies siempre queda bajo el centro de la cápsula.
+    if (hit.point.y >= exitPos.y) {
+      return;
+    }
     const neededCenterY = hit.point.y + halfExtent;
     if (neededCenterY > exitPos.y) {
       exitPos.y = neededCenterY;
