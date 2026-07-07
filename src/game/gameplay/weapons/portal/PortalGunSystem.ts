@@ -59,6 +59,16 @@ export interface PortalFireOptions {
   cameraQuaternion: Quaternion;
 }
 
+/** Proyección de un punto por un portal + el plano de salida a mirar de frente. */
+export interface PortalProjection {
+  /** Punto proyectado (queda detrás del disco del portal de salida). */
+  position: Vector3;
+  /** Centro del disco de salida por el que el observador debe mirar. */
+  viewPosition: Vector3;
+  /** Normal saliente (frente) del disco de salida. */
+  viewNormal: Vector3;
+}
+
 interface PlacedPortal {
   slot: PortalSlot;
   frame: PortalFrame;
@@ -498,21 +508,29 @@ export class PortalGunSystem implements Disposable {
    * Proyecciones de un punto a través del par linked (0–2 resultados): dónde
    * "aparece" el punto mirando por cada portal. Alimenta los ghost snapshots
    * que los NPCs usan para adquirir al player a través de portales.
+   *
+   * Cada proyección lleva el plano del portal de SALIDA (`viewPosition`/
+   * `viewNormal`): el ghost queda DETRÁS de ese disco, y un portal sólo se ve
+   * de su cara frontal, así que el observador sólo debe considerarlo si está
+   * delante del plano. Sin esto, un enemigo del otro lado de la pared (detrás
+   * del disco) "veía" al player aunque el portal no esté de su lado.
    */
-  projectPointThroughPortals(point: Vector3): Vector3[] {
+  projectPointThroughPortals(point: Vector3): PortalProjection[] {
     if (!this.pair.linked) {
       return [];
     }
-    const projections: Vector3[] = [];
+    const projections: PortalProjection[] = [];
     for (const slot of ["a", "b"] as const) {
       const entry = this.pair.get(slot);
       const exit = this.pair.exitFor(slot);
       if (!entry || !exit) {
         continue;
       }
-      projections.push(
-        transformPointThroughPortal(point, entry, exit, new Vector3()),
-      );
+      projections.push({
+        position: transformPointThroughPortal(point, entry, exit, new Vector3()),
+        viewPosition: exit.position.clone(),
+        viewNormal: portalNormal(exit, new Vector3()),
+      });
     }
     return projections;
   }

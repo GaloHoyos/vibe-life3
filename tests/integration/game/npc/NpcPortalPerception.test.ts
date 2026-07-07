@@ -10,7 +10,10 @@ import { NavSpace } from "@engine/ai/nav/NavSpace";
 import { PathRequestQueue } from "@engine/ai/nav/PathRequestQueue";
 import { PortalPairState, type PortalFrame } from "@engine/portals/PortalFrame";
 import { PortalRaycast } from "@engine/portals/PortalRaycast";
-import { transformPointThroughPortal } from "@engine/portals/PortalMath";
+import {
+  portalNormal,
+  transformPointThroughPortal,
+} from "@engine/portals/PortalMath";
 import type { GameEventMap } from "@game/GameEvents";
 import { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
 import { Npc } from "@game/npc/Npc";
@@ -138,6 +141,10 @@ function buildGhosts(world: World, playerSnapshot: ActorSnapshot): ActorSnapshot
         new Vector3(),
       ),
       navPosition: playerSnapshot.position,
+      portalView: {
+        position: exit.position.clone(),
+        normal: portalNormal(exit, new Vector3()),
+      },
     });
   }
   return ghosts;
@@ -289,5 +296,172 @@ describe("NPC ve/persigue al player a través del par de portales", () => {
     expect(exits.length).toBeGreaterThanOrEqual(1);
     // Salió por B: del lado de atrás de la pared.
     expect(exits[0].z).toBeLessThan(WALL_Z - WALL_THICKNESS + 0.1);
+  });
+});
+
+/**
+ * Bug reportado: un enemigo del OTRO lado de una pared cuyos portales están del
+ * lado del player NO debe verlo. El ghost cae detrás del disco de salida (del
+ * lado del enemigo), y sin gate el enemigo tenía un ray directo y despejado
+ * hacia él. Un portal sólo se ve de su cara frontal.
+ */
+describe("NPC detrás de la pared NO ve por un portal del lado del player", () => {
+  /** Pared que separa sala delantera (z>0, player) de trasera (z<-0.2, enemigo). */
+  const DIVIDER_Z = 0;
+  const HIDDEN_PLAYER = new Vector3(0, 0.9, 3);
+
+  /** P1 en la cara frontal de la pared, mirando +Z (hacia el player). */
+  function p1(): PortalFrame {
+    return {
+      position: new Vector3(0, 1.6, DIVIDER_Z),
+      quaternion: new Quaternion(),
+      halfWidth: 0.65,
+      halfHeight: 1.1,
+    };
+  }
+
+  /** P2 en una pared lateral de la sala delantera, mirando -X. Par de P1. */
+  function p2(): PortalFrame {
+    return {
+      position: new Vector3(6, 1.6, 3),
+      quaternion: new Quaternion().setFromEuler(new Euler(0, -Math.PI / 2, 0)),
+      halfWidth: 0.65,
+      halfHeight: 1.1,
+    };
+  }
+
+  async function makeAsymmetricWorld(): Promise<World> {
+    const physics = new PhysicsWorld();
+    await physics.init();
+    physics.createStaticBox({
+      id: "floor",
+      position: new Vector3(0, -0.5, 0),
+      size: new Vector3(60, 1, 60),
+    });
+    physics.createStaticBox({
+      id: "divider",
+      position: new Vector3(0, 2.5, DIVIDER_Z - WALL_THICKNESS / 2),
+      size: new Vector3(24, 5, WALL_THICKNESS),
+    });
+    physics.createStaticBox({
+      id: "player",
+      position: HIDDEN_PLAYER.clone(),
+      size: new Vector3(0.7, 1.8, 0.7),
+    });
+    physics.updateQueryPipeline();
+    const raycast = new Raycast(physics);
+    const pair = new PortalPairState();
+    pair.set("a", p1());
+    pair.set("b", p2());
+    const navSpace = new NavSpace([], [], []);
+    return {
+      physics,
+      raycast,
+      pair,
+      losRaycast: new PortalRaycast(raycast, pair),
+      eventBus: new EventBus<GameEventMap>(),
+      navSpace,
+      pathQueue: new PathRequestQueue(navSpace),
+    };
+  }
+
+  function contextFor(world: World, delta: number, elapsed: number): AiFrameContext {
+    const playerSnapshot: ActorSnapshot = {
+      id: "player",
+      position: HIDDEN_PLAYER.clone(),
+      faction: "player",
+      entity: { applyDamage: () => {}, isAlive: () => true },
+      isAlive: true,
+      radius: 0.35,
+    };
+    return {
+      delta,
+      elapsed,
+      aiLod: "near",
+      player: playerSnapshot,
+      npcs: [],
+      portalGhosts: buildGhosts(world, playerSnapshot),
+      tacticalMap: null as unknown as TacticalMap,
+      squadDirector: null as unknown as SquadDirector,
+      eventBus: world.eventBus,
+    };
+  }
+
+  function zombieAt(world: World, position: Vector3): Npc {
+    const preset = buildZombiePreset();
+    const damageable = { applyDamage: () => {}, isAlive: () => true };
+    const motor = new CharacterMotor(world.physics, {
+      id: "zombie-x",
+      position: position.clone(),
+      height: 1.8,
+      radius: preset.radius,
+      mass: 80,
+      maxSpeed: preset.movement.walkSpeed,
+      acceleration: preset.movement.acceleration,
+      turnSpeed: preset.movement.turnSpeed,
+      rotationSmoothing: 0.15,
+      faceTargetDeadzone: 0.08,
+      turnBeforeMoveAngle: 0.65,
+      minMoveFacingDot: 0.35,
+      gravity: 28,
+      stepOffset: preset.movement.stepOffset,
+      snapToGround: preset.movement.snapToGround,
+      metadata: { id: "zombie-x", kind: "npc", faction: "zombies", damageable },
+    });
+    return new Npc({
+      id: "zombie-x",
+      faction: "zombies",
+      position: position.clone(),
+      visualRoot: new Group(),
+      height: 1.8,
+      motor,
+      combat: fakeCombat(),
+      preset,
+      navSpace: world.navSpace,
+      buildingRegistry: new BuildingRegistry([]),
+      pathQueue: world.pathQueue,
+      raycast: world.raycast,
+      losRaycast: world.losRaycast,
+      eventBus: world.eventBus,
+    });
+  }
+
+  function run(world: World, npc: Npc, seconds: number): void {
+    const frames = Math.round(seconds / DT);
+    for (let i = 0; i < frames; i += 1) {
+      world.pathQueue.process();
+      npc.update(contextFor(world, DT, i * DT));
+      world.physics.step(DT);
+      npc.syncFromPhysics();
+    }
+  }
+
+  it("el enemigo detrás de la pared nunca ve al player (ghost gateado)", async () => {
+    const world = await makeAsymmetricWorld();
+    // Enemigo en la sala trasera, entre la pared y el ghost que cae en z=-6.
+    const behind = zombieAt(world, new Vector3(0, 0.9, -4));
+
+    let everVisible = false;
+    const frames = Math.round(2 / DT);
+    for (let i = 0; i < frames; i += 1) {
+      world.pathQueue.process();
+      behind.update(contextFor(world, DT, i * DT));
+      world.physics.step(DT);
+      behind.syncFromPhysics();
+      if (behind.getAiDebugSnapshot().brain?.threat.visibleNow) everVisible = true;
+    }
+
+    expect(everVisible).toBe(false);
+    expect(behind.getState()).not.toBe("chase");
+  });
+
+  it("control: un enemigo DELANTE del portal sí ve por él", async () => {
+    const world = await makeAsymmetricWorld();
+    // En la sala delantera, delante de P1: el ghost por P1 es válido para él.
+    const front = zombieAt(world, new Vector3(0, 0.9, 6));
+
+    run(world, front, 1.5);
+
+    expect(front.getAiDebugSnapshot().brain?.threat.visibleNow).toBe(true);
   });
 });

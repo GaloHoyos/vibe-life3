@@ -26,6 +26,13 @@ export interface ActorSnapshot {
    * cruza el par de portales (links warp).
    */
   navPosition?: Vector3;
+  /**
+   * Sólo en ghosts de portal: plano del portal de SALIDA por el que se ve este
+   * ghost (queda detrás del disco). Un observador únicamente puede verlo si está
+   * DELANTE de este plano — un portal se ve sólo de su cara frontal. Sin esto,
+   * un enemigo del otro lado de la pared lo detectaría igual.
+   */
+  portalView?: { position: Vector3; normal: Vector3 };
 }
 
 /**

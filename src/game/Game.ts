@@ -1225,10 +1225,14 @@ export class Game {
       const npcIndex = new ActorSpatialIndex(npcSnapshots);
       const portalGhosts: ActorSnapshot[] = portals
         .projectPointThroughPortals(playerPosition)
-        .map((position) => ({
+        .map((projection) => ({
           ...playerSnapshot,
-          position,
+          position: projection.position,
           navPosition: playerSnapshot.position,
+          portalView: {
+            position: projection.viewPosition,
+            normal: projection.viewNormal,
+          },
         }));
       const ctx: AiFrameContext = {
         delta: time.delta,

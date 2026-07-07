@@ -599,9 +599,15 @@ export class Npc implements INpc {
     ) {
       candidates.push(ctx.player);
       // Proyecciones del player a través de portales: candidatos extra cuya
-      // posición es la salida del portal. El LOS portal-aware los valida.
+      // posición es la salida del portal. El LOS portal-aware los valida. Sólo
+      // se consideran si el NPC está DELANTE del disco de salida: un portal se
+      // ve únicamente de su cara frontal, así que un enemigo del otro lado de
+      // la pared no puede verlo a través del portal.
       if (ctx.portalGhosts) {
         for (const ghost of ctx.portalGhosts) {
+          if (ghost.portalView && !this.isInFrontOfPortalView(ghost.portalView)) {
+            continue;
+          }
           candidates.push(ghost);
         }
       }
@@ -658,6 +664,22 @@ export class Npc implements INpc {
       return current;
     }
     return best;
+  }
+
+  /**
+   * ¿El ojo del NPC está delante del disco de salida de un ghost de portal? Un
+   * portal sólo transmite desde su cara frontal; detrás sólo hay pared. Se usa
+   * el ojo (no los pies) para que valga también en portales de piso/techo.
+   */
+  private isInFrontOfPortalView(view: {
+    position: Vector3;
+    normal: Vector3;
+  }): boolean {
+    const self = this.motor.getPosition();
+    const dx = self.x - view.position.x;
+    const dy = self.y + this.preset.perception.eyeHeight - view.position.y;
+    const dz = self.z - view.position.z;
+    return dx * view.normal.x + dy * view.normal.y + dz * view.normal.z > 0;
   }
 
   /** Vecinos vivos a < 4 m para la separacion de locomotion. */
