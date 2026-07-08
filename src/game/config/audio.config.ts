@@ -174,6 +174,33 @@ export const HevSuitAudio = {
   flatline: ["hev.fvox.criticalFail", "hev.fvox.flatline"],
 } as const satisfies Record<HevSuitSoundCue, SoundRef>;
 
+/**
+ * Diagnóstico de daño del traje HEV, portado de Half-Life (`player.cpp`). El
+ * traje no comenta cada golpe: sólo diagnostica cuando la herida deja de ser
+ * trivial, y elige la línea según el tipo de daño (bala→pérdida de sangre,
+ * físico→fractura, cuerpo a cuerpo→laceración), con variante grave si el golpe
+ * es fuerte. Cada línea no se repite dentro de `repeatSeconds`.
+ */
+export const HevDamageConfig = {
+  /** Sobre este % de vida el traje calla (herida trivial). */
+  trivialHealthPercent: 75,
+  /** Golpes por debajo de este daño no ameritan diagnóstico. */
+  trivialDamage: 5,
+  /** Un golpe sobre este daño es "grave" (fractura/laceración mayor). */
+  majorDamage: 25,
+  /** Ventana de no-repetición por línea (SUIT_NEXT_IN_30SEC de HL). */
+  repeatSeconds: 30,
+} as const;
+
+export const HevDamageDiagnosis = {
+  bullet: "hev.fvox.bloodLoss",
+  meleeMinor: "hev.fvox.minorLacerations",
+  meleeMajor: "hev.fvox.majorLacerations",
+  fractureMinor: "hev.fvox.minorFracture",
+  fractureMajor: "hev.fvox.majorFracture",
+  generic: "hev.fvox.damage",
+} as const satisfies Record<string, SoundRef>;
+
 export type WeaponHitSurface =
   | "static"
   | "dynamic"
