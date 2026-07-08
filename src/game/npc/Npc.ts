@@ -349,7 +349,14 @@ export class Npc implements INpc {
       const damage = this.sliceDamage * (hit.isPlayer ? 2 : 1);
       this.tmpSliceDir.copy(hit.point).sub(this.motor.getPosition());
       this.tmpSliceDir.y = 0.2;
-      hit.damageable.applyDamage(damage, this.tmpSliceDir.clone().normalize(), undefined, this.id, hit.point.clone());
+      hit.damageable.applyDamage(
+        damage,
+        this.tmpSliceDir.clone().normalize(),
+        undefined,
+        this.id,
+        hit.point.clone(),
+        "melee",
+      );
     }
     this.eventBus.emit('npc.attack', {
       id: this.id,
