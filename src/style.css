@@ -503,6 +503,46 @@ body {
   box-shadow: 0 0 8px rgb(255 62 39 / 0.7);
 }
 
+.hl-crosshair__portals {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  display: none;
+  gap: 6px;
+  transform: translateX(-50%);
+}
+
+.hl-crosshair__portals.is-visible {
+  display: flex;
+}
+
+.hl-crosshair__portal-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  opacity: 0.35;
+}
+
+.hl-crosshair__portal-dot--a {
+  border: 1px solid #3fa7ff;
+}
+
+.hl-crosshair__portal-dot--b {
+  border: 1px solid #ff9a3f;
+}
+
+.hl-crosshair__portal-dot--a.is-placed {
+  background: #3fa7ff;
+  box-shadow: 0 0 6px rgb(63 167 255 / 0.8);
+  opacity: 1;
+}
+
+.hl-crosshair__portal-dot--b.is-placed {
+  background: #ff9a3f;
+  box-shadow: 0 0 6px rgb(255 154 63 / 0.8);
+  opacity: 1;
+}
+
 /* ============================================================
  * Interaction prompt (centro inferior)
  * ============================================================ */

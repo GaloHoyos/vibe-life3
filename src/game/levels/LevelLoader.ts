@@ -1,13 +1,14 @@
 ﻿import { Box3, Group, Mesh, MeshStandardMaterial, BoxGeometry, Vector3, type Scene } from 'three';
 import type { AssetManager } from '@engine/assets/AssetManager';
 import type { CharacterFactory } from '@game/characters/CharacterFactory';
-import { CharacterPresets } from '@game/characters/CharacterPresets';
+import { CharacterPresets, isFlyingCharacter } from '@game/characters/CharacterPresets';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import { tupleToVector3 } from '@shared/math/VectorTuple';
 import type { GameEventBus } from "@game/GameEvents";
 import { ActionButton, Charger, DoorButton, InteractSystem, SlidingDoor } from '@game/gameplay/interactions';
 import { WeaponPickup } from '@game/gameplay/weapons/pickup/WeaponPickup';
 import { ItemPickup } from '@game/gameplay/items/ItemPickup';
+import { AmmoPickup } from '@game/gameplay/items/AmmoPickup';
 import { getChargerType } from '@game/config/items.config';
 import { SquadDirector } from '@game/npc/ai/SquadDirector';
 import type { INpc } from '@game/npc/core/INpc';
@@ -17,6 +18,7 @@ import { SpawnValidator } from '@engine/physics/character/SpawnValidator';
 import { createBoxMesh } from '@engine/render/PrimitiveFactory';
 import { createTerrainMesh } from '@engine/render/TerrainMesh';
 import type { MaterialKey } from '@engine/render/material/Materials';
+import { materialToSurface } from './materialSurface';
 import { generateHeightField } from '@shared/math/HeightField';
 import { NavSpace } from '@engine/ai/nav/NavSpace';
 import { NavSpaceBuilder } from '@engine/ai/nav/NavSpaceBuilder';
@@ -31,11 +33,22 @@ import type { CheckpointSystem } from './CheckpointSystem';
 import type { HazardVolumeSystem } from './HazardVolumeSystem';
 import type { ExplosiveBarrelSystem } from '@game/gameplay/hazards/ExplosiveBarrelSystem';
 
+/**
+ * Wiring de portales para los NPCs del nivel (LOS/disparo portal-aware, cruce
+ * de flyers). Vive en el caller (Game) porque el par y el raycast through son
+ * del sistema de portales, no del nivel.
+ */
+export type NpcPortalServices = Pick<
+  NpcRuntimeServices,
+  'losRaycast' | 'portals' | 'onFlyerPortalTeleport'
+>;
+
 export interface LoadedLevel {
   npcs: INpc[];
   doors: SlidingDoor[];
   weaponPickups: WeaponPickup[];
   itemPickups: ItemPickup[];
+  ammoPickups: AmmoPickup[];
   chargers: Charger[];
   tacticalMap: TacticalMap;
   squadDirector: SquadDirector;
@@ -61,6 +74,7 @@ export class LevelLoader {
     private readonly explosiveBarrels: ExplosiveBarrelSystem,
     private readonly characters: CharacterFactory,
     private readonly assets: AssetManager,
+    private readonly npcPortalServices: NpcPortalServices,
   ) {}
 
   async load(level: LevelDefinition): Promise<LoadedLevel> {
@@ -68,6 +82,7 @@ export class LevelLoader {
     const doors: SlidingDoor[] = [];
     const weaponPickups: WeaponPickup[] = [];
     const itemPickups: ItemPickup[] = [];
+    const ammoPickups: AmmoPickup[] = [];
     const chargers: Charger[] = [];
     const sharedRaycast = new Raycast(this.physics);
 
@@ -90,6 +105,7 @@ export class LevelLoader {
         id: terrain.id,
         position: tupleToVector3(terrain.position),
         size: terrain.size,
+        metadata: { surface: materialToSurface(terrain.material) },
       });
     }
 
@@ -104,6 +120,7 @@ export class LevelLoader {
         position: tupleToVector3(definition.position),
         size: tupleToVector3(definition.size),
         rotation: definition.rotation ? quatFromEuler(definition.rotation) : undefined,
+        metadata: { surface: materialToSurface(definition.material) },
       });
     });
     const buildingRegistry = new BuildingRegistry(buildings);
@@ -118,6 +135,7 @@ export class LevelLoader {
           size: tupleToVector3(definition.size),
           rotation: definition.rotation ? quatFromEuler(definition.rotation) : undefined,
           mass: definition.mass,
+          metadata: { surface: materialToSurface(definition.material) },
         },
         mesh,
       );
@@ -212,6 +230,7 @@ export class LevelLoader {
       pathQueue,
       buildingRegistry,
       raycast: sharedRaycast,
+      ...this.npcPortalServices,
       tacticalMap,
       squadDirector,
     };
@@ -222,7 +241,10 @@ export class LevelLoader {
         CharacterPresets[definition.characterId] ??
         CharacterPresets.placeholderHumanoid;
       const halfExtent = preset.collider.height / 2;
-      const validation = spawnValidator.validate(requested, halfExtent);
+      // Los voladores conservan su altura de diseño (no se pegan al suelo).
+      const validation = isFlyingCharacter(preset)
+        ? { position: requested, valid: true, relocated: false }
+        : spawnValidator.validate(requested, halfExtent);
       if (!validation.valid) {
         console.warn(
           `[LevelLoader] NPC '${definition.id}' spawn invalid at ${requested.toArray().join(',')} — usando posición pedida igual`,
@@ -255,9 +277,25 @@ export class LevelLoader {
 
     for (const definition of level.itemPickups ?? []) {
       itemPickups.push(
-        await ItemPickup.create(this.scene, this.physics, this.assets, {
+        await ItemPickup.create(
+          this.scene,
+          this.physics,
+          this.assets,
+          this.eventBus,
+          {
+            id: definition.id,
+            itemId: definition.itemId,
+            position: tupleToVector3(definition.position),
+          },
+        ),
+      );
+    }
+
+    for (const definition of level.ammoPickups ?? []) {
+      ammoPickups.push(
+        await AmmoPickup.create(this.scene, this.physics, this.assets, {
           id: definition.id,
-          itemId: definition.itemId,
+          ammoId: definition.ammoId,
           position: tupleToVector3(definition.position),
         }),
       );
@@ -287,7 +325,13 @@ export class LevelLoader {
         size: solid.getSize(new Vector3()),
       });
 
-      const charger = new Charger(definition.id, object, type, definition.capacity ?? type.capacity);
+      const charger = new Charger(
+        definition.id,
+        object,
+        type,
+        definition.capacity ?? type.capacity,
+        this.eventBus,
+      );
       this.interactSystem.register(charger);
       chargers.push(charger);
     }
@@ -315,6 +359,7 @@ export class LevelLoader {
       doors,
       weaponPickups,
       itemPickups,
+      ammoPickups,
       chargers,
       tacticalMap,
       squadDirector,

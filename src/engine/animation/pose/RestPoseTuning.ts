@@ -25,12 +25,54 @@ export interface RestPoseValues {
   headX: number;
 }
 
-export const RestPoseTuning: Record<"combine" | "alyx" | "zombie", RestPoseValues> = {
+export const RestPoseTuning: Record<
+  "combine" | "combineShotgunner" | "combineElite" | "alyx" | "zombie",
+  RestPoseValues
+> = {
   combine: {
     rightUpperArmX: 0.29,
     rightUpperArmY: -0.29,
     rightUpperArmZ: -0.79,
     rightForearmX: 0.76,
+    rightForearmY: -0.87,
+    rightForearmZ: -1.07,
+    leftUpperArmX: 0.7,
+    leftUpperArmY: 0.37,
+    leftUpperArmZ: 0.43,
+    leftForearmX: 0.68,
+    leftForearmY: 0.42,
+    leftForearmZ: 0.76,
+    spineX: 0.1,
+    chestX: 0.01,
+    headX: -0.02,
+  },
+  // Mismo esqueleto que el combine: arranca con sus valores, tuneable aparte.
+  combineShotgunner: {
+    rightUpperArmX: 0.29,
+    rightUpperArmY: -0.29,
+    rightUpperArmZ: -0.79,
+    rightForearmX: 0.76,
+    rightForearmY: -0.87,
+    rightForearmZ: -1.07,
+    leftUpperArmX: 0.7,
+    leftUpperArmY: 0.37,
+    leftUpperArmZ: 0.43,
+    leftForearmX: 0.68,
+    leftForearmY: 0.42,
+    leftForearmZ: 0.76,
+    spineX: 0.1,
+    chestX: 0.01,
+    headX: -0.02,
+  },
+  // Mismo esqueleto que el combine, con el arma apenas más arriba (un poco más
+  // "alerta/al ready" que el combine común) pero SIN inclinar el torso: el rest
+  // pose es la base del walk, y un lean marcado se ve encorvado/rígido al
+  // caminar. Subir solo `rightUpperArmX` un poco mantiene la locomoción natural.
+  combineElite: {
+    rightUpperArmX: 0.42,
+    rightUpperArmY: -0.29,
+    rightUpperArmZ: -0.79,
+    rightForearmX: 0.65,
     rightForearmY: -0.87,
     rightForearmZ: -1.07,
     leftUpperArmX: 0.7,

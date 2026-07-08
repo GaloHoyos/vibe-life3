@@ -115,7 +115,7 @@ export class ShotgunWeapon extends Weapon {
     if (this.magazine >= this.definition.magazineSize) {
       return false;
     }
-    if (this.reserve <= 0) {
+    if (this.getReserveAmmo() <= 0) {
       return false;
     }
 
@@ -174,7 +174,7 @@ export class ShotgunWeapon extends Weapon {
       }
       this.loadOneShell();
       const full = this.magazine >= this.definition.magazineSize;
-      const empty = this.reserve <= 0;
+      const empty = this.getReserveAmmo() <= 0;
       if (full || empty) {
         this.reload.cockingPhase = true;
         this.reload.cockAt = now + POST_RELOAD_COCK_TIME;
@@ -191,13 +191,15 @@ export class ShotgunWeapon extends Weapon {
   }
 
   private loadOneShell(): void {
+    if (!this.context.ammo.consumeForWeapon(this.definition.id, 1)) {
+      return;
+    }
     this.magazine += 1;
-    this.reserve -= 1;
     this.emitAmmoChanged();
     this.context.eventBus.emit("weapon.reloaded", {
       weaponName: this.name,
       ammo: this.magazine,
-      reserve: this.reserve,
+      reserve: this.getReserveAmmo(),
     });
   }
 
@@ -233,7 +235,18 @@ export class ShotgunWeapon extends Weapon {
     for (let i = 0; i < pellets; i += 1) {
       const dir = applySpread(direction, spread);
       const rayOrigin = origin.clone().addScaledVector(dir, 0.45);
-      const hit = this.context.raycast.cast(rayOrigin, dir, range);
+      // Portal-aware: los perdigones cruzan el par linked igual que el hitscan.
+      const hit = this.context.portals.throughRaycast.cast(rayOrigin, dir, range);
+      // Un tracer por perdigón (también los que erran), vía evento dedicado para
+      // no disparar N sonidos/flashes como haría un `weapon.fired` por perdigón.
+      this.context.eventBus.emit("weapon.tracer", {
+        origin,
+        direction: dir,
+        range,
+        sourceId: "player",
+        sourceKind: "player",
+        sourceFaction: "player",
+      });
       if (!hit) {
         continue;
       }
@@ -257,6 +270,7 @@ export class ShotgunWeapon extends Weapon {
         dir.clone(),
         hit.metadata?.bodyPart?.name,
         "player",
+        hit.point,
       );
 
       this.context.eventBus.emit("weapon.hit", {

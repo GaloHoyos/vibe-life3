@@ -11,6 +11,7 @@
  */
 
 import type { HazardKind } from "@game/levels/HazardVolumeSystem";
+import type { DifficultyLevel } from "@game/config/difficulty.config";
 
 export const Speakers = {
   hev: "HEV",
@@ -118,12 +119,43 @@ export const WorkshopStrings = {
     count > 0 ? `${avg.toFixed(1)} / 5 (${count} ${count === 1 ? "voto" : "votos"})` : "Sin votos",
 } as const;
 
+/** Labels del prompt `[E]` para el agarre de objetos físicos. */
+export const InteractionStrings = {
+  grab: "Agarrar objeto",
+  drop: "Soltar objeto",
+} as const;
+
 export const HudStrings = {
   unarmed: "DESARMADO",
   weaponPickedUp: (weaponName: string): string => `arma adquirida: ${weaponName}`,
   healthPickedUp: (amount: number): string => `+${amount} vida`,
+  armorPickedUp: (amount: number): string => `+${amount} traje`,
   ammoPickedUp: (amount: number, weaponName?: string): string =>
     `+${amount} ${weaponName ?? "munición"}`,
+  portalPlacementFailed: "Superficie no válida para portal",
+} as const;
+
+/** Nivel de dificultad: etiqueta y descripcion para menus (estilo HL2). */
+export const DifficultyStrings: Record<
+  DifficultyLevel,
+  { label: string; description: string }
+> = {
+  facil: {
+    label: "Facil",
+    description: "Para disfrutar la historia. Los enemigos pegan flojo.",
+  },
+  normal: {
+    label: "Normal",
+    description: "La experiencia equilibrada, como debe jugarse.",
+  },
+  dificil: {
+    label: "Dificil",
+    description: "Para veteranos. Los enemigos pegan duro y aguantan mas.",
+  },
+} as const;
+
+export const DifficultyMenuStrings = {
+  title: "Dificultad",
 } as const;
 
 /** Anuncio del traje H.E.V. por tipo de peligro ambiental (estilo HL2). */

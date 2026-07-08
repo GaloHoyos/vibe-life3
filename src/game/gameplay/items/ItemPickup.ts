@@ -2,6 +2,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, Scene, Vector3 } from 'three';
 import type { AssetManager } from '@engine/assets/AssetManager';
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
+import type { GameEventBus } from '@game/GameEvents';
 import type { PlayerHealth } from '@game/gameplay/player/PlayerHealth';
 import { getItem, type ItemDefinition, type ItemId } from '@game/config/items.config';
 
@@ -24,6 +25,7 @@ export class ItemPickup {
   readonly object = new Group();
 
   private pickedUp = false;
+  private eventBus: GameEventBus | null = null;
   private body: RAPIER.RigidBody | null = null;
   private collider: RAPIER.Collider | null = null;
 
@@ -40,9 +42,11 @@ export class ItemPickup {
     scene: Scene,
     physics: PhysicsWorld,
     assets: AssetManager,
+    eventBus: GameEventBus,
     options: ItemPickupOptions,
   ): Promise<ItemPickup> {
     const pickup = new ItemPickup(scene, physics, options);
+    pickup.eventBus = eventBus;
     const definition = getItem(options.itemId);
     const instance = await assets.instantiateModel(definition.modelId);
     pickup.object.add(instance.root ?? createFallback(definition));
@@ -99,7 +103,9 @@ export class ItemPickup {
       return;
     }
 
-    if (applyItem(definition, health)) {
+    const applied = applyItem(definition, health);
+    if (applied > 0) {
+      this.emitPickup(definition, applied);
       this.pickUp();
     }
   }
@@ -115,6 +121,14 @@ export class ItemPickup {
     this.dispose();
   }
 
+  private emitPickup(definition: ItemDefinition, amount: number): void {
+    if (definition.kind === 'health') {
+      this.eventBus?.emit('player.pickup.health', { amount });
+      return;
+    }
+    this.eventBus?.emit('player.pickup.armor', { amount });
+  }
+
   private syncFromPhysics(): void {
     if (!this.body) {
       return;
@@ -126,19 +140,21 @@ export class ItemPickup {
   }
 }
 
-function applyItem(definition: ItemDefinition, health: PlayerHealth): boolean {
+function applyItem(definition: ItemDefinition, health: PlayerHealth): number {
   if (definition.kind === 'health') {
     if (!health.needsHealth()) {
-      return false;
+      return 0;
     }
+    const before = health.current;
     health.heal(definition.amount);
-    return true;
+    return health.current - before;
   }
   if (!health.needsArmor()) {
-    return false;
+    return 0;
   }
+  const before = health.armor;
   health.rechargeArmor(definition.amount);
-  return true;
+  return health.armor - before;
 }
 
 function getPlanarDistanceSq(a: Vector3, b: Vector3): number {

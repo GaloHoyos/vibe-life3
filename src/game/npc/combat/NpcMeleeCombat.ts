@@ -42,7 +42,7 @@ export class NpcMeleeCombat implements NpcCombatHandle {
 
   tryFire(): boolean {
     if (!this.threat || this.combat.isAttacking() || !this.combat.isReady()) return false;
-    const started = this.combat.start();
+    const started = this.combat.start(this.position);
     if (started) this.onAttackStart?.();
     return started;
   }

@@ -4,7 +4,10 @@ import {
   KinematicCharacterBase,
   type KinematicCharacterBaseOptions,
 } from "./KinematicCharacterBase";
+import type { CharacterMotorSnapshot, NpcMotor, SliceHit } from "./NpcMotor";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
+
+export type { CharacterMotorSnapshot } from "./NpcMotor";
 
 export interface CharacterMotorConfig {
   id: string;
@@ -26,25 +29,16 @@ export interface CharacterMotorConfig {
   metadata: PhysicsMetadata;
 }
 
-export interface CharacterMotorSnapshot {
-  position: Vector3;
-  velocity: Vector3;
-  desiredVelocity: Vector3;
-  forward: Vector3;
-  grounded: boolean;
-  yaw: number;
-  targetYaw: number;
-  distanceToTarget: number;
-}
-
 /**
  * Motor cinemÃ¡tico para NPCs: locomociÃ³n con yaw, target-facing y
  * desaceleraciÃ³n suave. Hereda el manejo de cÃ¡psula / step / snap-to-ground
- * de `KinematicCharacterBase`.
+ * de `KinematicCharacterBase`. Para voladores fisicos ver `DynamicFlyerMotor`.
  */
 const Y_AXIS = new Vector3(0, 1, 0);
+/** Corte de seguridad de un leap que nunca aterriza (atascado contra geometria). */
+const MAX_LEAP_DURATION = 1.5;
 
-export class CharacterMotor extends KinematicCharacterBase {
+export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
   private readonly actualVelocity = new Vector3();
   private readonly horizontalVelocity = new Vector3();
   private readonly desiredVelocity = new Vector3();
@@ -57,6 +51,10 @@ export class CharacterMotor extends KinematicCharacterBase {
   private targetYaw = 0;
   private enabled = true;
   private speedMultiplier = 1;
+  private leaping = false;
+  private leapAirborne = false;
+  private leapTimer = 0;
+  private portalExclusions: ReadonlySet<number> | null = null;
 
   constructor(
     physics: PhysicsWorld,
@@ -111,59 +109,68 @@ export class CharacterMotor extends KinematicCharacterBase {
 
     this.forward.set(Math.sin(this.yaw), 0, Math.cos(this.yaw)).normalize();
 
-    if (wantsMove) {
-      if (facingTarget && directionToTarget.lengthSq() > 0.0001) {
-        directionToTarget.normalize();
-        this.desiredVelocity
-          .copy(directionToTarget)
-          .multiplyScalar(this.config.maxSpeed * this.speedMultiplier);
-      } else {
-        if (directionToTarget.lengthSq() > 0.0001) {
-          directionToTarget.normalize();
-        }
-        const facingDot = targetPosition
-          ? MathUtils.clamp(this.forward.dot(directionToTarget), -1, 1)
-          : 1;
-        const angleToTarget = Math.acos(facingDot);
-        const facingSpeedFactor = MathUtils.smoothstep(
-          facingDot,
-          this.config.minMoveFacingDot,
-          1,
-        );
-        const turnSlowdown =
-          angleToTarget > this.config.turnBeforeMoveAngle ? 0.35 : 1;
-        this.desiredVelocity
-          .copy(this.forward)
-          .multiplyScalar(
-            this.config.maxSpeed *
-              this.speedMultiplier *
-              facingSpeedFactor *
-              turnSlowdown,
-          );
-      }
+    if (this.leaping) {
+      // Vuelo balistico: gravedad sobre la velocidad lanzada, sin steering. El
+      // x/z se conserva (momentum); collide-and-slide igual frena en paredes.
+      this.velocity.y += -this.config.gravity * delta;
     } else {
-      this.desiredVelocity.set(0, 0, 0);
-    }
+      if (wantsMove) {
+        if (facingTarget && directionToTarget.lengthSq() > 0.0001) {
+          directionToTarget.normalize();
+          this.desiredVelocity
+            .copy(directionToTarget)
+            .multiplyScalar(this.config.maxSpeed * this.speedMultiplier);
+        } else {
+          if (directionToTarget.lengthSq() > 0.0001) {
+            directionToTarget.normalize();
+          }
+          const facingDot = targetPosition
+            ? MathUtils.clamp(this.forward.dot(directionToTarget), -1, 1)
+            : 1;
+          const angleToTarget = Math.acos(facingDot);
+          const facingSpeedFactor = MathUtils.smoothstep(
+            facingDot,
+            this.config.minMoveFacingDot,
+            1,
+          );
+          const turnSlowdown =
+            angleToTarget > this.config.turnBeforeMoveAngle ? 0.35 : 1;
+          this.desiredVelocity
+            .copy(this.forward)
+            .multiplyScalar(
+              this.config.maxSpeed *
+                this.speedMultiplier *
+                facingSpeedFactor *
+                turnSlowdown,
+            );
+        }
+      } else {
+        this.desiredVelocity.set(0, 0, 0);
+      }
 
-    this.horizontalVelocity.x = MathUtils.damp(
-      this.horizontalVelocity.x,
-      this.desiredVelocity.x,
-      this.config.acceleration,
-      delta,
-    );
-    this.horizontalVelocity.z = MathUtils.damp(
-      this.horizontalVelocity.z,
-      this.desiredVelocity.z,
-      this.config.acceleration,
-      delta,
-    );
-    this.velocity.x = this.horizontalVelocity.x;
-    this.velocity.z = this.horizontalVelocity.z;
-    this.velocity.y += -this.config.gravity * delta;
+      this.horizontalVelocity.x = MathUtils.damp(
+        this.horizontalVelocity.x,
+        this.desiredVelocity.x,
+        this.config.acceleration,
+        delta,
+      );
+      this.horizontalVelocity.z = MathUtils.damp(
+        this.horizontalVelocity.z,
+        this.desiredVelocity.z,
+        this.config.acceleration,
+        delta,
+      );
+      this.velocity.x = this.horizontalVelocity.x;
+      this.velocity.z = this.horizontalVelocity.z;
+      this.velocity.y += -this.config.gravity * delta;
+    }
 
     const { corrected } = this.stepMovement(delta, (collider) =>
       this.shouldCollideWith(collider),
     );
+    if (this.leaping) {
+      this.tickLeapLanding(delta);
+    }
     const invDelta = delta > 0 ? 1 / delta : 0;
     this.actualVelocity.set(
       corrected.x * invDelta,
@@ -173,6 +180,58 @@ export class CharacterMotor extends KinematicCharacterBase {
     this.body.setNextKinematicRotation(
       this.tmpRotation.setFromAxisAngle(Y_AXIS, this.yaw),
     );
+  }
+
+  /**
+   * Lanza el cuerpo en una parabola hacia `target`: elige la velocidad
+   * horizontal para cubrir la distancia planar en el tiempo de vuelo que dicta
+   * `upSpeed` (apex = upSpeed²/2g), clampeada a `maxForwardSpeed`. La gravedad
+   * la pone el `update`. Para creatures que saltan (headcrab); no-op si vuela.
+   */
+  leapTo(target: Vector3, upSpeed: number, maxForwardSpeed: number): void {
+    if (!this.enabled) return;
+    const pos = this.getPosition();
+    const dx = target.x - pos.x;
+    const dz = target.z - pos.z;
+    const planarDist = Math.hypot(dx, dz);
+    const flightTime = this.config.gravity > 0 ? (2 * upSpeed) / this.config.gravity : 0;
+    const needed = flightTime > 0 ? planarDist / flightTime : maxForwardSpeed;
+    const forwardSpeed = Math.min(needed, maxForwardSpeed);
+    const dirX = planarDist > 1e-4 ? dx / planarDist : this.forward.x;
+    const dirZ = planarDist > 1e-4 ? dz / planarDist : this.forward.z;
+    this.launch(dirX * forwardSpeed, upSpeed, dirZ * forwardSpeed);
+  }
+
+  /** Inicia el leap con una velocidad explicita. Desactiva el snap-to-ground. */
+  private launch(vx: number, vy: number, vz: number): void {
+    this.velocity.set(vx, vy, vz);
+    this.horizontalVelocity.set(vx, 0, vz);
+    this.leaping = true;
+    this.leapAirborne = false;
+    this.leapTimer = 0;
+    this.controller.disableSnapToGround();
+  }
+
+  isLeaping(): boolean {
+    return this.leaping;
+  }
+
+  /**
+   * Detecta el aterrizaje: una vez que el cuerpo dejo el piso (`leapAirborne`),
+   * el primer frame que vuelve a estar grounded cierra el leap. Corte duro por
+   * tiempo si nunca despega (atascado contra una pared).
+   */
+  private tickLeapLanding(delta: number): void {
+    this.leapTimer += delta;
+    if (!this.grounded) {
+      this.leapAirborne = true;
+    }
+    if ((this.leapAirborne && this.grounded) || this.leapTimer >= MAX_LEAP_DURATION) {
+      this.leaping = false;
+      this.leapAirborne = false;
+      this.controller.enableSnapToGround(this.config.snapToGround);
+      this.horizontalVelocity.set(this.velocity.x, 0, this.velocity.z);
+    }
   }
 
   syncFromPhysics(): CharacterMotorSnapshot {
@@ -188,8 +247,32 @@ export class CharacterMotor extends KinematicCharacterBase {
     };
   }
 
+  getRotation(): Quaternion {
+    return new Quaternion().setFromAxisAngle(Y_AXIS, this.yaw);
+  }
+
+  /** Terrestre: nunca queda fuera del control de la IA por fisica. */
+  isIncapacitated(): boolean {
+    return false;
+  }
+
+  consumeImpactDamage(): number {
+    return 0;
+  }
+
+  // Terrestres: no se descontrolan ni cortan por contacto.
+  reactToHit(): void {}
+
+  consumeSliceHits(): SliceHit[] {
+    return [];
+  }
+
   disable(): void {
     this.enabled = false;
+    if (this.leaping) {
+      this.leaping = false;
+      this.controller.enableSnapToGround(this.config.snapToGround);
+    }
     this.velocity.set(0, 0, 0);
     this.actualVelocity.set(0, 0, 0);
     this.horizontalVelocity.set(0, 0, 0);
@@ -197,8 +280,32 @@ export class CharacterMotor extends KinematicCharacterBase {
     this.body.setEnabled(false);
   }
 
-  getVelocity(): Vector3 {
+  override getVelocity(): Vector3 {
     return this.velocity.clone();
+  }
+
+  /**
+   * Colliders que el collide-and-slide debe ignorar mientras el NPC transita
+   * un portal (la pared que respalda el disco). Null = sin exclusiones.
+   */
+  setPortalExclusions(handles: ReadonlySet<number> | null): void {
+    this.portalExclusions = handles;
+  }
+
+  /** Reorienta el yaw de golpe (salida de portal): sin damping ni giro visible. */
+  snapYaw(yaw: number): void {
+    this.yaw = yaw;
+    this.targetYaw = yaw;
+    this.body.setNextKinematicRotation(
+      this.tmpRotation.setFromAxisAngle(Y_AXIS, yaw),
+    );
+  }
+
+  override teleport(position: Vector3, velocity: Vector3): void {
+    super.teleport(position, velocity);
+    // El damping de horizontalVelocity pisaría la velocidad nueva un frame
+    // después; sincronizarla mantiene el momentum de salida.
+    this.horizontalVelocity.set(velocity.x, 0, velocity.z);
   }
 
   setSpeedMultiplier(multiplier: number): void {
@@ -211,6 +318,9 @@ export class CharacterMotor extends KinematicCharacterBase {
 
   private shouldCollideWith(collider: RAPIER.Collider): boolean {
     if (collider.handle === this.collider.handle || collider.isSensor()) {
+      return false;
+    }
+    if (this.portalExclusions?.has(collider.handle)) {
       return false;
     }
 

@@ -1,15 +1,39 @@
 ﻿import { Quaternion, Vector3 } from "three";
 import type { GameEventBus } from "@game/GameEvents";
+import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
+import type { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
+import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
+import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
+import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
+import type { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
+import type { AmmoInventory } from "./AmmoInventory";
 import type { WeaponDefinition } from "./WeaponDefinition";
 import type { WeaponInventory } from "./WeaponInventory";
 
 export interface WeaponContext {
   eventBus: GameEventBus;
   raycast: Raycast;
+  /** Mundo físico. Lo usan armas que manipulan cuerpos (gravity gun). */
+  physics: PhysicsWorld;
+  /** Atribución de daño por impacto de props lanzados por el jugador. */
+  propImpacts: PropImpactSystem;
   /** Sistema de granadas activas. Lo usan `GrenadeWeapon` y el secundario del SMG. */
   grenades: GrenadeSystem;
+  /** Sistema de cohetes guiados. Lo usa el RPG del jugador. */
+  rockets: RocketSystem;
+  /** Sistema de bolts balísticos. Lo usa el crossbow del jugador. */
+  bolts: BoltSystem;
+  /** Sistema de bolas de energía Combine. Lo usa el secundario del AR3. */
+  energyBalls: EnergyBallSystem;
+  /** Sistema de hielo Blobulator-style. Lo usa el Ice Gun. */
+  iceGun: IceGunSystem;
+  /** Par de portales runtime. Lo usa la Portal Gun. */
+  portals: PortalGunSystem;
+  /** Reserva global de munición por tipo; las armas guardan solo cargador. */
+  ammo: AmmoInventory;
   /**
    * Inventario del jugador. Permite a un arma consultar otra (ej. SMG-alt
    * mira la reserva del `grenade`). Es un getter porque el inventario
@@ -50,7 +74,6 @@ export abstract class Weapon {
   protected lastFireTime = -Infinity;
   private lastDryFireTime = -Infinity;
   protected magazine: number;
-  protected reserve: number;
   private reloadingUntil = 0;
 
   constructor(
@@ -58,9 +81,6 @@ export abstract class Weapon {
     protected readonly context: WeaponContext,
   ) {
     this.magazine = definition.hasAmmo ? definition.magazineSize : 0;
-    this.reserve = definition.hasAmmo
-      ? Math.min(definition.ammoPerPickup, definition.reserveAmmoMax)
-      : 0;
   }
 
   get id(): string {
@@ -76,7 +96,9 @@ export abstract class Weapon {
   }
 
   getReserveAmmo(): number {
-    return this.definition.hasAmmo ? this.reserve : 0;
+    return this.definition.hasAmmo
+      ? this.context.ammo.getForWeapon(this.definition.id)
+      : 0;
   }
 
   addPickupAmmo(emit = true): number {
@@ -87,15 +109,14 @@ export abstract class Weapon {
       return 0;
     }
 
-    const before = this.reserve;
-    this.reserve = Math.min(
-      this.reserve + this.definition.ammoPerPickup,
-      this.definition.reserveAmmoMax,
+    const gained = this.context.ammo.addForWeapon(
+      this.definition.id,
+      this.definition.ammoPerPickup,
     );
     if (emit) {
       this.emitAmmoChanged();
     }
-    return this.reserve - before;
+    return gained;
   }
 
   /**
@@ -107,7 +128,7 @@ export abstract class Weapon {
       return;
     }
     this.magazine = Math.max(0, Math.min(magazine, this.definition.magazineSize));
-    this.reserve = Math.max(0, Math.min(reserve, this.definition.reserveAmmoMax));
+    this.context.ammo.setForWeapon(this.definition.id, reserve);
   }
 
   canFire(now: number): boolean {
@@ -160,13 +181,22 @@ export abstract class Weapon {
       sourceKind: "player",
       sourceFaction: "player",
     });
-    this.context.eventBus.emit("world.noise", {
-      kind: this.definition.type === "melee" ? "impact" : "gunshot",
-      position: fireContext.origin.clone(),
-      radius: noiseRadiusForWeapon(this.definition.type, this.definition.range),
-      sourceId: "player",
-      sourceFaction: "player",
-    });
+    const fireNoiseRadius =
+      this.definition.noise?.fireRadius ??
+      defaultFireNoiseRadius(this.definition.type, this.definition.range);
+    // Un swing de melee al aire no hace ruido: radio 0 => no se emite. El
+    // impacto real de melee lo emite `MeleeWeapon` desde el punto de golpe.
+    if (fireNoiseRadius > 0) {
+      this.context.eventBus.emit("world.noise", {
+        kind:
+          this.definition.noise?.fireKind ??
+          (this.definition.type === "melee" ? "impact" : "gunshot"),
+        position: fireContext.origin.clone(),
+        radius: fireNoiseRadius,
+        sourceId: "player",
+        sourceFaction: "player",
+      });
+    }
     this.performFire(fireContext);
     this.emitAmmoChanged();
     return true;
@@ -176,21 +206,23 @@ export abstract class Weapon {
     if (
       !this.definition.hasAmmo ||
       this.magazine >= this.definition.magazineSize ||
-      this.reserve <= 0
+      this.getReserveAmmo() <= 0
     ) {
       return false;
     }
 
     this.reloadingUntil = now + this.definition.reloadTime;
     const missing = this.definition.magazineSize - this.magazine;
-    const moved = Math.min(missing, this.reserve);
+    const moved = Math.min(missing, this.getReserveAmmo());
+    if (!this.context.ammo.consumeForWeapon(this.definition.id, moved)) {
+      return false;
+    }
     this.magazine += moved;
-    this.reserve -= moved;
     this.emitAmmoChanged();
     this.context.eventBus.emit("weapon.reloaded", {
       weaponName: this.name,
       ammo: this.magazine,
-      reserve: this.reserve,
+      reserve: this.getReserveAmmo(),
     });
     return true;
   }
@@ -220,6 +252,15 @@ export abstract class Weapon {
   tryAlternateFire(_context: WeaponAlternateFireContext): void {}
 
   /**
+   * FOV objetivo (grados) cuando el arma fuerza un zoom de mira. `null` =
+   * sin zoom (FOV default). El `WeaponController` lerpea la cámara hacia este
+   * valor cada frame. Default sin zoom; el crossbow lo sobrescribe al estar scoped.
+   */
+  getZoomFov(): number | null {
+    return null;
+  }
+
+  /**
    * Llamado cuando esta arma deja de ser la activa (switch o pickup). Las
    * armas con estado externo (props holdeados, charge, etc.) deben liberar
    * recursos acá.
@@ -229,12 +270,20 @@ export abstract class Weapon {
   protected abstract performFire(context: WeaponFireContext): void;
 }
 
-function noiseRadiusForWeapon(type: WeaponDefinition["type"], range: number): number {
+function defaultFireNoiseRadius(
+  type: WeaponDefinition["type"],
+  range: number,
+): number {
+  // Melee y especial (gravity gun) no hacen ruido al usarse: el ruido nace
+  // del impacto real, no del gesto.
   if (type === "melee" || type === "special") {
-    return 7;
+    return 0;
   }
   if (type === "grenade") {
     return 18;
+  }
+  if (type === "rpg") {
+    return 60;
   }
   return Math.max(24, Math.min(range * 0.6, 55));
 }

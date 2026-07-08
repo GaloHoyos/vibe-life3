@@ -11,6 +11,24 @@ export interface RaycastHit {
 }
 
 /**
+ * Contrato estructural del `cast`. Permite inyectar variantes (p.ej. el
+ * raycast portal-aware) donde el consumidor solo necesita lanzar rayos.
+ */
+export interface RaycastSource {
+  cast(
+    origin: Vector3,
+    direction: Vector3,
+    maxDistance: number,
+    excludeBody?: RAPIER.RigidBody,
+    excludeId?: string,
+    filter?: (
+      metadata: PhysicsMetadata | undefined,
+      collider: RAPIER.Collider,
+    ) => boolean,
+  ): RaycastHit | null;
+}
+
+/**
  * Lanza un rayo en el `PhysicsWorld` y devuelve el primer impacto con
  * `metadata` enriquecida (id, kind, body part). Disparos de armas, line
  * of sight de NPCs e interacciones lo usan.
@@ -23,6 +41,23 @@ export class Raycast {
     direction: Vector3,
     maxDistance: number,
     excludeBody?: RAPIER.RigidBody,
+    /**
+     * Descarta todo collider cuyo `metadata.id` coincida. Necesario para los
+     * NPCs multi-collider (el strider tiene capsula raiz + 11 followers, todos
+     * con el mismo id): `excludeBody` solo saca un rigid body; esto los saca a
+     * todos. Sin esto, el LOS de un cuerpo gigante choca consigo mismo.
+     */
+    excludeId?: string,
+    /**
+     * Filtro por metadata: devolver false ignora el collider (el rayo lo
+     * atraviesa). Lo usa el disparo de portales para pasar por props/entidades
+     * y pegar sólo en la geometría estática de atrás. Recibe también el
+     * collider para filtros por forma/sensor (clamp del grab).
+     */
+    filter?: (
+      metadata: PhysicsMetadata | undefined,
+      collider: RAPIER.Collider,
+    ) => boolean,
   ): RaycastHit | null {
     const normalizedDirection = direction.clone().normalize();
     const ray = new RAPIER.Ray(
@@ -33,6 +68,21 @@ export class Raycast {
         z: normalizedDirection.z,
       },
     );
+    const predicate =
+      excludeId !== undefined || filter !== undefined
+        ? (collider: RAPIER.Collider) => {
+            const meta = this.physics.getColliderMetadata(collider);
+            // Por ownerId (la cápsula y sus hitboxes lo comparten), con fallback
+            // a id para colliders sin ownerId.
+            if (
+              excludeId !== undefined &&
+              (meta?.ownerId ?? meta?.id) === excludeId
+            ) {
+              return false;
+            }
+            return filter === undefined || filter(meta, collider);
+          }
+        : undefined;
     const hit = this.physics.world.castRayAndGetNormal(
       ray,
       maxDistance,
@@ -41,6 +91,7 @@ export class Raycast {
       undefined,
       undefined,
       excludeBody,
+      predicate,
     );
 
     if (!hit) {

@@ -14,7 +14,7 @@ const SPAWN_OFFSET = 0.6;
 /**
  * Arma "throwable" estilo HL2.
  *
- * Las granadas viven en `reserve` (no hay magazine). Tanto el throw largo
+ * Las granadas viven en el `AmmoInventory` global (no hay magazine). Tanto el throw largo
  * (LMB) como el corto (RMB, `alternateFire.closeThrow`) consumen una de
  * la reserva y spawnean una granada `fuse` en `GrenadeSystem`.
  *
@@ -27,7 +27,7 @@ export class GrenadeWeapon extends Weapon {
   }
 
   override getAmmo(): number {
-    return this.reserve;
+    return this.context.ammo.getForWeapon(this.definition.id);
   }
 
   override getReserveAmmo(): number {
@@ -38,11 +38,11 @@ export class GrenadeWeapon extends Weapon {
     if (now - this.lastFireTime < 1 / this.definition.fireRate) {
       return false;
     }
-    return this.reserve > 0;
+    return this.getAmmo() > 0;
   }
 
   override tryFire(fireContext: WeaponFireContext): boolean {
-    if (this.reserve <= 0) {
+    if (this.getAmmo() <= 0) {
       this.context.eventBus.emit("weapon.empty", { weaponName: this.name });
       return false;
     }
@@ -71,7 +71,7 @@ export class GrenadeWeapon extends Weapon {
     if (alt?.kind !== "closeThrow") {
       return;
     }
-    if (this.reserve <= 0) {
+    if (this.getAmmo() <= 0) {
       this.context.eventBus.emit("weapon.empty", { weaponName: this.name });
       return;
     }
@@ -96,10 +96,9 @@ export class GrenadeWeapon extends Weapon {
    * (`grenadeLauncher`) que comparte reserva con esta arma.
    */
   tryConsumeAmmo(): boolean {
-    if (this.reserve <= 0) {
+    if (!this.context.ammo.consumeForWeapon(this.definition.id, 1)) {
       return false;
     }
-    this.reserve -= 1;
     this.emitAmmoChanged();
     return true;
   }
@@ -111,7 +110,7 @@ export class GrenadeWeapon extends Weapon {
 
   private consumeOne(now: number): void {
     this.lastFireTime = now;
-    this.reserve = Math.max(0, this.reserve - 1);
+    this.context.ammo.consumeForWeapon(this.definition.id, 1);
   }
 
   private emitFired(origin: Vector3, direction: Vector3): void {

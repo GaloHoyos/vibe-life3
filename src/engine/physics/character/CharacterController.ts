@@ -65,6 +65,8 @@ export class CharacterController extends KinematicCharacterBase {
   private readonly tmpWishDir = new Vector3();
   private readonly tmpImpulse = new Vector3();
   private readonly tmpRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, TMP_STAND_UP);
+  private collisionFilter: ((collider: RAPIER.Collider) => boolean) | null =
+    null;
 
   constructor(
     physics: PhysicsWorld,
@@ -111,9 +113,16 @@ export class CharacterController extends KinematicCharacterBase {
     // impacto se captura ANTES; el flanco aire→suelo lo da el cambio de `grounded`.
     const wasGrounded = this.grounded;
     const fallSpeed = -this.velocity.y;
-    this.stepMovement(delta);
+    this.stepMovement(delta, this.collisionFilter ?? undefined);
+    // Sin daño por caída mientras se transita un portal: el filtro pass-through
+    // (que sólo lo activan los portales) significa que la cápsula está sobre la
+    // boca de un portal y va a atravesarlo, no a impactar. El snap-to-ground
+    // puede engancharla en el borde del hueco y marcar un aterrizaje falso; en
+    // Portal caer DENTRO de un portal nunca lastima porque no golpeás nada.
     this.landingImpact =
-      !wasGrounded && this.grounded && fallSpeed > 0 ? fallSpeed : 0;
+      !wasGrounded && this.grounded && fallSpeed > 0 && this.collisionFilter === null
+        ? fallSpeed
+        : 0;
   }
 
   /** Velocidad de impacto si el jugador aterrizó este frame; 0 si no. Limpia tras leer. */
@@ -131,6 +140,17 @@ export class CharacterController extends KinematicCharacterBase {
     );
     const p = this.body.translation();
     return this.tmpEye.set(p.x, p.y + eyeOffset, p.z);
+  }
+
+  /**
+   * Filtro de colliders para el collide-and-slide (null = sin filtro). Lo usan
+   * los portales para dejar pasar la cápsula a través de la pared que respalda
+   * el portal mientras el jugador está transitando.
+   */
+  setCollisionFilter(
+    filter: ((collider: RAPIER.Collider) => boolean) | null,
+  ): void {
+    this.collisionFilter = filter;
   }
 
   applyImpulse(direction: Vector3, strength: number): void {
@@ -152,6 +172,21 @@ export class CharacterController extends KinematicCharacterBase {
 
   isCrouched(): boolean {
     return this.crouchProgress > 0.5;
+  }
+
+  /** Progreso continuo del crouch (0 = parado, 1 = agachado completo). */
+  getCrouchProgress(): number {
+    return this.crouchProgress;
+  }
+
+  /** Base de la cápsula (los pies). Ancla del modelo visual del jugador. */
+  getFeetPosition(out = new Vector3()): Vector3 {
+    const t = this.body.translation();
+    return out.set(
+      t.x,
+      t.y - this.currentHalfHeight - this.options.radius,
+      t.z,
+    );
   }
 
   isSprinting(): boolean {
@@ -309,9 +344,14 @@ export class CharacterController extends KinematicCharacterBase {
         clearance + 0.05,
         true,
         RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-        undefined,
+        // Mismos groups que el movimiento: ignora colliders que excluyen Actor
+        // (parche de apertura de portales, ragdolls).
+        this.collider.collisionGroups(),
         undefined,
         this.body,
+        // Respeta el mismo filtro que el movimiento: parado dentro de un portal,
+        // el backing wall está excluido, así que no debe bloquear el levantarse.
+        this.collisionFilter ?? undefined,
       );
       if (hit !== null) {
         return false;

@@ -53,7 +53,7 @@ export class NpcCombat {
   }
 
   /** Inicia la animaciÃ³n de ataque. Devuelve `false` si no se pudo (deshabilitado). */
-  start(): boolean {
+  start(position?: Vector3): boolean {
     if (!this.definition.attack.enabled) {
       return false;
     }
@@ -64,6 +64,7 @@ export class NpcCombat {
     this.eventBus.emit("npc.attack", {
       id: this.id,
       characterId: this.definition.id,
+      position: position?.clone(),
     });
     this.logDebug("attack start");
     return true;
@@ -134,7 +135,7 @@ export class NpcCombat {
 
     const directionToTarget = directionTo(ctx.npcPosition, ctx.targetPosition);
     const attack = this.definition.attack;
-    ctx.target.applyDamage(attack.damage, directionToTarget, undefined, this.id);
+    ctx.target.applyDamage(attack.damage, directionToTarget, undefined, this.id, ctx.targetPosition.clone());
 
     const knockbackReceiver = ctx.target as {
       applyKnockback?: (direction: Vector3, strength: number) => void;

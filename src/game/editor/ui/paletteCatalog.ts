@@ -51,6 +51,7 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
     items: [
       { label: 'NPC', icon: 'person', kind: 'npc' },
       { label: 'Arma', icon: 'weapon', kind: 'weaponPickup' },
+      { label: 'Municion', icon: 'ammo', kind: 'ammoPickup' },
       { label: 'Item', icon: 'item', kind: 'itemPickup' },
     ],
   },

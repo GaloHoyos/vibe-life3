@@ -72,7 +72,7 @@ export class ProceduralCharacterAnimator {
   private readonly locomotion: LocomotionLayer;
   private readonly posture: PostureLayer;
   private readonly idle = new IdleLayer();
-  private readonly aim = new AimLayer();
+  private readonly aim: AimLayer;
   private readonly reload = new ReloadLayer();
   private readonly attack = new AttackLayer();
   private readonly hit = new HitLayer();
@@ -89,6 +89,7 @@ export class ProceduralCharacterAnimator {
     this.locomotion = new LocomotionLayer(options.animation);
     this.posture = new PostureLayer(options.animation);
     this.lookAt = new LookAtLayer(options.animation);
+    this.aim = new AimLayer(options.characterId);
 
     this.layers = [
       this.locomotion,
@@ -108,6 +109,7 @@ export class ProceduralCharacterAnimator {
       physics: options.physics,
       mapper: this.mapper,
       config: options.ragdoll,
+      characterId: options.characterId,
       owner: options.owner,
     });
     if (

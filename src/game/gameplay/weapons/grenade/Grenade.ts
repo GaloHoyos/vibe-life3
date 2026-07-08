@@ -1,6 +1,7 @@
 import type RAPIER from "@dimforge/rapier3d-compat";
-import type { Object3D, Vector3 } from "three";
+import type { Color, Object3D, Vector3 } from "three";
 import type { Faction } from "@engine/ai/Faction";
+import type { DamageType } from "@shared/types/lifecycle";
 
 /**
  * - `fuse`: la granada hace tick a un fuse (con beeps acelerando). Al
@@ -56,8 +57,20 @@ export interface ExplosionParams {
   sourceFaction?: Faction;
   /** Nombre del arma para el `weapon.hit` emitido por cada víctima. */
   weaponName: string;
+  /**
+   * Tipo de daño de la explosión. Default `"explosive"` (granadas, RPG,
+   * barriles). El pulso de energía del AR2 pasa `"energy"`: no es un explosivo
+   * real, así que NO daña a los jefes solo-explosivo (gunship/strider).
+   */
+  damageType?: DamageType;
   /** Cuerpo a excluir del impulso (p. ej. la propia granada). */
   ignoreBody?: RAPIER.RigidBody;
+  /** Tinte del VFX de explosión (energía del strider, etc.). Default = fuego. */
+  color?: Color;
+  /** Clip de explosión a reproducir. Default = explosión de granada. */
+  explosionSound?: string;
+  /** Radio (m) de audibilidad de la explosión. Default derivado del radio físico. */
+  soundMaxDistance?: number;
 }
 
 export interface ActiveGrenade {

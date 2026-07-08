@@ -57,6 +57,45 @@ Half-Life completo. Ordenado por impacto. Marcá cada ítem al cerrarlo.
 
 - [ ] **Más enemigos** (data-driven vía `CharacterPresets` + `aiProfileId`): headcrab/fast
   zombie, manhack (drone aéreo), turret Combine, variedad Combine (shotgunner/elite).
+  - [x] **Headcrab** *(hecho)* — criatura melee no-humanoide (modelo `headcrab.glb`). Para los
+    no-humanoides se introdujo la interfaz `NpcAnimator` + un `CreatureAnimator` liviano (bob/tilt +
+    muerte `tumble`/`drop`, lunge en ataque) que el `Npc` usa en lugar del bridge humanoide cuando
+    `type !== 'humanoid'`. Preset `headcrabMelee`: veloz, rango melee corto, fragil.
+  - [x] **Manhack** *(hecho)* — drone volador. Modo `flying` del `CharacterMotor` (ignora gravedad,
+    steering 3D incluido Y, sin snap-to-ground) + `NpcLocomotion` directa sin NavSpace (beeline al
+    threat + `hoverHeight`). Visual procedural `ManhackVisual` (cuchilla girada por el animador, sin
+    GLB). Contacto melee reusando `NpcCombat`. **Gotcha:** el `eyeHeight` del flyer debe quedar fuera
+    de su cápsula — el LOS de percepción es un raycast *solid* y un origen dentro del propio collider
+    se auto-impacta (perdía `SeeEnemy` siempre). *Cosmético:* el trace recorder marca un falso-positivo
+    "path vacío con threat" en flyers (no usan path).
+  - [x] **Torreta de piso** *(hecho)* — sensor + ametralladora montada sobre un trípode físico,
+    estilo HL2 `npc_turret_floor`. No navega ni decide táctica: corre sobre el runtime `Npc` con un
+    `StationaryDynamicMotor` (rigid body dinámico que descansa, se empuja, se vuelca y lo agarra la
+    gravity gun), un `TurretCombat` (apunta el cañón a 360°/s, dispara hitscan sólo alineada dentro de
+    ~10°, supresión al último punto visto, deploy/retract auto-gestionados, *thrash* caótico al
+    volcarse) y un `TurretAnimator` + visual procedural (`turret-barrel`/`turret-eye`/`turret-muzzle`).
+    Condición nueva `Cond.Tipped` (up-vector del cuerpo). **Derrota = física** (vida altísima: las
+    balas casi no la dañan; se neutraliza tumbándola). Preset `floorTurret`; `patrol[0]` define la
+    dirección de montaje.
+  - [x] **Variedad Combine: shotgunner + elite** *(hecho)* — dos variantes que reusan el esqueleto,
+    las animaciones procedurales y el `aiProfileId: "combineSoldier"` del combine común (mismos
+    schedules + percepción). El `combineShotgunner` cambia el AR3 por la escopeta con cadencia
+    ajustada (rango ~14m, ráfagas de 2, pausa larga) y su propia pose de attachment; el `combineElite`
+    es copia 1:1 del combine común (AR3, mismas stats), distinto sólo en el modelo (ojos rojos
+    emisivos). Ambos con entrada propia en `RestPoseTuning` para que el idle calce con el combine.
+  - [x] **Gunship mini boss** *(hecho)* — NPC Combine volador con `KinematicFlyerMotor`
+    no agarrable por gravity gun mientras vive, visual procedural (`gunship-rotor` /
+    `gunship-eye` / `gunship-muzzle`), `GunshipCannonCombat` hitscan con telegraph,
+    ráfagas con stitching lateral y crash explosivo al morir vía `GrenadeSystem.detonate()`.
+    Encuentro de prueba en `SnowFieldLevel`.
+  - [x] **Strider full-size boss** *(hecho)* — NPC Combine trípode de escala completa,
+    visual procedural, `StriderWalkerMotor` con foot planting/IK y colliders cinemáticos
+    por extremidades, minigun con stitching, cañón cargado explosivo y stomp cercano.
+    Muerte con colapso explosivo vía `GrenadeSystem.detonate()`. Mapa de prueba:
+    `strider-test`.
+  - [ ] **Pendiente:** audio propio de headcrab/manhack/torreta
+    (faltan clips del artista — la torreta usa placeholders), VFX de muerte del manhack
+    (chispa/explosión) y GLB del modelo de la torreta (hoy procedural).
 - [x] **Peligros ambientales** *(hecho)*
   - **Daño por caída:** `CharacterController` captura la velocidad de impacto en el flanco
     aire→suelo (`consumeLandingImpact`); `Player` la mapea a daño vía `PlayerConfig.fallDamage`
@@ -77,14 +116,37 @@ Half-Life completo. Ordenado por impacto. Marcá cada ítem al cerrarlo.
   - **Editor:** barril y kill-volume cableados de punta a punta (paleta "Peligros", inspector con
     toggle "Efecto visual", preview, codegen `to`/`from`/`toTypeScript`). *Pendiente para publicar
     por Workshop: ampliar el `validateDocument` del backend (repo hermano) a los campos nuevos.*
-- [ ] **Encuentro con jefe** (gunship / mini-strider): preset de mucha vida + ataque ranged fuerte.
+- [x] **VFX de sangre para NPCs orgánicos** *(hecho)* — daño con contexto espacial
+  (`hitPoint`/dirección/body part), filtro por tipo de personaje (humanoides/criaturas sangran;
+  robots/props no), `VfxSystem.bloodImpact()` con puff/gotas y decals oscuros proyectados en
+  paredes/piso cercanos. Incluye throttling por NPC/frame y metadata física para excluir al NPC
+  golpeado durante los raycasts.
+- [x] **Encuentro con jefe: Strider full-size**: boss trípode inspirado en HL2, no mini.
 
-## Tier 3 — Armas (huecos del arsenal clásico)
+## Tier 3 — Armas (arsenal clásico)
 
-- [ ] Crossbow (sniper silencioso, proyectil).
-- [ ] .357 Magnum (pistola de alto impacto).
-- [ ] RPG con cohete guiable (anti-vehículo/jefe).
-- [ ] Energy orb del pulse rifle como alt-fire del AR3 (hoy sin secundario).
+- [x] **.357 Magnum / revolver** *(hecho)* — sidearm de alto impacto con modelo
+  propio, pickup, HUD/icono, munición `.357` separada y balance de daño/cadencia
+  distinto de la pistola 9mm.
+- [x] **Crossbow** *(hecho)* — arma monotiro de alto daño con `BoltSystem`
+  balístico, recarga automática desde reserva y mira telescópica con overlay +
+  FOV reducido. Incluye modelo, pickup, ammo de flechas y HUD/icono.
+- [x] **RPG con cohete guiable** *(hecho)* — launcher + cohete GLB optimizados,
+  misil único activo estilo HL2, punto láser siempre activo al equipar, guía suave
+  hacia la mira, retardo de ignición, colisión continua y explosión radial
+  reutilizando `GrenadeSystem.detonate()`. Incluye pickup de cohete como munición
+  RPG y HUD/icono.
+- [x] **Energy orb del AR3 / pulse rifle alt-fire** *(hecho)* — secundario del AR3
+  con reserva `energyBall`, proyectil Combine que rebota/vaporiza enemigos y pickup
+  de munición propio.
+- [x] **Pickups de munición HL2-style** *(hecho)* — `AmmoDefinitions` +
+  `AmmoInventory` global, pickups separados de armas para pistol/revolver/SMG/AR3/
+  crossbow/shotgun/RPG/grenade/energyBall, compatibilidad con checkpoints/transición
+  y soporte completo en niveles, loader, editor, codegen, paleta e inspector.
+- [x] **Calibración visual de armas, viewmodels y munición** *(hecho)* —
+  escalas/colliders runtime para worldmodels y ammo, poses de viewmodel ajustadas
+  hacia una lectura tipo HL2, `weapon-scale-test` como mapa custom permanente de
+  verificación y `WeaponsModule` extendido para copiar config de armas y ammo.
 
 ## Tier 4 — Lo que da "alma" (más caro)
 

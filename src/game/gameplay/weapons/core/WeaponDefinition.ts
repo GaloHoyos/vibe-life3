@@ -5,16 +5,25 @@ import type { ModelAssetId } from "@engine/assets/AssetManifest";
 export type WeaponId =
   | "crowbar"
   | "pistol"
+  | "revolver"
   | "smg"
   | "ar3"
+  | "crossbow"
   | "gravityGun"
+  | "iceGun"
+  | "portalGun"
   | "shotgun"
-  | "grenade";
+  | "grenade"
+  | "rpg";
 export type WeaponType =
   | "melee"
   | "hitscan"
   | "shotgun"
   | "grenade"
+  | "rpg"
+  | "crossbow"
+  | "iceGun"
+  | "portalGun"
   | "special";
 export type WeaponFireMode = "semi" | "auto";
 /**
@@ -82,6 +91,12 @@ export type AlternateFireDefinition =
       throwSpeed: number;
       /** Lift vertical extra (m/s). */
       throwLift: number;
+    }
+  /** AR3: bola de energía Combine (rebota y vaporiza). Consume munición `energyBall`. */
+  | {
+      kind: "energyBall";
+      /** Velocidad inicial (m/s) del orbe. */
+      launchSpeed: number;
     };
 
 export interface WeaponDefinition {
@@ -116,6 +131,19 @@ export interface WeaponDefinition {
   pelletsPerShot?: number;
   /** ConfiguraciÃ³n del disparo secundario (RMB). Omitir = no tiene secundario. */
   alternateFire?: AlternateFireDefinition;
+  /**
+   * Ruido que genera el arma para la percepción de NPCs. Si se omite, se
+   * deriva del tipo. `fireRadius: 0` = el disparo/uso no hace ruido (melee:
+   * el swing al aire es silencioso; solo el impacto real alerta).
+   */
+  noise?: {
+    /** Radio (m) del ruido al disparar/usar. 0 = sin ruido en el disparo. */
+    fireRadius?: number;
+    /** Clase de ruido del disparo. Default: gunshot (ranged) / impact (melee). */
+    fireKind?: "gunshot" | "impact" | "movement";
+    /** Radio (m) del ruido de impacto de melee al golpear algo. Default 5. */
+    impactRadius?: number;
+  };
   /**
    * Duracin (s) de la animacin de swing del view model al disparar. Si es
    * 0 o undefined, no hay animacin de swing (se usa el muzzle flash + recoil

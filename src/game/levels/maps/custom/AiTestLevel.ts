@@ -385,12 +385,13 @@ export const AiTestLevel: LevelDefinition = {
   },
   playerStart: [0, 1.5, 0],
   audio: {
-    ambiences: ["background.wind"],
+    ambiences: ["background.wind", "background.hl2.atmosphere.trainstation"],
+    soundscape: "warehouse",
     footstepSounds: [
-      "footsteps.snow1",
-      "footsteps.snow2",
-      "footsteps.snow3",
-      "footsteps.snow4",
+      "footsteps.hl2.concrete1",
+      "footsteps.hl2.concrete2",
+      "footsteps.hl2.concrete3",
+      "footsteps.hl2.concrete4",
     ],
   },
   staticBoxes: [
@@ -470,10 +471,11 @@ export const AiTestLevel: LevelDefinition = {
     { id: "ai-pickup-smg", weaponId: "smg", position: [0, 0.7, 2] },
     { id: "ai-pickup-ar3", weaponId: "ar3", position: [1, 0.7, 2] },
     { id: "ai-pickup-shotgun", weaponId: "shotgun", position: [2, 0.7, 2] },
+    { id: "ai-pickup-rpg", weaponId: "rpg", position: [3, 0.7, 2] },
     {
       id: "ai-pickup-gravity-gun",
       weaponId: "gravityGun",
-      position: [3, 0.7, 2],
+      position: [4, 0.7, 2],
     },
     { id: "ai-pickup-grenade-1", weaponId: "grenade", position: [-2, 0.7, 3] },
     {
@@ -482,6 +484,14 @@ export const AiTestLevel: LevelDefinition = {
       position: [-1.5, 0.7, 3],
     },
     { id: "ai-pickup-grenade-3", weaponId: "grenade", position: [-1, 0.7, 3] },
+  ],
+  ammoPickups: [
+    { id: "ai-ammo-pistol", ammoId: "pistol", position: [-1, 0.5, 0.8] },
+    { id: "ai-ammo-smg", ammoId: "smg", position: [0, 0.5, 0.8] },
+    { id: "ai-ammo-ar3", ammoId: "ar3", position: [1, 0.5, 0.8] },
+    { id: "ai-ammo-shotgun", ammoId: "shotgun", position: [2, 0.5, 0.8] },
+    { id: "ai-ammo-rpg", ammoId: "rpg", position: [3, 0.5, 0.8] },
+    { id: "ai-ammo-grenade", ammoId: "grenade", position: [-2, 0.5, 0.8] },
   ],
   itemPickups: [
     { id: "ai-item-medkit", itemId: "medkit", position: [-3, 0.5, 2] },

@@ -1,4 +1,4 @@
-import { Box3, Vector3 } from 'three';
+import { Euler, Quaternion, Vector3 } from 'three';
 import type { GameEventBus } from "@game/GameEvents";
 import { tupleToVector3 } from '@shared/math/VectorTuple';
 import type { TriggerAction, TriggerDefinition } from './LevelDefinition';
@@ -10,13 +10,16 @@ interface PendingAction {
 
 interface RuntimeTrigger {
   definition: TriggerDefinition;
-  bounds: Box3;
   center: Vector3;
+  halfSize: Vector3;
+  inverseRotation: Quaternion;
   actions: readonly TriggerAction[];
   active: boolean;
   /** Estado del frame anterior, para disparar solo al entrar (flanco). */
   inside: boolean;
 }
+
+const tmpLocalPoint = new Vector3();
 
 /**
  * Volúmenes invisibles que ejecutan acciones al cruzarlos (diálogo, spawnear
@@ -42,10 +45,14 @@ export class TriggerSystem {
     const position = tupleToVector3(definition.position);
     const size = tupleToVector3(definition.size);
     const halfSize = size.clone().multiplyScalar(0.5);
+    const rotation = definition.rotation
+      ? new Quaternion().setFromEuler(new Euler(...definition.rotation))
+      : new Quaternion();
     this.triggers.push({
       definition,
-      bounds: new Box3(position.clone().sub(halfSize), position.clone().add(halfSize)),
       center: position,
+      halfSize,
+      inverseRotation: rotation.invert(),
       actions: normalizeActions(definition),
       active: true,
       inside: false,
@@ -54,7 +61,7 @@ export class TriggerSystem {
 
   update(playerPosition: Vector3, delta: number): void {
     this.triggers.forEach((trigger) => {
-      const inside = trigger.active && trigger.bounds.containsPoint(playerPosition);
+      const inside = trigger.active && containsPoint(trigger, playerPosition);
       if (inside && !trigger.inside) {
         this.fire(trigger);
       }
@@ -109,4 +116,16 @@ function normalizeActions(definition: TriggerDefinition): readonly TriggerAction
     return [{ kind: 'dialogue', ...definition.dialogue }];
   }
   return [];
+}
+
+function containsPoint(trigger: RuntimeTrigger, point: Vector3): boolean {
+  tmpLocalPoint
+    .copy(point)
+    .sub(trigger.center)
+    .applyQuaternion(trigger.inverseRotation);
+  return (
+    Math.abs(tmpLocalPoint.x) <= trigger.halfSize.x &&
+    Math.abs(tmpLocalPoint.y) <= trigger.halfSize.y &&
+    Math.abs(tmpLocalPoint.z) <= trigger.halfSize.z
+  );
 }

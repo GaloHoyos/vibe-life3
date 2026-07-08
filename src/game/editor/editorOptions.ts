@@ -3,6 +3,7 @@ import type { SkyboxId } from '@engine/render/environment/Skybox';
 import { SkyboxManifest } from '@engine/render/environment/Skybox';
 import { WEAPON_ORDER } from '@game/config/weapons.config';
 import type { WeaponId } from '@game/gameplay/weapons/core/WeaponDefinition';
+import { AmmoDefinitions, type AmmoId } from '@game/config/ammo.config';
 import {
   ChargerTypes,
   ItemDefinitions,
@@ -10,6 +11,7 @@ import {
   type ItemId,
 } from '@game/config/items.config';
 import { CharacterPresets } from '@game/characters/CharacterPresets';
+import { Soundscapes, type SoundscapeId } from '@game/config/audio.config';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { LevelActionKind } from '@game/GameEvents';
 import type { TriggerAction } from '@game/levels/LevelDefinition';
@@ -23,13 +25,16 @@ export const MATERIAL_KEYS: readonly MaterialKey[] = [
 ];
 
 export const WEAPON_IDS: readonly WeaponId[] = [...WEAPON_ORDER];
+export const AMMO_IDS: readonly AmmoId[] = Object.keys(AmmoDefinitions) as AmmoId[];
 export const CHARACTER_IDS: readonly CharacterId[] = Object.keys(CharacterPresets);
 export const ITEM_IDS: readonly ItemId[] = Object.keys(ItemDefinitions) as ItemId[];
 export const CHARGER_KINDS: readonly ChargerKind[] = Object.keys(ChargerTypes) as ChargerKind[];
 export const SKYBOX_IDS: readonly SkyboxId[] = Object.keys(SkyboxManifest) as SkyboxId[];
+export const SOUNDSCAPE_IDS: readonly SoundscapeId[] = Object.keys(Soundscapes) as SoundscapeId[];
+export { PLAYER_MODEL_IDS } from '@game/config/playermodel.config';
 export const LEVEL_ACTIONS: readonly LevelActionKind[] = ['respawnEncounters', 'spawnAllWeapons'];
 export const TRIGGER_ACTION_KINDS: readonly TriggerAction['kind'][] = [
-  'dialogue', 'spawnNpcs', 'door', 'levelAction', 'objective', 'endLevel',
+  'dialogue', 'spawnNpcs', 'door', 'levelAction', 'soundscape', 'objective', 'endLevel',
 ];
 export const HAZARD_KINDS: readonly HazardKind[] = ['toxic', 'fire', 'electric', 'void'];
 

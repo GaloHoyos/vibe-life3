@@ -228,6 +228,8 @@ export class EditorScene {
         return placeholder(entity.def.position, [0.5, 0.3, 0.5], 'hazard', entity.def.rotation);
       case 'itemPickup':
         return placeholder(entity.def.position, [0.45, 0.45, 0.45], 'button', entity.def.rotation);
+      case 'ammoPickup':
+        return placeholder(entity.def.position, [0.42, 0.26, 0.34], 'trim', entity.def.rotation);
       case 'charger':
         return placeholder(entity.def.position, [0.8, 1.6, 0.4], 'trim', [0, entity.def.rotationY ?? 0, 0]);
       case 'building':

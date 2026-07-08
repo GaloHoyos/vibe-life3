@@ -14,6 +14,7 @@ import type { RampSpec } from '@game/levels/builders/RampBuilder';
 import type { NPCDefinition, TriggerAction, TriggerDefinition } from '@game/levels/LevelDefinition';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { LevelActionKind } from '@game/GameEvents';
+import { DefaultSoundscapeId, type SoundscapeId } from '@game/config/audio.config';
 import type { EditorDocument, EditorEntity, PropEntitySpec } from '../EditorDocument';
 import { entityKindLabel, entityLevelId } from '../EditorDocument';
 import {
@@ -29,12 +30,14 @@ import {
   setSize,
 } from '../EditorEntityOps';
 import {
+  AMMO_IDS,
   CHARACTER_IDS,
   CHARGER_KINDS,
   HAZARD_KINDS,
   ITEM_IDS,
   LEVEL_ACTIONS,
   MATERIAL_KEYS,
+  SOUNDSCAPE_IDS,
   TRIGGER_ACTION_KINDS,
   WEAPON_IDS,
 } from '../editorOptions';
@@ -278,6 +281,12 @@ export class InspectorView implements Disposable {
           this.commit();
         }));
         return;
+      case 'ammoPickup':
+        this.append(selectField('Municion', entity.def.ammoId, AMMO_IDS, (v) => {
+          entity.def.ammoId = v as typeof entity.def.ammoId;
+          this.commit();
+        }));
+        return;
       case 'charger': {
         this.append(selectField('Tipo', entity.def.kind, CHARGER_KINDS, (v) => {
           entity.def.kind = v as typeof entity.def.kind;
@@ -441,6 +450,14 @@ export class InspectorView implements Disposable {
         item.append(
           selectField('Accion de nivel', action.action, LEVEL_ACTIONS, (v) => {
             action.action = v as LevelActionKind;
+            this.commit();
+          }).element,
+        );
+        return;
+      case 'soundscape':
+        item.append(
+          selectField('Ambiente sonoro', action.soundscape, SOUNDSCAPE_IDS, (v) => {
+            action.soundscape = v as SoundscapeId;
             this.commit();
           }).element,
         );
@@ -785,6 +802,8 @@ function defaultTriggerAction(kind: TriggerAction['kind'], delay?: number): Trig
       return { kind, doorId: '', open: true, delay };
     case 'levelAction':
       return { kind, action: LEVEL_ACTIONS[0], delay };
+    case 'soundscape':
+      return { kind, soundscape: DefaultSoundscapeId, delay };
     case 'objective':
       return { kind, text: '', delay };
     case 'endLevel':

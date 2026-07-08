@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import type { Raycast } from '@engine/physics/Raycast';
+import type { RaycastSource } from '@engine/physics/Raycast';
 
 export interface PerceptionTarget {
   id: string;
@@ -20,7 +20,12 @@ export interface PerceptionConfig {
   hearingRadius: number;
   /** Tiempo en segundos que se conserva memoria tras perder LOS. */
   memoryTime: number;
-  /** Offset vertical del "ojo" desde el origen del NPC (altura). */
+  /**
+   * Offset vertical del "ojo" desde el ORIGEN del cuerpo (centro de la cápsula,
+   * lo que devuelve `motor.getPosition()`), NO desde los pies. Para un humanoide
+   * ~0.62 (igual que `standingEyeHeight` del player); authorearlo como altura
+   * desde el piso (~1.6) pone el ojo medio metro sobre la cabeza.
+   */
   eyeHeight: number;
 }
 
@@ -47,14 +52,21 @@ export class PerceptionSystem {
   private lastKnown: Vector3 | null = null;
   private memoryAge = Infinity;
 
-  constructor(private readonly config: PerceptionConfig) {}
+  /**
+   * `selfId`: id del NPC dueño, para que el LOS excluya sus propios colliders
+   * (los cuerpos grandes/multi-collider arrancan el ray dentro de si mismos).
+   */
+  constructor(
+    private readonly config: PerceptionConfig,
+    private readonly selfId?: string,
+  ) {}
 
   update(
     self: Vector3,
     facing: Vector3,
     target: PerceptionTarget | null,
     delta: number,
-    raycast: Raycast,
+    raycast: RaycastSource,
   ): PerceptionSnapshot {
     this.memoryAge += delta;
     if (!target || !target.isAlive) {
@@ -89,9 +101,9 @@ export class PerceptionSystem {
     self: Vector3,
     facing: Vector3,
     targetActor: PerceptionTarget,
-    raycast: Raycast,
+    raycast: RaycastSource,
   ): boolean {
-    return isTargetVisible(this.config, self, facing, targetActor, raycast);
+    return isTargetVisible(this.config, self, facing, targetActor, raycast, this.selfId);
   }
 }
 
@@ -105,7 +117,9 @@ export function isTargetVisible(
   self: Vector3,
   facing: Vector3,
   targetActor: PerceptionTarget,
-  raycast: Raycast,
+  raycast: RaycastSource,
+  /** Id del observador, para excluir sus propios colliders del LOS. */
+  selfId?: string,
 ): boolean {
   const target = targetActor.position;
   const dx = target.x - self.x;
@@ -124,9 +138,10 @@ export function isTargetVisible(
   tmpDir.set(target.x - tmpFrom.x, target.y + 1.0 - tmpFrom.y, target.z - tmpFrom.z);
   const losDist = tmpDir.length();
   if (losDist < 1e-3) return true;
-  const hit = raycast.cast(tmpFrom, tmpDir, losDist - 0.1);
+  const hit = raycast.cast(tmpFrom, tmpDir, losDist - 0.1, undefined, selfId);
   if (!hit) return true;
-  // El ray puede pegar en la capsula del propio target (player u otro NPC):
-  // eso sigue siendo linea de vision valida. Cualquier otro hit la bloquea.
-  return hit.metadata?.id === targetActor.id;
+  // El ray puede pegar en la capsula o en un hitbox del propio target (player u
+  // otro NPC): eso sigue siendo linea de vision valida (los hitboxes vivos tienen
+  // id derivado, asi que comparamos por ownerId). Cualquier otro hit la bloquea.
+  return (hit.metadata?.ownerId ?? hit.metadata?.id) === targetActor.id;
 }

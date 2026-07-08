@@ -1,6 +1,7 @@
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import { newEid, type EditorEntity, type PropKind } from './EditorDocument';
 import {
+  AMMO_IDS,
   CHARACTER_IDS,
   CHARGER_KINDS,
   ITEM_IDS,
@@ -48,6 +49,8 @@ export function createEntity(kind: PaletteKind, at: VectorTuple): EditorEntity {
       return { eid: newEid(kind), kind, def: { id: lid('weapon'), weaponId: WEAPON_IDS[0], position: [x, y + 0.5, z] } };
     case 'itemPickup':
       return { eid: newEid(kind), kind, def: { id: lid('item'), itemId: ITEM_IDS[0], position: [x, y + 0.5, z] } };
+    case 'ammoPickup':
+      return { eid: newEid(kind), kind, def: { id: lid('ammo'), ammoId: AMMO_IDS[0], position: [x, y + 0.5, z] } };
     case 'charger':
       return { eid: newEid(kind), kind, def: { id: lid('charger'), kind: CHARGER_KINDS[0], position: [x, y, z], rotationY: 0 } };
     case 'trigger':
@@ -95,6 +98,9 @@ export function cloneEntity(entity: EditorEntity): EditorEntity {
       break;
     case 'itemPickup':
       c.def.id = lid('item');
+      break;
+    case 'ammoPickup':
+      c.def.id = lid('ammo');
       break;
     case 'charger':
       c.def.id = lid('charger');

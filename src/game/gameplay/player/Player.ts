@@ -11,11 +11,18 @@ import {
 } from "@engine/physics/character/CharacterController";
 import type { Damageable } from "@shared/types/lifecycle";
 import { PlayerConfig } from "@game/config/gameplay.config";
+import type { DifficultyProvider } from "@game/config/difficulty.config";
 import type { Controls } from "./Controls";
 import { PlayerHealth } from "./PlayerHealth";
 import { Stamina } from "./Stamina";
 import { WeaponController } from "@game/gameplay/weapons/core/WeaponController";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
+import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
+import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
+import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
+import type { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
+import type { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 
 export class Player implements Damageable {
   readonly health: PlayerHealth;
@@ -31,11 +38,20 @@ export class Player implements Damageable {
     scene: Scene,
     private readonly eventBus: GameEventBus,
     grenades: GrenadeSystem,
+    rockets: RocketSystem,
+    bolts: BoltSystem,
+    energyBalls: EnergyBallSystem,
+    iceGun: IceGunSystem,
+    portals: PortalGunSystem,
+    propImpacts: PropImpactSystem,
+    difficulty?: DifficultyProvider,
   ) {
     this.health = new PlayerHealth(
       eventBus,
       PlayerConfig.vitals.maxHealth,
       PlayerConfig.vitals.armorMax,
+      undefined,
+      difficulty,
     );
     this.stamina = new Stamina(eventBus);
     this.controller = new CharacterController(physics, {
@@ -61,7 +77,20 @@ export class Player implements Damageable {
       kind: "player",
       damageable: this,
     });
-    this.weapons = new WeaponController(eventBus, raycast, assets, scene, grenades);
+    this.weapons = new WeaponController(
+      eventBus,
+      physics,
+      raycast,
+      assets,
+      scene,
+      grenades,
+      rockets,
+      bolts,
+      energyBalls,
+      iceGun,
+      portals,
+      propImpacts,
+    );
   }
 
   update(
@@ -112,6 +141,14 @@ export class Player implements Damageable {
 
   getMoveIntensity(): number {
     return this.controller.getMoveIntensity();
+  }
+
+  isSprinting(): boolean {
+    return this.controller.isSprinting();
+  }
+
+  isCrouched(): boolean {
+    return this.controller.isCrouched();
   }
 
   dispose(): void {

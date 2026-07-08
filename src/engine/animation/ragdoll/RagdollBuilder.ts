@@ -1,18 +1,17 @@
-﻿import RAPIER from '@dimforge/rapier3d-compat';
-import { Bone, Object3D, Quaternion, Vector3 } from 'three';
+import RAPIER from '@dimforge/rapier3d-compat';
+import { Object3D, Quaternion, Vector3 } from 'three';
 import type { Damageable } from '@shared/types/lifecycle';
+import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
-import type { BoneMapper } from '@engine/animation/pose/BoneMapper';
+import { RAGDOLL_COLLISION_GROUPS } from '@engine/physics/CollisionGroups';
+import type { BoneMapper, NormalizedBoneName } from '@engine/animation/pose/BoneMapper';
 import { getBoneWorldTransform, PhysicsBoneLink } from './PhysicsBoneLink';
 import type { RagdollBodyPart } from './RagdollBodyPart';
-import {
-  DefaultRagdollConfig,
-  DefaultRagdollDefinition,
-  type RagdollConfig,
-  type RagdollPartDefinition,
-} from './RagdollDefinition';
+import { DefaultRagdollConfig, DefaultRagdollDefinition, type RagdollConfig } from './RagdollDefinition';
+import { createPartCollider } from './RagdollGeometry';
 import { RagdollController } from './RagdollController';
 import { RagdollJointManager } from './RagdollJointManager';
+import type { RagdollRestPose } from './RagdollRestPose';
 
 export interface RagdollBuildOptions {
   id: string;
@@ -20,9 +19,9 @@ export interface RagdollBuildOptions {
   mapper: BoneMapper;
   physics: PhysicsWorld;
   config?: Partial<RagdollConfig>;
-  hitDirection?: Vector3;
-  currentVelocity?: Vector3;
+  characterId?: CharacterId;
   owner?: Damageable;
+  restPose?: RagdollRestPose | null;
 }
 
 export class RagdollBuilder {
@@ -32,13 +31,65 @@ export class RagdollBuilder {
     const bodies: RAPIER.RigidBody[] = [];
     const parts: RagdollBodyPart[] = [];
 
+    const bonePositionCache = new Map<NormalizedBoneName, Vector3 | null>();
+    const getBoneWorldPosition = (name: NormalizedBoneName): Vector3 | null => {
+      const cached = bonePositionCache.get(name);
+      if (cached !== undefined) {
+        return cached ? cached.clone() : null;
+      }
+      const bone = options.mapper.get(name);
+      const position = bone ? getBoneWorldTransform(bone).position : null;
+      bonePositionCache.set(name, position);
+      return position ? position.clone() : null;
+    };
+
     DefaultRagdollDefinition.forEach((part) => {
       const bone = options.mapper.get(part.bone);
       if (!bone) {
         return;
       }
 
-      const { body, collider } = this.createBodyForBone(options, part, bone, config);
+      const transform = getBoneWorldTransform(bone);
+      const restRel = options.restPose?.boneRotRelRoot.get(part.bone) ?? null;
+      // Canonical frame: with `bodyRotation = qBoneNow * restRel^-1` every body
+      // shares one world orientation whenever the pose matches the bind pose,
+      // so joint zero = bind pose and joint limits use character-space axes.
+      const bodyRotation = restRel
+        ? transform.rotation.clone().multiply(restRel.clone().invert())
+        : transform.rotation.clone();
+
+      const body = options.physics.world.createRigidBody(
+        RAPIER.RigidBodyDesc.dynamic()
+          .setTranslation(transform.position.x, transform.position.y, transform.position.z)
+          .setRotation({ x: bodyRotation.x, y: bodyRotation.y, z: bodyRotation.z, w: bodyRotation.w })
+          .setLinearDamping(config.linearDamping)
+          .setAngularDamping(config.angularDamping)
+          .setCcdEnabled(true),
+      );
+
+      const colliderDesc = createPartCollider(part, {
+        bodyRotation,
+        boneRotation: transform.rotation,
+        bonePosition: transform.position,
+        getBoneWorldPosition,
+        config,
+      })
+        .setMass(part.mass)
+        .setFriction(config.friction)
+        .setCollisionGroups(RAGDOLL_COLLISION_GROUPS);
+      const collider = options.physics.world.createCollider(colliderDesc, body);
+      options.physics.registerCollider(collider, {
+        id: `${options.id}-ragdoll-${part.id}`,
+        ownerId: options.id,
+        kind: 'ragdoll',
+        damageable: options.owner,
+        characterId: options.characterId,
+        bodyPart: {
+          name: part.id,
+          damageMultiplier: part.damageMultiplier,
+        },
+      });
+
       bodies.push(body);
       parts.push({
         name: part.id,
@@ -49,100 +100,52 @@ export class RagdollBuilder {
         parentPartName: part.parentPartName,
         damageMultiplier: part.damageMultiplier,
       });
-      links.push(new PhysicsBoneLink(bone, body, part.localOffset));
+      links.push(new PhysicsBoneLink(bone, body, restRel ?? new Quaternion()));
     });
 
     if (links.length === 0) {
-      const fallbackBody = this.createFallbackBody(options.root, options.physics, config, `${options.id}-fallback`);
+      const fallbackBody = this.createFallbackBody(options, config, `${options.id}-fallback`);
       return new RagdollController(options.physics, [], [], [fallbackBody], [], config, options.root, fallbackBody);
     }
 
-    const joints = config.enableJoints ? new RagdollJointManager(options.physics).connect(parts) : [];
+    const joints = config.enableJoints
+      ? new RagdollJointManager(options.physics).connect(parts, options.restPose ?? null)
+      : [];
     return new RagdollController(options.physics, links, parts, bodies, joints, config);
   }
 
-  private createBodyForBone(
-    options: RagdollBuildOptions,
-    part: RagdollPartDefinition,
-    bone: Bone,
-    config: RagdollConfig,
-  ): { body: RAPIER.RigidBody; collider: RAPIER.Collider } {
-    const transform = getBoneWorldTransform(bone);
-    const position = transform.position.clone().add(part.localOffset.clone().applyQuaternion(transform.rotation));
-    position.y = Math.max(position.y, 0.18);
-    const body = options.physics.world.createRigidBody(
-      RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(position.x, position.y, position.z)
-        .setRotation(toRapierRotation(transform.rotation))
-        .setLinearDamping(config.bodyPartDamping)
-        .setAngularDamping(config.angularDamping),
-    );
-
-    const collider = options.physics.world.createCollider(this.createCollider(part, config), body);
-    options.physics.registerCollider(collider, {
-      id: `${options.id}-ragdoll-${part.id}`,
-      kind: 'ragdoll',
-      damageable: options.owner,
-      bodyPart: {
-        name: part.id,
-        damageMultiplier: part.damageMultiplier,
-      },
-    });
-
-    return { body, collider };
-  }
-
   private createFallbackBody(
-    root: Object3D,
-    physics: PhysicsWorld,
+    options: RagdollBuildOptions,
     config: RagdollConfig,
     id: string,
   ): RAPIER.RigidBody {
     const worldPosition = new Vector3();
     const worldRotation = new Quaternion();
-    root.getWorldPosition(worldPosition);
-    root.getWorldQuaternion(worldRotation);
-    worldPosition.y = Math.max(worldPosition.y, 0.5);
+    options.root.getWorldPosition(worldPosition);
+    options.root.getWorldQuaternion(worldRotation);
 
-    const body = physics.world.createRigidBody(
+    const body = options.physics.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(worldPosition.x, worldPosition.y, worldPosition.z)
-        .setRotation(toRapierRotation(worldRotation))
+        .setRotation({ x: worldRotation.x, y: worldRotation.y, z: worldRotation.z, w: worldRotation.w })
         .setLinearDamping(config.linearDamping)
-        .setAngularDamping(config.angularDamping),
+        .setAngularDamping(config.angularDamping)
+        .setCcdEnabled(true),
     );
-    const collider = physics.world.createCollider(
-      RAPIER.ColliderDesc.capsule(0.75, 0.38).setDensity(config.density),
+    const collider = options.physics.world.createCollider(
+      RAPIER.ColliderDesc.capsule(0.55, 0.3)
+        .setMass(60)
+        .setFriction(config.friction)
+        .setCollisionGroups(RAGDOLL_COLLISION_GROUPS),
       body,
     );
-    physics.registerCollider(collider, { id, kind: 'ragdoll' });
+    options.physics.registerCollider(collider, {
+      id,
+      ownerId: options.id,
+      kind: 'ragdoll',
+      damageable: options.owner,
+      characterId: options.characterId,
+    });
     return body;
   }
-
-  private createCollider(part: RagdollPartDefinition, config: RagdollConfig): RAPIER.ColliderDesc {
-    const size = part.size.clone().multiplyScalar(config.colliderScale);
-
-    if (part.shape === 'sphere') {
-      return RAPIER.ColliderDesc.ball(Math.max(size.x, size.y, size.z)).setDensity(config.density * part.mass);
-    }
-
-    if (part.shape === 'capsule') {
-      return RAPIER.ColliderDesc.capsule(size.y * 0.5, Math.max(size.x, size.z) * 0.5).setDensity(
-        config.density * part.mass,
-      );
-    }
-
-    return RAPIER.ColliderDesc.cuboid(size.x * 0.5, size.y * 0.5, size.z * 0.5).setDensity(
-      config.density * part.mass,
-    );
-  }
-}
-
-function toRapierRotation(quaternion: Quaternion): { x: number; y: number; z: number; w: number } {
-  return {
-    x: quaternion.x,
-    y: quaternion.y,
-    z: quaternion.z,
-    w: quaternion.w,
-  };
 }

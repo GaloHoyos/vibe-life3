@@ -9,6 +9,7 @@ export class Crosshair implements Disposable {
 
   private hitTimer = 0;
   private fireTimer = 0;
+  private readonly portalDots: HTMLSpanElement;
 
   constructor() {
     this.element.className = "hl-crosshair";
@@ -17,6 +18,20 @@ export class Crosshair implements Disposable {
       '<span class="hl-crosshair__seg hl-crosshair__seg--s"></span>' +
       '<span class="hl-crosshair__seg hl-crosshair__seg--w"></span>' +
       '<span class="hl-crosshair__seg hl-crosshair__seg--e"></span>';
+    this.portalDots = document.createElement("span");
+    this.portalDots.className = "hl-crosshair__portals";
+    this.portalDots.innerHTML =
+      '<span class="hl-crosshair__portal-dot hl-crosshair__portal-dot--a"></span>' +
+      '<span class="hl-crosshair__portal-dot hl-crosshair__portal-dot--b"></span>';
+    this.element.appendChild(this.portalDots);
+  }
+
+  /** Estado de los portales bajo el crosshair. Visible solo con la portal gun. */
+  setPortalState(visible: boolean, aPlaced: boolean, bPlaced: boolean): void {
+    this.portalDots.classList.toggle("is-visible", visible);
+    const [a, b] = this.portalDots.children;
+    a.classList.toggle("is-placed", aPlaced);
+    b.classList.toggle("is-placed", bPlaced);
   }
 
   pulseFire(): void {

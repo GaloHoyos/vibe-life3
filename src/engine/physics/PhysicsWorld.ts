@@ -1,18 +1,36 @@
 ﻿import RAPIER from '@dimforge/rapier3d-compat';
 import type { Object3D, Quaternion, Vector3 } from 'three';
 import type { Damageable } from '@shared/types/lifecycle';
+import type { SurfaceType } from '@shared/types/Surface';
 import type { HeightField } from '@shared/math/HeightField';
 import type { Faction } from '@engine/ai/Faction';
+import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import { createBoxCollider } from './Colliders';
 
 const GRAVITY = { x: 0, y: -20.5, z: 0 } as const;
 
 export interface PhysicsMetadata {
   id: string;
+  /**
+   * Actor al que pertenece el collider. La cápsula y todos sus hitboxes/parts
+   * (que tienen `id` derivado, p. ej. `<id>-live-part-chest`) comparten el mismo
+   * `ownerId`. Lo usan las exclusiones de raycast (LOS de percepción, disparos
+   * del propio NPC) para no chocar con el cuerpo propio. Default = `id`.
+   */
+  ownerId?: string;
   kind: 'static' | 'dynamic' | 'door' | 'npc' | 'player' | 'ragdoll' | 'weaponPickup';
   damageable?: Damageable;
+  /** Character preset id for actor-owned colliders. Used by hit effects. */
+  characterId?: CharacterId;
   /** Bando del actor (npc/player). Lo consumen guards de fuego amigo. */
   faction?: Faction;
+  /** Superficie física (para pasos e impactos). La derivan loader/builders del material. */
+  surface?: SurfaceType;
+  /**
+   * El dueño del cuerpo maneja sus propios cruces de portal (motor de flyer):
+   * el traveller de props debe ignorarlo o lo teleportaría dos veces.
+   */
+  selfPortalTraversal?: boolean;
   bodyPart?: {
     name: string;
     damageMultiplier: number;
@@ -34,6 +52,14 @@ export interface PhysicsBoxOptions {
   metadata?: Partial<PhysicsMetadata>;
 }
 
+export interface PhysicsTrimeshOptions {
+  id: string;
+  /** Vertices en world space (el body queda en el origen, sin rotación). */
+  vertices: Float32Array;
+  indices: Uint32Array;
+  metadata?: Partial<PhysicsMetadata>;
+}
+
 export interface PhysicsHeightfieldOptions {
   id: string;
   /** Centro del heightfield en world space. */
@@ -52,12 +78,40 @@ export interface PhysicsHeightfieldOptions {
  * `init()` es async porque Rapier carga su WASM al arrancar; el motor lo
  * llama una sola vez antes de cualquier creaciÃ³n de cuerpos.
  */
+/**
+ * Filtro de pares de contacto (physics hooks de Rapier). Devuelve null para
+ * suprimir el contacto; solo se consulta para pares donde al menos un collider
+ * tiene `ActiveHooks.FILTER_CONTACT_PAIRS` activo.
+ */
+export type ContactPairFilter = (
+  collider1: number,
+  collider2: number,
+  body1: number,
+  body2: number,
+) => RAPIER.SolverFlags | null;
+
 export class PhysicsWorld {
   world!: RAPIER.World;
 
   private readonly bindings: PhysicsBinding[] = [];
   private readonly metadataByCollider = new Map<number, PhysicsMetadata>();
+  /**
+   * Visual de un body cuyo dueño sincroniza su propia malla (pickups, etc.) y
+   * por eso no está en `bindings`. Lo consulta `getBoundMesh` para que sistemas
+   * como el clon de portales puedan replicar su visual.
+   */
+  private readonly bodyVisuals = new Map<number, Object3D>();
+  /**
+   * Cuerpos sostenidos por un grab controller (gravity gun / carry). Señal
+   * neutra para motores dueños de su propio steering (flyers): mientras el
+   * cuerpo figure acá no deben escribirle velocidades.
+   */
+  private readonly heldBodyHandles = new Set<number>();
   private initialized = false;
+  private hooks: RAPIER.PhysicsHooks | null = null;
+  // Rapier-compat solo aplica hooks via `stepWithEvents`, que exige una
+  // EventQueue aunque nadie consuma los eventos (autoDrain la vacía).
+  private eventQueue: RAPIER.EventQueue | null = null;
 
   async init(): Promise<void> {
     if (this.initialized) {
@@ -80,6 +134,20 @@ export class PhysicsWorld {
     this.world = new RAPIER.World(GRAVITY);
     this.bindings.length = 0;
     this.metadataByCollider.clear();
+    this.bodyVisuals.clear();
+    this.heldBodyHandles.clear();
+  }
+
+  markHeld(body: RAPIER.RigidBody, held: boolean): void {
+    if (held) {
+      this.heldBodyHandles.add(body.handle);
+    } else {
+      this.heldBodyHandles.delete(body.handle);
+    }
+  }
+
+  isHeldBody(handle: number): boolean {
+    return this.heldBodyHandles.has(handle);
   }
 
   createStaticBox(options: PhysicsBoxOptions): RAPIER.RigidBody {
@@ -140,6 +208,20 @@ export class PhysicsWorld {
     return rigidBody;
   }
 
+  createStaticTrimesh(options: PhysicsTrimeshOptions): RAPIER.RigidBody {
+    const rigidBody = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    const collider = this.world.createCollider(
+      RAPIER.ColliderDesc.trimesh(options.vertices, options.indices),
+      rigidBody,
+    );
+    this.registerCollider(collider, {
+      id: options.id,
+      kind: 'static',
+      ...options.metadata,
+    });
+    return rigidBody;
+  }
+
   createKinematicBox(options: PhysicsBoxOptions): RAPIER.RigidBody {
     const rigidBody = this.world.createRigidBody(
       applyRotation(
@@ -168,13 +250,84 @@ export class PhysicsWorld {
     this.metadataByCollider.set(collider.handle, metadata);
   }
 
+  /** Malla ligada a un rigid body (para sistemas que necesitan clonar su visual). */
+  getBoundMesh(body: RAPIER.RigidBody): Object3D | undefined {
+    return (
+      this.bindings.find((b) => b.rigidBody === body)?.mesh ??
+      this.bodyVisuals.get(body.handle)
+    );
+  }
+
+  /**
+   * Registra la malla de un body que sincroniza su propio visual (no usa
+   * `bindings`), para que `getBoundMesh` la encuentre. El dueño debe limpiarla
+   * con `clearBodyVisual` al disponerse.
+   */
+  setBodyVisual(body: RAPIER.RigidBody, mesh: Object3D): void {
+    this.bodyVisuals.set(body.handle, mesh);
+  }
+
+  clearBodyVisual(body: RAPIER.RigidBody): void {
+    this.bodyVisuals.delete(body.handle);
+  }
+
+  /**
+   * Crea un cuerpo dinámico con los MISMOS colliders (forma, densidad, grupos)
+   * que `source`, en la pose dada. Lo usa el clon de portal: el mismo objeto
+   * representado del otro lado. No registra metadata ni binding de malla (es
+   * temporal; el dueño lo gestiona). Removerlo con `removeBody`.
+   */
+  createDynamicClone(
+    source: RAPIER.RigidBody,
+    position: Vector3,
+    rotation: Quaternion,
+  ): RAPIER.RigidBody {
+    const body = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(position.x, position.y, position.z)
+        .setRotation({ x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w }),
+    );
+    for (let i = 0; i < source.numColliders(); i += 1) {
+      const src = source.collider(i);
+      const desc = cloneColliderDesc(src)
+        .setDensity(src.density())
+        .setCollisionGroups(src.collisionGroups());
+      this.world.createCollider(desc, body);
+    }
+    return body;
+  }
+
   getColliderMetadata(collider: RAPIER.Collider): PhysicsMetadata | undefined {
     return this.metadataByCollider.get(collider.handle);
   }
 
+  /**
+   * Registra (o remueve con null) el filtro de contactos usado por los hooks
+   * de Rapier en cada `step()`. Un solo filtro global: el consumidor que lo
+   * registre debe multiplexar sus propios casos.
+   */
+  setContactPairFilter(filter: ContactPairFilter | null): void {
+    this.hooks = filter
+      ? {
+          filterContactPair: filter,
+          filterIntersectionPair: () => true,
+        }
+      : null;
+  }
+
   step(delta: number): void {
     this.world.timestep = Math.min(delta, 1 / 30);
-    this.world.step();
+    if (this.hooks) {
+      // Lazy: la EventQueue necesita el WASM de Rapier cargado, que recién
+      // está garantizado en el primer step (post-`init`), no al registrar el
+      // filtro (puede correr antes de `init`).
+      if (!this.eventQueue) {
+        this.eventQueue = new RAPIER.EventQueue(true);
+      }
+      this.world.step(this.eventQueue, this.hooks);
+    } else {
+      this.world.step();
+    }
     this.syncMeshes();
   }
 
@@ -194,20 +347,26 @@ export class PhysicsWorld {
   }
 
   /**
-   * Remueve un cuerpo dinámico creado con `createDynamicBox` junto con su binding
-   * de mesh y la metadata de sus colliders. Necesario para destruir entidades en
-   * caliente (p. ej. un barril que explota): `world.removeRigidBody` por sí solo
-   * deja el binding colgado y el próximo `syncMeshes` toca un body liberado.
+   * Remueve un rigid body junto con su binding de mesh y metadata de colliders.
+   * Sirve para cuerpos dinamicos y cinematicos creados manualmente por motores.
    */
-  removeDynamicBody(body: RAPIER.RigidBody): void {
+  removeBody(body: RAPIER.RigidBody): void {
     const index = this.bindings.findIndex((b) => b.rigidBody === body);
     if (index >= 0) {
       this.bindings.splice(index, 1);
     }
+    this.bodyVisuals.delete(body.handle);
     for (let i = 0; i < body.numColliders(); i += 1) {
       this.metadataByCollider.delete(body.collider(i).handle);
     }
     this.world.removeRigidBody(body);
+  }
+
+  /**
+   * Compatibilidad para sistemas existentes que destruyen cuerpos dinamicos.
+   */
+  removeDynamicBody(body: RAPIER.RigidBody): void {
+    this.removeBody(body);
   }
 
   private syncMeshes(): void {
@@ -223,6 +382,27 @@ export class PhysicsWorld {
 function applyRotation(desc: RAPIER.RigidBodyDesc, rotation: Quaternion | undefined): RAPIER.RigidBodyDesc {
   if (!rotation) return desc;
   return desc.setRotation({ x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w });
+}
+
+/** Reconstruye un ColliderDesc con la misma forma que un collider existente. */
+function cloneColliderDesc(collider: RAPIER.Collider): RAPIER.ColliderDesc {
+  const shape = collider.shape;
+  switch (shape.type) {
+    case RAPIER.ShapeType.Cuboid: {
+      const h = (shape as RAPIER.Cuboid).halfExtents;
+      return RAPIER.ColliderDesc.cuboid(h.x, h.y, h.z);
+    }
+    case RAPIER.ShapeType.Ball:
+      return RAPIER.ColliderDesc.ball((shape as RAPIER.Ball).radius);
+    case RAPIER.ShapeType.Capsule: {
+      const capsule = shape as RAPIER.Capsule;
+      return RAPIER.ColliderDesc.capsule(capsule.halfHeight, capsule.radius);
+    }
+    default:
+      // Props del juego son cajas/esferas/cápsulas; otras formas (raras) usan
+      // una caja chica como aproximación.
+      return RAPIER.ColliderDesc.cuboid(0.25, 0.25, 0.25);
+  }
 }
 
 function buildTerrainTrimesh(

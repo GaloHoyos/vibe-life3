@@ -16,10 +16,30 @@ export interface NpcPreset {
   perception: PerceptionConfig;
   /** Salud maxima. */
   maxHealth: number;
+  /**
+   * Jefes estilo HL2 (gunship/strider): solo reciben daño explosivo; balas,
+   * melee y energia hacen 0. `Npc.applyDamage` ignora todo `damageType` que no
+   * sea `"explosive"`.
+   */
+  explosiveOnly?: boolean;
+  /**
+   * Daño fijo por impacto explosivo para `explosiveOnly`. Reemplaza al daño
+   * radial real (que mide distancia al centro del cuerpo y en un jefe enorme
+   * caeria a ~0 por falloff), garantizando N cohetes para matarlo: maxHealth /
+   * explosiveHitDamage. Ej: 500 / 100 = 5 cohetes.
+   */
+  explosiveHitDamage?: number;
   /** Radius del cuerpo (capsule). */
   radius: number;
   /** Distancia 2D a la que considera al threat en rango melee. */
   meleeRange: number;
+  /**
+   * Distancia 2D maxima de la banda de salto (`EnemyInLeapRange` se activa entre
+   * `meleeRange` y este valor). Omitido / 0 = la creature no salta.
+   */
+  leapRange?: number;
+  /** Parametros del salto balistico. Requerido si algun schedule usa el leap task. */
+  leap?: NpcLeapProfile;
   /** Distancia 2D minima para `EnemyTooClose`. */
   tooCloseRange: number;
   /** Umbral de health (0..1) por debajo del cual activa `LowHealth`. */
@@ -47,6 +67,17 @@ export interface NpcPresetOptions {
   hasPatrol?: boolean;
 }
 
+export interface NpcLeapProfile {
+  /** Tiempo (s) de recogida antes de lanzarse (encara al threat). */
+  windup: number;
+  /** Velocidad vertical inicial (m/s): define el apex y el tiempo de vuelo. */
+  upSpeed: number;
+  /** Tope de velocidad horizontal (m/s). */
+  maxForwardSpeed: number;
+  /** Pausa (s) tras aterrizar antes de re-evaluar (cadencia entre saltos). */
+  recover: number;
+}
+
 export interface NpcMovementProfile {
   walkSpeed: number;
   sprintSpeed: number;
@@ -56,4 +87,17 @@ export interface NpcMovementProfile {
   snapToGround: number;
   /** Habilita planning de jump portals. */
   canJump: boolean;
+  /**
+   * Vuelo: el motor ignora la gravedad y se mueve en 3D (incluido Y), y la
+   * locomotion beelinea al objetivo sin pedir paths al NavSpace. Default false
+   * (NPC terrestre).
+   */
+  flying?: boolean;
+  /** Altura (m) sobre el objetivo a la que el flyer flota al acercarse. */
+  hoverHeight?: number;
+  /**
+   * Movimiento terrestre directo: no pide path humanoide al NavSpace. Lo usan
+   * bosses grandes que resuelven suelo/clearance con su propio motor.
+   */
+  directGround?: boolean;
 }
