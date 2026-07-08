@@ -131,7 +131,7 @@ export function buildHeadcrabPreset(): NpcPreset {
       memoryTime: 6,
       eyeHeight: 0.4,
     },
-    maxHealth: 30,
+    maxHealth: 10,
     radius: 0.3,
     meleeRange: 1.0,
     leapRange: 4.5,

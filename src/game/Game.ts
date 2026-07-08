@@ -33,6 +33,7 @@ import { SceneModule } from "@game/ui/overlay/debug/modules/SceneModule";
 import { StatsModule } from "@game/ui/overlay/debug/modules/StatsModule";
 import { WeaponsModule } from "@game/ui/overlay/debug/modules/WeaponsModule";
 import { Controls } from "@game/gameplay/player/Controls";
+import { DifficultyService } from "@game/gameplay/difficulty/DifficultyService";
 import { Player } from "@game/gameplay/player/Player";
 import { PlayerModelSystem } from "@game/gameplay/player/PlayerModelSystem";
 import { resolvePlayerModel } from "@game/config/playermodel.config";
@@ -336,9 +337,13 @@ export class Game {
     const input = s.resolve(EngineTokens.Input);
 
     s.register(GameTokens.Controls, new Controls(input));
+    const difficulty = s.register(
+      GameTokens.Difficulty,
+      new DifficultyService(eventBus),
+    );
     s.register(
       GameTokens.Characters,
-      new CharacterFactory(assets, physics, eventBus),
+      new CharacterFactory(assets, physics, eventBus, difficulty),
     );
 
     const subtitles = s.register(GameTokens.Subtitles, new Subtitles(this.root));
@@ -955,6 +960,7 @@ export class Game {
     const audio = s.resolve(EngineTokens.Audio);
     const controls = s.resolve(GameTokens.Controls);
     const workshop = s.resolve(GameTokens.Workshop);
+    const difficulty = s.resolve(GameTokens.Difficulty);
     const input = s.resolve(EngineTokens.Input);
     const scene = s.resolve(EngineTokens.Scene);
     const raycast = s.resolve(EngineTokens.Raycast);
@@ -1025,6 +1031,8 @@ export class Game {
         onToggleDebug: (enabled) => debugMenu.setVisible(enabled),
         onVolumeChange: (bus, value) => audio.setVolume(bus, value),
         onGetVolume: (bus) => audio.getVolume(bus),
+        getDifficulty: () => difficulty.getLevel(),
+        onSetDifficulty: (level) => difficulty.setLevel(level),
         controls,
         workshop,
       }),
@@ -1775,6 +1783,7 @@ export class Game {
       services.resolve(GameTokens.IceGun),
       services.resolve(GameTokens.Portals),
       services.resolve(GameTokens.PropImpacts),
+      services.resolve(GameTokens.Difficulty),
     );
     if (spawn) {
       this.player.health.restore(spawn.health, spawn.armor);

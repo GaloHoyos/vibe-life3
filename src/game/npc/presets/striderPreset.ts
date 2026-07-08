@@ -79,7 +79,9 @@ export function buildStriderPreset(options: NpcPresetOptions = {}): NpcPreset {
       // encima de cualquier cobertura.
       eyeHeight: 0.4,
     },
-    maxHealth: 1500,
+    maxHealth: 500,
+    explosiveOnly: true,
+    explosiveHitDamage: 100,
     radius: 1.35,
     meleeRange: 6,
     tooCloseRange: 6,

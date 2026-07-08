@@ -16,6 +16,19 @@ export interface NpcPreset {
   perception: PerceptionConfig;
   /** Salud maxima. */
   maxHealth: number;
+  /**
+   * Jefes estilo HL2 (gunship/strider): solo reciben daño explosivo; balas,
+   * melee y energia hacen 0. `Npc.applyDamage` ignora todo `damageType` que no
+   * sea `"explosive"`.
+   */
+  explosiveOnly?: boolean;
+  /**
+   * Daño fijo por impacto explosivo para `explosiveOnly`. Reemplaza al daño
+   * radial real (que mide distancia al centro del cuerpo y en un jefe enorme
+   * caeria a ~0 por falloff), garantizando N cohetes para matarlo: maxHealth /
+   * explosiveHitDamage. Ej: 500 / 100 = 5 cohetes.
+   */
+  explosiveHitDamage?: number;
   /** Radius del cuerpo (capsule). */
   radius: number;
   /** Distancia 2D a la que considera al threat en rango melee. */

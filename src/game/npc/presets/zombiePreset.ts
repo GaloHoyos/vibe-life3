@@ -109,7 +109,7 @@ export function buildZombiePreset(): NpcPreset {
       memoryTime: 10,
       eyeHeight: 0.62,
     },
-    maxHealth: 100,
+    maxHealth: 50,
     radius: 0.35,
     meleeRange: 1.6,
     tooCloseRange: 0,

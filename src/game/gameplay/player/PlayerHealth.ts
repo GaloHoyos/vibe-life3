@@ -1,5 +1,6 @@
 ﻿import type { Vector3 } from "three";
 import { PlayerHealthConfig } from "@game/config/gameplay.config";
+import type { DifficultyProvider } from "@game/config/difficulty.config";
 import { Dialogue } from "@game/config/strings";
 import type { GameEventBus } from "@game/GameEvents";
 import { Health } from "@game/gameplay/Health";
@@ -16,6 +17,7 @@ export class PlayerHealth {
     maxHealth = 100,
     armorMax = 0,
     armorCurrent = armorMax,
+    private readonly difficulty?: DifficultyProvider,
   ) {
     this.health = new Health(maxHealth);
     this.armorMax = Math.max(0, armorMax);
@@ -72,6 +74,9 @@ export class PlayerHealth {
       this.eventBus.emit("player.damaged", { amount: 0, direction: hitDirection });
       return this.health.current;
     }
+
+    // Dificultad: en Difícil los enemigos pegan más fuerte (lever principal de HL2).
+    amount *= this.difficulty?.getModifiers().incomingPlayerDamageMult ?? 1;
 
     const absorbed = this.absorbWithArmor(amount);
     const remaining = Math.max(0, amount - absorbed);

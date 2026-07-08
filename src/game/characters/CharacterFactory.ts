@@ -51,6 +51,7 @@ import type { SquadDirector } from '@game/npc/ai/SquadDirector';
 import { getMaterial } from '@engine/render/material/Materials';
 import { CharacterPresets } from './CharacterPresets';
 import type { CharacterDefinition, CharacterId } from '@engine/characters/CharacterDefinition';
+import type { DifficultyProvider } from '@game/config/difficulty.config';
 
 export interface NpcRuntimeServices {
   navSpace: NavSpace;
@@ -87,6 +88,7 @@ export class CharacterFactory {
     private readonly assets: AssetManager,
     private readonly physics: PhysicsWorld,
     private readonly eventBus: GameEventBus,
+    private readonly difficulty?: DifficultyProvider,
   ) {}
 
   async createNPC(
@@ -337,6 +339,7 @@ export class CharacterFactory {
       raycast: services.raycast,
       losRaycast: services.losRaycast,
       eventBus: this.eventBus,
+      difficulty: this.difficulty,
       animation,
       patrolRoute: patrolPoints,
       tacticalMap: services.tacticalMap,

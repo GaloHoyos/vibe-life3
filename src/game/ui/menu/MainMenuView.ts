@@ -15,6 +15,7 @@ import type { AudioBusName } from "@engine/audio/core/AudioSystem";
 import type { UiSoundCue } from "@game/config/audio.config";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { WorkshopService } from "@game/workshop/WorkshopService";
+import type { DifficultyLevel } from "@game/config/difficulty.config";
 
 export interface MainMenuViewCallbacks {
   onStartChapter: (chapterId: string) => void;
@@ -31,6 +32,8 @@ export interface MainMenuViewCallbacks {
   onToggleDebug: (enabled: boolean) => void;
   onVolumeChange: (bus: AudioBusName, value: number) => void;
   onGetVolume: (bus: AudioBusName) => number;
+  getDifficulty: () => DifficultyLevel;
+  onSetDifficulty: (level: DifficultyLevel) => void;
   controls: Controls;
   workshop: WorkshopService;
 }
@@ -176,12 +179,18 @@ export class MainMenuView {
       chapters,
       callbacks.onStartChapter,
       callbacks.onBack,
+      {
+        getDifficulty: callbacks.getDifficulty,
+        onSetDifficulty: callbacks.onSetDifficulty,
+      },
     );
     this.optionsMenu = new OptionsMenu({
       onBack: callbacks.onBack,
       onToggleDebug: callbacks.onToggleDebug,
       onVolumeChange: callbacks.onVolumeChange,
       getVolume: callbacks.onGetVolume,
+      getDifficulty: callbacks.getDifficulty,
+      onSetDifficulty: callbacks.onSetDifficulty,
       controls: callbacks.controls,
     });
     this.creditsMenu = new CreditsMenu(callbacks.onBack);

@@ -389,6 +389,7 @@ export class GrenadeSystem implements Disposable {
         target.bodyPartName,
         params.sourceId,
         target.point.clone(),
+        params.damageType ?? "explosive",
       );
       this.eventBus.emit("weapon.hit", {
         weaponName: params.weaponName,

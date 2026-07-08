@@ -36,6 +36,8 @@ import { NpcCoverSensor } from '@game/npc/brain/NpcCoverSensor';
 import type { TacticalMap } from '@game/npc/ai/TacticalMap';
 import type { SquadDirector, SquadRole } from '@game/npc/ai/SquadDirector';
 import type { NpcPreset } from '@game/npc/presets/NpcPreset';
+import type { DamageType } from '@shared/types/lifecycle';
+import type { DifficultyProvider } from '@game/config/difficulty.config';
 
 export interface NpcConstructionParams {
   id: string;
@@ -56,6 +58,8 @@ export interface NpcConstructionParams {
   /** LOS/threat scoring. Portal-aware si hay portales; default `raycast`. */
   losRaycast?: RaycastSource;
   eventBus: GameEventBus;
+  /** Multiplicadores de dificultad; ausente = sin escalado (tests, normal). */
+  difficulty?: DifficultyProvider;
   animation?: NpcAnimator | null;
   patrolRoute?: Vector3[] | null;
   tacticalMap?: TacticalMap | null;
@@ -105,6 +109,7 @@ export class Npc implements INpc {
   private readonly brain: Brain<NpcBrainContext>;
   private readonly combatHandle: NpcCombatHandle;
   private readonly preset: NpcPreset;
+  private readonly difficulty?: DifficultyProvider;
   private readonly sliceDamage: number;
   private readonly raycast: Raycast;
   private readonly losRaycast: RaycastSource;
@@ -144,7 +149,12 @@ export class Npc implements INpc {
     this.position = params.position;
     this.radius = params.preset.radius;
     this.height = params.height;
-    this.health = new Health(params.preset.maxHealth);
+    this.difficulty = params.difficulty;
+    // La vida enemiga se hornea con el mult de dificultad al spawnear (no cambia
+    // si luego se cambia de dificultad). En jefes esto varia los cohetes: 500 ×
+    // {0.6, 1, 1.4} / 100 = 3 / 5 / 7.
+    const healthMult = this.difficulty?.getModifiers().enemyHealthMult ?? 1;
+    this.health = new Health(Math.max(1, Math.round(params.preset.maxHealth * healthMult)));
     this.motor = params.motor;
     this.preset = params.preset;
     this.sliceDamage = params.sliceDamage ?? 0;
@@ -440,8 +450,19 @@ export class Npc implements INpc {
     hitPartName?: string,
     attackerId?: string,
     hitPoint?: Vector3,
+    damageType: DamageType = 'bullet',
   ): void {
     if (this.disposed || !this.health.isAlive()) return;
+    // Daño de salida del jugador escalado por dificultad (no toca daño NPC↔NPC).
+    if (attackerId === 'player') {
+      amount *= this.difficulty?.getModifiers().playerWeaponDamageMult ?? 1;
+    }
+    // Jefes estilo HL2 (gunship/strider): inmunes a todo lo que no sea explosivo,
+    // y cada explosion saca un trozo fijo (ver `NpcPreset.explosiveHitDamage`).
+    if (this.preset.explosiveOnly) {
+      if (damageType !== 'explosive') return;
+      amount = this.preset.explosiveHitDamage ?? amount;
+    }
     const hasHitDirection = !!hitDirection && hitDirection.lengthSq() > 0.001;
     const dir =
       hasHitDirection

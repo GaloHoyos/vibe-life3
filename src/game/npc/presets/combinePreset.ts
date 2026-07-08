@@ -185,7 +185,7 @@ export function buildCombinePreset(options: NpcPresetOptions = {}): NpcPreset {
       memoryTime: 8,
       eyeHeight: 0.62,
     },
-    maxHealth: 100,
+    maxHealth: 50,
     radius: 0.45,
     meleeRange: 1.8,
     tooCloseRange: 3.0,

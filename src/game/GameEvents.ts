@@ -8,6 +8,7 @@ import type { TriggerAction } from "@game/levels/LevelDefinition";
 import type { HazardKind } from "@game/levels/HazardVolumeSystem";
 import type { UiSoundCue } from "@game/config/audio.config";
 import type { ChargerKind } from "@game/config/items.config";
+import type { DifficultyLevel } from "@game/config/difficulty.config";
 
 export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
 export type CombatEventSourceKind = "player" | "npc" | "system";
@@ -285,6 +286,10 @@ export interface GameEventMap {
   };
   "player.dead": {
     reason: string;
+  };
+  /** La dificultad activa cambió (menú de opciones / nueva partida). */
+  "difficulty.changed": {
+    level: DifficultyLevel;
   };
   /**
    * Daño de un volumen de peligro (kill-volume). `HazardVolumeSystem` lo emite

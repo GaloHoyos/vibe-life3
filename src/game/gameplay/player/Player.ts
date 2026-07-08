@@ -11,6 +11,7 @@ import {
 } from "@engine/physics/character/CharacterController";
 import type { Damageable } from "@shared/types/lifecycle";
 import { PlayerConfig } from "@game/config/gameplay.config";
+import type { DifficultyProvider } from "@game/config/difficulty.config";
 import type { Controls } from "./Controls";
 import { PlayerHealth } from "./PlayerHealth";
 import { Stamina } from "./Stamina";
@@ -43,11 +44,14 @@ export class Player implements Damageable {
     iceGun: IceGunSystem,
     portals: PortalGunSystem,
     propImpacts: PropImpactSystem,
+    difficulty?: DifficultyProvider,
   ) {
     this.health = new PlayerHealth(
       eventBus,
       PlayerConfig.vitals.maxHealth,
       PlayerConfig.vitals.armorMax,
+      undefined,
+      difficulty,
     );
     this.stamina = new Stamina(eventBus);
     this.controller = new CharacterController(physics, {

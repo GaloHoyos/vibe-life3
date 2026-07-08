@@ -32,6 +32,11 @@ export const WEAPON_SLOT_COUNT = 5;
  * El orden de declaraciÃ³n define el orden de cycling dentro de un slot â€”
  * `smg` antes que `ar3` â‡’ presionar `3` con ambas equipadas alterna en ese
  * orden.
+ *
+ * Los `damage` son un port fiel del skill.cfg de HL2 (pistol 5, smg 4, ar2 8,
+ * escopeta 8/perdigon, .357 40, rpg 100, granada 150, crowbar 10). Se ven bajos
+ * a proposito: estan calibrados contra la vida de enemigos tambien portada de
+ * HL2 (combine 50, zombie 50, headcrab 10). No subir sin reajustar ambas tablas.
  */
 export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
   crowbar: {
@@ -42,7 +47,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     category: "melee",
     type: "melee",
     handedness: "oneHanded",
-    damage: 25,
+    damage: 10,
     fireRate: 2.2,
     magazineSize: 0,
     reserveAmmoMax: 0,
@@ -79,7 +84,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     category: "sidearm",
     type: "hitscan",
     handedness: "oneHanded",
-    damage: 18,
+    damage: 5,
     fireRate: 4,
     magazineSize: 18,
     reserveAmmoMax: 90,
@@ -113,7 +118,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     category: "sidearm",
     type: "hitscan",
     handedness: "oneHanded",
-    damage: 50,
+    damage: 40,
     fireRate: 1.5,
     magazineSize: 6,
     reserveAmmoMax: 12,
@@ -147,7 +152,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     category: "automatic",
     type: "hitscan",
     handedness: "twoHanded",
-    damage: 9,
+    damage: 4,
     fireRate: 12,
     magazineSize: 45,
     reserveAmmoMax: 225,
@@ -181,7 +186,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     category: "automatic",
     type: "hitscan",
     handedness: "twoHanded",
-    damage: 14,
+    damage: 8,
     fireRate: 8,
     magazineSize: 30,
     reserveAmmoMax: 180,
@@ -253,7 +258,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     category: "heavy",
     type: "shotgun",
     handedness: "twoHanded",
-    damage: 11,
+    damage: 8,
     fireRate: 1.1,
     magazineSize: 6,
     reserveAmmoMax: 24,
@@ -294,7 +299,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     category: "heavy",
     type: "rpg",
     handedness: "twoHanded",
-    damage: 200,
+    damage: 100,
     fireRate: 2,
     magazineSize: 1,
     reserveAmmoMax: 2,
@@ -328,7 +333,7 @@ export const WeaponDefinitions: Record<WeaponId, WeaponDefinition> = {
     category: "throwable",
     type: "grenade",
     handedness: "oneHanded",
-    damage: 120,
+    damage: 150,
     fireRate: 1.4,
     magazineSize: 0,
     reserveAmmoMax: 5,

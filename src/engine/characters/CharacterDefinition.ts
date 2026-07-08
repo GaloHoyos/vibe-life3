@@ -55,6 +55,11 @@ export interface CharacterColliderConfig {
   snapToGround: number;
 }
 
+/**
+ * NOTA: NO es la vida runtime de los NPCs. El `Npc` toma su HP de
+ * `NpcPreset.maxHealth` (`game/npc/presets/*`). Este campo es metadata de la
+ * definicion; para cambiar cuanto aguanta un enemigo, editar el preset.
+ */
 export interface CharacterHealthConfig {
   maxHealth: number;
 }

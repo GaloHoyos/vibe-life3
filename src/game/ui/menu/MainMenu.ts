@@ -9,6 +9,7 @@ import type { AudioBusName } from "@engine/audio/core/AudioSystem";
 import type { UiSoundCue } from "@game/config/audio.config";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { WorkshopService } from "@game/workshop/WorkshopService";
+import type { DifficultyLevel } from "@game/config/difficulty.config";
 
 export interface MainMenuCallbacks {
   onStartChapter: (chapterId: string) => void;
@@ -23,6 +24,8 @@ export interface MainMenuCallbacks {
   onToggleDebug: (enabled: boolean) => void;
   onVolumeChange: (bus: AudioBusName, value: number) => void;
   onGetVolume: (bus: AudioBusName) => number;
+  getDifficulty: () => DifficultyLevel;
+  onSetDifficulty: (level: DifficultyLevel) => void;
   controls: Controls;
   workshop: WorkshopService;
 }
@@ -60,6 +63,8 @@ export class MainMenu implements Disposable {
       onToggleDebug: callbacks.onToggleDebug,
       onVolumeChange: callbacks.onVolumeChange,
       onGetVolume: callbacks.onGetVolume,
+      getDifficulty: callbacks.getDifficulty,
+      onSetDifficulty: callbacks.onSetDifficulty,
       controls: callbacks.controls,
       workshop: callbacks.workshop,
     });

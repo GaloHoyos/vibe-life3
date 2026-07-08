@@ -5,6 +5,7 @@ import type { FootstepSoundSystem } from "@engine/audio/systems/FootstepSoundSys
 import type { MusicManager } from "@engine/audio/core/MusicManager";
 import type { CharacterFactory } from "@game/characters/CharacterFactory";
 import type { Controls } from "@game/gameplay/player/Controls";
+import type { DifficultyService } from "@game/gameplay/difficulty/DifficultyService";
 import type { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
 import type { EnemySoundSystem } from "@game/audio/EnemySoundSystem";
 import type { HevSuitSoundSystem } from "@game/audio/HevSuitSoundSystem";
@@ -44,6 +45,7 @@ import type { WorkshopService } from "@game/workshop/WorkshopService";
 export const GameTokens = {
   EventBus: new ServiceToken<EventBus<GameEventMap>>("EventBus"),
   Controls: new ServiceToken<Controls>("Controls"),
+  Difficulty: new ServiceToken<DifficultyService>("DifficultyService"),
   Characters: new ServiceToken<CharacterFactory>("CharacterFactory"),
   Subtitles: new ServiceToken<Subtitles>("Subtitles"),
   Dialogue: new ServiceToken<DialogueSystem>("DialogueSystem"),

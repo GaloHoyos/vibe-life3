@@ -305,6 +305,8 @@ export class EnergyBallSystem implements Disposable {
       sourceId: "player",
       sourceFaction: "player",
       weaponName: "AR3 Energy Ball",
+      // Pulso de energía, no explosivo: no daña a jefes solo-explosivo.
+      damageType: "energy",
     });
     this.disposeBall(ball);
   }
