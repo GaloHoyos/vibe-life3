@@ -19,6 +19,7 @@ export function getPosition(entity: EditorEntity): VectorTuple {
     case 'npc':
     case 'weaponPickup':
     case 'itemPickup':
+    case 'ammoPickup':
     case 'charger':
     case 'trigger':
     case 'explosiveBarrel':
@@ -61,6 +62,7 @@ export function translateEntity(entity: EditorEntity, dx: number, dy: number, dz
     case 'npc':
     case 'weaponPickup':
     case 'itemPickup':
+    case 'ammoPickup':
     case 'charger':
     case 'trigger':
     case 'explosiveBarrel':
@@ -151,6 +153,7 @@ export function getRotation(entity: EditorEntity): VectorTuple {
     case 'npc':
     case 'weaponPickup':
     case 'itemPickup':
+    case 'ammoPickup':
     case 'explosiveBarrel':
       return entity.def.rotation ? [...entity.def.rotation] : [0, 0, 0];
     case 'charger':
@@ -182,6 +185,7 @@ export function setRotation(entity: EditorEntity, euler: VectorTuple): void {
     case 'npc':
     case 'weaponPickup':
     case 'itemPickup':
+    case 'ammoPickup':
     case 'explosiveBarrel':
       entity.def.rotation = value;
       return;

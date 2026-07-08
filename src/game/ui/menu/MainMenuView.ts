@@ -12,8 +12,10 @@ import {
 import { MenuStrings } from "@game/config/strings";
 import { MenuAtmosphere } from "./MenuAtmosphere";
 import type { AudioBusName } from "@engine/audio/core/AudioSystem";
+import type { UiSoundCue } from "@game/config/audio.config";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { WorkshopService } from "@game/workshop/WorkshopService";
+import type { DifficultyLevel } from "@game/config/difficulty.config";
 
 export interface MainMenuViewCallbacks {
   onStartChapter: (chapterId: string) => void;
@@ -26,9 +28,12 @@ export interface MainMenuViewCallbacks {
   onResume: () => void;
   onExitToMain: () => void;
   onOpenEditor: () => void;
+  onSound: (cue: UiSoundCue) => void;
   onToggleDebug: (enabled: boolean) => void;
   onVolumeChange: (bus: AudioBusName, value: number) => void;
   onGetVolume: (bus: AudioBusName) => number;
+  getDifficulty: () => DifficultyLevel;
+  onSetDifficulty: (level: DifficultyLevel) => void;
   controls: Controls;
   workshop: WorkshopService;
 }
@@ -76,7 +81,7 @@ export class MainMenuView {
           </div>
           <div class="hl2-brand__text">
             <span class="hl2-brand__sub">FAN PROJECT</span>
-            <h1>HALF-LIFE <span>3</span></h1>
+            <h1>VIBE-LIFE <span>3</span></h1>
             <span class="hl2-brand__tag">CASCADIA LABS</span>
           </div>
         </header>
@@ -174,12 +179,18 @@ export class MainMenuView {
       chapters,
       callbacks.onStartChapter,
       callbacks.onBack,
+      {
+        getDifficulty: callbacks.getDifficulty,
+        onSetDifficulty: callbacks.onSetDifficulty,
+      },
     );
     this.optionsMenu = new OptionsMenu({
       onBack: callbacks.onBack,
       onToggleDebug: callbacks.onToggleDebug,
       onVolumeChange: callbacks.onVolumeChange,
       getVolume: callbacks.onGetVolume,
+      getDifficulty: callbacks.getDifficulty,
+      onSetDifficulty: callbacks.onSetDifficulty,
       controls: callbacks.controls,
     });
     this.creditsMenu = new CreditsMenu(callbacks.onBack);
@@ -238,6 +249,7 @@ export class MainMenuView {
       ".hl2-menu__particles",
     ) as HTMLCanvasElement;
     this.atmosphere = new MenuAtmosphere(this.element, canvas);
+    this.wireMenuSounds();
   }
 
   setState(state: GameMenuState, pauseFlow: boolean): void {
@@ -350,5 +362,48 @@ export class MainMenuView {
 
   setDebugEnabled(enabled: boolean): void {
     this.optionsMenu.setDebugEnabled(enabled);
+  }
+
+  private wireMenuSounds(): void {
+    this.element.addEventListener("mouseover", (event) => {
+      const target = this.soundTargetFromEvent(event);
+      if (!target) return;
+      const related = event.relatedTarget;
+      if (related instanceof Node && target.contains(related)) return;
+      this.callbacks.onSound("hover");
+    });
+
+    this.element.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      const target = this.soundTargetFromEvent(event);
+      if (!target || target.dataset.action === "exit") return;
+      this.callbacks.onSound("press");
+    });
+
+    this.element.addEventListener("click", (event) => {
+      const target = this.soundTargetFromEvent(event);
+      if (!target) return;
+      if (target.dataset.action === "exit") {
+        this.callbacks.onSound("deny");
+        return;
+      }
+      this.callbacks.onSound(target.dataset.action === "back" ? "back" : "release");
+    });
+  }
+
+  private soundTargetFromEvent(event: Event): HTMLElement | null {
+    if (!(event.target instanceof Element)) {
+      return null;
+    }
+    const target = event.target.closest<HTMLElement>(
+      "button, .hl2-chapter[tabindex]",
+    );
+    if (!target || !this.element.contains(target)) {
+      return null;
+    }
+    if (target instanceof HTMLButtonElement && target.disabled) {
+      return null;
+    }
+    return target;
   }
 }

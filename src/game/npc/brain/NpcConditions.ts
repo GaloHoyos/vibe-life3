@@ -52,6 +52,12 @@ export const Cond = {
   AlliesNear: 1 << 24,
   /** El anchor (player para allies) quedo demasiado lejos → regroup. */
   AnchorFar: 1 << 25,
+
+  /** Threat en la banda de salto (entre melee y `leapRange`): el headcrab brinca. */
+  EnemyInLeapRange: 1 << 26,
+
+  /** Cuerpo volcado de lado (up-vector lejos de la vertical): la torreta queda inutil. */
+  Tipped: 1 << 27,
 } as const;
 
 export type CondKey = keyof typeof Cond;

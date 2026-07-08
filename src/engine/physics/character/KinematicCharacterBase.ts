@@ -1,6 +1,7 @@
 ﻿import RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3 } from "three";
 import { createCapsuleCollider } from "@engine/physics/Colliders";
+import { ACTOR_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
 
 export interface KinematicCharacterBaseOptions {
@@ -51,7 +52,7 @@ export abstract class KinematicCharacterBase {
       ),
     );
     this.collider = physics.world.createCollider(
-      createCapsuleCollider(options.radius, options.halfHeight),
+      createCapsuleCollider(options.radius, options.halfHeight).setCollisionGroups(ACTOR_COLLISION_GROUPS),
       this.body,
     );
     physics.registerCollider(this.collider, options.metadata);
@@ -75,11 +76,15 @@ export abstract class KinematicCharacterBase {
     filter?: (collider: RAPIER.Collider) => boolean,
   ): { corrected: Vector3; grounded: boolean } {
     const desired = this.velocity.clone().multiplyScalar(delta);
+    // filterGroups explícito: computeColliderMovement NO respeta los collision
+    // groups del collider movido por sí solo. Sin esto la cápsula choca con
+    // colliders que la excluyen por grupo (parche de apertura de portales,
+    // ragdolls) y se frena contra "paredes invisibles".
     this.controller.computeColliderMovement(
       this.collider,
       desired,
       RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-      undefined,
+      this.collider.collisionGroups(),
       filter,
     );
     const out = this.controller.computedMovement();
@@ -99,9 +104,48 @@ export abstract class KinematicCharacterBase {
     };
   }
 
+  /**
+   * Hard-set de posición + velocidad (portales/teleports). Usa `setTranslation`
+   * y no `setNextKinematicTranslation`: el salto debe ser instantáneo, sin que
+   * el solver interpole un frame de movimiento gigante.
+   */
+  teleport(position: Vector3, velocity: Vector3): void {
+    this.body.setTranslation(
+      { x: position.x, y: position.y, z: position.z },
+      true,
+    );
+    this.body.setNextKinematicTranslation({
+      x: position.x,
+      y: position.y,
+      z: position.z,
+    });
+    this.velocity.copy(velocity);
+    this.grounded = false;
+  }
+
+  /**
+   * Corrección posicional dura sin tocar velocidad ni grounded (clamp del
+   * hueco de un portal). A diferencia de `teleport`, preserva el momentum.
+   */
+  setPosition(position: Vector3): void {
+    this.body.setTranslation(
+      { x: position.x, y: position.y, z: position.z },
+      true,
+    );
+    this.body.setNextKinematicTranslation({
+      x: position.x,
+      y: position.y,
+      z: position.z,
+    });
+  }
+
   getPosition(): Vector3 {
     const p = this.body.translation();
     return new Vector3(p.x, p.y, p.z);
+  }
+
+  getVelocity(out = new Vector3()): Vector3 {
+    return out.copy(this.velocity);
   }
 
   isGrounded(): boolean {

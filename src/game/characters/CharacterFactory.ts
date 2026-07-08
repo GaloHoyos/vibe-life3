@@ -4,21 +4,46 @@ import type { INpc } from '@game/npc/core/INpc';
 import { attachWeaponToHand } from '@game/npc/combat/NpcWeaponAttachment';
 import { Npc } from '@game/npc/Npc';
 import { NpcAnimationBridge } from '@game/npc/animation/NpcAnimationBridge';
+import { CreatureAnimator } from '@game/npc/animation/CreatureAnimator';
+import type { CreatureAnimConfig } from '@game/npc/animation/CreatureAnimator';
+import type { NpcAnimator } from '@game/npc/animation/NpcAnimator';
+import { TurretAnimator } from '@game/npc/animation/TurretAnimator';
+import { GunshipAnimator } from '@game/npc/animation/GunshipAnimator';
+import { StriderAnimator } from '@game/npc/animation/StriderAnimator';
+import { createManhackVisual } from '@game/characters/visuals/ManhackVisual';
+import { createTurretVisual } from '@game/characters/visuals/TurretVisual';
+import { createGunshipVisual } from '@game/characters/visuals/GunshipVisual';
+import { createStriderVisual } from '@game/characters/visuals/StriderVisual';
 import { buildAlyxPreset } from '@game/npc/presets/alyxPreset';
 import { buildCombinePreset } from '@game/npc/presets/combinePreset';
 import { buildZombiePreset } from '@game/npc/presets/zombiePreset';
+import { buildHeadcrabPreset } from '@game/npc/presets/headcrabPreset';
+import { buildManhackPreset } from '@game/npc/presets/manhackPreset';
+import { buildTurretPreset } from '@game/npc/presets/turretPreset';
+import { buildGunshipPreset } from '@game/npc/presets/gunshipPreset';
+import { buildStriderPreset } from '@game/npc/presets/striderPreset';
 import type { NpcPreset, NpcPresetOptions } from '@game/npc/presets/NpcPreset';
 import { NpcCombat } from '@game/npc/combat/NpcCombat';
 import { NpcMeleeCombat } from '@game/npc/combat/NpcMeleeCombat';
 import { NpcRangedCombat } from '@game/npc/combat/NpcRangedCombat';
 import { RealRangedCombat } from '@game/npc/combat/RealRangedCombat';
+import { TurretCombat } from '@game/npc/combat/TurretCombat';
+import { TurretAimState } from '@game/npc/combat/TurretAimState';
+import { GunshipCannonCombat } from '@game/npc/combat/GunshipCannonCombat';
+import { StriderCombat } from '@game/npc/combat/StriderCombat';
 import type { NpcCombatHandle } from '@game/npc/brain/NpcBrainContext';
 import type { ModelAssetId } from '@engine/assets/AssetManifest';
 import type { GameEventBus } from "@game/GameEvents";
-import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
-import { Raycast } from '@engine/physics/Raycast';
+import type { PhysicsMetadata, PhysicsWorld } from '@engine/physics/PhysicsWorld';
+import { Raycast, type RaycastSource } from '@engine/physics/Raycast';
 import { CharacterMotor } from '@engine/physics/character/CharacterMotor';
+import { DynamicFlyerMotor } from '@engine/physics/character/DynamicFlyerMotor';
+import { KinematicFlyerMotor } from '@engine/physics/character/KinematicFlyerMotor';
+import { StriderWalkerMotor } from '@engine/physics/character/StriderWalkerMotor';
+import { StationaryDynamicMotor } from '@engine/physics/character/StationaryDynamicMotor';
+import type { NpcMotor } from '@engine/physics/character/NpcMotor';
 import type { NavSpace } from '@engine/ai/nav/NavSpace';
+import type { PortalPairState } from '@engine/portals/PortalFrame';
 import type { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
 import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
 import type { TacticalMap } from '@game/npc/ai/TacticalMap';
@@ -26,12 +51,25 @@ import type { SquadDirector } from '@game/npc/ai/SquadDirector';
 import { getMaterial } from '@engine/render/material/Materials';
 import { CharacterPresets } from './CharacterPresets';
 import type { CharacterDefinition, CharacterId } from '@engine/characters/CharacterDefinition';
+import type { DifficultyProvider } from '@game/config/difficulty.config';
 
 export interface NpcRuntimeServices {
   navSpace: NavSpace;
   pathQueue: PathRequestQueue;
   buildingRegistry: BuildingRegistry;
   raycast: Raycast;
+  /**
+   * Raycast para línea de visión y disparos. Portal-aware: los NPCs ven y
+   * disparan a través del par linked. La locomoción sigue usando `raycast`
+   * plano (los probes de suelo no deben cruzar portales). REQUERIDO a
+   * propósito: cuando era opcional, LevelLoader lo omitió y ningún NPC del
+   * nivel veía por los portales.
+   */
+  losRaycast: RaycastSource;
+  /** Par de portales linked: los flyers (manhack) cruzan con su propio motor. */
+  portals: PortalPairState;
+  /** Cruce de portal de un flyer (para emitir `portal.teleported`). */
+  onFlyerPortalTeleport?: (npcId: string, exitPosition: Vector3) => void;
   tacticalMap: TacticalMap;
   squadDirector: SquadDirector;
 }
@@ -50,6 +88,7 @@ export class CharacterFactory {
     private readonly assets: AssetManager,
     private readonly physics: PhysicsWorld,
     private readonly eventBus: GameEventBus,
+    private readonly difficulty?: DifficultyProvider,
   ) {}
 
   async createNPC(
@@ -60,14 +99,15 @@ export class CharacterFactory {
     services?: NpcRuntimeServices,
   ): Promise<INpc> {
     const definition = CharacterPresets[characterId] ?? CharacterPresets.placeholderHumanoid;
+    const isGunship = definition.aiProfileId === 'gunshipBoss';
     const model = definition.modelId ? await this.assets.instantiateModel(definition.modelId) : null;
-    const visualRoot = model?.root ?? createPlaceholderHumanoid();
+    const visualRoot = model?.root ?? proceduralVisuals[characterId]?.() ?? createPlaceholderHumanoid();
 
     visualRoot.scale.multiplyScalar(definition.visualScale);
     visualRoot.rotation.y += definition.visualRotationY;
     visualRoot.position.copy(definition.visualOffset);
 
-    const rangedWeaponId = definition.attack.ranged?.weaponId;
+    const rangedWeaponId = isGunship ? undefined : definition.attack.ranged?.weaponId;
     if (rangedWeaponId) {
       try {
         const weapon = await this.assets.instantiateModel(
@@ -106,57 +146,177 @@ export class CharacterFactory {
     const preset = resolvePresetFor(definition, { hasPatrol: patrolPoints.length > 0 });
     const visualGroup = wrapVisualRoot(visualRoot);
     const ownerProxy: {
-      applyDamage: (amount: number, dir?: Vector3, part?: string, attackerId?: string) => void;
+      applyDamage: (amount: number, dir?: Vector3, part?: string, attackerId?: string, point?: Vector3) => void;
       isAlive: () => boolean;
     } = {
       applyDamage: () => {},
       isAlive: () => true,
     };
-    const motor = new CharacterMotor(this.physics, {
+    const metadata: PhysicsMetadata = {
       id: instanceId,
-      position,
-      height: definition.collider.height,
-      radius: definition.collider.radius,
-      mass: definition.collider.mass,
-      maxSpeed: preset.movement.walkSpeed,
-      acceleration: preset.movement.acceleration,
-      turnSpeed: preset.movement.turnSpeed,
-      rotationSmoothing: definition.movement.rotationSmoothing,
-      faceTargetDeadzone: definition.movement.faceTargetDeadzone,
-      turnBeforeMoveAngle: definition.movement.turnBeforeMoveAngle,
-      minMoveFacingDot: definition.movement.minMoveFacingDot,
-      gravity: definition.movement.gravity,
-      stepOffset: preset.movement.stepOffset,
-      snapToGround: preset.movement.snapToGround,
-      debug: definition.debug,
-      metadata: { id: instanceId, kind: 'npc', damageable: ownerProxy, faction: definition.faction },
-    });
-    const animation = new NpcAnimationBridge(
-      instanceId,
-      definition,
-      visualRoot,
-      this.physics,
-      ownerProxy,
-    );
+      kind: 'npc',
+      damageable: ownerProxy,
+      characterId: definition.id,
+      faction: definition.faction,
+    };
+    // Torreta de piso = cuerpo dinamico estacionario (no navega; se la tumba). El
+    // `aimState` se comparte entre su combat (lo escribe) y su animator (lo lee).
+    const isTurret = definition.aiProfileId === 'floorTurret';
+    const isGunship = definition.aiProfileId === 'gunshipBoss';
+    const isStrider = definition.aiProfileId === 'striderBoss';
+    const turretAim = isTurret ? new TurretAimState() : null;
+    let striderMotor: StriderWalkerMotor | null = null;
+    // Voladores (manhack) = rigid body dinamico real: lo agarra la gravity gun,
+    // lo voltea una caja, se rompe contra la pared. Terrestres = cinematico.
+    const motor: NpcMotor = isTurret
+      ? new StationaryDynamicMotor(this.physics, {
+          id: instanceId,
+          position,
+          size: new Vector3(
+            definition.collider.radius * 2,
+            definition.collider.height,
+            definition.collider.radius * 2,
+          ),
+          mass: definition.collider.mass,
+          // El primer punto de `patrol` define hacia donde mira (direccion de montaje).
+          mountYaw: computeMountYaw(position, patrolPoints),
+          metadata,
+        })
+      : isGunship
+      ? new KinematicFlyerMotor(this.physics, {
+          id: instanceId,
+          position,
+          height: definition.collider.height,
+          radius: definition.collider.radius,
+          mass: definition.collider.mass,
+          maxSpeed: preset.movement.walkSpeed,
+          acceleration: preset.movement.acceleration,
+          turnSpeed: preset.movement.turnSpeed,
+          metadata,
+        })
+      : isStrider
+      ? (striderMotor = new StriderWalkerMotor(this.physics, {
+          id: instanceId,
+          position,
+          height: definition.collider.height,
+          radius: definition.collider.radius,
+          mass: definition.collider.mass,
+          maxSpeed: preset.movement.walkSpeed,
+          acceleration: preset.movement.acceleration,
+          turnSpeed: preset.movement.turnSpeed,
+          metadata,
+          raycast: services.raycast,
+        }))
+      : preset.movement.flying
+      ? new DynamicFlyerMotor(this.physics, {
+          id: instanceId,
+          position,
+          height: definition.collider.height,
+          radius: definition.collider.radius,
+          maxSpeed: preset.movement.walkSpeed,
+          acceleration: preset.movement.acceleration,
+          turnSpeed: preset.movement.turnSpeed,
+          // El motor cruza portales por su cuenta (sweep predictivo): el
+          // traveller de props debe ignorar este cuerpo (flag en metadata).
+          metadata: { ...metadata, selfPortalTraversal: true },
+          portals: services.portals,
+          onPortalTeleport: (exitPosition) =>
+            services.onFlyerPortalTeleport?.(instanceId, exitPosition),
+        })
+      : new CharacterMotor(this.physics, {
+          id: instanceId,
+          position,
+          height: definition.collider.height,
+          radius: definition.collider.radius,
+          mass: definition.collider.mass,
+          maxSpeed: preset.movement.walkSpeed,
+          acceleration: preset.movement.acceleration,
+          turnSpeed: preset.movement.turnSpeed,
+          rotationSmoothing: definition.movement.rotationSmoothing,
+          faceTargetDeadzone: definition.movement.faceTargetDeadzone,
+          turnBeforeMoveAngle: definition.movement.turnBeforeMoveAngle,
+          minMoveFacingDot: definition.movement.minMoveFacingDot,
+          gravity: definition.movement.gravity,
+          stepOffset: preset.movement.stepOffset,
+          snapToGround: preset.movement.snapToGround,
+          debug: definition.debug,
+          metadata,
+        });
+    const striderAnimator =
+      isStrider && striderMotor ? new StriderAnimator(visualRoot, striderMotor) : null;
+    const animation: NpcAnimator =
+      isTurret && turretAim
+        ? new TurretAnimator(visualRoot, turretAim)
+        : isGunship
+        ? new GunshipAnimator(visualRoot)
+        : striderAnimator
+        ? striderAnimator
+        : definition.type === 'humanoid'
+        ? new NpcAnimationBridge(instanceId, definition, visualRoot, this.physics, ownerProxy)
+        : new CreatureAnimator(
+            visualRoot,
+            creatureAnimConfigs[definition.id] ?? DEFAULT_CREATURE_ANIM,
+          );
     const ranged = definition.attack.ranged;
     let combat: NpcCombatHandle;
-    if (ranged) {
+    if (isTurret && turretAim) {
+      combat = new TurretCombat({
+        id: instanceId,
+        characterId: definition.id,
+        faction: definition.faction,
+        body: motor.body,
+        raycast: services.raycast,
+        eventBus: this.eventBus,
+        aimState: turretAim,
+        // Pivote del cañon sobre el centro del cuerpo (coincide con el `turret-barrel`).
+        eyeHeight: 0.42,
+        // El cañon bascula dentro del mismo cono que ve la percepcion (no 360).
+        coneHalfAngle: preset.perception.visionConeRadians / 2,
+        onShot: () => animation.notifyShot(),
+      });
+    } else if (isGunship) {
+      combat = new GunshipCannonCombat({
+        id: instanceId,
+        characterId: definition.id,
+        faction: definition.faction,
+        body: motor.body,
+        raycast: services.raycast,
+        eventBus: this.eventBus,
+        eyeHeight: definition.perception.eyeHeight,
+        onShot: () => animation.notifyShot(),
+      });
+    } else if (isStrider) {
+      combat = new StriderCombat({
+        id: instanceId,
+        characterId: definition.id,
+        faction: definition.faction,
+        body: motor.body,
+        physics: this.physics,
+        eventBus: this.eventBus,
+        onMinigunShot: () => animation.notifyShot(),
+        onCannonCharge: () => striderAnimator?.notifyCannonCharge(),
+        onCannonShot: () => striderAnimator?.notifyCannonShot(),
+        onStomp: () => animation.notifyAttack(),
+      });
+    } else if (ranged) {
+      const losRaycast = services.losRaycast;
       const realCombat = new NpcRangedCombat(
         instanceId,
         definition.faction,
         ranged,
-        services.raycast,
+        losRaycast,
         this.eventBus,
         () => animation.notifyShot(),
       );
       combat = new RealRangedCombat({
         combat: realCombat,
+        ownerId: instanceId,
         ownerBody: motor.body,
         faction: definition.faction,
         eyeHeight: definition.perception.eyeHeight,
         effectiveRange: definition.ai.detectionRange,
         rangedConfig: ranged,
-        raycast: services.raycast,
+        raycast: losRaycast,
         onReload: (duration) => animation.notifyReload(duration),
       });
     } else {
@@ -168,14 +328,18 @@ export class CharacterFactory {
       faction: definition.faction,
       position,
       visualRoot: visualGroup,
+      height: definition.collider.height,
       motor,
       combat,
       preset,
+      sliceDamage: definition.aiProfileId === 'manhackFlyer' ? definition.attack.damage : undefined,
       navSpace: services.navSpace,
       buildingRegistry: services.buildingRegistry,
       pathQueue: services.pathQueue,
       raycast: services.raycast,
+      losRaycast: services.losRaycast,
       eventBus: this.eventBus,
+      difficulty: this.difficulty,
       animation,
       patrolRoute: patrolPoints,
       tacticalMap: services.tacticalMap,
@@ -193,11 +357,63 @@ function resolvePresetFor(definition: CharacterDefinition, options: NpcPresetOpt
       return buildAlyxPreset();
     case 'zombieMelee':
       return buildZombiePreset();
+    case 'headcrabMelee':
+      return buildHeadcrabPreset();
+    case 'manhackFlyer':
+      return buildManhackPreset();
+    case 'floorTurret':
+      return buildTurretPreset();
+    case 'gunshipBoss':
+      return buildGunshipPreset(options);
+    case 'striderBoss':
+      return buildStriderPreset(options);
     case 'combineSoldier':
     default:
       return buildCombinePreset(options);
   }
 }
+
+/** Yaw de montaje de la torreta: encara el primer punto de `patrol`, o +Z si no hay. */
+function computeMountYaw(position: Vector3, patrol: Vector3[]): number {
+  if (patrol.length === 0) return 0;
+  const dx = patrol[0].x - position.x;
+  const dz = patrol[0].z - position.z;
+  if (dx * dx + dz * dz < 1e-4) return 0;
+  return Math.atan2(dx, dz);
+}
+
+/** Visuales procedurales para NPCs sin GLB (registrar uno nuevo = una entrada). */
+const proceduralVisuals: Record<string, () => Object3D> = {
+  manhack: createManhackVisual,
+  floorTurret: createTurretVisual,
+  gunship: createGunshipVisual,
+  strider: createStriderVisual,
+};
+
+/**
+ * Config del `CreatureAnimator` por NPC no-humanoide. Agregar una criatura =
+ * una entrada (o cae al default). Acoplada al visual (el `childName` del spin
+ * coincide con el nombre del mesh de la cuchilla del manhack).
+ */
+const creatureAnimConfigs: Record<string, CreatureAnimConfig> = {
+  headcrab: { bobAmplitude: 0.03, bobFrequency: 7, bankStrength: 0.04, death: 'tumble' },
+  // El manhack es un body dinamico: el motor le da posicion/rotacion/tumbo y la
+  // caida de muerte (fisica). El animador solo gira la cuchilla.
+  manhack: {
+    bobAmplitude: 0,
+    bobFrequency: 1,
+    bankStrength: 0,
+    spin: { childName: 'manhack-blade', axis: 'y', speed: 34 },
+    death: 'none',
+  },
+};
+
+const DEFAULT_CREATURE_ANIM: CreatureAnimConfig = {
+  bobAmplitude: 0.04,
+  bobFrequency: 2,
+  bankStrength: 0.06,
+  death: 'drop',
+};
 
 function wrapVisualRoot(root: Object3D): Group {
   const group = new Group();

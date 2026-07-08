@@ -33,6 +33,7 @@ export function attachWeaponToHand(
   weaponModel: Object3D | null,
   weaponId: string,
   npcId: string,
+  worldScaleOverride?: number,
 ): WeaponAttachmentHandle | null {
   if (!weaponModel) {
     console.warn(`[NpcWeapon] '${npcId}': weaponModel es null`);
@@ -80,6 +81,7 @@ export function attachWeaponToHand(
     weaponId: tuningKey,
     accumulatedScale,
     kind: "hand" as const,
+    worldScaleOverride,
   };
   applyToAttachment(entry);
   const unregister = registerAttachment(entry);

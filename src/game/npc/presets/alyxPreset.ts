@@ -111,7 +111,7 @@ export function buildAlyxPreset(): NpcPreset {
       visionConeRadians: (130 * Math.PI) / 180,
       hearingRadius: 16,
       memoryTime: 5,
-      eyeHeight: 1.55,
+      eyeHeight: 0.62,
     },
     maxHealth: 120,
     radius: 0.35,

@@ -37,6 +37,7 @@ export class MeleeWeapon extends Weapon {
       context.direction.clone(),
       hit.metadata?.bodyPart?.name,
       "player",
+      hit.point,
     );
 
     this.context.eventBus.emit("weapon.hit", {
@@ -48,6 +49,15 @@ export class MeleeWeapon extends Weapon {
       damage: this.definition.damage * damageMultiplier,
       sourceId: "player",
       sourceKind: "player",
+      sourceFaction: "player",
+    });
+
+    // El golpe (contra mundo o NPC) sí hace ruido, desde el punto de impacto.
+    this.context.eventBus.emit("world.noise", {
+      kind: "impact",
+      position: hit.point.clone(),
+      radius: this.definition.noise?.impactRadius ?? 5,
+      sourceId: "player",
       sourceFaction: "player",
     });
   }

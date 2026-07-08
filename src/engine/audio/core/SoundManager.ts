@@ -11,15 +11,39 @@ export interface PlayOptions {
   loop?: boolean;
   fadeIn?: number;
   bus?: AudioBusName;
+  /** Desafinación en cents (±). Rompe la repetición de one-shots (pasos, disparos). */
+  detune?: number;
+  /** Multiplicador de velocidad de reproducción (pitch + duración). */
+  playbackRate?: number;
+  /** Jitter de volumen relativo (0..1). El volumen final se randomiza ±jitter. */
+  volumeJitter?: number;
 }
 
 interface SoundInstance {
   id: string;
   category: AudioCategory;
+  bus: AudioBusName;
   source: AudioBufferSourceNode;
   gain: GainNode;
   loop: boolean;
+  startedAt: number;
 }
+
+/**
+ * Máximo de voces concurrentes por bus. Al excederse se corta la voz más
+ * vieja del bus (voice stealing) para evitar acumulación infinita y clipping.
+ */
+const VoiceCaps: Partial<Record<AudioBusName, number>> = {
+  weapons: 16,
+  enemies: 12,
+  footsteps: 4,
+  sfx: 12,
+  ui: 8,
+};
+const DefaultVoiceCap = 24;
+
+/** Ventana anti-retrigger: mismo clip disparado < esto se colapsa en una sola voz. */
+const MinRetriggerSeconds = 0.02;
 
 /**
  * Carga clips del `AudioClipCatalog` bajo demanda y los reproduce a travÃ©s
@@ -32,6 +56,7 @@ interface SoundInstance {
 export class SoundManager {
   private readonly buffers = new Map<string, AudioBuffer>();
   private readonly active = new Map<string, SoundInstance[]>();
+  private readonly lastPlayedAt = new Map<string, number>();
 
   constructor(private readonly audio: AudioSystem) {}
 
@@ -98,6 +123,14 @@ export class SoundManager {
     this.audio.setVolume(bus, value);
   }
 
+  duck(buses: readonly AudioBusName[], factor: number, rampSeconds?: number): void {
+    this.audio.duck(buses, factor, rampSeconds);
+  }
+
+  unduck(buses: readonly AudioBusName[], rampSeconds?: number): void {
+    this.audio.unduck(buses, rampSeconds);
+  }
+
   hasSound(soundId: string): boolean {
     return Boolean(AudioClipCatalog[soundId]);
   }
@@ -120,22 +153,45 @@ export class SoundManager {
       return;
     }
 
+    const busName = options.bus ?? clip.bus;
+
+    // Anti-machine-gun: el mismo clip disparado en la misma ráfaga de frames
+    // se colapsa; sin esto se apilan decenas de voces idénticas que clippean.
+    const loop = options.loop ?? clip.loop;
+    if (!loop) {
+      const last = this.lastPlayedAt.get(soundId);
+      if (last !== undefined && context.currentTime - last < MinRetriggerSeconds) {
+        return;
+      }
+      this.lastPlayedAt.set(soundId, context.currentTime);
+      this.enforceVoiceCap(busName);
+    }
+
     const buffer = await this.loadBuffer(soundId);
     if (!buffer) {
       return;
     }
 
-    const bus = this.audio.getBus(options.bus ?? clip.bus);
+    const bus = this.audio.getBus(busName);
     if (!bus) {
       return;
     }
 
     const source = context.createBufferSource();
     source.buffer = buffer;
-    source.loop = options.loop ?? clip.loop;
+    source.loop = loop;
+    if (options.playbackRate !== undefined) {
+      source.playbackRate.value = options.playbackRate;
+    }
+    if (options.detune !== undefined && source.detune) {
+      source.detune.value = options.detune;
+    }
 
     const gain = context.createGain();
-    const baseVolume = clip.volume * (options.volume ?? 1);
+    const jitter = options.volumeJitter
+      ? 1 + (Math.random() * 2 - 1) * options.volumeJitter
+      : 1;
+    const baseVolume = clip.volume * (options.volume ?? 1) * jitter;
     gain.gain.value = baseVolume;
 
     source.connect(gain);
@@ -144,9 +200,11 @@ export class SoundManager {
     const instance: SoundInstance = {
       id: soundId,
       category: clip.category,
+      bus: busName,
       source,
       gain,
       loop: source.loop,
+      startedAt: context.currentTime,
     };
 
     if (!this.active.has(soundId)) {
@@ -161,18 +219,59 @@ export class SoundManager {
     }
 
     source.addEventListener("ended", () => {
-      const list = this.active.get(soundId);
-      if (!list) {
-        return;
-      }
-
-      this.active.set(
-        soundId,
-        list.filter((entry) => entry !== instance),
-      );
+      this.removeInstance(instance);
     });
 
     source.start();
+  }
+
+  /**
+   * Aplica el límite de voces del bus con voice stealing: si ya se alcanzó el
+   * cap, corta las voces one-shot más viejas para hacerle lugar a la nueva.
+   * Los loops (ambience, música, motor del cohete) no cuentan ni se roban.
+   */
+  private enforceVoiceCap(busName: AudioBusName): void {
+    const cap = VoiceCaps[busName] ?? DefaultVoiceCap;
+    const onBus: SoundInstance[] = [];
+    this.active.forEach((list) => {
+      list.forEach((instance) => {
+        if (instance.bus === busName && !instance.loop) {
+          onBus.push(instance);
+        }
+      });
+    });
+
+    if (onBus.length < cap) {
+      return;
+    }
+
+    onBus.sort((a, b) => a.startedAt - b.startedAt);
+    const toStop = onBus.length - cap + 1;
+    for (let i = 0; i < toStop; i += 1) {
+      const instance = onBus[i];
+      if (!instance) {
+        continue;
+      }
+      try {
+        instance.source.stop();
+      } catch {
+        // Ya detenida; el handler `ended` limpia el resto.
+      }
+      this.removeInstance(instance);
+    }
+  }
+
+  private removeInstance(instance: SoundInstance): void {
+    const list = this.active.get(instance.id);
+    if (!list) {
+      return;
+    }
+    const filtered = list.filter((entry) => entry !== instance);
+    if (filtered.length > 0) {
+      this.active.set(instance.id, filtered);
+    } else {
+      this.active.delete(instance.id);
+    }
   }
 
   private async loadBuffer(soundId: string): Promise<AudioBuffer | null> {

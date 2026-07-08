@@ -39,6 +39,7 @@ const PATHS = {
   bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7Z"/>',
   person: '<circle cx="12" cy="7" r="3.5"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/>',
   weapon: '<path d="M3 8h16v4h-7l-2 4H6v-4H3Z"/><path d="M16 10h4"/>',
+  ammo: '<path d="M7 19h10"/><path d="M9 19V7l3-4 3 4v12"/><path d="M9 9h6M9 14h6"/>',
   item: '<path d="M3 7 12 3l9 4-9 4Z"/><path d="M3 7v10l9 4 9-4V7"/>',
 } as const;
 
@@ -60,6 +61,7 @@ const KIND_ICONS: Record<EditorEntityKind, EditorIconName> = {
   npc: 'person',
   weaponPickup: 'weapon',
   itemPickup: 'item',
+  ammoPickup: 'ammo',
   charger: 'bolt',
   trigger: 'target',
   explosiveBarrel: 'cube',

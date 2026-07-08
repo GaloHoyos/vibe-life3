@@ -2,12 +2,14 @@
 
 const ZERO_VECTOR = new Vector3();
 import type { Damageable } from '@shared/types/lifecycle';
+import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import { BoneMapper } from '@engine/animation/pose/BoneMapper';
 import { PhysicalSkeleton } from './PhysicalSkeleton';
 import { RagdollBuilder } from './RagdollBuilder';
-import type { RagdollConfig } from './RagdollDefinition';
+import { DefaultRagdollConfig, type RagdollConfig } from './RagdollDefinition';
 import type { RagdollController } from './RagdollController';
+import { captureRestPose, type RagdollRestPose } from './RagdollRestPose';
 
 export interface RagdollSystemOptions {
   id: string;
@@ -15,6 +17,7 @@ export interface RagdollSystemOptions {
   physics: PhysicsWorld;
   mapper: BoneMapper;
   config?: Partial<RagdollConfig>;
+  characterId?: CharacterId;
   owner?: Damageable;
 }
 
@@ -38,10 +41,15 @@ export interface RagdollSystemOptions {
  */
 export class RagdollSystem {
   private readonly builder = new RagdollBuilder();
+  private readonly restPose: RagdollRestPose | null;
   private sensorSkeleton: PhysicalSkeleton | null = null;
   private controller: RagdollController | null = null;
 
-  constructor(private readonly options: RagdollSystemOptions) {}
+  constructor(private readonly options: RagdollSystemOptions) {
+    // Captured at construction: the load pose is the rest pose (same contract
+    // as PoseSnapshot). Canonical joint frames depend on this reference.
+    this.restPose = captureRestPose(options.root, options.mapper);
+  }
 
   /** Construye el ragdoll fÃ­sico real (lazy). Usado al pasar a passiveRagdoll. */
   ensureBuilt(): RagdollController {
@@ -55,7 +63,9 @@ export class RagdollSystem {
       mapper: this.options.mapper,
       physics: this.options.physics,
       config: this.options.config,
+      characterId: this.options.characterId,
       owner: this.options.owner,
+      restPose: this.restPose,
     });
 
     return this.controller;
@@ -79,6 +89,7 @@ export class RagdollSystem {
       mapper: this.options.mapper,
       physics: this.options.physics,
       config: this.options.config,
+      characterId: this.options.characterId,
       owner: this.options.owner,
     });
 
@@ -93,9 +104,8 @@ export class RagdollSystem {
   activate(hitDirection?: Vector3, currentVelocity?: Vector3, hitPartName?: string): RagdollController {
     this.sensorSkeleton?.setEnabled(false);
     const controller = this.ensureBuilt();
-    controller.setPassive();
-    controller.clampDeathVelocity(currentVelocity);
-    controller.applyImpulse(hitDirection ?? ZERO_VECTOR, this.options.config?.impulseScale ?? 0.35, hitPartName);
+    controller.inheritVelocity(currentVelocity);
+    controller.applyImpulse(hitDirection ?? ZERO_VECTOR, this.options.config?.impulseScale ?? DefaultRagdollConfig.impulseScale, hitPartName);
     return controller;
   }
 

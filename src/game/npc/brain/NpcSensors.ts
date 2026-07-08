@@ -14,9 +14,13 @@ export interface SensorInputs {
   locomotion: NpcLocomotionHandle;
   noise: NoiseSnapshot;
   meleeRange: number;
+  /** Banda de salto: threat dentro de `(meleeRange, leapRange]` activa `EnemyInLeapRange`. 0 = sin salto. */
+  leapRange: number;
   tooCloseRange: number;
   lowHealthRatio: number;
   justHit: boolean;
+  /** Cuerpo volcado de lado (motor dinamico): activa `Tipped`. False en motores cinematicos. */
+  tipped: boolean;
   alliesNear: boolean;
   anchorFar: boolean;
   coverAvailable: boolean;
@@ -44,6 +48,7 @@ export function computeNpcConditions(inputs: SensorInputs): ConditionMask {
     mask |= Cond.LowHealth;
   }
   if (inputs.justHit) mask |= Cond.JustHit;
+  if (inputs.tipped) mask |= Cond.Tipped;
 
   if (inputs.perception.visibleNow && inputs.threat?.isAlive) {
     mask |= Cond.SeeEnemy;
@@ -58,6 +63,7 @@ export function computeNpcConditions(inputs: SensorInputs): ConditionMask {
   if (inputs.threat?.isAlive) {
     const dist = planarDistance(inputs.self.position, inputs.threat.position);
     if (dist <= inputs.meleeRange) mask |= Cond.EnemyInMeleeRange;
+    if (dist > inputs.meleeRange && dist <= inputs.leapRange) mask |= Cond.EnemyInLeapRange;
     if (dist <= inputs.tooCloseRange) mask |= Cond.EnemyTooClose;
   }
 

@@ -617,6 +617,57 @@
   50% { opacity: 0.4; }
 }
 
+/* ------------------------------------------------------------- Difficulty */
+
+.hl2-difficulty {
+  margin: 0 0 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.hl2-difficulty__title {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.hl2-difficulty__options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.hl2-difficulty__option {
+  padding: 8px 10px;
+  background: rgba(10, 8, 4, 0.5);
+  border-left: 2px solid rgba(255, 138, 26, 0.25);
+}
+
+.hl2-difficulty__option.is-active {
+  background: rgba(255, 138, 26, 0.16);
+  border-left-color: var(--hl2-orange);
+}
+
+.hl2-difficulty__option.is-active .hl2-button__label {
+  color: var(--hl2-orange);
+}
+
+.hl2-difficulty__option.is-active .hl2-button__marker {
+  background: var(--hl2-orange);
+  box-shadow: 0 0 8px rgba(255, 138, 26, 0.55);
+  transform: rotate(45deg);
+}
+
+.hl2-difficulty__desc {
+  margin: 0;
+  min-height: 1.2em;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--hl2-text);
+  opacity: 0.82;
+}
+
 /* --------------------------------------------------------------- Chapters */
 
 .hl2-chapters {

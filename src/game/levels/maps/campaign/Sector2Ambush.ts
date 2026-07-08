@@ -15,8 +15,9 @@ export const Sector2Ambush = createMap({
   background: 0x0c1014,
   playerStart: [0, 1.2, 24],
   audio: {
-    ambiences: ['background.wind'],
+    ambiences: ['background.wind', 'background.hl2.wind.wasteland'],
     footstepSounds: ['footsteps.snow1', 'footsteps.snow2', 'footsteps.snow3', 'footsteps.snow4'],
+    soundscape: 'wasteland',
   },
 })
   .ground({ size: [44, 56], boundary: { height: 4 } })
@@ -39,10 +40,19 @@ export const Sector2Ambush = createMap({
       { kind: 'spawnNpcs', npcs: [
         { id: 'amb-z1', characterId: 'zombie', position: [-8, 1, -2] },
         { id: 'amb-z2', characterId: 'zombie', position: [8, 1, -2] },
+        { id: 'amb-h1', characterId: 'headcrab', position: [-11, 1, 2] },
+        { id: 'amb-h2', characterId: 'headcrab', position: [11, 1, 2] },
+        // Torreta de piso cubriendo el centro del patio (mira hacia el norte, de
+        // donde viene el player). `patrol[0]` = punto de montaje hacia el que apunta.
+        { id: 'amb-turret', characterId: 'floorTurret', position: [0, 1, -10], patrol: [[0, 1, 10]] },
       ] },
       { kind: 'spawnNpcs', delay: 3, npcs: [
         { id: 'amb-c1', characterId: 'combine', position: [-6, 1, -14] },
         { id: 'amb-c2', characterId: 'combine', position: [6, 1, -14] },
+      ] },
+      { kind: 'spawnNpcs', delay: 5, npcs: [
+        { id: 'amb-m1', characterId: 'manhack', position: [-5, 2.6, -16] },
+        { id: 'amb-m2', characterId: 'manhack', position: [5, 2.6, -16] },
       ] },
     ],
   })

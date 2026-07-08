@@ -2,16 +2,28 @@
 import type { GameEventBus, WeaponSelectorState } from "@game/GameEvents";
 import type { Input } from "@engine/input/Input";
 import type { CameraSystem } from "@engine/render/CameraSystem";
+import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
-import { Quaternion, Vector3, type Scene } from "three";
+import type { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
+import { Quaternion, Vector3, type Object3D, type Scene } from "three";
 import { WEAPON_ORDER, WEAPON_SLOT_COUNT } from "@game/config/weapons.config";
+import {
+  AmmoDefinitions,
+  type AmmoId,
+} from "@game/config/ammo.config";
 import { HudStrings } from "@game/config/strings";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { GameAction } from "@game/config/controls.config";
 import { Recoil } from "@game/gameplay/weapons/effects/Recoil";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import type { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
+import type { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
+import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
+import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
+import type { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
 import type { Weapon } from "./Weapon";
 import { WeaponInventory } from "./WeaponInventory";
+import { AmmoInventory, type AmmoLoadoutEntry } from "./AmmoInventory";
 import { createWeapon, getWeapon } from "./WeaponFactory";
 import { WeaponViewModel } from "@game/gameplay/weapons/effects/WeaponViewModel";
 import type { WeaponId } from "./WeaponDefinition";
@@ -20,8 +32,18 @@ import type { WeaponId } from "./WeaponDefinition";
 export interface WeaponLoadoutEntry {
   id: WeaponId;
   magazine: number;
+  /** Reserva legacy per-weapon. Los snapshots nuevos guardan `ammo` global. */
   reserve: number;
 }
+
+export type { AmmoLoadoutEntry };
+
+/**
+ * Munición secundaria: vive en la reserva pero no es la munición primaria de
+ * ningún arma, así que su pickup refresca el contador secundario del HUD en
+ * vez de emitir `weapon.ammo.changed` (ver `pickupAmmo`).
+ */
+const SECONDARY_AMMO_IDS: ReadonlySet<AmmoId> = new Set<AmmoId>(["energyBall"]);
 
 /** Tiempo (s) sin input antes de que el selector auto-confirme la tentativa. */
 const SELECTOR_TIMEOUT = 2.0;
@@ -47,11 +69,28 @@ interface SelectorState {
  */
 export class WeaponController {
   readonly inventory: WeaponInventory;
+  readonly ammo = new AmmoInventory();
+
+  /** Raíz del view model en primera persona (para ocultarlo en passes de portal). */
+  getViewModelRoot(): Object3D {
+    return this.viewModel.getRoot();
+  }
+
+  /**
+   * Bloquea fire y alt-fire del próximo `update` (un solo frame). Debe
+   * llamarse antes del `update` del frame; lo usa el `GrabSystem` mientras el
+   * jugador carga un prop con E.
+   */
+  suppressFireThisFrame(): void {
+    this.fireSuppressedThisFrame = true;
+  }
 
   private readonly recoil = new Recoil();
   private readonly viewModel: WeaponViewModel;
   private selector: SelectorState | null = null;
   private suppressFireUntilRelease = false;
+  /** Seteado desde afuera ANTES de `update` (carry con E: LMB empuja, no dispara). */
+  private fireSuppressedThisFrame = false;
   private readonly tmpUpdateOrigin = new Vector3();
   private readonly tmpUpdateDir = new Vector3();
   private readonly tmpUpdateQuat = new Quaternion();
@@ -61,12 +100,19 @@ export class WeaponController {
 
   constructor(
     private readonly eventBus: GameEventBus,
+    private readonly physics: PhysicsWorld,
     private readonly raycast: Raycast,
     assets: AssetManager,
     scene: Scene,
     private readonly grenades: GrenadeSystem,
+    private readonly rockets: RocketSystem,
+    private readonly bolts: BoltSystem,
+    private readonly energyBalls: EnergyBallSystem,
+    private readonly iceGun: IceGunSystem,
+    private readonly portals: PortalGunSystem,
+    private readonly propImpacts: PropImpactSystem,
   ) {
-    this.inventory = new WeaponInventory(eventBus);
+    this.inventory = new WeaponInventory(eventBus, this.ammo);
     this.viewModel = new WeaponViewModel(scene, assets);
     // Pulse del viewmodel por cada `weapon.reloaded`. Algunas armas (shotgun)
     // emiten este evento mltiples veces durante una recarga secuencial; cada
@@ -104,6 +150,12 @@ export class WeaponController {
     const activeWeapon = this.inventory.getActiveWeapon();
     this.recoil.update(delta, activeWeapon?.definition.recoil.recovery ?? 10);
 
+    // El arma decide su FOV de mira (scope del crossbow); la cámara solo ejecuta.
+    cameraSystem.applyZoom(
+      activeWeapon?.getZoomFov() ?? cameraSystem.defaultFov,
+      delta,
+    );
+
     if (activeWeapon) {
       // El context se reusa frame a frame. Las armas deben clonar si necesitan
       // persistir vectores entre frames (gravity gun no lo hace â€” vive de leer-y-actuar).
@@ -124,6 +176,7 @@ export class WeaponController {
     if (
       activeWeapon &&
       !this.selector &&
+      !this.fireSuppressedThisFrame &&
       this.canFireAfterSwitch(elapsed) &&
       input.wasMousePressed(2)
     ) {
@@ -151,6 +204,7 @@ export class WeaponController {
       activeWeapon &&
       !this.selector &&
       !this.suppressFireUntilRelease &&
+      !this.fireSuppressedThisFrame &&
       this.canFireAfterSwitch(elapsed) &&
       this.shouldFireWeapon(activeWeapon.definition.fireMode, input)
     ) {
@@ -167,6 +221,7 @@ export class WeaponController {
     }
 
     this.switchAwayFromUnavailableActiveWeapon(elapsed);
+    this.fireSuppressedThisFrame = false;
   }
 
   /**
@@ -184,23 +239,12 @@ export class WeaponController {
     const definition = getWeapon(id);
 
     if (existing) {
-      const gained = existing.addPickupAmmo(false);
-      if (gained > 0) {
-        this.eventBus.emit("weapon.ammo.changed", {
-          weaponId: existing.definition.id,
-          current: existing.getAmmo(),
-          reserve: existing.getReserveAmmo(),
-        });
-        this.eventBus.emit("player.pickup.ammo", {
-          amount: gained,
-          weaponName: existing.name,
-        });
-        return true;
-      }
-
-      return false;
+      return this.pickupAmmoForWeapon(existing.definition.id);
     }
 
+    if (definition.hasAmmo) {
+      this.ammo.addForWeapon(id, definition.ammoPerPickup);
+    }
     const weapon = this.instantiateWeapon(id);
     const shouldEquip = this.inventory.isEmpty();
     this.inventory.addWeapon(weapon);
@@ -218,8 +262,38 @@ export class WeaponController {
     return true;
   }
 
+  pickupAmmo(id: AmmoId): boolean {
+    const gained = this.ammo.add(id, AmmoDefinitions[id].amount);
+    if (gained <= 0) {
+      return false;
+    }
+    if (SECONDARY_AMMO_IDS.has(id)) {
+      // Munición secundaria (bola de energía): vive aparte de la reserva
+      // primaria, así que se refresca el contador secundario del HUD sin emitir
+      // `weapon.ammo.changed` (que pisaría la reserva primaria del arma).
+      this.inventory.refreshActiveWeapon();
+    } else {
+      const weaponId = AmmoDefinitions[id].weaponId;
+      const weapon = this.inventory.getWeapon(weaponId);
+      this.eventBus.emit("weapon.ammo.changed", {
+        weaponId,
+        current: weapon?.getAmmo() ?? 0,
+        reserve: this.ammo.get(id),
+      });
+    }
+    this.eventBus.emit("player.pickup.ammo", {
+      amount: gained,
+      weaponName: AmmoDefinitions[id].displayName,
+    });
+    return true;
+  }
+
   /** Snapshot del inventario para un checkpoint: armas poseídas + munición + activa. */
-  captureLoadout(): { entries: WeaponLoadoutEntry[]; activeId: WeaponId | null } {
+  captureLoadout(): {
+    entries: WeaponLoadoutEntry[];
+    ammo: AmmoLoadoutEntry[];
+    activeId: WeaponId | null;
+  } {
     const entries: WeaponLoadoutEntry[] = [];
     for (const id of WEAPON_ORDER) {
       const weapon = this.inventory.getWeapon(id);
@@ -231,7 +305,11 @@ export class WeaponController {
         });
       }
     }
-    return { entries, activeId: this.inventory.getActiveWeaponId() };
+    return {
+      entries,
+      ammo: this.ammo.capture(),
+      activeId: this.inventory.getActiveWeaponId(),
+    };
   }
 
   /**
@@ -239,14 +317,29 @@ export class WeaponController {
    * su munición exacta y equipa la que estaba activa. No emite `player.pickup.*`
    * (evita spamear HUD/audio en el respawn).
    */
-  restoreLoadout(entries: WeaponLoadoutEntry[], activeId: WeaponId | null): void {
+  restoreLoadout(
+    entries: WeaponLoadoutEntry[],
+    activeId: WeaponId | null,
+    ammoEntries?: readonly AmmoLoadoutEntry[],
+  ): void {
+    this.ammo.clear();
+    if (ammoEntries) {
+      this.ammo.restore(ammoEntries);
+    } else {
+      for (const entry of entries) {
+        const legacyReserve =
+          entry.id === "grenade" ? entry.magazine : entry.reserve;
+        this.ammo.setForWeapon(entry.id, legacyReserve);
+      }
+    }
+
     for (const entry of entries) {
       if (this.inventory.hasWeapon(entry.id)) {
         continue;
       }
       const weapon = this.instantiateWeapon(entry.id);
       this.inventory.addWeapon(weapon);
-      weapon.restoreAmmo(entry.magazine, entry.reserve);
+      weapon.restoreAmmo(entry.magazine, this.ammo.getForWeapon(entry.id));
     }
     const equipped =
       activeId && this.inventory.isWeaponSelectable(activeId)
@@ -260,10 +353,43 @@ export class WeaponController {
   private instantiateWeapon(id: WeaponId): Weapon {
     return createWeapon(id, {
       eventBus: this.eventBus,
+      physics: this.physics,
       raycast: this.raycast,
+      propImpacts: this.propImpacts,
       grenades: this.grenades,
+      rockets: this.rockets,
+      bolts: this.bolts,
+      energyBalls: this.energyBalls,
+      iceGun: this.iceGun,
+      portals: this.portals,
+      ammo: this.ammo,
       getInventory: () => this.inventory,
     });
+  }
+
+  private pickupAmmoForWeapon(id: WeaponId): boolean {
+    const definition = getWeapon(id);
+    if (
+      !definition.hasAmmo ||
+      !definition.canReceiveAmmoFromDuplicatePickup
+    ) {
+      return false;
+    }
+    const gained = this.ammo.addForWeapon(id, definition.ammoPerPickup);
+    if (gained <= 0) {
+      return false;
+    }
+    const weapon = this.inventory.getWeapon(id);
+    this.eventBus.emit("weapon.ammo.changed", {
+      weaponId: id,
+      current: weapon?.getAmmo() ?? 0,
+      reserve: this.ammo.getForWeapon(id),
+    });
+    this.eventBus.emit("player.pickup.ammo", {
+      amount: gained,
+      weaponName: definition.displayName,
+    });
+    return true;
   }
 
   dispose(): void {

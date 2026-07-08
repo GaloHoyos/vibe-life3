@@ -1,17 +1,20 @@
 ﻿import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { WeaponId } from '@game/gameplay/weapons/core/WeaponDefinition';
+import type { AmmoId } from '@game/config/ammo.config';
 import type { ChargerKind, ItemId } from '@game/config/items.config';
 import type { MaterialKey } from '@engine/render/material/Materials';
 import type { SkyboxId } from '@engine/render/environment/Skybox';
 import type { SunOptions } from '@engine/render/environment/LightingSystem';
 import type { HeightSource } from '@shared/math/HeightField';
 import type { LevelActionKind } from '@game/GameEvents';
+import type { SoundscapeId } from '@game/config/audio.config';
 import type { BuildingArtifact } from '@game/levels/buildings/BuildingArtifact';
 import type { CheckpointDefinition } from '@game/levels/CheckpointSystem';
 import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
 import type { ExplosiveBarrelDefinition } from '@game/gameplay/hazards/ExplosiveBarrel';
 import type { LevelId } from '@game/levels/LevelRegistry';
+import type { PlayerModelId } from '@game/config/playermodel.config';
 
 /** Rotacion Euler XYZ en radianes. Omitida = alineado a los ejes. */
 type RotationTuple = VectorTuple;
@@ -80,6 +83,13 @@ export interface ItemPickupDefinition {
   rotation?: RotationTuple;
 }
 
+export interface AmmoPickupDefinition {
+  id: string;
+  ammoId: AmmoId;
+  position: VectorTuple;
+  rotation?: RotationTuple;
+}
+
 export interface ChargerDefinition {
   id: string;
   kind: ChargerKind;
@@ -101,6 +111,7 @@ export type TriggerAction =
   | { kind: 'spawnNpcs'; npcs: NPCDefinition[]; delay?: number }
   | { kind: 'door'; doorId: string; open: boolean; delay?: number }
   | { kind: 'levelAction'; action: LevelActionKind; delay?: number }
+  | { kind: 'soundscape'; soundscape: SoundscapeId; delay?: number }
   /** Actualiza el objetivo del HUD. `completed` lo marca cumplido; `marker` mueve la brújula. */
   | { kind: 'objective'; text: string; completed?: boolean; marker?: VectorTuple; delay?: number }
   /**
@@ -159,6 +170,8 @@ export interface LevelAudioDefinition {
   footstepSounds: string[];
   /** Id opcional de la mÃºsica del nivel. */
   music?: string;
+  /** Soundscape activo al cargar el nivel. Si se omite, cae a exterior seco. */
+  soundscape?: SoundscapeId;
 }
 
 export interface LevelDefinition {
@@ -189,6 +202,8 @@ export interface LevelDefinition {
   /** ConfiguraciÃ³n del sol (luz direccional principal). Si se omite, usa los defaults. */
   sun?: SunOptions;
   playerStart: VectorTuple;
+  /** Playermodel del jugador (visible en las vistas de portal). Omitido = gordon. */
+  playerModel?: PlayerModelId;
   audio: LevelAudioDefinition;
   /** Terreno opcional. Cuando estÃ¡ definido, agrega un heightfield (mesh + collider). */
   terrain?: TerrainDefinition;
@@ -206,6 +221,8 @@ export interface LevelDefinition {
   weaponPickups: WeaponPickupDefinition[];
   /** Pickups de vitals (botiquines, baterías HEV). Si se omite, el nivel no trae. */
   itemPickups?: ItemPickupDefinition[];
+  /** Pickups de munición separados de las armas. Si se omite, el nivel no trae. */
+  ammoPickups?: AmmoPickupDefinition[];
   /** Cargadores de pared (vida / HEV) estilo HL2. Si se omite, el nivel no trae. */
   chargers?: ChargerDefinition[];
   triggers: TriggerDefinition[];

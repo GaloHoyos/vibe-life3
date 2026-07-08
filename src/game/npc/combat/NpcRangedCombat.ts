@@ -1,7 +1,7 @@
 ﻿import RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3 } from "three";
 import type { Faction } from "@engine/ai/Faction";
-import type { Raycast } from "@engine/physics/Raycast";
+import type { RaycastSource } from "@engine/physics/Raycast";
 import type { CharacterRangedAttackConfig } from "@engine/characters/CharacterDefinition";
 import { getWeaponDefinition } from "@game/config/weapons.config";
 import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
@@ -67,7 +67,7 @@ export class NpcRangedCombat {
     private readonly ownerId: string,
     private readonly ownerFaction: Faction,
     private readonly rangedConfig: CharacterRangedAttackConfig,
-    private readonly raycast: Raycast,
+    private readonly raycast: RaycastSource,
     private readonly eventBus: GameEventBus,
     private readonly onShot?: () => void,
   ) {
@@ -197,11 +197,14 @@ export class NpcRangedCombat {
     const spreadDir = applySpread(direction, spread);
 
     const rayOrigin = ctx.origin.clone().addScaledVector(spreadDir, 0.4);
+    // excludeId = ownerId: el muzzle arranca dentro del cuerpo, así que sin esto
+    // el disparo pegaría en los hitboxes vivos propios (y se autodañaría).
     const hit = this.raycast.cast(
       rayOrigin,
       spreadDir,
       weapon.range,
       ctx.ownerBody,
+      this.ownerId,
     );
 
     this.magazine -= 1;
@@ -217,6 +220,19 @@ export class NpcRangedCombat {
       sourceKind: "npc",
       sourceFaction: this.ownerFaction,
     });
+    // El tracer del WeaponEffects vía `weapon.fired` solo dibuja tipo "hitscan".
+    // Para armas no-hitscan (escopeta) emitimos un tracer dedicado — el NPC tira
+    // un solo rayo, así que es una línea (no perdigones como el player).
+    if (weapon.type !== "hitscan") {
+      this.eventBus.emit("weapon.tracer", {
+        origin: rayOrigin.clone(),
+        direction: spreadDir.clone(),
+        range: weapon.range,
+        sourceId: this.ownerId,
+        sourceKind: "npc",
+        sourceFaction: this.ownerFaction,
+      });
+    }
     this.eventBus.emit("world.noise", {
       kind: "gunshot",
       position: rayOrigin.clone(),
@@ -245,7 +261,7 @@ export class NpcRangedCombat {
     if (!damageable) return;
     const partMul = hit.metadata?.bodyPart?.damageMultiplier ?? 1;
     const damage = weapon.damage * partMul;
-    damageable.applyDamage(damage, spreadDir.clone(), hit.metadata?.bodyPart?.name, this.ownerId);
+    damageable.applyDamage(damage, spreadDir.clone(), hit.metadata?.bodyPart?.name, this.ownerId, hit.point);
     this.eventBus.emit("weapon.hit", {
       weaponName: weapon.displayName,
       targetId: hit.metadata?.id,

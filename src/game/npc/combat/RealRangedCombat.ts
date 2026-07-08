@@ -3,19 +3,20 @@ import { Vector3 } from 'three';
 import { isHostileTo } from '@engine/ai/Faction';
 import type { Faction } from '@engine/ai/Faction';
 import type { CharacterRangedAttackConfig } from '@engine/characters/CharacterDefinition';
-import type { Raycast } from '@engine/physics/Raycast';
+import type { RaycastSource } from '@engine/physics/Raycast';
 import type { NpcCombatHandle, NpcCombatTickArgs } from '@game/npc/brain/NpcBrainContext';
 import { NpcRangedCombat } from '@game/npc/combat/NpcRangedCombat';
 
 export interface RealRangedCombatOptions {
   combat: NpcRangedCombat;
+  ownerId: string;
   ownerBody: RAPIER.RigidBody;
   faction: Faction;
   eyeHeight: number;
   /** Distancia maxima a la que tiene sentido encarar combate. */
   effectiveRange: number;
   rangedConfig: CharacterRangedAttackConfig;
-  raycast: Raycast;
+  raycast: RaycastSource;
   onReload?: (duration: number) => void;
 }
 
@@ -120,7 +121,13 @@ export class RealRangedCombat implements NpcCombatHandle {
     const distance = tmpFireDir.length();
     if (distance < 0.01) return false;
     tmpFireDir.divideScalar(distance);
-    const hit = this.opts.raycast.cast(this.origin, tmpFireDir, distance, this.opts.ownerBody);
+    const hit = this.opts.raycast.cast(
+      this.origin,
+      tmpFireDir,
+      distance,
+      this.opts.ownerBody,
+      this.opts.ownerId,
+    );
     const meta = hit?.metadata;
     if (!meta) return false;
     const hitFaction = meta.faction ?? (meta.kind === 'player' ? 'player' : null);

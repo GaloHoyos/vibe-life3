@@ -72,7 +72,9 @@ export class NpcAiDebugOverlay implements Disposable {
     this.enabled = enabled;
     this.root.visible = enabled;
     this.refreshIn = 0;
-    if (!enabled) {
+    if (enabled) {
+      this.ensureAttached();
+    } else {
       this.clear();
     }
   }
@@ -81,6 +83,7 @@ export class NpcAiDebugOverlay implements Disposable {
     if (!this.enabled || !frame.playerPosition) {
       return;
     }
+    this.ensureAttached();
 
     this.refreshIn -= delta;
     if (this.refreshIn > 0) {
@@ -96,6 +99,19 @@ export class NpcAiDebugOverlay implements Disposable {
     this.clear();
     this.disposeLabelCache();
     this.root.removeFromParent();
+  }
+
+  /**
+   * El overlay se agrega a la escena una sola vez (constructor, en el bootstrap
+   * del juego), pero cada carga de nivel corre `SceneManager.clearLevel`, que
+   * desparenta todo lo no-preservado — incluido este root. Sin re-attach el
+   * overlay queda huerfano y no dibuja nada aunque este "ON". Re-parentar es
+   * idempotente (no-op si ya cuelga de la escena).
+   */
+  private ensureAttached(): void {
+    if (this.root.parent !== this.scene) {
+      this.scene.add(this.root);
+    }
   }
 
   private disposeLabelCache(): void {

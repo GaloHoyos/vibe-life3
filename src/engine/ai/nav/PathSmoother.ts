@@ -121,7 +121,16 @@ function buildRawPoints(navSpace: NavSpace, path: NavPath, margin: number): RawP
   for (let i = 0; i < path.cells.length; i += 1) {
     const cell = cells[path.cells[i]];
     const portalIdx = i < path.portals.length ? path.portals[i] : -1;
-    if (portalIdx >= 0) {
+    if (portalIdx >= 0 && portals[portalIdx].kind === 'warp') {
+      // Teleport: el waypoint es el punto de cruce exacto del lado de entrada
+      // y es barrera — no hay atajo valido a traves de una discontinuidad.
+      const portal = portals[portalIdx];
+      raw.push({
+        point: new Vector3(portal.position[0], portal.position[1], portal.position[2]),
+        mandatory: true,
+        barrier: true,
+      });
+    } else if (portalIdx >= 0) {
       const portal = portals[portalIdx];
       const halfWidth = Math.max(0.1, portal.width / 2 - margin);
       tmpDir.set(portal.normal[0], portal.normal[1], portal.normal[2]);

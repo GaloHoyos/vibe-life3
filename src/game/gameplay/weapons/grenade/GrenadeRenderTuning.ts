@@ -7,5 +7,5 @@
  * usa una `pickupScale` similar)  ajustar via debug panel y commitear ac.
  */
 export const GrenadeRenderTuning = {
-  thrownScale: 0.115,
+  thrownScale: 0.09,
 };

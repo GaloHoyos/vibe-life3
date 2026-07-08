@@ -439,8 +439,38 @@ details:not([open]) > summary.editor-panel__title::after {
 }
 
 /* Palette -------------------------------------------------------------------*/
+/* La paleta llena el alto del dock; el header queda fijo y el cuerpo scrollea
+   internamente (mismo patron que el inspector) para no recortar items. */
+.editor-dock--left > .editor-palette {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-palette > .editor-panel__title {
+  flex: 0 0 auto;
+}
+
 .editor-palette__body {
   padding: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--editor-accent-line) transparent;
+}
+
+.editor-palette__body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.editor-palette__body::-webkit-scrollbar-thumb {
+  background: var(--editor-accent-soft);
+  border-radius: 4px;
+}
+
+.editor-palette__body::-webkit-scrollbar-thumb:hover {
+  background: var(--editor-accent-line);
 }
 
 .editor-palette__group {

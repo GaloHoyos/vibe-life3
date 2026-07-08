@@ -40,6 +40,8 @@ export class HUD implements Disposable {
   private readonly state: HUDStateShape = DefaultHUDState();
   private readonly view: HUDView;
   private readonly unsubscribers: Array<() => void> = [];
+  private portalA = false;
+  private portalB = false;
 
   constructor(container: HTMLElement, eventBus: GameEventBus) {
     this.view = new HUDView(container);
@@ -95,12 +97,31 @@ export class HUD implements Disposable {
       eventBus.on("player.pickup.health", ({ amount }) =>
         this.view.notify(HudStrings.healthPickedUp(amount), "pickup"),
       ),
+      eventBus.on("player.pickup.armor", ({ amount }) =>
+        this.view.notify(HudStrings.armorPickedUp(amount), "pickup"),
+      ),
       eventBus.on("player.pickup.ammo", ({ amount, weaponName }) => {
         this.view.notify(HudStrings.ammoPickedUp(amount, weaponName), "pickup");
       }),
       eventBus.on("player.pickup.weapon", ({ weaponName }) =>
         this.view.notify(HudStrings.weaponPickedUp(weaponName), "pickup"),
       ),
+      eventBus.on("portal.placementfailed", () =>
+        this.view.notify(HudStrings.portalPlacementFailed, "pickup"),
+      ),
+      eventBus.on("portal.placed", ({ slot }) => {
+        if (slot === "a") {
+          this.portalA = true;
+        } else {
+          this.portalB = true;
+        }
+        this.renderPortalDots();
+      }),
+      eventBus.on("portal.cleared", () => {
+        this.portalA = false;
+        this.portalB = false;
+        this.renderPortalDots();
+      }),
       eventBus.on("objective.updated", ({ text, completed, marker }) => {
         this.view.objective.setObjective(text, completed ?? false);
         if (marker !== undefined) this.view.objective.setMarker(marker);
@@ -156,6 +177,7 @@ export class HUD implements Disposable {
   ): void {
     this.state.weapon = { id, name, ammo, reserve, secondaryAmmo };
     this.view.weapon.setWeapon(this.state.weapon);
+    this.renderPortalDots();
   }
 
   setInteraction(label?: string): void {
@@ -187,5 +209,13 @@ export class HUD implements Disposable {
     this.view.healthArmor.setArmor(this.state.armor, this.state.armorEnabled);
     this.view.healthArmor.setAux(this.state.aux, this.state.auxDepleted);
     this.view.weapon.setWeapon(this.state.weapon);
+  }
+
+  private renderPortalDots(): void {
+    this.view.crosshair.setPortalState(
+      this.state.weapon.id === "portalGun",
+      this.portalA,
+      this.portalB,
+    );
   }
 }

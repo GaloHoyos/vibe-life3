@@ -2,9 +2,13 @@
 import type { Faction } from "@engine/ai/Faction";
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { EventBus } from "@engine/core/EventBus";
+import type { PortalSlot } from "@engine/portals/PortalFrame";
 import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
 import type { TriggerAction } from "@game/levels/LevelDefinition";
 import type { HazardKind } from "@game/levels/HazardVolumeSystem";
+import type { UiSoundCue } from "@game/config/audio.config";
+import type { ChargerKind } from "@game/config/items.config";
+import type { DifficultyLevel } from "@game/config/difficulty.config";
 
 export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
 export type CombatEventSourceKind = "player" | "npc" | "system";
@@ -37,6 +41,19 @@ export interface GameEventMap {
     sourceFaction?: Faction;
   };
   /**
+   * Tracer suelto, desacoplado del sonido/flash de `weapon.fired`. Lo usan las
+   * armas que disparan varios rayos por trigger (escopeta = un tracer por
+   * perdigón) sin querer N gunshots. El `WeaponEffects` dibuja la línea.
+   */
+  "weapon.tracer": {
+    origin: Vector3;
+    direction: Vector3;
+    range: number;
+    sourceId?: string;
+    sourceKind?: CombatEventSourceKind;
+    sourceFaction?: Faction;
+  };
+  /**
    * Secundario distinto del primario (ej. lanzagranadas del SMG). El audio
    * usa este evento para reproducir un clip aparte. Las armas cuyo
    * secundario reusa el mismo sonido del primario emiten `weapon.fired`.
@@ -48,6 +65,36 @@ export interface GameEventMap {
     sourceId?: string;
     sourceKind?: CombatEventSourceKind;
     sourceFaction?: Faction;
+  };
+  "portal.placed": {
+    slot: PortalSlot;
+    position: Vector3;
+    normal: Vector3;
+    /** True cuando ambos portales existen tras esta colocación. */
+    linked: boolean;
+  };
+  "portal.placementfailed": {
+    slot: PortalSlot;
+  };
+  "portal.teleported": {
+    entityKind: "player" | "dynamic" | "projectile" | "npc";
+    entityId?: string;
+    exitPosition: Vector3;
+  };
+  "portal.cleared": Record<string, never>;
+  /** Un prop físico rápido impactó a un NPC (daño por impacto global). */
+  "prop.impact": {
+    targetId?: string;
+    point: Vector3;
+    normal?: Vector3;
+    damage: number;
+    /** Atacante atribuido ("player" si lo lanzó el jugador); undefined = entorno. */
+    sourceId?: string;
+  };
+  /** Un NPC murió congelado (ice gun al llenar el medidor de freeze). */
+  "ice.frozen": {
+    targetId: string;
+    position: Vector3;
   };
   "weapon.hit": {
     weaponName: string;
@@ -67,6 +114,17 @@ export interface GameEventMap {
     sourceKind?: CombatEventSourceKind;
     sourceFaction?: Faction;
   };
+  "strider.cannon.impact": {
+    point: Vector3;
+    /** Boca del cañón al disparar — origen del tracer. */
+    origin: Vector3;
+    normal?: Vector3;
+    damage: number;
+    radius: number;
+    impulse: number;
+    sourceId: string;
+    sourceFaction: Faction;
+  };
   "weapon.reloaded": {
     weaponName: string;
     ammo: number;
@@ -74,6 +132,10 @@ export interface GameEventMap {
   };
   "weapon.empty": {
     weaponName: string;
+  };
+  /** El arma activa entró/salió de mira telescópica (scope del crossbow). */
+  "weapon.scope.changed": {
+    active: boolean;
   };
   /**
    * Sonido mecnico discreto despus de un evento (pump-action de la
@@ -110,10 +172,16 @@ export interface GameEventMap {
     characterId: CharacterId;
     amount: number;
     health: number;
+    point?: Vector3;
+    direction?: Vector3;
+    bodyPart?: string;
+    attackerId?: string;
   };
   "npc.alert": {
     id: string;
     characterId: CharacterId;
+    /** Posición del NPC, para reproducir la vocalización en 3D. */
+    position?: Vector3;
   };
   /**
    * Un NPC vio un threat â€” broadcast a la facciÃ³n para que aliados cercanos
@@ -136,6 +204,15 @@ export interface GameEventMap {
   "npc.attack": {
     id: string;
     characterId: CharacterId;
+    /** Posición del NPC, para reproducir el sonido de ataque en 3D. */
+    position?: Vector3;
+  };
+  /** El NPC entra en fase de carga/telegraph de un ataque (e.g. cañón del strider). */
+  "npc.charge": {
+    id: string;
+    characterId: CharacterId;
+    /** Posición del NPC, para reproducir el sonido de carga en 3D. */
+    position?: Vector3;
   };
   "npc.footstep": {
     id: string;
@@ -145,6 +222,8 @@ export interface GameEventMap {
   "npc.killed": {
     id: string;
     characterId: CharacterId;
+    /** Posición del NPC al morir, para reproducir el sonido de muerte en 3D. */
+    position?: Vector3;
   };
   /** El NPC dropea su arma en la posiciÃ³n indicada (tÃ­picamente al morir). */
   "npc.weapon.dropped": {
@@ -208,6 +287,10 @@ export interface GameEventMap {
   "player.dead": {
     reason: string;
   };
+  /** La dificultad activa cambió (menú de opciones / nueva partida). */
+  "difficulty.changed": {
+    level: DifficultyLevel;
+  };
   /**
    * Daño de un volumen de peligro (kill-volume). `HazardVolumeSystem` lo emite
    * en ticks mientras el jugador está adentro; `Game` lo aplica a la vida.
@@ -221,6 +304,9 @@ export interface GameEventMap {
   "player.pickup.health": {
     amount: number;
   };
+  "player.pickup.armor": {
+    amount: number;
+  };
   "player.pickup.ammo": {
     amount: number;
     weaponName?: string;
@@ -232,6 +318,24 @@ export interface GameEventMap {
     label: string;
   };
   "interaction.blur": Record<string, never>;
+  /** El jugador levantó un prop con E (+USE). */
+  "carry.grabbed": {
+    id?: string;
+  };
+  "carry.dropped": {
+    id?: string;
+    reason:
+      | "manual"
+      | "obstructed"
+      | "invalid"
+      | "portalClosed"
+      | "distance"
+      | "weapon";
+  };
+  /** Empuje suave con LMB del prop cargado. */
+  "carry.pushed": {
+    id?: string;
+  };
   "subtitle.show": {
     speaker?: string;
     text: string;
@@ -268,6 +372,23 @@ export interface GameEventMap {
   "workshop.error": {
     action: string;
     message: string;
+  };
+  "ui.sound": {
+    cue: UiSoundCue;
+  };
+  "charger.started": {
+    id: string;
+    kind: ChargerKind;
+  };
+  "charger.stopped": {
+    id: string;
+    kind: ChargerKind;
+    depleted: boolean;
+  };
+  "charger.denied": {
+    id: string;
+    kind: ChargerKind;
+    reason: "empty" | "full";
   };
 }
 

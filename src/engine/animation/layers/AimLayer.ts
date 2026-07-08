@@ -1,16 +1,19 @@
 ﻿import { MathUtils } from "three";
 import { applyBoneRotationOffset } from "@engine/animation/pose/BoneRotation";
 import type { AnimationLayer, AnimationLayerContext } from "./AnimationLayer";
-import { AimTuning, type AimPoseTuning } from "./AimTuning";
+import { getAimPose, type AimPoseTuning } from "./AimTuning";
 
 const MAX_PITCH = Math.PI * 0.35;
 
 /**
  * Lleva los brazos a la pose de tiro y pitchea el torso hacia el target.
- * Lee los valores de `AimTuning` para permitir tuneo en runtime via la
- * pestania NPCs del DebugMenu (F3).
+ * Lee los valores de `AimTuning` (resueltos por `characterId` vía
+ * `getAimPose`) para permitir tuneo en runtime via la pestania NPCs del
+ * DebugMenu (F3) y overrides por personaje.
  */
 export class AimLayer implements AnimationLayer {
+  constructor(private readonly characterId?: string) {}
+
   apply(ctx: AnimationLayerContext): void {
     const aim = ctx.input.aim;
     if (!aim.active || aim.weaponPose === "none" || aim.weight <= 0.001) {
@@ -24,8 +27,10 @@ export class AimLayer implements AnimationLayer {
       MAX_PITCH,
     );
 
-    const t: AimPoseTuning =
-      aim.weaponPose === "twoHanded" ? AimTuning.twoHanded : AimTuning.oneHanded;
+    const t: AimPoseTuning = getAimPose(
+      this.characterId,
+      aim.weaponPose === "twoHanded" ? "twoHanded" : "oneHanded",
+    );
 
     applyBoneRotationOffset(ctx.bones.rightUpperArm, "x", t.rightUpperArmX * w);
     applyBoneRotationOffset(ctx.bones.rightUpperArm, "y", t.rightUpperArmY * w);

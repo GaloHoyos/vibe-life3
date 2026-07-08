@@ -1,4 +1,4 @@
-﻿import type RAPIER from '@dimforge/rapier3d-compat';
+import type RAPIER from '@dimforge/rapier3d-compat';
 import { Object3D, Quaternion, Vector3 } from 'three';
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import { PhysicsBoneLink } from './PhysicsBoneLink';
@@ -8,9 +8,10 @@ import { RagdollPoseDriver } from './RagdollPoseDriver';
 
 export class RagdollController {
   private active = true;
+  private cleanedUp = false;
+  private corpseTimer = 0;
   private readonly poseDriver = new RagdollPoseDriver();
   private readonly fallbackRootInitialScale: Vector3;
-  private highDampingTimer: number;
 
   constructor(
     private readonly physics: PhysicsWorld,
@@ -23,47 +24,58 @@ export class RagdollController {
     private readonly fallbackBody?: RAPIER.RigidBody,
   ) {
     this.fallbackRootInitialScale = fallbackRoot?.scale.clone() ?? new Vector3(1, 1, 1);
-    this.highDampingTimer = config.initialDampingDuration;
   }
 
   update(delta = 0): void {
-    if (!this.active) {
+    if (!this.active || this.cleanedUp) {
       return;
     }
 
-    if (this.highDampingTimer > 0) {
-      this.highDampingTimer = Math.max(0, this.highDampingTimer - delta);
-      this.bodies.forEach((body) => {
-        body.setLinearDamping(this.config.linearDamping * 1.8);
-        body.setAngularDamping(this.config.angularDamping * 1.8);
-      });
+    if (this.bodies.length > 0 && this.bodies.every((body) => body.isSleeping())) {
+      // Sleeping corpse: simulation is free and the last synced pose stays
+      // valid. External impulses (gravity gun) wake the bodies and the sync
+      // resumes on its own.
+      this.corpseTimer += delta;
+      if (this.config.corpseCleanupDelay > 0 && this.corpseTimer >= this.config.corpseCleanupDelay) {
+        this.cleanup();
+      }
+      return;
     }
+    this.corpseTimer = 0;
 
     this.links.forEach((link) => this.poseDriver.apply(link));
     this.syncFallbackRoot();
   }
 
-  applyImpulse(direction: Vector3, scale: number, partName?: string): void {
-    if (direction.lengthSq() <= 0.001) {
+  /**
+   * Death impulse: applied to the part that took the killing hit (chest as
+   * fallback) and propagated naturally through the joints — never spread over
+   * all bodies, which reads as the whole corpse drifting.
+   */
+  applyImpulse(direction: Vector3, magnitude: number, partName?: string): void {
+    if (this.cleanedUp || direction.lengthSq() <= 0.001) {
       return;
     }
 
-    const impulse = direction.clone().normalize().multiplyScalar(scale);
-    const targetParts = partName ? this.parts.filter((part) => part.name === partName) : [];
-    const targetBodies = targetParts.length > 0 ? targetParts.map((part) => part.rigidBody) : this.bodies;
+    const target = this.findImpulseTarget(partName);
+    if (!target) {
+      return;
+    }
 
-    targetBodies.forEach((body) => {
-      body.applyImpulse({ x: impulse.x, y: Math.max(0, impulse.y) * 0.15, z: impulse.z }, true);
-      clampRigidBodyVelocity(body, this.config.maxDeathLinearVelocity, this.config.maxDeathAngularVelocity);
-    });
+    const impulse = direction.clone().normalize().multiplyScalar(magnitude);
+    target.applyImpulse({ x: impulse.x, y: impulse.y, z: impulse.z }, true);
+    clampRigidBodyVelocity(target, this.config.maxPartLinearVelocity, this.config.maxPartAngularVelocity);
   }
 
-  clampDeathVelocity(currentVelocity?: Vector3): void {
-    const baseVelocity = currentVelocity ? clampVector(currentVelocity, this.config.maxDeathLinearVelocity) : new Vector3();
+  /** Carries the motor velocity into every body so momentum survives death. */
+  inheritVelocity(currentVelocity?: Vector3): void {
+    if (this.cleanedUp || !currentVelocity) {
+      return;
+    }
 
+    const velocity = clampVector(currentVelocity, this.config.maxDeathLinearVelocity);
     this.bodies.forEach((body) => {
-      body.setLinvel({ x: baseVelocity.x * 0.35, y: Math.max(baseVelocity.y, 0) * 0.15, z: baseVelocity.z * 0.35 }, true);
-      body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      body.setLinvel({ x: velocity.x, y: velocity.y, z: velocity.z }, true);
       clampRigidBodyVelocity(body, this.config.maxDeathLinearVelocity, this.config.maxDeathAngularVelocity);
     });
   }
@@ -74,14 +86,10 @@ export class RagdollController {
 
   setActive(active: boolean): void {
     this.active = active;
+    if (this.cleanedUp) {
+      return;
+    }
     this.bodies.forEach((body) => body.setEnabled(active));
-  }
-
-  setPassive(): void {
-    this.bodies.forEach((body) => {
-      body.setLinearDamping(this.config.linearDamping);
-      body.setAngularDamping(this.config.angularDamping);
-    });
   }
 
   getBodyCount(): number {
@@ -94,6 +102,32 @@ export class RagdollController {
 
   getJointCount(): number {
     return this.joints.length;
+  }
+
+  private findImpulseTarget(partName?: string): RAPIER.RigidBody | null {
+    if (partName) {
+      const part = this.parts.find((candidate) => candidate.name === partName);
+      if (part) {
+        return part.rigidBody;
+      }
+    }
+    const chest = this.parts.find((candidate) => candidate.name === 'chest');
+    return chest?.rigidBody ?? this.bodies[0] ?? null;
+  }
+
+  private cleanup(): void {
+    this.cleanedUp = true;
+    // Bodies/joints may already be gone after PhysicsWorld.reset() on level change.
+    this.joints.forEach((joint) => {
+      if (joint.isValid()) {
+        this.physics.world.removeImpulseJoint(joint, false);
+      }
+    });
+    this.bodies.forEach((body) => {
+      if (body.isValid()) {
+        this.physics.removeBody(body);
+      }
+    });
   }
 
   private syncFallbackRoot(): void {

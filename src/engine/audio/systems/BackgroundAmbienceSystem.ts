@@ -27,6 +27,17 @@ export class BackgroundAmbienceSystem {
     });
   }
 
+  replace(ambienceIds: readonly string[], fadeSeconds = 2): void {
+    const nextIds = new Set(ambienceIds);
+    this.activeIds.forEach((id) => {
+      if (!nextIds.has(id)) {
+        this.sounds.fadeOut(id, fadeSeconds);
+        this.activeIds.delete(id);
+      }
+    });
+    this.start(ambienceIds, fadeSeconds);
+  }
+
   /** Detiene todos los ambientes activos con fade-out. */
   stop(fadeOut = 1.4): void {
     this.activeIds.forEach((id) => {

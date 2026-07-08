@@ -35,6 +35,17 @@ export interface NpcLocomotionHandle {
   isStuck(): boolean;
   /** Encara hacia un punto sin moverse. */
   face(target: Vector3): void;
+  /** Salto balistico hacia un punto (creatures terrestres como el headcrab). */
+  leap(target: Vector3, params: NpcLeapParams): void;
+  /** True mientras el cuerpo este en el aire por un `leap`. */
+  isLeaping(): boolean;
+}
+
+export interface NpcLeapParams {
+  /** Velocidad vertical inicial del salto (m/s). Define el apex y el tiempo de vuelo. */
+  upSpeed: number;
+  /** Tope de velocidad horizontal del salto (m/s). */
+  maxForwardSpeed: number;
 }
 
 export interface NpcMoveOptions {
@@ -53,6 +64,8 @@ export interface NpcCombatTickArgs {
   threat: ActorSnapshot | null;
 }
 
+export type NpcCombatIntent = "primary" | "secondary" | "melee";
+
 /**
  * Interfaz minima del subsistema de combate que las tasks consumen.
  * Implementada por `NpcMeleeCombat` o `RealRangedCombat` segun el preset.
@@ -62,13 +75,36 @@ export interface NpcCombatHandle {
   tick(args: NpcCombatTickArgs): void;
   /** Apunta hacia el threat (solo ranged). Sin efecto en melee. */
   aim(target: Vector3): void;
+  /**
+   * Barre buscando sin disparar (la torreta lo usa tras perder al enemigo:
+   * escanea unos segundos y luego se desactiva). Opcional: la mayoria de los
+   * combats no escanean.
+   */
+  scan?(): void;
   /** Intenta disparar una rafaga / golpe. Devuelve true si se inicio. */
   tryFire(): boolean;
+  /** Selecciona arma/accion especial en combats con mas de un modo. */
+  setIntent?(intent: NpcCombatIntent): void;
+  /** Readiness opcional para tasks que no deben bloquear otros ataques. */
+  canUseIntent?(intent: NpcCombatIntent): boolean;
   reload(): void;
   isReloading(): boolean;
   magazineEmpty(): boolean;
   /** Distancia maxima a la que tiene sentido encarar combate. */
   effectiveRange(): number;
+}
+
+/**
+ * Punto del threat para MOVERSE (goal de pathfinding). Los ghosts de portal
+ * proyectan `position` detrás del disco — correcto para apuntar/encarar, pero
+ * como goal de A* cae en celdas del lado equivocado de la pared. `navPosition`
+ * trae la posición real y el A* decide si la ruta más corta cruza el par
+ * (links warp). Los flyers NO deben usar esto: steerean directo al ghost y el
+ * motor cruza el disco.
+ */
+export function threatNavPosition(ctx: NpcBrainContext): Vector3 | null {
+  if (ctx.threat) return ctx.threat.navPosition ?? ctx.threat.position;
+  return ctx.threatLastKnown;
 }
 
 export interface NpcBrainContext {

@@ -1,3 +1,4 @@
+import { AmmoDefinitions, type AmmoId } from "@game/config/ammo.config";
 import { WeaponDefinitions } from "@game/config/weapons.config";
 import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
 import { GrenadeRenderTuning } from "@game/gameplay/weapons/grenade/GrenadeRenderTuning";
@@ -23,7 +24,10 @@ type TunerField =
   | "rotationY"
   | "rotationZ";
 
-type TargetKind = WeaponId | "grenadePrimed";
+type AmmoTarget = `ammo:${AmmoId}`;
+type TargetKind = WeaponId | "grenadePrimed" | AmmoTarget;
+
+const AmmoTargetPrefix = "ammo:";
 
 const FIELDS: Array<SliderDef & { thrownLabel?: string }> = [
   {
@@ -65,7 +69,11 @@ export class WeaponsModule implements DebugModule {
 
     const section = buildSection("Weapon tuner", "#ffcc66");
 
-    const targets = [...Object.keys(WeaponDefinitions), "grenadePrimed"];
+    const weaponTargets = Object.keys(WeaponDefinitions) as WeaponId[];
+    const ammoTargets = (Object.keys(AmmoDefinitions) as AmmoId[]).map(
+      (id) => `${AmmoTargetPrefix}${id}` as AmmoTarget,
+    );
+    const targets: TargetKind[] = [...weaponTargets, ...ammoTargets, "grenadePrimed"];
     this.targetSelect = buildSelect(
       targets,
       (v) => {
@@ -129,6 +137,13 @@ export class WeaponsModule implements DebugModule {
   }
 
   private applyChange(key: TunerField, value: number): void {
+    if (isAmmoTarget(this.currentTarget)) {
+      if (key === "pickupScale") {
+        AmmoDefinitions[getAmmoIdFromTarget(this.currentTarget)].pickupScale = value;
+      }
+      return;
+    }
+
     if (this.currentTarget === "grenadePrimed") {
       if (key === "pickupScale") {
         GrenadeRenderTuning.thrownScale = value;
@@ -169,17 +184,22 @@ export class WeaponsModule implements DebugModule {
       this.targetSelect.value = this.currentTarget;
     }
     const isThrown = this.currentTarget === "grenadePrimed";
+    const isAmmo = isAmmoTarget(this.currentTarget);
+    const isScaleOnly = isThrown || isAmmo;
 
     for (const row of this.rows) {
       const def = FIELDS.find((f) => f.key === row.key);
       if (!def) continue;
-      const showInThrown = row.key === "pickupScale";
-      row.rowElement.classList.toggle("is-hidden", isThrown && !showInThrown);
+      const showInScaleOnlyTarget = row.key === "pickupScale";
+      row.rowElement.classList.toggle("is-hidden", isScaleOnly && !showInScaleOnlyTarget);
 
       const label = this.labelByRow.get(row.key as TunerField);
       if (label) {
-        label.textContent =
-          isThrown && def.thrownLabel ? def.thrownLabel : def.label;
+        label.textContent = isAmmo
+          ? "Ammo Pickup Scale"
+          : isThrown && def.thrownLabel
+            ? def.thrownLabel
+            : def.label;
       }
 
       const v = this.readField(row.key as TunerField);
@@ -190,6 +210,12 @@ export class WeaponsModule implements DebugModule {
   }
 
   private readField(key: TunerField): number {
+    if (isAmmoTarget(this.currentTarget)) {
+      return key === "pickupScale"
+        ? AmmoDefinitions[getAmmoIdFromTarget(this.currentTarget)].pickupScale
+        : 0;
+    }
+
     if (this.currentTarget === "grenadePrimed") {
       return key === "pickupScale" ? GrenadeRenderTuning.thrownScale : 0;
     }
@@ -216,6 +242,17 @@ export class WeaponsModule implements DebugModule {
 
   private refreshOutput(): void {
     if (!this.output) return;
+    if (isAmmoTarget(this.currentTarget)) {
+      const ammoId = getAmmoIdFromTarget(this.currentTarget);
+      const d = AmmoDefinitions[ammoId];
+      this.output.textContent = [
+        `${this.currentTarget}: {`,
+        `  pickupScale: ${d.pickupScale.toFixed(3)},`,
+        `}`,
+      ].join("\n");
+      return;
+    }
+
     if (this.currentTarget === "grenadePrimed") {
       this.output.textContent = [
         `GrenadeRenderTuning: {`,
@@ -234,4 +271,12 @@ export class WeaponsModule implements DebugModule {
       `}`,
     ].join("\n");
   }
+}
+
+function isAmmoTarget(target: TargetKind): target is AmmoTarget {
+  return target.startsWith(AmmoTargetPrefix);
+}
+
+function getAmmoIdFromTarget(target: AmmoTarget): AmmoId {
+  return target.slice(AmmoTargetPrefix.length) as AmmoId;
 }

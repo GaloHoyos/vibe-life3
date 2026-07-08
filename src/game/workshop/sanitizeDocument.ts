@@ -1,5 +1,6 @@
 import type { EditorDocument } from "@game/editor/EditorDocument";
 import { isEditorDocument } from "@game/editor/persistence";
+import { Soundscapes } from "@game/config/audio.config";
 
 export type SanitizeResult =
   | { ok: true; document: EditorDocument }
@@ -43,7 +44,45 @@ export function sanitizeDocument(value: unknown): SanitizeResult {
   const scan = scanValue(value);
   if (!scan.ok) return scan;
 
+  const soundscapeScan = scanSoundscapeReferences(value);
+  if (!soundscapeScan.ok) return soundscapeScan;
+
   return { ok: true, document: value };
+}
+
+function scanSoundscapeReferences(
+  document: EditorDocument,
+): { ok: true } | { ok: false; reason: string } {
+  const audio = document.meta.audio as { soundscape?: unknown } | undefined;
+  const levelSoundscape = audio?.soundscape;
+  if (levelSoundscape !== undefined && !isKnownSoundscape(levelSoundscape)) {
+    return { ok: false, reason: "El documento referencia un soundscape desconocido." };
+  }
+
+  for (const entity of document.entities) {
+    const candidate = entity as { kind?: unknown; def?: { actions?: unknown } };
+    if (candidate.kind !== "trigger") {
+      continue;
+    }
+    if (!Array.isArray(candidate.def?.actions)) {
+      continue;
+    }
+    for (const rawAction of candidate.def.actions) {
+      const action =
+        rawAction !== null && typeof rawAction === "object"
+          ? (rawAction as { kind?: unknown; soundscape?: unknown })
+          : null;
+      if (action?.kind === "soundscape" && !isKnownSoundscape(action.soundscape)) {
+        return { ok: false, reason: "El documento referencia un soundscape desconocido." };
+      }
+    }
+  }
+
+  return { ok: true };
+}
+
+function isKnownSoundscape(value: unknown): boolean {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(Soundscapes, value);
 }
 
 function scanValue(root: unknown): { ok: true } | { ok: false; reason: string } {

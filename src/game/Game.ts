@@ -1,4 +1,4 @@
-﻿import { Vector3 } from "three";
+﻿import { Color, Vector3 } from "three";
 import { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
 import { FootstepSoundSystem } from "@engine/audio/systems/FootstepSoundSystem";
 import { MusicManager } from "@engine/audio/core/MusicManager";
@@ -10,16 +10,21 @@ import { SpawnValidator } from "@engine/physics/character/SpawnValidator";
 import { Raycast } from "@engine/physics/Raycast";
 import { CharacterFactory } from "@game/characters/CharacterFactory";
 import type { NpcRuntimeServices } from "@game/characters/CharacterFactory";
-import { CharacterPresets } from "@game/characters/CharacterPresets";
-import { FootstepsConfig } from "@game/config/audio.config";
+import { CharacterPresets, isFlyingCharacter } from "@game/characters/CharacterPresets";
+import { FootstepsConfig, SurfaceFootsteps } from "@game/config/audio.config";
 import { Dialogue, MenuStrings } from "@game/config/strings";
 import { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
 import { EnemySoundSystem } from "@game/audio/EnemySoundSystem";
+import { HevSuitSoundSystem } from "@game/audio/HevSuitSoundSystem";
+import { SoundscapeSystem } from "@game/audio/SoundscapeSystem";
 import { UISoundSystem } from "@game/audio/UISoundSystem";
 import { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
 import type { GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
 import { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
+import { installIceConsole } from "@game/debug/IceConsole";
+import { installNpcConsole } from "@game/debug/NpcConsole";
+import { installPlayerModelConsole } from "@game/debug/PlayerModelConsole";
 import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
 import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
 import { NpcsModule } from "@game/ui/overlay/debug/modules/NpcsModule";
@@ -28,13 +33,24 @@ import { SceneModule } from "@game/ui/overlay/debug/modules/SceneModule";
 import { StatsModule } from "@game/ui/overlay/debug/modules/StatsModule";
 import { WeaponsModule } from "@game/ui/overlay/debug/modules/WeaponsModule";
 import { Controls } from "@game/gameplay/player/Controls";
+import { DifficultyService } from "@game/gameplay/difficulty/DifficultyService";
 import { Player } from "@game/gameplay/player/Player";
+import { PlayerModelSystem } from "@game/gameplay/player/PlayerModelSystem";
+import { resolvePlayerModel } from "@game/config/playermodel.config";
 import { DeathSequence } from "@game/gameplay/player/DeathSequence";
 import { DeathScreen } from "@game/ui/overlay/DeathScreen";
 import { TransitionOverlay } from "@game/ui/overlay/TransitionOverlay";
 import { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
+import { NpcBloodEffects } from "@game/gameplay/effects/NpcBloodEffects";
 import { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
-import { InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
+import { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
+import { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
+import { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
+import { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
+import { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
+import { computePortalNavLinks } from "@game/gameplay/weapons/portal/PortalNavLinks";
+import { PortalConfig } from "@game/config/portal.config";
+import { GrabSystem, InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
 import type { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
 import type { NavSpace } from "@engine/ai/nav/NavSpace";
@@ -46,21 +62,25 @@ import type {
   NPCDefinition,
   TriggerAction,
 } from "@game/levels/LevelDefinition";
-import { LevelLoader } from "@game/levels/LevelLoader";
+import { LevelLoader, type NpcPortalServices } from "@game/levels/LevelLoader";
 import { getLevel, LevelRegistry, type LevelId } from "@game/levels/LevelRegistry";
 import { TriggerSystem } from "@game/levels/TriggerSystem";
 import { CheckpointSystem, type CheckpointSnapshot } from "@game/levels/CheckpointSystem";
 import { HazardVolumeSystem } from "@game/levels/HazardVolumeSystem";
 import { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
-import type { ActorSnapshot, AiFrameContext, INpc } from "@game/npc/core/INpc";
+import { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
+import type { ActorSnapshot, AiFrameContext, INpc, NpcFreezeHandle, NpcPortalHandle } from "@game/npc/core/INpc";
 import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
 import { DialogueSystem } from "@game/narrative/DialogueSystem";
 import { LevelEvents } from "@game/narrative/LevelEvents";
 import { WeaponPickup } from "@game/gameplay/weapons/pickup/WeaponPickup";
 import { ItemPickup } from "@game/gameplay/items/ItemPickup";
+import { AmmoPickup } from "@game/gameplay/items/AmmoPickup";
 import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
 import { WEAPON_ORDER, WeaponDefinitions } from "@game/config/weapons.config";
+import { AMMO_ORDER } from "@game/config/ammo.config";
 import { HUD } from "@game/ui/hud/HUD";
+import { ScopeOverlay } from "@game/ui/overlay/ScopeOverlay";
 import { Subtitles } from "@game/ui/subtitles/Subtitles";
 import { MainMenu } from "@game/ui/menu/MainMenu";
 import type { CustomMapEntry, GameMenuState } from "@game/ui/menu/MainMenuState";
@@ -91,6 +111,7 @@ import { WorkshopStore } from "@game/workshop/WorkshopStore";
 import { CloudflareWorkshopBackend } from "@game/workshop/CloudflareWorkshopBackend";
 import { createBoxMesh } from "@engine/render/PrimitiveFactory";
 import { tupleToVector3, type VectorTuple } from "@shared/math/VectorTuple";
+import type { SurfaceType } from "@shared/types/Surface";
 
 /**
  * Bootstrap del contenido del juego.
@@ -108,6 +129,9 @@ export interface GameOptions {
   bootIntoLevel?: LevelId;
 }
 
+/** Dirección reutilizable para el raycast de superficie bajo el jugador. */
+const DOWN_DIRECTION = new Vector3(0, -1, 0);
+
 export class Game {
   private readonly root: HTMLElement;
   private readonly bootIntoLevel?: LevelId;
@@ -115,10 +139,15 @@ export class Game {
   private gameState: GameMenuState = "mainMenu";
   private currentLevel: LevelDefinition | null = null;
   private player: Player | null = null;
+  private playerModel: PlayerModelSystem | null = null;
+  private uninstallNpcConsole: (() => void) | null = null;
+  private uninstallIceConsole: (() => void) | null = null;
+  private uninstallPlayerModelConsole: (() => void) | null = null;
   private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
   private itemPickups: ItemPickup[] = [];
+  private ammoPickups: AmmoPickup[] = [];
   private chargers: Charger[] = [];
   private tacticalMap: TacticalMap | null = null;
   private squadDirector: SquadDirector | null = null;
@@ -129,6 +158,8 @@ export class Game {
   private playtestMode = false;
   /** Cargando el siguiente nivel encadenado: congela `tickPlaying` mientras dura. */
   private transitioning = false;
+  private readonly crashingGunships = new Map<string, { startedAt: number | null }>();
+  private readonly collapsingStriders = new Map<string, { startedAt: number | null }>();
   /** Último checkpoint cruzado en el nivel actual (snapshot para respawn). null = inicio del nivel. */
   private lastCheckpoint: CheckpointSnapshot | null = null;
   private readonly deathSequence = new DeathSequence();
@@ -170,6 +201,7 @@ export class Game {
 
     lighting.attach(sceneManager.scene);
     footsteps.configure(FootstepsConfig);
+    footsteps.setSurfacePools(SurfaceFootsteps);
 
     // El modo del editor es de un solo uso: se consume y se borra en el boot,
     // asi un reload/reinicio posterior vuelve al menu (no al ultimo mapa).
@@ -225,15 +257,30 @@ export class Game {
 
     this.npcs.forEach((npc) => npc.dispose());
     this.npcs = [];
+    this.crashingGunships.clear();
+    this.collapsingStriders.clear();
+    this.uninstallNpcConsole?.();
+    this.uninstallNpcConsole = null;
+    this.uninstallIceConsole?.();
+    this.uninstallIceConsole = null;
+    this.uninstallPlayerModelConsole?.();
+    this.uninstallPlayerModelConsole = null;
 
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
     s.resolve(GameTokens.WeaponEffects).dispose();
+    s.resolve(GameTokens.NpcBloodEffects).dispose();
     s.resolve(GameTokens.Grenades).dispose();
+    s.resolve(GameTokens.Rockets).dispose();
+    s.resolve(GameTokens.Bolts).dispose();
+    s.resolve(GameTokens.EnergyBalls).dispose();
+    s.resolve(GameTokens.IceGun).dispose();
+    s.resolve(GameTokens.Portals).dispose();
     this.player?.dispose();
     this.deathScreen?.dispose();
     this.transitionOverlay?.dispose();
     s.resolve(GameTokens.HUD).dispose();
+    s.resolve(GameTokens.ScopeOverlay).dispose();
     s.resolve(GameTokens.Subtitles).dispose();
     s.resolve(GameTokens.MainMenu).dispose();
     s.resolve(GameTokens.DebugMenu).dispose();
@@ -257,17 +304,25 @@ export class Game {
   private registerAudio(): void {
     const s = this.engine.services;
     const eventBus = s.resolve(GameTokens.EventBus);
+    const audio = s.resolve(EngineTokens.Audio);
     const sound = s.resolve(EngineTokens.Sound);
+    const positionalSound = s.resolve(EngineTokens.PositionalSound);
+    const ambience = new BackgroundAmbienceSystem(sound);
 
-    s.register(GameTokens.BackgroundAmbience, new BackgroundAmbienceSystem(sound));
+    s.register(GameTokens.BackgroundAmbience, ambience);
+    s.register(GameTokens.Soundscapes, new SoundscapeSystem(audio, ambience));
     s.register(GameTokens.Music, new MusicManager(sound));
     s.register(GameTokens.Footsteps, new FootstepSoundSystem(sound));
     s.register(GameTokens.WeaponSounds, new WeaponSoundSystem(eventBus, sound));
-    s.register(GameTokens.EnemySounds, new EnemySoundSystem(eventBus, sound));
+    s.register(
+      GameTokens.EnemySounds,
+      new EnemySoundSystem(eventBus, sound, positionalSound),
+    );
     s.register(
       GameTokens.DialogueSounds,
       new DialogueAudioSystem(eventBus, sound),
     );
+    s.register(GameTokens.HevSuitSounds, new HevSuitSoundSystem(eventBus, sound));
     s.register(GameTokens.UISounds, new UISoundSystem(eventBus, sound));
   }
 
@@ -282,18 +337,35 @@ export class Game {
     const input = s.resolve(EngineTokens.Input);
 
     s.register(GameTokens.Controls, new Controls(input));
+    const difficulty = s.register(
+      GameTokens.Difficulty,
+      new DifficultyService(eventBus),
+    );
     s.register(
       GameTokens.Characters,
-      new CharacterFactory(assets, physics, eventBus),
+      new CharacterFactory(assets, physics, eventBus, difficulty),
     );
 
     const subtitles = s.register(GameTokens.Subtitles, new Subtitles(this.root));
     s.register(GameTokens.Dialogue, new DialogueSystem(eventBus, subtitles));
-    s.register(
-      GameTokens.WeaponEffects,
-      new WeaponEffects(scene.scene, eventBus),
-    );
+    const weaponEffects = new WeaponEffects(scene.scene, eventBus, raycast);
+    s.register(GameTokens.WeaponEffects, weaponEffects);
     const vfx = s.resolve(EngineTokens.Vfx);
+    s.register(
+      GameTokens.NpcBloodEffects,
+      new NpcBloodEffects(scene.scene, eventBus, raycast, vfx),
+    );
+    // Los portales se registran antes que los proyectiles: estos reciben el
+    // raycast portal-aware para atravesar el par linked.
+    const portals = new PortalGunSystem(
+      scene.scene,
+      physics,
+      raycast,
+      eventBus,
+      s.resolve(EngineTokens.Renderer),
+      s.resolve(EngineTokens.Camera),
+    );
+    s.register(GameTokens.Portals, portals);
     const grenades = new GrenadeSystem(
       physics,
       scene.scene,
@@ -302,19 +374,82 @@ export class Game {
       eventBus,
       positionalSounds,
       vfx,
+      // Las granadas impact no detonan contra la boca de un portal linked.
+      portals.pair,
     );
     s.register(GameTokens.Grenades, grenades);
+    s.register(
+      GameTokens.Rockets,
+      new RocketSystem(
+        scene.scene,
+        assets,
+        raycast,
+        grenades,
+        vfx,
+        positionalSounds,
+        portals.throughRaycast,
+      ),
+    );
+    s.register(
+      GameTokens.Bolts,
+      new BoltSystem(scene.scene, raycast, eventBus, portals.throughRaycast),
+    );
+    s.register(
+      GameTokens.EnergyBalls,
+      new EnergyBallSystem(
+        scene.scene,
+        raycast,
+        eventBus,
+        grenades,
+        vfx,
+        positionalSounds,
+        portals.throughRaycast,
+      ),
+    );
+    s.register(
+      GameTokens.IceGun,
+      new IceGunSystem(scene.scene, physics, raycast, eventBus, vfx),
+    );
     s.register(
       GameTokens.ExplosiveBarrels,
       new ExplosiveBarrelSystem(physics, scene.scene, grenades),
     );
+    const propImpacts = s.register(
+      GameTokens.PropImpacts,
+      new PropImpactSystem(physics, raycast, eventBus),
+    );
     s.register(GameTokens.InteractSystem, new InteractSystem(eventBus));
+    s.register(
+      GameTokens.GrabSystem,
+      new GrabSystem(eventBus, physics, raycast, portals.pair, propImpacts),
+    );
     s.register(GameTokens.TriggerSystem, new TriggerSystem(eventBus));
     s.register(GameTokens.CheckpointSystem, new CheckpointSystem(eventBus));
     s.register(GameTokens.HazardVolumes, new HazardVolumeSystem(eventBus, vfx));
 
     eventBus.on("npc.weapon.dropped", (payload) => {
       void this.handleWeaponDrop(payload.npcId, payload.weaponId, payload.position);
+    });
+    eventBus.on("npc.killed", ({ id, characterId }) => {
+      if (characterId === "gunship") {
+        this.crashingGunships.set(id, { startedAt: null });
+      } else if (characterId === "strider") {
+        this.collapsingStriders.set(id, { startedAt: null });
+      }
+    });
+    const striderCannonColor = 0x53c8ff;
+    eventBus.on("strider.cannon.impact", ({ point, origin, damage, radius, impulse, sourceId, sourceFaction }) => {
+      weaponEffects.beam(origin, point, striderCannonColor);
+      grenades.detonate(point, {
+        damage,
+        radius,
+        impulse,
+        ownerKind: "npc",
+        sourceId,
+        sourceFaction,
+        weaponName: "Strider Cannon",
+        color: new Color(striderCannonColor),
+      });
     });
     eventBus.on("level.action", ({ action, position }) => {
       void this.handleLevelAction(action, position);
@@ -331,6 +466,18 @@ export class Game {
     eventBus.on("player.hazard", ({ amount, kind }) => {
       this.player?.health.takeDamage(amount, kind);
     });
+    // Links warp del NavSpace: cada colocación/limpieza del par re-deriva los
+    // edges dinámicos para que los NPCs planeen rutas a través de los portales.
+    const refreshPortalNavLinks = (): void => {
+      if (!this.navSpace || !PortalConfig.npcTraversal.enabled) {
+        return;
+      }
+      this.navSpace.setDynamicLinks(
+        computePortalNavLinks(portals.pair, this.navSpace),
+      );
+    };
+    eventBus.on("portal.placed", refreshPortalNavLinks);
+    eventBus.on("portal.cleared", refreshPortalNavLinks);
   }
 
   /**
@@ -362,6 +509,7 @@ export class Game {
       health: this.player.health.current,
       armor: this.player.health.armor,
       weapons: loadout.entries,
+      ammo: loadout.ammo,
       activeWeaponId: loadout.activeId,
     };
     this.engine.services
@@ -480,6 +628,11 @@ export class Game {
           marker: action.marker ? tupleToVector3(action.marker) : null,
         });
         return;
+      case "soundscape":
+        this.engine.services
+          .resolve(GameTokens.Soundscapes)
+          .activate(action.soundscape, this.currentLevel.audio.ambiences);
+        return;
       case "endLevel":
         void this.goToNextLevel(action.landmark, position);
         return;
@@ -514,7 +667,6 @@ export class Game {
     }
 
     this.transitioning = true;
-    const s = this.engine.services;
     const next = getLevel(nextId);
     const spawn = this.computeTransitionSpawn(landmark, triggerPos, next);
     this.transitionOverlay?.show(next.title);
@@ -523,11 +675,7 @@ export class Game {
 
     try {
       await this.loadLevelDefinition(next, spawn ?? undefined);
-      const ambience = s.resolve(GameTokens.BackgroundAmbience);
-      const music = s.resolve(GameTokens.Music);
-      ambience.start(next.audio.ambiences);
-      if (next.audio.music) music.fadeToMusic(next.audio.music);
-      else music.stopMusic();
+      this.activateLevelSoundscape(next);
       this.transitionOverlay?.hide();
       this.transitioning = false;
     } catch (error) {
@@ -572,6 +720,7 @@ export class Game {
       health: this.player.health.current,
       armor: this.player.health.armor,
       weapons: loadout.entries,
+      ammo: loadout.ammo,
       activeWeaponId: loadout.activeId,
     };
   }
@@ -602,6 +751,7 @@ export class Game {
     const characters = services.resolve(GameTokens.Characters);
     const scene = services.resolve(EngineTokens.Scene);
     const physics = services.resolve(EngineTokens.Physics);
+    const enemySounds = services.resolve(GameTokens.EnemySounds);
     const spawnValidator = new SpawnValidator(new Raycast(physics));
 
     const npcServices = this.buildNpcRuntimeServices(new Raycast(physics));
@@ -611,7 +761,10 @@ export class Game {
         CharacterPresets[definition.characterId] ??
         CharacterPresets.placeholderHumanoid;
       const halfExtent = preset.collider.height / 2;
-      const validation = spawnValidator.validate(requested, halfExtent);
+      // Los voladores conservan su altura de diseño (no se pegan al suelo).
+      const validation = isFlyingCharacter(preset)
+        ? { position: requested, valid: true, relocated: false }
+        : spawnValidator.validate(requested, halfExtent);
       const npc = await characters.createNPC(
         definition.characterId,
         `${idPrefix}-${definition.id}`,
@@ -620,6 +773,7 @@ export class Game {
         npcServices,
       );
       scene.scene.add(npc.mesh);
+      enemySounds.registerActor(npc.id, npc.mesh, definition.characterId);
       this.npcs.push(npc);
     }
   }
@@ -643,8 +797,31 @@ export class Game {
       pathQueue: this.pathQueue,
       buildingRegistry: this.buildingRegistry,
       raycast,
+      ...this.buildNpcPortalServices(),
       tacticalMap: this.tacticalMap,
       squadDirector: this.squadDirector,
+    };
+  }
+
+  /**
+   * Wiring de portales que TODO camino de spawn de NPCs debe proveer (LOS y
+   * disparo portal-aware, cruce de flyers). Centralizado: cuando cada caller
+   * lo armaba a mano, LevelLoader lo omitió y los NPCs del nivel no veían por
+   * los portales.
+   */
+  private buildNpcPortalServices(): NpcPortalServices {
+    const portals = this.engine.services.resolve(GameTokens.Portals);
+    const eventBus = this.engine.services.resolve(GameTokens.EventBus);
+    return {
+      losRaycast: portals.throughRaycast,
+      portals: portals.pair,
+      onFlyerPortalTeleport: (npcId, exitPosition) => {
+        eventBus.emit("portal.teleported", {
+          entityKind: "npc",
+          entityId: npcId,
+          exitPosition,
+        });
+      },
     };
   }
 
@@ -721,6 +898,7 @@ export class Game {
         this.buildNpcRuntimeServices(raycast),
       );
       scene.scene.add(npc.mesh);
+      services.resolve(GameTokens.EnemySounds).registerActor(npc.id, npc.mesh, "combine");
       this.npcs.push(npc);
       eventBus.emit("subtitle.show", {
         text: "Combine spawneado.",
@@ -752,6 +930,19 @@ export class Game {
       });
       this.weaponPickups.push(pickup);
     }
+
+    for (let i = 0; i < AMMO_ORDER.length; i += 1) {
+      const column = i % 6;
+      const position = origin
+        .clone()
+        .add(new Vector3((column - 2.5) * 1.15, 0.2, 5.4));
+      const pickup = await AmmoPickup.create(scene.scene, physics, assets, {
+        id: `action-ammo-${this.actionSpawnSerial}-${i}-${AMMO_ORDER[i]}`,
+        ammoId: AMMO_ORDER[i],
+        position,
+      });
+      this.ammoPickups.push(pickup);
+    }
   }
 
   private registerWorkshop(): void {
@@ -769,11 +960,13 @@ export class Game {
     const audio = s.resolve(EngineTokens.Audio);
     const controls = s.resolve(GameTokens.Controls);
     const workshop = s.resolve(GameTokens.Workshop);
+    const difficulty = s.resolve(GameTokens.Difficulty);
     const input = s.resolve(EngineTokens.Input);
     const scene = s.resolve(EngineTokens.Scene);
     const raycast = s.resolve(EngineTokens.Raycast);
 
     s.register(GameTokens.HUD, new HUD(this.root, eventBus));
+    s.register(GameTokens.ScopeOverlay, new ScopeOverlay(this.root, eventBus));
 
     s.register(
       GameTokens.LevelEditor,
@@ -792,6 +985,14 @@ export class Game {
             this.engine.services.resolve(GameTokens.Workshop).capabilities.publish,
         },
       ),
+    );
+
+    this.uninstallNpcConsole = installNpcConsole(() => this.npcs);
+    this.uninstallIceConsole = installIceConsole(() =>
+      s.resolve(GameTokens.IceGun),
+    );
+    this.uninstallPlayerModelConsole = installPlayerModelConsole(
+      () => this.playerModel,
     );
 
     const debugMenu = new DebugMenu(this.root, input, controls, eventBus);
@@ -823,9 +1024,15 @@ export class Game {
         onResume: () => this.setGameState("playing"),
         onExitToMain: () => this.exitToMainMenu(),
         onOpenEditor: () => this.enterEditor(),
+        onSound: (cue) => {
+          audio.unlock();
+          eventBus.emit("ui.sound", { cue });
+        },
         onToggleDebug: (enabled) => debugMenu.setVisible(enabled),
         onVolumeChange: (bus, value) => audio.setVolume(bus, value),
         onGetVolume: (bus) => audio.getVolume(bus),
+        getDifficulty: () => difficulty.getLevel(),
+        onSetDifficulty: (level) => difficulty.setLevel(level),
         controls,
         workshop,
       }),
@@ -886,6 +1093,10 @@ export class Game {
 
     this.tickPlaying(time);
 
+    s.resolve(GameTokens.Portals).updateRender(
+      this.player ? [this.player.weapons.getViewModelRoot()] : [],
+      this.playerModel?.getPortalRevealObjects() ?? [],
+    );
     this.engine.renderFrame();
     input.endFrame();
   }
@@ -907,6 +1118,17 @@ export class Game {
     });
   }
 
+  /**
+   * Superficie física bajo el jugador (para elegir el pool de pasos). Rayo
+   * corto hacia abajo desde los pies, excluyendo el propio collider `player`.
+   */
+  private resolvePlayerSurface(raycast: Raycast, player: Player): SurfaceType | null {
+    const origin = player.getPosition().clone();
+    origin.y += 0.2;
+    const hit = raycast.cast(origin, DOWN_DIRECTION, 4, undefined, "player");
+    return hit?.metadata?.surface ?? null;
+  }
+
   /** Tick completo cuando el juego estÃ¡ activo (no en menÃº/pausa). */
   private tickPlaying(time: Time): void {
     const player = this.player!;
@@ -915,30 +1137,71 @@ export class Game {
     const controls = s.resolve(GameTokens.Controls);
     const camera = s.resolve(EngineTokens.Camera);
     const physics = s.resolve(EngineTokens.Physics);
+    const raycast = s.resolve(EngineTokens.Raycast);
     const gizmos = s.resolve(EngineTokens.Gizmos);
     const interactSystem = s.resolve(GameTokens.InteractSystem);
     const triggerSystem = s.resolve(GameTokens.TriggerSystem);
     const checkpointSystem = s.resolve(GameTokens.CheckpointSystem);
     const hazardVolumes = s.resolve(GameTokens.HazardVolumes);
     const weaponEffects = s.resolve(GameTokens.WeaponEffects);
+    const npcBloodEffects = s.resolve(GameTokens.NpcBloodEffects);
     const subtitles = s.resolve(GameTokens.Subtitles);
     const footsteps = s.resolve(GameTokens.Footsteps);
     const grenades = s.resolve(GameTokens.Grenades);
+    const rockets = s.resolve(GameTokens.Rockets);
+    const bolts = s.resolve(GameTokens.Bolts);
+    const energyBalls = s.resolve(GameTokens.EnergyBalls);
+    const iceGun = s.resolve(GameTokens.IceGun);
+    const portals = s.resolve(GameTokens.Portals);
     const explosiveBarrels = s.resolve(GameTokens.ExplosiveBarrels);
     const vfx = s.resolve(EngineTokens.Vfx);
 
+    const grabSystem = s.resolve(GameTokens.GrabSystem);
     if (this.dying) {
+      grabSystem.clear();
       this.updateDeath(time.delta);
     } else if (input.isPointerLocked()) {
       camera.updateLook(input);
+      camera.updateReorient(time.delta);
+      // Antes de player.update: el carry decide si este frame LMB empuja el
+      // prop en vez de disparar el arma equipada.
+      grabSystem.update(
+        time.delta,
+        time.elapsed,
+        camera.camera.position,
+        camera.getForwardDirection(),
+        camera.camera.quaternion,
+        player.getPosition(),
+        controls,
+        input,
+        player.weapons,
+        interactSystem.getFocused() !== null,
+      );
       player.update(time.delta, input, controls, camera, time.elapsed);
     }
+    this.playerModel?.update(time.delta, time.elapsed, player, camera);
 
     if (controls.wasPressed("spawnDebugCombine")) {
       void this.spawnDebugCombineAtAim();
     }
 
-    footsteps.update(time.delta, player.getMoveIntensity());
+    const stepped = footsteps.update(
+      time.delta,
+      player.getMoveIntensity(),
+      () => this.resolvePlayerSurface(raycast, player),
+    );
+    // Ruido de sigilo: cada paso audible avisa a los NPCs cercanos. Agacharse
+    // es silencioso; correr hace mucho más ruido que caminar.
+    if (stepped && !player.isCrouched()) {
+      const eventBus = s.resolve(GameTokens.EventBus);
+      eventBus.emit("world.noise", {
+        kind: "movement",
+        position: player.getPosition().clone(),
+        radius: player.isSprinting() ? 12 : 4,
+        sourceId: "player",
+        sourceFaction: "player",
+      });
+    }
 
     let playerPosition = player.getPosition();
     this.weaponPickups.forEach((pickup) =>
@@ -946,6 +1209,9 @@ export class Game {
     );
     this.itemPickups.forEach((pickup) =>
       pickup.update(time.delta, playerPosition, player.health),
+    );
+    this.ammoPickups.forEach((pickup) =>
+      pickup.update(time.delta, playerPosition, player.weapons),
     );
     if (this.tacticalMap && this.navSpace && this.squadDirector) {
       const playerSnapshot: ActorSnapshot = {
@@ -965,12 +1231,24 @@ export class Game {
         radius: npc.radius,
       }));
       const npcIndex = new ActorSpatialIndex(npcSnapshots);
+      const portalGhosts: ActorSnapshot[] = portals
+        .projectPointThroughPortals(playerPosition)
+        .map((projection) => ({
+          ...playerSnapshot,
+          position: projection.position,
+          navPosition: playerSnapshot.position,
+          portalView: {
+            position: projection.viewPosition,
+            normal: projection.viewNormal,
+          },
+        }));
       const ctx: AiFrameContext = {
         delta: time.delta,
         elapsed: time.elapsed,
         aiLod: "near",
         player: playerSnapshot,
         npcs: [],
+        portalGhosts: portalGhosts.length > 0 ? portalGhosts : undefined,
         tacticalMap: this.tacticalMap,
         squadDirector: this.squadDirector,
         eventBus: s.resolve(GameTokens.EventBus),
@@ -986,7 +1264,29 @@ export class Game {
     this.doors.forEach((door) => door.update(time.delta));
     physics.step(time.delta);
     this.npcs.forEach((npc) => npc.syncFromPhysics());
+    s.resolve(GameTokens.PropImpacts).update(time.delta, time.elapsed);
+    this.updateGunshipCrashes(time.elapsed, raycast, grenades);
+    this.updateStriderCollapses(time.elapsed, raycast, grenades);
     grenades.update(time.delta, time.elapsed);
+    rockets.update(time.delta, time.elapsed);
+    bolts.update(time.delta, time.elapsed);
+    energyBalls.update(time.delta, time.elapsed, this.npcs);
+    iceGun.update(
+      time.delta,
+      time.elapsed,
+      this.npcs
+        .map((npc) => npc.getFreezeHandle())
+        .filter((handle): handle is NpcFreezeHandle => handle !== null),
+    );
+    portals.update(time.delta, time.elapsed, this.dying ? undefined : player, camera);
+    if (PortalConfig.npcTraversal.enabled) {
+      portals.updateNpcTraversal(
+        time.elapsed,
+        this.npcs
+          .map((npc) => npc.getPortalTraversalHandle())
+          .filter((handle): handle is NpcPortalHandle => handle !== null),
+      );
+    }
     explosiveBarrels.update();
 
     playerPosition = player.getPosition();
@@ -1010,6 +1310,7 @@ export class Game {
     s.resolve(GameTokens.HUD).updateObjective(camera.camera);
     subtitles.update(time.delta);
     weaponEffects.update(time.delta);
+    npcBloodEffects.update(time.delta);
     vfx.update(time.delta);
     gizmos.update(time.delta);
   }
@@ -1041,6 +1342,76 @@ export class Game {
       return "mid";
     }
     return "far";
+  }
+
+  private updateGunshipCrashes(elapsed: number, raycast: Raycast, grenades: GrenadeSystem): void {
+    if (this.crashingGunships.size === 0) return;
+    const down = new Vector3(0, -1, 0);
+    for (const [id, crash] of [...this.crashingGunships]) {
+      const npc = this.npcs.find((candidate) => candidate.id === id);
+      if (!npc) {
+        this.crashingGunships.delete(id);
+        continue;
+      }
+      if (crash.startedAt === null) crash.startedAt = elapsed;
+
+      const probe = npc.position.clone();
+      probe.y -= Math.max(npc.radius * 1.6, 1.4);
+      const hit = raycast.cast(probe, down, 1.3);
+      const hitKind = hit?.metadata?.kind;
+      const touchedGround =
+        !!hit && hit.metadata?.id !== id && (hitKind === "static" || hitKind === "door" || hitKind === "dynamic");
+      const timedOut = elapsed - crash.startedAt >= 3.5;
+      if (!touchedGround && !timedOut) continue;
+
+      const point = hit?.point.clone() ?? npc.position.clone().add(new Vector3(0, -npc.radius, 0));
+      point.y += 0.25;
+      grenades.detonate(point, {
+        damage: 140,
+        radius: 6,
+        impulse: 22,
+        ownerKind: "npc",
+        sourceId: id,
+        sourceFaction: "combine",
+        weaponName: "gunshipCrash",
+      });
+      this.crashingGunships.delete(id);
+    }
+  }
+
+  private updateStriderCollapses(elapsed: number, raycast: Raycast, grenades: GrenadeSystem): void {
+    if (this.collapsingStriders.size === 0) return;
+    const down = new Vector3(0, -1, 0);
+    for (const [id, collapse] of [...this.collapsingStriders]) {
+      const npc = this.npcs.find((candidate) => candidate.id === id);
+      if (!npc) {
+        this.collapsingStriders.delete(id);
+        continue;
+      }
+      if (collapse.startedAt === null) collapse.startedAt = elapsed;
+
+      const probe = npc.position.clone();
+      probe.y -= Math.max(npc.radius * 2.4, 2.5);
+      const hit = raycast.cast(probe, down, 2.2);
+      const hitKind = hit?.metadata?.kind;
+      const touchedGround =
+        !!hit && hit.metadata?.id !== id && (hitKind === "static" || hitKind === "door" || hitKind === "dynamic");
+      const timedOut = elapsed - collapse.startedAt >= 3.2;
+      if (!touchedGround && !timedOut) continue;
+
+      const point = hit?.point.clone() ?? npc.position.clone().add(new Vector3(0, -npc.radius * 2, 0));
+      point.y += 0.35;
+      grenades.detonate(point, {
+        damage: 220,
+        radius: 7,
+        impulse: 28,
+        ownerKind: "npc",
+        sourceId: id,
+        sourceFaction: "combine",
+        weaponName: "Strider Collapse",
+      });
+      this.collapsingStriders.delete(id);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1255,16 +1626,8 @@ export class Game {
 
     await this.loadLevelDefinition(level, spawn);
 
-    const ambience = s.resolve(GameTokens.BackgroundAmbience);
-    const music = s.resolve(GameTokens.Music);
-
     if (this.currentLevel) {
-      ambience.start(this.currentLevel.audio.ambiences);
-      if (this.currentLevel.audio.music) {
-        music.fadeToMusic(this.currentLevel.audio.music);
-      } else {
-        music.stopMusic();
-      }
+      this.activateLevelSoundscape(this.currentLevel);
     }
 
     this.setGameState("playing");
@@ -1282,12 +1645,8 @@ export class Game {
 
     await this.loadLevelDefinition(level);
 
-    const ambience = s.resolve(GameTokens.BackgroundAmbience);
-    const music = s.resolve(GameTokens.Music);
     if (this.currentLevel) {
-      ambience.start(this.currentLevel.audio.ambiences);
-      if (this.currentLevel.audio.music) music.fadeToMusic(this.currentLevel.audio.music);
-      else music.stopMusic();
+      this.activateLevelSoundscape(this.currentLevel);
     }
 
     this.playtestMode = true;
@@ -1296,6 +1655,18 @@ export class Game {
       text: "Playtest — F4 para volver al editor",
       duration: 3,
     });
+  }
+
+  private activateLevelSoundscape(level: LevelDefinition): void {
+    const soundscapes = this.engine.services.resolve(GameTokens.Soundscapes);
+    const music = this.engine.services.resolve(GameTokens.Music);
+
+    soundscapes.activate(level.audio.soundscape, level.audio.ambiences);
+    if (level.audio.music) {
+      music.fadeToMusic(level.audio.music);
+    } else {
+      music.stopMusic();
+    }
   }
 
   private async loadLevelDefinition(
@@ -1340,6 +1711,7 @@ export class Game {
       explosiveBarrels,
       characters,
       assets,
+      this.buildNpcPortalServices(),
     );
 
     // Teardown completo del nivel anterior para cargar in-place (transición
@@ -1348,26 +1720,48 @@ export class Game {
     // todos los bodies) → limpiar la escena (preservando las luces) → cargar.
     // En el primer load (menú/boot) todo está vacío, así que es no-op.
     this.npcs.forEach((npc) => npc.dispose());
+    this.crashingGunships.clear();
+    this.collapsingStriders.clear();
     this.weaponPickups.forEach((pickup) => pickup.dispose());
     this.itemPickups.forEach((pickup) => pickup.dispose());
+    this.ammoPickups.forEach((pickup) => pickup.dispose());
     this.player?.dispose();
+    this.playerModel?.dispose();
+    this.playerModel = null;
     services.resolve(GameTokens.WeaponEffects).clear();
+    services.resolve(GameTokens.NpcBloodEffects).clear();
     services.resolve(GameTokens.Grenades).clear();
+    services.resolve(GameTokens.Rockets).clear();
+    services.resolve(GameTokens.Bolts).clear();
+    services.resolve(GameTokens.EnergyBalls).clear();
+    services.resolve(GameTokens.IceGun).clear();
+    services.resolve(GameTokens.Portals).clear();
     explosiveBarrels.clear();
     vfx.clear();
     services.resolve(EngineTokens.PositionalSound).clear();
+    services.resolve(GameTokens.EnemySounds).clearActors();
     interactSystem.clear();
     triggerSystem.clear();
     checkpointSystem.clear();
     hazardVolumes.clear();
+    services.resolve(GameTokens.GrabSystem).clear();
+    services.resolve(GameTokens.PropImpacts).clear();
     physics.reset();
     sceneManager.clearLevel([...lighting.getLights(), ...vfx.getPersistentObjects()]);
 
     const loaded = await loader.load(level);
+    const enemySounds = services.resolve(GameTokens.EnemySounds);
+    loaded.npcs.forEach((npc, index) => {
+      const definition = level.npcs[index];
+      if (definition) {
+        enemySounds.registerActor(npc.id, npc.mesh, definition.characterId);
+      }
+    });
     this.npcs = loaded.npcs;
     this.doors = loaded.doors;
     this.weaponPickups = loaded.weaponPickups;
     this.itemPickups = loaded.itemPickups;
+    this.ammoPickups = loaded.ammoPickups;
     this.chargers = loaded.chargers;
     this.tacticalMap = loaded.tacticalMap;
     this.squadDirector = loaded.squadDirector;
@@ -1383,11 +1777,24 @@ export class Game {
       sceneManager.scene,
       eventBus,
       services.resolve(GameTokens.Grenades),
+      services.resolve(GameTokens.Rockets),
+      services.resolve(GameTokens.Bolts),
+      services.resolve(GameTokens.EnergyBalls),
+      services.resolve(GameTokens.IceGun),
+      services.resolve(GameTokens.Portals),
+      services.resolve(GameTokens.PropImpacts),
+      services.resolve(GameTokens.Difficulty),
     );
     if (spawn) {
       this.player.health.restore(spawn.health, spawn.armor);
-      this.player.weapons.restoreLoadout(spawn.weapons, spawn.activeWeaponId);
+      this.player.weapons.restoreLoadout(
+        spawn.weapons,
+        spawn.activeWeaponId,
+        spawn.ammo,
+      );
     }
+    this.playerModel = new PlayerModelSystem(sceneManager.scene, assets, physics);
+    await this.playerModel.load(resolvePlayerModel(level.playerModel));
     this.chargers.forEach((charger) => charger.bind(this.player!.health));
 
     // Reaparecer en este checkpoint si el jugador muere antes de cruzar otro.
@@ -1421,7 +1828,7 @@ export class Game {
   private exitToMainMenu(): void {
     const s = this.engine.services;
     const mainMenu = s.resolve(GameTokens.MainMenu);
-    const ambience = s.resolve(GameTokens.BackgroundAmbience);
+    const soundscapes = s.resolve(GameTokens.Soundscapes);
     const music = s.resolve(GameTokens.Music);
 
     // Limpiar el modo del editor: si veníamos de un playtest, el flag seguiría
@@ -1431,7 +1838,7 @@ export class Game {
     this.dying = false;
     this.deathScreen?.hide();
 
-    ambience.stop();
+    soundscapes.clear();
     music.stopMusic();
     mainMenu.showLoading(MenuStrings.exitingToMainMenu);
 

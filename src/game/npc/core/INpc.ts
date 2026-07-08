@@ -18,6 +18,21 @@ export interface ActorSnapshot {
   entity: Damageable;
   isAlive: boolean;
   radius: number;
+  /**
+   * Posición real NAVEGABLE del actor cuando `position` es una proyección
+   * (ghost de portal: `position` queda detrás del disco, correcta para
+   * apuntar/encarar pero inútil como goal de pathfinding). Los tasks de
+   * persecución terrestre usan esta y el A* decide si la ruta más corta
+   * cruza el par de portales (links warp).
+   */
+  navPosition?: Vector3;
+  /**
+   * Sólo en ghosts de portal: plano del portal de SALIDA por el que se ve este
+   * ghost (queda detrás del disco). Un observador únicamente puede verlo si está
+   * DELANTE de este plano — un portal se ve sólo de su cara frontal. Sin esto,
+   * un enemigo del otro lado de la pared lo detectaría igual.
+   */
+  portalView?: { position: Vector3; normal: Vector3 };
 }
 
 /**
@@ -30,6 +45,12 @@ export interface AiFrameContext {
   aiLod: "near" | "mid" | "far";
   player: ActorSnapshot;
   npcs: ActorSnapshot[];
+  /**
+   * Proyecciones del player a través de portales linked (hasta 2). Comparten
+   * `id`/`entity` con `player` — el raycast portal-aware resuelve el LOS real,
+   * y el daño aplica al player de verdad.
+   */
+  portalGhosts?: ActorSnapshot[];
   tacticalMap: TacticalMap;
   squadDirector: SquadDirector;
   eventBus: GameEventBus;
@@ -151,6 +172,40 @@ export interface NpcAiDebugSnapshot {
   };
 }
 
+/**
+ * Handle mínimo para que el sistema de portales teleporte NPCs terrestres
+ * (feature flag `PortalConfig.npcTraversal`). Null en motores sin soporte
+ * (flyers, strider).
+ */
+export interface NpcPortalHandle {
+  id: string;
+  radius: number;
+  getPosition(): Vector3;
+  getVelocity(): Vector3;
+  teleport(position: Vector3, velocity: Vector3, yaw: number): void;
+  setColliderExclusions(handles: ReadonlySet<number> | null): void;
+}
+
+/**
+ * Handle mínimo para que la ice gun convierta a un NPC en estatua de hielo.
+ * Congelarse es letal: `freezeSolid()` mata sin ragdoll y la estatua física
+ * (cuerpo rígido único) pasa a ser dueña del visual.
+ */
+export interface NpcFreezeHandle {
+  id: string;
+  radius: number;
+  /** Altura de la cápsula del personaje (dimensiona la estatua física). */
+  height: number;
+  getPosition(): Vector3;
+  isAlive(): boolean;
+  /**
+   * Muerte congelada: mata al NPC sin ragdoll (la pose queda rígida) y cede
+   * el visual al caller — el NPC deja de tocar su mesh, que pasa a moverlo la
+   * estatua física de la ice gun. Null si ya estaba muerto.
+   */
+  freezeSolid(): Group | null;
+}
+
 /** Interfaz uniforme que consume `Game`/`LevelLoader`. La implementa `Npc`. */
 export interface INpc {
   readonly id: string;
@@ -162,11 +217,16 @@ export interface INpc {
 
   update(ctx: AiFrameContext): void;
   syncFromPhysics(): void;
+  /** Handle de traversal por portales, o null si el motor no lo soporta. */
+  getPortalTraversalHandle(): NpcPortalHandle | null;
+  /** Handle de congelamiento (ice gun), o null si el NPC ya no está vivo. */
+  getFreezeHandle(): NpcFreezeHandle | null;
   applyDamage(
     amount: number,
     hitDirection?: Vector3,
     hitPartName?: string,
     attackerId?: string,
+    hitPoint?: Vector3,
   ): void;
   isAlive(): boolean;
   getState(): string;

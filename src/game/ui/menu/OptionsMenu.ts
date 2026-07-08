@@ -6,7 +6,11 @@ import {
   NonRebindableActions,
   type GameAction,
 } from "@game/config/controls.config";
-import { MenuStrings } from "@game/config/strings";
+import { DifficultyStrings, MenuStrings } from "@game/config/strings";
+import {
+  DIFFICULTY_ORDER,
+  type DifficultyLevel,
+} from "@game/config/difficulty.config";
 import type { Controls } from "@game/gameplay/player/Controls";
 
 export interface OptionsMenuCallbacks {
@@ -14,6 +18,8 @@ export interface OptionsMenuCallbacks {
   onToggleDebug: (enabled: boolean) => void;
   onVolumeChange: (bus: AudioBusName, value: number) => void;
   getVolume: (bus: AudioBusName) => number;
+  getDifficulty: () => DifficultyLevel;
+  onSetDifficulty: (level: DifficultyLevel) => void;
   controls: Controls;
 }
 
@@ -95,6 +101,16 @@ export class OptionsMenu implements Disposable {
         </label>
       </div>
       <div class="hl2-options is-hidden" data-panel="game">
+        <label class="hl2-option">
+          <span>Dificultad</span>
+          <select data-action="difficulty">
+            ${DIFFICULTY_ORDER.map(
+              (level) =>
+                `<option value="${level}">${DifficultyStrings[level].label}</option>`,
+            ).join("")}
+          </select>
+          <strong class="hl2-option__value" data-value="difficulty"></strong>
+        </label>
         <label class="hl2-option hl2-option--toggle">
           <span>Mostrar FPS / debug</span>
           <input type="checkbox" data-action="debug" />
@@ -114,6 +130,7 @@ export class OptionsMenu implements Disposable {
     this.wireAudio(callbacks);
     this.wireSensitivity();
     this.wireQuality();
+    this.wireDifficulty(callbacks);
     this.wireFullscreen();
     this.debugToggle = this.wireDebug(callbacks);
     this.wireBack(callbacks);
@@ -336,6 +353,30 @@ export class OptionsMenu implements Disposable {
       "change",
       () => {
         label.textContent = select.value;
+      },
+      { signal: this.listenerAbort.signal },
+    );
+  }
+
+  private wireDifficulty(callbacks: OptionsMenuCallbacks): void {
+    const select = this.element.querySelector<HTMLSelectElement>(
+      'select[data-action="difficulty"]',
+    );
+    if (!select) return;
+    const label = this.element.querySelector(
+      '.hl2-option__value[data-value="difficulty"]',
+    ) as HTMLElement;
+    const sync = (level: DifficultyLevel): void => {
+      select.value = level;
+      label.textContent = DifficultyStrings[level].label;
+    };
+    sync(callbacks.getDifficulty());
+    select.addEventListener(
+      "change",
+      () => {
+        const level = select.value as DifficultyLevel;
+        callbacks.onSetDifficulty(level);
+        label.textContent = DifficultyStrings[level].label;
       },
       { signal: this.listenerAbort.signal },
     );
