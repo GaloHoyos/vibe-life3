@@ -9,6 +9,7 @@ import type { HazardKind } from "@game/levels/HazardVolumeSystem";
 import type { UiSoundCue } from "@game/config/audio.config";
 import type { ChargerKind } from "@game/config/items.config";
 import type { DifficultyLevel } from "@game/config/difficulty.config";
+import type { DamageType } from "@shared/types/lifecycle";
 
 export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
 export type CombatEventSourceKind = "player" | "npc" | "system";
@@ -283,6 +284,8 @@ export interface GameEventMap {
   "player.damaged": {
     amount: number;
     direction?: Vector3;
+    /** Tipo de daño; el traje HEV elige el diagnóstico de voz según esto. */
+    damageType?: DamageType;
   };
   "player.dead": {
     reason: string;

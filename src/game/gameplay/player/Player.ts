@@ -9,7 +9,7 @@ import {
   CharacterController,
   type MovementInput,
 } from "@engine/physics/character/CharacterController";
-import type { Damageable } from "@shared/types/lifecycle";
+import type { Damageable, DamageType } from "@shared/types/lifecycle";
 import { PlayerConfig } from "@game/config/gameplay.config";
 import type { DifficultyProvider } from "@game/config/difficulty.config";
 import type { Controls } from "./Controls";
@@ -166,11 +166,18 @@ export class Player implements Damageable {
       1,
       (impact - fall.safeSpeed) / (fall.fatalSpeed - fall.safeSpeed),
     );
-    this.health.takeDamage(Math.round(t * fall.fatalDamage), "fall");
+    this.health.takeDamage(Math.round(t * fall.fatalDamage), "fall", undefined, "physics");
   }
 
-  applyDamage(amount: number, hitDirection?: Vector3): void {
-    this.health.takeDamage(amount, "npc", hitDirection);
+  applyDamage(
+    amount: number,
+    hitDirection?: Vector3,
+    _hitPartName?: string,
+    _attackerId?: string,
+    _hitPoint?: Vector3,
+    damageType?: DamageType,
+  ): void {
+    this.health.takeDamage(amount, "npc", hitDirection, damageType);
   }
 
   applyKnockback(direction: Vector3, strength: number): void {

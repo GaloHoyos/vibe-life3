@@ -135,7 +135,14 @@ export class NpcCombat {
 
     const directionToTarget = directionTo(ctx.npcPosition, ctx.targetPosition);
     const attack = this.definition.attack;
-    ctx.target.applyDamage(attack.damage, directionToTarget, undefined, this.id, ctx.targetPosition.clone());
+    ctx.target.applyDamage(
+      attack.damage,
+      directionToTarget,
+      undefined,
+      this.id,
+      ctx.targetPosition.clone(),
+      "melee",
+    );
 
     const knockbackReceiver = ctx.target as {
       applyKnockback?: (direction: Vector3, strength: number) => void;

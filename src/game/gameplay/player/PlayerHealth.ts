@@ -4,6 +4,7 @@ import type { DifficultyProvider } from "@game/config/difficulty.config";
 import { Dialogue } from "@game/config/strings";
 import type { GameEventBus } from "@game/GameEvents";
 import { Health } from "@game/gameplay/Health";
+import type { DamageType } from "@shared/types/lifecycle";
 
 export class PlayerHealth {
   private readonly health: Health;
@@ -66,12 +67,17 @@ export class PlayerHealth {
     return this.godMode;
   }
 
-  takeDamage(amount: number, _source?: string, hitDirection?: Vector3): number {
+  takeDamage(
+    amount: number,
+    _source?: string,
+    hitDirection?: Vector3,
+    damageType?: DamageType,
+  ): number {
     if (this.dead || amount <= 0) {
       return this.health.current;
     }
     if (this.godMode) {
-      this.eventBus.emit("player.damaged", { amount: 0, direction: hitDirection });
+      this.eventBus.emit("player.damaged", { amount: 0, direction: hitDirection, damageType });
       return this.health.current;
     }
 
@@ -82,11 +88,14 @@ export class PlayerHealth {
     const remaining = Math.max(0, amount - absorbed);
     const currentHealth = this.health.applyDamage(remaining);
 
+    // `player.damaged` se emite tras `emitHealthChanged` para que los listeners
+    // (traje HEV) lean la vida ya descontada al decidir el aviso de daño.
+    this.emitHealthChanged();
     this.eventBus.emit("player.damaged", {
       amount: remaining,
       direction: hitDirection,
+      damageType,
     });
-    this.emitHealthChanged();
 
     if (currentHealth <= 0 && !this.dead) {
       this.dead = true;
