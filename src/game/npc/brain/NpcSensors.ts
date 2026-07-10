@@ -19,6 +19,10 @@ export interface SensorInputs {
   tooCloseRange: number;
   lowHealthRatio: number;
   justHit: boolean;
+  /** Cooldown de re-flinch cumplido (presets sin cooldown: siempre true). */
+  flinchReady: boolean;
+  /** El acumulador de deteccion paso el umbral de sospecha sin ver pleno. */
+  enemySuspected: boolean;
   /** Cuerpo volcado de lado (motor dinamico): activa `Tipped`. False en motores cinematicos. */
   tipped: boolean;
   alliesNear: boolean;
@@ -27,6 +31,14 @@ export interface SensorInputs {
   coverBlown: boolean;
   squadFlankAvailable: boolean;
   squadOnPoint: boolean;
+  /** Tiene uno de los slots de ataque limitados de su squad (SquadSlotBoard). */
+  hasAttackSlot: boolean;
+  /** El slot de overwatch de su squad esta libre (o ya es suyo). */
+  overwatchFree: boolean;
+  /** Ventana de granada valida (cooldown + LKP oculta en banda + slot libre). */
+  grenadeReady: boolean;
+  /** (medic) Hay un aliado herido en rango y el cooldown de curacion expiro. */
+  allyNeedsHealing: boolean;
   selfBuildingId: string | null;
   threatBuildingId: string | null;
   threatRoomId: string | null;
@@ -48,6 +60,7 @@ export function computeNpcConditions(inputs: SensorInputs): ConditionMask {
     mask |= Cond.LowHealth;
   }
   if (inputs.justHit) mask |= Cond.JustHit;
+  if (inputs.flinchReady) mask |= Cond.FlinchReady;
   if (inputs.tipped) mask |= Cond.Tipped;
 
   if (inputs.perception.visibleNow && inputs.threat?.isAlive) {
@@ -55,6 +68,7 @@ export function computeNpcConditions(inputs: SensorInputs): ConditionMask {
   } else if (inputs.perception.hasMemory && inputs.threat?.isAlive) {
     mask |= Cond.LostEnemy;
   }
+  if (inputs.enemySuspected) mask |= Cond.EnemySuspected;
 
   if (inputs.threat && !inputs.threat.isAlive) {
     mask |= Cond.EnemyDead;
@@ -65,6 +79,11 @@ export function computeNpcConditions(inputs: SensorInputs): ConditionMask {
     if (dist <= inputs.meleeRange) mask |= Cond.EnemyInMeleeRange;
     if (dist > inputs.meleeRange && dist <= inputs.leapRange) mask |= Cond.EnemyInLeapRange;
     if (dist <= inputs.tooCloseRange) mask |= Cond.EnemyTooClose;
+    // Solo con el enemigo a la vista: fuera del rango util del arma hay que
+    // acercarse (closeDistance), no tirotear al aire.
+    if ((mask & Cond.SeeEnemy) !== 0 && dist > inputs.combat.effectiveRange()) {
+      mask |= Cond.TooFarToShoot;
+    }
   }
 
   if (inputs.combat.magazineEmpty()) mask |= Cond.MagazineEmpty;
@@ -78,6 +97,10 @@ export function computeNpcConditions(inputs: SensorInputs): ConditionMask {
   if (inputs.coverBlown) mask |= Cond.CoverBlown;
   if (inputs.squadFlankAvailable) mask |= Cond.SquadFlankAvailable;
   if (inputs.squadOnPoint) mask |= Cond.SquadOnPoint;
+  if (inputs.hasAttackSlot) mask |= Cond.HasAttackSlot;
+  if (inputs.overwatchFree) mask |= Cond.OverwatchFree;
+  if (inputs.grenadeReady) mask |= Cond.GrenadeReady;
+  if (inputs.allyNeedsHealing) mask |= Cond.AllyNeedsHealing;
 
   if (inputs.threatBuildingId && inputs.threatBuildingId !== inputs.selfBuildingId) {
     mask |= Cond.EnemyInBuilding;

@@ -51,6 +51,7 @@ function fakeNpc(snapshot: NpcAiDebugSnapshot = fakeSnapshot()): INpc {
     faction: "zombies",
     position: snapshot.position,
     radius: 0.4,
+    playerSquadEligible: false,
     update: () => undefined,
     syncFromPhysics: () => undefined,
     getPortalTraversalHandle: () => null,

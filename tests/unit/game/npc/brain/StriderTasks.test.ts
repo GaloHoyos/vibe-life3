@@ -80,6 +80,9 @@ function makeContext(options: {
       radius: 0.35,
     },
     threatLastKnown: null,
+    threatSuspected: null,
+    anchorPosition: null,
+    anchorOffset: null,
     player: {
       id: "player",
       position: threatPosition,
@@ -95,6 +98,8 @@ function makeContext(options: {
     noise: { combat: null, suspicious: null },
     tactical: null,
     squad: null,
+    slots: null,
+    medic: null,
     conditions: 0,
     navSpace: {} as NpcBrainContext["navSpace"],
     buildingRegistry: {} as NpcBrainContext["buildingRegistry"],

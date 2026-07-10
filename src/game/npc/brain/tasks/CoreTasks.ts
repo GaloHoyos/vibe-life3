@@ -123,15 +123,51 @@ export function createAimTask(settle: number): NpcTask {
 /**
  * Dispara una rafaga. Success cuando el subsistema combat reporta que
  * arranco el fire (la duracion de la rafaga la maneja el combat por
- * separado y el siguiente tick lo refleja). Failure si magazine vacio.
+ * separado y el siguiente tick lo refleja). Failure si magazine vacio o el
+ * threat quedo fuera del rango util del arma (mantiene la mira sin gastar
+ * municion; el schedule re-selecciona).
  */
 export const FireBurstTask: NpcTask = task<NpcBrainContext>('fireBurst', (ctx) => {
   if (ctx.combat.magazineEmpty()) return 'failure';
   if (!ctx.threat) return 'failure';
   ctx.combat.aim(ctx.threat.position);
+  const dx = ctx.threat.position.x - ctx.self.position.x;
+  const dz = ctx.threat.position.z - ctx.self.position.z;
+  if (Math.sqrt(dx * dx + dz * dz) > ctx.combat.effectiveRange()) return 'failure';
   ctx.combat.tryFire();
   return 'success';
 });
+
+/**
+ * Avanza esprintando hacia el threat hasta quedar dentro de `fraction` del
+ * rango util del arma (85% deja margen para que no vuelva a salirse con un
+ * paso del target). Para `closeDistance` cuando el enemigo esta a la vista
+ * pero fuera de alcance.
+ */
+export function createMoveIntoRangeTask(fraction = 0.85): NpcTask {
+  return {
+    id: 'moveIntoRange',
+    init: () => {},
+    tick: (ctx): TaskStatus => {
+      const goal = threatNavPosition(ctx);
+      const shootAt = ctx.threat?.position ?? goal;
+      if (!goal || !shootAt) {
+        ctx.locomotion.stop();
+        return 'failure';
+      }
+      const dx = shootAt.x - ctx.self.position.x;
+      const dz = shootAt.z - ctx.self.position.z;
+      if (Math.sqrt(dx * dx + dz * dz) <= ctx.combat.effectiveRange() * fraction) {
+        ctx.locomotion.stop();
+        return 'success';
+      }
+      ctx.locomotion.moveTo(goal, { gait: 'sprint' });
+      if (ctx.locomotion.isStuck()) return 'failure';
+      return 'running';
+    },
+    abort: (ctx) => ctx.locomotion.stop(),
+  };
+}
 
 /**
  * Recarga el arma. Success cuando el combat reporta listo.
@@ -152,4 +188,28 @@ export const PlayDeathTask: NpcTask = task<NpcBrainContext>('playDeath', () => '
 
 export function createFlinchTask(duration = 0.2): NpcTask {
   return createWaitTask(duration);
+}
+
+/**
+ * Reaccion a una sospecha (acumulador de deteccion sub-umbral): frena y
+ * encara el punto sospechado durante `duration`, dandole presencia al "algo
+ * vi" antes de la deteccion plena. Falla si la sospecha se disipo.
+ */
+export function createFaceSuspicionTask(duration = 0.8): NpcTask {
+  let elapsed = 0;
+  return {
+    id: 'faceSuspicion',
+    init: (ctx) => {
+      elapsed = 0;
+      ctx.locomotion.stop();
+    },
+    tick: (ctx): TaskStatus => {
+      const target = ctx.threatSuspected;
+      if (!target) return 'failure';
+      ctx.locomotion.face(target);
+      elapsed += ctx.delta;
+      return elapsed >= duration ? 'success' : 'running';
+    },
+    abort: () => {},
+  };
 }

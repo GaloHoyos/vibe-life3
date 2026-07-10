@@ -66,6 +66,48 @@ export function createPatrolTask(dwell = 1.5): NpcTask {
 }
 
 /**
+ * Deambula sin rumbo (zombies): elige un punto navegable aleatorio alrededor
+ * de la posicion actual, camina hasta el y se queda un beat. Un ciclo por
+ * schedule — al completar, el brain re-elige y el proximo wander toma otro
+ * punto. Si no hay punto navegable degrada a esperar (equivale a idle).
+ */
+export function createWanderTask(radius = 8, dwellMin = 1.5, dwellMax = 3.5): NpcTask {
+  let target: Vector3 | null = null;
+  let phase: 'move' | 'dwell' = 'move';
+  let dwell = 0;
+  return {
+    id: 'wander',
+    init: (ctx) => {
+      dwell = dwellMin + Math.random() * (dwellMax - dwellMin);
+      const angle = Math.random() * Math.PI * 2;
+      const distance = radius * (0.4 + Math.random() * 0.6);
+      target = snapToNav(ctx.navSpace, [
+        pointAt(ctx.self.position, angle, distance),
+        pointAt(ctx.self.position, angle + 1.3, distance * 0.7),
+        pointAt(ctx.self.position, angle - 1.3, distance * 0.5),
+      ]);
+      phase = target ? 'move' : 'dwell';
+    },
+    tick: (ctx): TaskStatus => {
+      if (phase === 'move' && target) {
+        ctx.locomotion.moveTo(target, { gait: 'walk' });
+        if (ctx.locomotion.distanceToTarget() <= 1.2) {
+          ctx.locomotion.stop();
+          phase = 'dwell';
+        } else if (ctx.locomotion.isStuck()) {
+          ctx.locomotion.stop();
+          phase = 'dwell';
+        }
+        return 'running';
+      }
+      dwell -= ctx.delta;
+      return dwell <= 0 ? 'success' : 'running';
+    },
+    abort: (ctx) => ctx.locomotion.stop(),
+  };
+}
+
+/**
  * Camina al ultimo ruido oido (combate > sospechoso) y barre la zona girando
  * a ambos lados. Al terminar limpia el ruido para no re-investigar lo mismo.
  */
@@ -217,34 +259,42 @@ export function createRetreatTask(retreatDistance = 10, safeDistance = 18): NpcT
 }
 
 /**
- * Sigue al anchor (player) manteniendose a `followDistance`. Nunca termina:
- * corre hasta que un interrupt lo tumbe. Histeresis de arranque/parada para
- * que el NPC no haga ping-pong cuando el player camina lento.
+ * Sigue al anchor manteniendose a `followDistance`. El anchor efectivo lo
+ * resuelve el `Npc` (player, u orden ir-a-punto del squad del jugador); con
+ * `anchorOffset` cada miembro apunta a su lugar de la formacion — asi varios
+ * rebeldes no convergen al mismo punto. Nunca termina: corre hasta que un
+ * interrupt lo tumbe. Histeresis de arranque/parada para no hacer ping-pong.
  */
 export function createFollowAnchorTask(followDistance = 6): NpcTask {
   let moving = false;
+  const formationTarget = new Vector3();
   return {
     id: 'followAnchor',
     init: () => {
       moving = false;
     },
     tick: (ctx): TaskStatus => {
-      const anchor = ctx.player;
-      if (!anchor.isAlive) return 'failure';
-      const dx = anchor.position.x - ctx.self.position.x;
-      const dz = anchor.position.z - ctx.self.position.z;
+      const anchor = ctx.anchorPosition ?? (ctx.player.isAlive ? ctx.player.position : null);
+      if (!anchor) return 'failure';
+      const target = ctx.anchorOffset
+        ? formationTarget.copy(anchor).add(ctx.anchorOffset)
+        : anchor;
+      const dx = target.x - ctx.self.position.x;
+      const dz = target.z - ctx.self.position.z;
       const dist = Math.sqrt(dx * dx + dz * dz);
-      if (!moving && dist > followDistance + 2) moving = true;
+      // Con lugar de formacion asignado, el destino es exacto (radio corto).
+      const arrive = ctx.anchorOffset ? 1.2 : followDistance;
+      if (!moving && dist > arrive + 2) moving = true;
       if (moving) {
-        ctx.locomotion.moveTo(anchor.position, {
+        ctx.locomotion.moveTo(target, {
           gait: dist > followDistance * 2 ? 'sprint' : 'walk',
         });
-        if (dist <= followDistance) {
+        if (dist <= arrive) {
           ctx.locomotion.stop();
           moving = false;
         }
       } else {
-        ctx.locomotion.face(anchor.position);
+        ctx.locomotion.face(anchor);
       }
       return 'running';
     },
@@ -257,19 +307,23 @@ export function createFollowAnchorTask(followDistance = 6): NpcTask {
  * para `AnchorFar` — el ally quedo descolgado y vuelve aunque este en combate.
  */
 export function createRegroupTask(arriveDistance = 5): NpcTask {
+  const formationTarget = new Vector3();
   return {
     id: 'regroup',
     init: () => {},
     tick: (ctx): TaskStatus => {
-      const anchor = ctx.player;
-      if (!anchor.isAlive) return 'failure';
-      const dx = anchor.position.x - ctx.self.position.x;
-      const dz = anchor.position.z - ctx.self.position.z;
+      const anchor = ctx.anchorPosition ?? (ctx.player.isAlive ? ctx.player.position : null);
+      if (!anchor) return 'failure';
+      const target = ctx.anchorOffset
+        ? formationTarget.copy(anchor).add(ctx.anchorOffset)
+        : anchor;
+      const dx = target.x - ctx.self.position.x;
+      const dz = target.z - ctx.self.position.z;
       if (Math.sqrt(dx * dx + dz * dz) <= arriveDistance) {
         ctx.locomotion.stop();
         return 'success';
       }
-      ctx.locomotion.moveTo(anchor.position, { gait: 'sprint' });
+      ctx.locomotion.moveTo(target, { gait: 'sprint' });
       if (ctx.locomotion.isStuck()) return 'failure';
       return 'running';
     },

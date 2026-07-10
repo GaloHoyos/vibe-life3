@@ -16,6 +16,8 @@ import { createGunshipVisual } from '@game/characters/visuals/GunshipVisual';
 import { createStriderVisual } from '@game/characters/visuals/StriderVisual';
 import { buildAlyxPreset } from '@game/npc/presets/alyxPreset';
 import { buildCombinePreset } from '@game/npc/presets/combinePreset';
+import { buildPassivePreset } from '@game/npc/presets/passivePreset';
+import { buildRebelPreset } from '@game/npc/presets/rebelPreset';
 import { buildZombiePreset } from '@game/npc/presets/zombiePreset';
 import { buildHeadcrabPreset } from '@game/npc/presets/headcrabPreset';
 import { buildManhackPreset } from '@game/npc/presets/manhackPreset';
@@ -50,6 +52,7 @@ import type { TacticalMap } from '@game/npc/ai/TacticalMap';
 import type { SquadDirector } from '@game/npc/ai/SquadDirector';
 import { getMaterial } from '@engine/render/material/Materials';
 import { CharacterPresets } from './CharacterPresets';
+import { applyDefinitionStats } from './CharacterStats';
 import type { CharacterDefinition, CharacterId } from '@engine/characters/CharacterDefinition';
 import type { DifficultyProvider } from '@game/config/difficulty.config';
 
@@ -143,7 +146,10 @@ export class CharacterFactory {
     services: NpcRuntimeServices,
     patrolPoints: Vector3[],
   ): Npc {
-    const preset = resolvePresetFor(definition, { hasPatrol: patrolPoints.length > 0 });
+    const preset = resolvePresetFor(definition, {
+      hasPatrol: patrolPoints.length > 0,
+      ...(definition.flinch ? { flinch: definition.flinch } : {}),
+    });
     const visualGroup = wrapVisualRoot(visualRoot);
     const ownerProxy: {
       applyDamage: (amount: number, dir?: Vector3, part?: string, attackerId?: string, point?: Vector3) => void;
@@ -314,7 +320,7 @@ export class CharacterFactory {
         ownerBody: motor.body,
         faction: definition.faction,
         eyeHeight: definition.perception.eyeHeight,
-        effectiveRange: definition.ai.detectionRange,
+        effectiveRange: definition.attack.range,
         rangedConfig: ranged,
         raycast: losRaycast,
         onReload: (duration) => animation.notifyReload(duration),
@@ -354,9 +360,15 @@ export class CharacterFactory {
 function resolvePresetFor(definition: CharacterDefinition, options: NpcPresetOptions): NpcPreset {
   switch (definition.aiProfileId) {
     case 'alyxSupport':
-      return buildAlyxPreset();
+      return applyDefinitionStats(buildAlyxPreset(), definition);
+    case 'rebelAlly':
+      return applyDefinitionStats(buildRebelPreset(options), definition);
+    case 'rebelMedic':
+      return applyDefinitionStats(buildRebelPreset({ ...options, medic: true }), definition);
     case 'zombieMelee':
-      return buildZombiePreset();
+      return applyDefinitionStats(buildZombiePreset(), definition);
+    case 'passiveHumanoid':
+      return applyDefinitionStats(buildPassivePreset(), definition);
     case 'headcrabMelee':
       return buildHeadcrabPreset();
     case 'manhackFlyer':
@@ -369,7 +381,7 @@ function resolvePresetFor(definition: CharacterDefinition, options: NpcPresetOpt
       return buildStriderPreset(options);
     case 'combineSoldier':
     default:
-      return buildCombinePreset(options);
+      return applyDefinitionStats(buildCombinePreset(options), definition);
   }
 }
 

@@ -6,7 +6,7 @@ import type { PortalSlot } from "@engine/portals/PortalFrame";
 import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
 import type { TriggerAction } from "@game/levels/LevelDefinition";
 import type { HazardKind } from "@game/levels/HazardVolumeSystem";
-import type { UiSoundCue } from "@game/config/audio.config";
+import type { NpcCalloutKind, UiSoundCue } from "@game/config/audio.config";
 import type { ChargerKind } from "@game/config/items.config";
 import type { DifficultyLevel } from "@game/config/difficulty.config";
 import type { DamageType } from "@shared/types/lifecycle";
@@ -184,6 +184,13 @@ export interface GameEventMap {
     /** Posición del NPC, para reproducir la vocalización en 3D. */
     position?: Vector3;
   };
+  /** Voz tactica sincronizada con la decision del NPC (contact/engaging/...). */
+  "npc.callout": {
+    id: string;
+    characterId: CharacterId;
+    kind: NpcCalloutKind;
+    position?: Vector3;
+  };
   /**
    * Un NPC vio un threat â€” broadcast a la facciÃ³n para que aliados cercanos
    * reciban la LKP. SÃ³lo NPCs hostiles a `threatFaction` deberÃ­an reaccionar.
@@ -206,6 +213,31 @@ export interface GameEventMap {
     id: string;
     characterId: CharacterId;
     /** Posición del NPC, para reproducir el sonido de ataque en 3D. */
+    position?: Vector3;
+  };
+  /**
+   * Un NPC lanza una granada fisica (flush-out de un target oculto). Game la
+   * materializa via `GrenadeSystem.spawn` con `ownerKind: "npc"`.
+   */
+  "npc.grenade": {
+    id: string;
+    characterId: CharacterId;
+    origin: Vector3;
+    velocity: Vector3;
+    damage: number;
+    radius: number;
+    impulse: number;
+    fuseSeconds: number;
+    sourceFaction: Faction;
+    /** Elapsed del game loop al lanzar (base del fuse). */
+    now: number;
+  };
+  /** Un medic curo a un aliado (player u otro NPC). Game aplica el heal real. */
+  "npc.heal": {
+    medicId: string;
+    characterId: CharacterId;
+    targetId: string;
+    amount: number;
     position?: Vector3;
   };
   /** El NPC entra en fase de carga/telegraph de un ataque (e.g. cañón del strider). */
@@ -231,6 +263,16 @@ export interface GameEventMap {
     npcId: string;
     weaponId: string;
     position: Vector3;
+  };
+  /** Cambio de tamaño del squad del jugador (join/muerte/reset). */
+  "squad.changed": {
+    size: number;
+    max: number;
+  };
+  /** Orden del jugador a su squad (tecla C): ir a un punto o reagruparse. */
+  "squad.command": {
+    kind: "move" | "regroup";
+    position?: Vector3;
   };
   "door.opened": {
     id: string;

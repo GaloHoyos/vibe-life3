@@ -51,6 +51,7 @@ import { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
 import { computePortalNavLinks } from "@game/gameplay/weapons/portal/PortalNavLinks";
 import { PortalConfig } from "@game/config/portal.config";
 import { GrabSystem, InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
+import { PlayerSquadService } from "@game/gameplay/squad/PlayerSquadService";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
 import type { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
 import type { NavSpace } from "@engine/ai/nav/NavSpace";
@@ -168,6 +169,7 @@ export class Game {
   /** True durante la caída de cámara post-muerte (antes de mostrar el prompt). */
   private dying = false;
   private actionSpawnSerial = 0;
+  private lastSquadCommandAt = -Infinity;
   private readonly npcContextRadius = 90;
 
   constructor(private readonly engine: Engine, options: GameOptions = {}) {
@@ -426,6 +428,7 @@ export class Game {
     s.register(GameTokens.TriggerSystem, new TriggerSystem(eventBus));
     s.register(GameTokens.CheckpointSystem, new CheckpointSystem(eventBus));
     s.register(GameTokens.HazardVolumes, new HazardVolumeSystem(eventBus, vfx));
+    s.register(GameTokens.PlayerSquad, new PlayerSquadService(eventBus));
 
     eventBus.on("npc.weapon.dropped", (payload) => {
       void this.handleWeaponDrop(payload.npcId, payload.weaponId, payload.position);
@@ -450,6 +453,32 @@ export class Game {
         weaponName: "Strider Cannon",
         color: new Color(striderCannonColor),
       });
+    });
+    eventBus.on(
+      "npc.grenade",
+      ({ id, origin, velocity, damage, radius, impulse, fuseSeconds, sourceFaction, now }) => {
+        grenades.spawn({
+          mode: "fuse",
+          origin,
+          velocity,
+          damage,
+          radius,
+          impulse,
+          fuseSeconds,
+          ownerKind: "npc",
+          sourceId: id,
+          sourceFaction,
+          weaponName: "granada",
+          now,
+        });
+      },
+    );
+    eventBus.on("npc.heal", ({ targetId, amount }) => {
+      if (targetId === "player") {
+        this.player?.health.heal(amount);
+        return;
+      }
+      this.npcs.find((npc) => npc.id === targetId)?.health.heal(amount);
     });
     eventBus.on("level.action", ({ action, position }) => {
       void this.handleLevelAction(action, position);
@@ -861,6 +890,31 @@ export class Game {
    * primer impacto válido. Si el suelo está demasiado lejos o el rayo no
    * pega nada, no hace nada (mensaje en la consola).
    */
+  /**
+   * Tecla C estilo HL2: raycast de mira → ordena al squad ir al punto;
+   * doble-tap (<0.35 s) o sin superficie valida → reagrupar. Sin miembros
+   * no hace nada.
+   */
+  private handleSquadCommand(elapsed: number): void {
+    const services = this.engine.services;
+    const squad = services.resolve(GameTokens.PlayerSquad);
+    if (squad.size() === 0) return;
+    const doubleTap = elapsed - this.lastSquadCommandAt < 0.35;
+    this.lastSquadCommandAt = elapsed;
+    if (doubleTap) {
+      squad.recall();
+      return;
+    }
+    const camera = services.resolve(EngineTokens.Camera);
+    const raycast = services.resolve(EngineTokens.Raycast);
+    const hit = raycast.cast(camera.camera.position, camera.getForwardDirection(), 60);
+    if (!hit) {
+      squad.recall();
+      return;
+    }
+    squad.commandMove(hit.point, elapsed);
+  }
+
   private async spawnDebugCombineAtAim(): Promise<void> {
     if (!this.currentLevel) return;
     const services = this.engine.services;
@@ -1184,6 +1238,9 @@ export class Game {
     if (controls.wasPressed("spawnDebugCombine")) {
       void this.spawnDebugCombineAtAim();
     }
+    if (controls.wasPressed("squadCommand")) {
+      this.handleSquadCommand(time.elapsed);
+    }
 
     const stepped = footsteps.update(
       time.delta,
@@ -1221,6 +1278,7 @@ export class Game {
         entity: player,
         isAlive: player.isAlive(),
         radius: 0.35,
+        health01: player.health.max > 0 ? player.health.current / player.health.max : 0,
       };
       const npcSnapshots: ActorSnapshot[] = this.npcs.map((npc) => ({
         id: npc.id,
@@ -1229,8 +1287,21 @@ export class Game {
         entity: npc,
         isAlive: npc.isAlive(),
         radius: npc.radius,
+        health01: npc.health.max > 0 ? npc.health.current / npc.health.max : 0,
       }));
       const npcIndex = new ActorSpatialIndex(npcSnapshots);
+      const playerSquad = s.resolve(GameTokens.PlayerSquad);
+      playerSquad.update(
+        time.elapsed,
+        playerPosition,
+        player.isAlive(),
+        this.npcs.map((npc) => ({
+          id: npc.id,
+          position: npc.position,
+          isAlive: npc.isAlive(),
+          eligible: npc.playerSquadEligible,
+        })),
+      );
       const portalGhosts: ActorSnapshot[] = portals
         .projectPointThroughPortals(playerPosition)
         .map((projection) => ({
@@ -1251,6 +1322,11 @@ export class Game {
         portalGhosts: portalGhosts.length > 0 ? portalGhosts : undefined,
         tacticalMap: this.tacticalMap,
         squadDirector: this.squadDirector,
+        playerSquad: {
+          orderPosition: playerSquad.getOrderPosition(),
+          isMember: (id) => playerSquad.isMember(id),
+          formationOffsetFor: (id) => playerSquad.formationOffsetFor(id),
+        },
         eventBus: s.resolve(GameTokens.EventBus),
       };
       this.pathQueue?.process();
@@ -1746,6 +1822,7 @@ export class Game {
     hazardVolumes.clear();
     services.resolve(GameTokens.GrabSystem).clear();
     services.resolve(GameTokens.PropImpacts).clear();
+    services.resolve(GameTokens.PlayerSquad).reset();
     physics.reset();
     sceneManager.clearLevel([...lighting.getLights(), ...vfx.getPersistentObjects()]);
 

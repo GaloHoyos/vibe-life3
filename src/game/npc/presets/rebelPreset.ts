@@ -15,28 +15,45 @@ import {
   createRegroupTask,
   createRepositionTask,
 } from '@game/npc/brain/tasks/TacticalTasks';
+import { createHealAllyTask } from '@game/npc/brain/tasks/SupportTasks';
 import {
   deadSchedule,
   hitSchedule,
   noticeSuspicionSchedule,
   reloadSchedules,
 } from './commonSchedules';
-import type { NpcPreset } from './NpcPreset';
+import type { NpcMedicProfile, NpcPreset, NpcPresetOptions } from './NpcPreset';
 
-const FOLLOW_DISTANCE = 6;
-const REGROUP_DISTANCE = 14;
+const FOLLOW_DISTANCE = 5;
+const REGROUP_DISTANCE = 16;
+
+const MEDIC_PROFILE: NpcMedicProfile = {
+  healThreshold: 0.6,
+  healAmount: 40,
+  castTime: 1.2,
+  cooldown: 8,
+  range: 18,
+};
+
+export interface RebelPresetOptions extends NpcPresetOptions {
+  /** Variante medic: prioriza curar aliados (schedule `heal`). */
+  medic?: boolean;
+}
 
 /**
- * Preset de Alyx (ally): el anchor manda. Regroup (AnchorFar) pisa al
- * combate — si el player se va, ella lo sigue aunque haya tiros. No
- * persigue threats fuera de vista (sin searchLastKnown): su trabajo es
- * cubrir al player, no cazar. El guard de fuego amigo del combat handle
- * evita que dispare a traves del player.
+ * Preset del rebelde aliado (citizen de HL2): el anchor manda — sigue al
+ * player (o al punto ordenado por el squad del jugador) y pelea alrededor.
+ * Como Alyx no caza (sin searchLastKnown/investigate), pero a diferencia de
+ * ella respeta la disciplina de slots de ataque de su faccion: con varios
+ * rebeldes solo dos disparan a la vez, el resto reposiciona cubriendo. Fuera
+ * del rango del arma sostiene la mira sin gastar municion (guard del
+ * FireBurstTask) en vez de perseguir lejos del player.
  */
-export function buildAlyxPreset(): NpcPreset {
+export function buildRebelPreset(options: RebelPresetOptions = {}): NpcPreset {
+  const flinch = options.flinch ?? { duration: 0.18, cooldown: 1.2 };
   const schedules: ScheduleDefinition<NpcBrainContext>[] = [
     deadSchedule(),
-    hitSchedule(0.18),
+    hitSchedule(flinch.duration),
     ...reloadSchedules(),
     {
       id: 'regroup',
@@ -46,10 +63,24 @@ export function buildAlyxPreset(): NpcPreset {
       interrupts: NO_CONDITIONS,
       tasks: [createRegroupTask(FOLLOW_DISTANCE)],
     },
+    ...(options.medic
+      ? [
+          {
+            // Curar manda sobre pelear (700 > engage 600): el medic corre al
+            // aliado herido incluso bajo fuego; solo el regroup (750) lo pisa.
+            id: 'heal',
+            priority: 700,
+            required: condMask('AllyNeedsHealing'),
+            blockedBy: condMask('IsDead', 'EnemyInMeleeRange'),
+            interrupts: condMask('EnemyInMeleeRange'),
+            tasks: [createHealAllyTask(MEDIC_PROFILE.castTime), createWaitTask(0.4)],
+          } satisfies ScheduleDefinition<NpcBrainContext>,
+        ]
+      : []),
     {
       id: 'takeCover',
       priority: 640,
-      required: condMask('LowHealth', 'SeeEnemy', 'CoverAvailable'),
+      required: condMask('LowHealth', 'SeeEnemy', 'CoverAvailable', 'HasAttackSlot'),
       blockedBy: condMask('IsDead', 'MagazineEmpty'),
       interrupts: condMask('CoverBlown', 'EnemyDead', 'MagazineEmpty', 'AnchorFar'),
       tasks: [createMoveToCoverTask(), createPeekFireCycleTask(2)],
@@ -57,7 +88,7 @@ export function buildAlyxPreset(): NpcPreset {
     {
       id: 'engage',
       priority: 600,
-      required: condMask('SeeEnemy'),
+      required: condMask('SeeEnemy', 'HasAttackSlot'),
       blockedBy: condMask('IsDead', 'MagazineEmpty'),
       interrupts: condMask('LostEnemy', 'EnemyDead', 'MagazineEmpty', 'AnchorFar'),
       tasks: [
@@ -67,6 +98,16 @@ export function buildAlyxPreset(): NpcPreset {
         createRepositionTask(2.0),
         createWaitTask(0.2),
       ],
+    },
+    {
+      // Sin slot de ataque: presencia activa — reposiciona encarando mientras
+      // los dos con slot disparan.
+      id: 'standby',
+      priority: 580,
+      required: condMask('SeeEnemy'),
+      blockedBy: condMask('IsDead', 'HasAttackSlot', 'MagazineEmpty', 'EnemyInMeleeRange'),
+      interrupts: condMask('LostEnemy', 'EnemyDead', 'MagazineEmpty', 'AnchorFar'),
+      tasks: [createRepositionTask(3.0, 2.0), FaceThreatTask, createWaitTask(0.4)],
     },
     noticeSuspicionSchedule(),
     {
@@ -88,20 +129,24 @@ export function buildAlyxPreset(): NpcPreset {
   ];
 
   return {
-    id: 'alyx',
+    id: options.medic ? 'rebelMedic' : 'rebel',
+    attackSlot: true,
+    playerSquad: true,
+    flinch,
+    ...(options.medic ? { medic: MEDIC_PROFILE } : {}),
     perception: {
-      visionRange: 28,
+      visionRange: 26,
       visionConeRadians: (130 * Math.PI) / 180,
       hearingRadius: 16,
       memoryTime: 5,
       eyeHeight: 0.62,
     },
-    maxHealth: 120,
+    maxHealth: 60,
     radius: 0.35,
     meleeRange: 1.5,
     tooCloseRange: 2.0,
     lowHealthRatio: 0.35,
-    weaponAim: 'oneHanded',
+    weaponAim: 'twoHanded',
     anchor: {
       followDistance: FOLLOW_DISTANCE,
       regroupDistance: REGROUP_DISTANCE,

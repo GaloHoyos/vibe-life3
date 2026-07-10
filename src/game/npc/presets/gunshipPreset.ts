@@ -69,6 +69,8 @@ export function buildGunshipPreset(options: NpcPresetOptions = {}): NpcPreset {
 
   return {
     id: "gunship",
+    usesCover: false,
+    usesSquad: false,
     perception: {
       visionRange: 55,
       visionConeRadians: Math.PI,

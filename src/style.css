@@ -589,6 +589,26 @@ body {
 }
 
 /* ============================================================
+ * Squad del jugador (bottom-left, encima de los vitales)
+ * ============================================================ */
+
+.hev-squad {
+  position: absolute;
+  left: 32px;
+  bottom: 128px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--hl-amber);
+  color: var(--hl-amber);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.hev-squad.is-hidden {
+  display: none;
+}
+
+/* ============================================================
  * Notification feed (bottom-right, encima del ammo)
  * ============================================================ */
 

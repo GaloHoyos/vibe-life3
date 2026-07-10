@@ -6,6 +6,12 @@ const postHumanGordonUrl = new URL('../../models/characters/post-human-gordon/po
 const combineUrl = new URL('../../models/characters/combine-soldier/combine-soldier.glb', import.meta.url).href;
 const combineShotgunnerUrl = new URL('../../models/characters/combine-shotgunner/combine-shotgunner.glb', import.meta.url).href;
 const combineEliteUrl = new URL('../../models/characters/combine-elite/combine-elite.glb', import.meta.url).href;
+const rebelF1Url = new URL('../../models/characters/rebel-f-1/rebel-f-1.glb', import.meta.url).href;
+const rebelF2Url = new URL('../../models/characters/rebel-f-2/rebel-f-2.glb', import.meta.url).href;
+const rebelF3Url = new URL('../../models/characters/rebel-f-3/rebel-f-3.glb', import.meta.url).href;
+const rebelM1Url = new URL('../../models/characters/rebel-m-1/rebel-m-1.glb', import.meta.url).href;
+const rebelM2Url = new URL('../../models/characters/rebel-m-2/rebel-m-2.glb', import.meta.url).href;
+const rebelM3Url = new URL('../../models/characters/rebel-m-3/rebel-m-3.glb', import.meta.url).href;
 const crowbarUrl = new URL('../../models/weapons/crowbar.glb', import.meta.url).href;
 const pistolUrl = new URL('../../models/weapons/pistol.glb', import.meta.url).href;
 const smgUrl = new URL('../../models/weapons/smg.glb', import.meta.url).href;
@@ -89,6 +95,42 @@ export const AssetManifest = {
     combineElite: {
       id: 'combineElite',
       path: combineEliteUrl,
+      type: 'character',
+      debug: false,
+    },
+    rebelF1: {
+      id: 'rebelF1',
+      path: rebelF1Url,
+      type: 'character',
+      debug: false,
+    },
+    rebelF2: {
+      id: 'rebelF2',
+      path: rebelF2Url,
+      type: 'character',
+      debug: false,
+    },
+    rebelF3: {
+      id: 'rebelF3',
+      path: rebelF3Url,
+      type: 'character',
+      debug: false,
+    },
+    rebelM1: {
+      id: 'rebelM1',
+      path: rebelM1Url,
+      type: 'character',
+      debug: false,
+    },
+    rebelM2: {
+      id: 'rebelM2',
+      path: rebelM2Url,
+      type: 'character',
+      debug: false,
+    },
+    rebelM3: {
+      id: 'rebelM3',
+      path: rebelM3Url,
       type: 'character',
       debug: false,
     },

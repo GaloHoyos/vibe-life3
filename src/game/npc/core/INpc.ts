@@ -18,6 +18,8 @@ export interface ActorSnapshot {
   entity: Damageable;
   isAlive: boolean;
   radius: number;
+  /** Fraccion de vida 0..1 (para medics/priorizacion). Game la llena por frame. */
+  health01?: number;
   /**
    * Posición real NAVEGABLE del actor cuando `position` es una proyección
    * (ghost de portal: `position` queda detrás del disco, correcta para
@@ -53,6 +55,15 @@ export interface AiFrameContext {
   portalGhosts?: ActorSnapshot[];
   tacticalMap: TacticalMap;
   squadDirector: SquadDirector;
+  /**
+   * Squad del jugador (rebeldes): membresia, orden ir-a-punto vigente y
+   * offset de formacion. Los miembros anclan a la orden en vez del player.
+   */
+  playerSquad?: {
+    orderPosition: Vector3 | null;
+    isMember(id: string): boolean;
+    formationOffsetFor(id: string): Vector3 | null;
+  };
   eventBus: GameEventBus;
 }
 
@@ -214,6 +225,8 @@ export interface INpc {
   readonly faction: Faction;
   readonly position: Vector3;
   readonly radius: number;
+  /** Elegible para el squad del jugador (preset con `playerSquad`). */
+  readonly playerSquadEligible: boolean;
 
   update(ctx: AiFrameContext): void;
   syncFromPhysics(): void;

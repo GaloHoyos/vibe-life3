@@ -3,17 +3,21 @@ import { NO_CONDITIONS } from '@engine/ai/brain/Condition';
 import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
 import { condMask } from '@game/npc/brain/NpcConditions';
 import {
-  createFlinchTask,
   createMoveToThreatTask,
   createWaitTask,
   FaceThreatTask,
   FireBurstTask,
-  PlayDeathTask,
 } from '@game/npc/brain/tasks/CoreTasks';
+import { createWanderTask } from '@game/npc/brain/tasks/TacticalTasks';
 import {
-  createInvestigateTask,
-  createSearchSweepTask,
-} from '@game/npc/brain/tasks/TacticalTasks';
+  DEFAULT_ALERT_CONDS,
+  deadSchedule,
+  hitSchedule,
+  idleSchedule,
+  investigateCombatSchedule,
+  investigateSuspiciousSchedule,
+  searchLastKnownSchedule,
+} from './commonSchedules';
 import type { NpcPreset } from './NpcPreset';
 
 /**
@@ -25,24 +29,10 @@ import type { NpcPreset } from './NpcPreset';
  */
 export function buildZombiePreset(): NpcPreset {
   const schedules: ScheduleDefinition<NpcBrainContext>[] = [
-    {
-      id: 'dead',
-      priority: 1000,
-      required: condMask('IsDead'),
-      blockedBy: NO_CONDITIONS,
-      interrupts: NO_CONDITIONS,
-      tasks: [PlayDeathTask],
-    },
-    {
-      // Flinch largo: cada impacto corta el avance, el ritmo HL2 de frenar
-      // zombies a tiros.
-      id: 'stagger',
-      priority: 900,
-      required: condMask('JustHit'),
-      blockedBy: condMask('IsDead'),
-      interrupts: NO_CONDITIONS,
-      tasks: [createFlinchTask(0.45)],
-    },
+    deadSchedule(),
+    // Flinch largo: cada impacto corta el avance, el ritmo HL2 de frenar
+    // zombies a tiros.
+    hitSchedule(0.45, 'stagger'),
     {
       id: 'meleeAttack',
       priority: 700,
@@ -59,49 +49,26 @@ export function buildZombiePreset(): NpcPreset {
       interrupts: condMask('EnemyInMeleeRange', 'LostEnemy', 'EnemyDead'),
       tasks: [createMoveToThreatTask(1.4, 'sprint')],
     },
+    searchLastKnownSchedule(1.0),
+    investigateCombatSchedule(1.0),
+    investigateSuspiciousSchedule(1.5),
     {
-      id: 'searchLastKnown',
-      priority: 500,
-      required: condMask('LostEnemy'),
-      blockedBy: condMask('IsDead', 'SeeEnemy'),
-      interrupts: condMask('SeeEnemy', 'EnemyDead'),
-      tasks: [createSearchSweepTask(), createWaitTask(1.0)],
-    },
-    {
-      id: 'investigateCombat',
-      priority: 320,
-      required: condMask('HeardCombat'),
-      blockedBy: condMask('IsDead', 'SeeEnemy', 'LostEnemy'),
-      interrupts: condMask('SeeEnemy', 'LostEnemy'),
-      tasks: [createInvestigateTask(), createWaitTask(1.0)],
-    },
-    {
-      id: 'investigateSuspicious',
-      priority: 300,
-      required: condMask('HeardSuspicious'),
-      blockedBy: condMask('IsDead', 'SeeEnemy', 'LostEnemy', 'HeardCombat'),
-      interrupts: condMask('SeeEnemy', 'LostEnemy', 'HeardCombat'),
-      tasks: [createInvestigateTask(), createWaitTask(1.5)],
-    },
-    {
-      id: 'idle',
-      priority: 100,
+      // Deambular sin estimulos (no quedarse estatua): siempre gana sobre
+      // idle (120 > 100), que queda de fallback puro.
+      id: 'wander',
+      priority: 120,
       required: NO_CONDITIONS,
-      blockedBy: condMask(
-        'IsDead',
-        'SeeEnemy',
-        'LostEnemy',
-        'JustHit',
-        'HeardCombat',
-        'HeardSuspicious',
-      ),
-      interrupts: condMask('SeeEnemy', 'LostEnemy', 'JustHit', 'HeardCombat', 'HeardSuspicious'),
-      tasks: [createWaitTask(1.4)],
+      blockedBy: condMask('IsDead', ...DEFAULT_ALERT_CONDS),
+      interrupts: condMask(...DEFAULT_ALERT_CONDS),
+      tasks: [createWanderTask()],
     },
+    idleSchedule(1.4),
   ];
 
   return {
     id: 'zombie',
+    usesCover: false,
+    usesSquad: false,
     perception: {
       visionRange: 14,
       visionConeRadians: (100 * Math.PI) / 180,

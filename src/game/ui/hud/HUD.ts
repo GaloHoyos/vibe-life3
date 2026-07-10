@@ -126,6 +126,10 @@ export class HUD implements Disposable {
         this.view.objective.setObjective(text, completed ?? false);
         if (marker !== undefined) this.view.objective.setMarker(marker);
       }),
+      eventBus.on("squad.changed", ({ size, max }) => this.view.squad.setSize(size, max)),
+      eventBus.on("squad.command", ({ kind }) =>
+        this.view.notify(kind === "move" ? HudStrings.squadMove : HudStrings.squadRegroup),
+      ),
     );
   }
 

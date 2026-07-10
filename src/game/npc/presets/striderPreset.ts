@@ -69,6 +69,8 @@ export function buildStriderPreset(options: NpcPresetOptions = {}): NpcPreset {
 
   return {
     id: "strider",
+    usesCover: false,
+    usesSquad: false,
     perception: {
       visionRange: 85,
       visionConeRadians: Math.PI,

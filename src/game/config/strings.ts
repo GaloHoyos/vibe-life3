@@ -127,6 +127,9 @@ export const InteractionStrings = {
 
 export const HudStrings = {
   unarmed: "DESARMADO",
+  squadSize: (size: number, max: number): string => `ESCUADRÓN ${size}/${max}`,
+  squadMove: "escuadrón: a la posición",
+  squadRegroup: "escuadrón: reagruparse",
   weaponPickedUp: (weaponName: string): string => `arma adquirida: ${weaponName}`,
   healthPickedUp: (amount: number): string => `+${amount} vida`,
   armorPickedUp: (amount: number): string => `+${amount} traje`,

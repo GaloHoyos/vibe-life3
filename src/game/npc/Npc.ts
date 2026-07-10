@@ -1,6 +1,6 @@
 import { Group, Quaternion, Vector3 } from 'three';
 import type { Faction } from '@engine/ai/Faction';
-import { isHostileTo } from '@engine/ai/Faction';
+import { isAlliedWith, isHostileTo } from '@engine/ai/Faction';
 import { Brain } from '@engine/ai/brain/Brain';
 import type { NavSpace } from '@engine/ai/nav/NavSpace';
 import type { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
@@ -27,6 +27,7 @@ import type {
   NpcCombatHandle,
   NpcLocomotionHandle,
   NpcSelfSnapshot,
+  NpcSlotHandle,
 } from '@game/npc/brain/NpcBrainContext';
 import { computeNpcConditions } from '@game/npc/brain/NpcSensors';
 import { Cond } from '@game/npc/brain/NpcConditions';
@@ -35,9 +36,11 @@ import { NpcNoiseSensor } from '@game/npc/brain/NpcNoiseSensor';
 import { NpcCoverSensor } from '@game/npc/brain/NpcCoverSensor';
 import type { TacticalMap } from '@game/npc/ai/TacticalMap';
 import type { SquadDirector, SquadRole } from '@game/npc/ai/SquadDirector';
+import type { SquadSlotBoard } from '@game/npc/ai/SquadSlotBoard';
 import type { NpcPreset } from '@game/npc/presets/NpcPreset';
 import type { DamageType } from '@shared/types/lifecycle';
 import type { DifficultyProvider } from '@game/config/difficulty.config';
+import type { NpcCalloutKind } from '@game/config/audio.config';
 
 export interface NpcConstructionParams {
   id: string;
@@ -88,6 +91,12 @@ const THREAT_SWITCH_FACTOR = 0.7;
 const THREAT_UNSEEN_PENALTY = 2.5;
 /** Segundos en que quien me daño tiene prioridad de target. */
 const DAMAGE_AGGRO_DURATION = 5.0;
+/** Memoria fresca (s) durante la cual se retiene el slot de ataque sin LOS. */
+const ATTACK_SLOT_MEMORY_GRACE = 1.0;
+/** Histeresis (s) sin querer disparar antes de soltar el slot de ataque. */
+const ATTACK_SLOT_RELEASE_DELAY = 1.0;
+/** Minimo (s) entre voces tacticas de un mismo NPC (no pisarse hablando). */
+const CALLOUT_THROTTLE = 4.0;
 
 /**
  * Runtime unico de NPC: orquesta perception → conditions → brain → locomotion.
@@ -102,6 +111,7 @@ export class Npc implements INpc {
   readonly faction: Faction;
   readonly position: Vector3;
   readonly radius: number;
+  readonly playerSquadEligible: boolean;
 
   private readonly motor: NpcMotor;
   private readonly locomotion: NpcLocomotion;
@@ -123,6 +133,15 @@ export class Npc implements INpc {
   private readonly noiseSensor: NpcNoiseSensor;
   private readonly coverSensor: NpcCoverSensor | null;
   private readonly squadDirector: SquadDirector | null;
+  private readonly slotBoard: SquadSlotBoard | null;
+  private readonly slotHandle: NpcSlotHandle | null;
+  private attackSlotUnwantedFor = 0;
+  private grenadeReadyAt = 0;
+  private healReadyAt = 0;
+  private flinchCooldownTimer = 0;
+  private lastScheduleId: string | null = null;
+  private lastCalloutAt = -Infinity;
+  private wasSuspecting = false;
   private readonly patrolRoute: Vector3[] | null;
   private readonly neighborBuffer: LocomotionNeighbor[] = [];
   private readonly height: number;
@@ -148,6 +167,7 @@ export class Npc implements INpc {
     this.mesh = params.visualRoot;
     this.position = params.position;
     this.radius = params.preset.radius;
+    this.playerSquadEligible = params.preset.playerSquad === true;
     this.height = params.height;
     this.difficulty = params.difficulty;
     // La vida enemiga se hornea con el mult de dificultad al spawnear (no cambia
@@ -184,8 +204,24 @@ export class Npc implements INpc {
       hearingRadius: this.preset.perception.hearingRadius,
       getPosition: () => this.motor.getPosition(),
     });
-    this.coverSensor = params.tacticalMap ? new NpcCoverSensor(this.id, params.tacticalMap) : null;
+    this.coverSensor =
+      params.tacticalMap && this.preset.usesCover !== false
+        ? new NpcCoverSensor(this.id, params.tacticalMap)
+        : null;
     this.squadDirector = params.squadDirector ?? null;
+    const board =
+      this.preset.usesSquad === false ? null : (this.squadDirector?.slots ?? null);
+    this.slotBoard = board;
+    this.slotHandle = board
+      ? {
+          claimOverwatch: () => board.tryClaim('overwatch', this.id, this.faction),
+          releaseOverwatch: () => board.release('overwatch', this.id, this.faction),
+          claimGrenade: () => board.tryClaim('grenade', this.id, this.faction),
+          releaseGrenade: (lockoutSeconds = 0) =>
+            board.release('grenade', this.id, this.faction, lockoutSeconds),
+          throwGrenade: (elapsed) => this.throwGrenade(elapsed),
+        }
+      : null;
   }
 
   update(ctx: AiFrameContext): void {
@@ -193,6 +229,9 @@ export class Npc implements INpc {
     const delta = ctx.delta;
     if (this.justHitTimer > 0) this.justHitTimer = Math.max(0, this.justHitTimer - delta);
     if (this.aggroTimer > 0) this.aggroTimer = Math.max(0, this.aggroTimer - delta);
+    if (this.flinchCooldownTimer > 0) {
+      this.flinchCooldownTimer = Math.max(0, this.flinchCooldownTimer - delta);
+    }
 
     if (!this.health.isAlive()) {
       if (this.frozenSolid) {
@@ -222,6 +261,12 @@ export class Npc implements INpc {
       facing,
       threat: this.currentThreat,
     });
+    this.noiseSensor.tick(delta);
+    const noise = this.noiseSensor.snapshot();
+    // Caliente = acumula deteccion mas rapido (solo presets con `detection`).
+    this.perception.setAlert(
+      noise.combat !== null || this.justHitTimer > 0 || (this.lastPerception?.hasMemory ?? false),
+    );
     const perceptionSnapshot = this.perception.update(
       this.motor.getPosition(),
       facing,
@@ -257,15 +302,17 @@ export class Npc implements INpc {
       isLeaping: () => this.locomotion.isLeaping(),
     };
 
-    this.noiseSensor.tick(delta);
-    const noise = this.noiseSensor.snapshot();
     this.coverSensor?.update(
       ctx.elapsed,
       this.motor.getPosition(),
       this.currentThreat?.position ?? this.threatLastKnown,
     );
     this.feedNeighbors(ctx);
-    const squadOrder = this.reportToSquad(ctx, perceptionSnapshot.visibleNow);
+    const grenadeReady = this.isGrenadeReady(ctx.elapsed, perceptionSnapshot);
+    const squadOrder = this.reportToSquad(ctx, perceptionSnapshot.visibleNow, grenadeReady);
+    this.tickAttackSlot(delta, perceptionSnapshot);
+
+    const healTarget = ctx.elapsed >= this.healReadyAt ? this.resolveHealTarget(ctx) : null;
 
     const selfSnapshot = this.buildSelfSnapshot();
     const conditions = computeNpcConditions({
@@ -280,6 +327,8 @@ export class Npc implements INpc {
       tooCloseRange: this.preset.tooCloseRange,
       lowHealthRatio: this.preset.lowHealthRatio,
       justHit: this.justHitTimer > 0,
+      flinchReady: this.flinchCooldownTimer <= 0,
+      enemySuspected: perceptionSnapshot.suspicious && (this.currentThreat?.isAlive ?? false),
       tipped: isBodyTipped(this.motor.getRotation()),
       alliesNear: this.countAlliesNear(ctx) > 0,
       anchorFar: this.isAnchorFar(ctx),
@@ -287,24 +336,42 @@ export class Npc implements INpc {
       coverBlown: this.coverSensor?.isCoverBlown() ?? false,
       squadFlankAvailable: squadOrder?.role === 'flanker',
       squadOnPoint: squadOrder?.role === 'leader' || squadOrder?.role === 'assault',
+      hasAttackSlot: this.slotBoard?.holds('attack', this.id, this.faction) ?? false,
+      overwatchFree:
+        this.preset.attackSlot === true &&
+        (this.slotBoard?.canClaim('overwatch', this.id, this.faction) ?? false),
+      grenadeReady,
+      allyNeedsHealing: healTarget !== null,
       selfBuildingId: this.buildingIdOf(this.motor.getPosition()),
       threatBuildingId: this.threatLastKnown ? this.buildingIdOf(this.threatLastKnown) : null,
       selfRoomId: this.roomIdOf(this.motor.getPosition()),
       threatRoomId: this.threatLastKnown ? this.roomIdOf(this.threatLastKnown) : null,
     });
     this.emitThreatSpottedIfNeeded(ctx, conditions);
+    const suspecting = (conditions & Cond.EnemySuspected) !== 0;
+    if (suspecting && !this.wasSuspecting) this.emitCallout(ctx, 'alert');
+    this.wasSuspecting = suspecting;
 
+    const isSquadMember =
+      this.playerSquadEligible && (ctx.playerSquad?.isMember(this.id) ?? false);
     const brainCtx: NpcBrainContext = {
       delta,
       elapsed: ctx.elapsed,
       self: selfSnapshot,
       threat: this.currentThreat,
       threatLastKnown: this.threatLastKnown,
+      threatSuspected: perceptionSnapshot.suspectedPosition,
+      anchorPosition: this.resolveAnchorPosition(ctx),
+      anchorOffset: isSquadMember ? (ctx.playerSquad?.formationOffsetFor(this.id) ?? null) : null,
       player: ctx.player,
       patrolRoute: this.patrolRoute,
       noise,
       tactical: this.coverSensor,
       squad: squadOrder ? { role: squadOrder.role, flankSide: squadOrder.flankSide } : null,
+      slots: this.slotHandle,
+      medic: healTarget
+        ? { target: healTarget, heal: (elapsed) => this.performHeal(elapsed, healTarget) }
+        : null,
       conditions,
       navSpace: this.navSpace,
       buildingRegistry: this.buildingRegistry,
@@ -320,6 +387,7 @@ export class Npc implements INpc {
     const incapacitated = this.motor.isIncapacitated();
     if (!incapacitated) {
       this.brain.update(brainCtx, delta, conditions);
+      this.watchScheduleTransition(ctx);
     }
     if (NpcDebugFlags.freezeMovement) {
       // Frena cualquier goal residual y reencara al threat: el motor se tickea
@@ -727,8 +795,9 @@ export class Npc implements INpc {
   private reportToSquad(
     ctx: AiFrameContext,
     hasLineOfSight: boolean,
+    wantsGrenade: boolean,
   ): { role: SquadRole; flankSide: 1 | -1 } | null {
-    if (!this.squadDirector) return null;
+    if (!this.squadDirector || this.preset.usesSquad === false) return null;
     this.squadDirector.report({
       id: this.id,
       faction: this.faction,
@@ -736,12 +805,164 @@ export class Npc implements INpc {
       health01: this.health.current / this.health.max,
       hasLineOfSight,
       inCover: this.coverSensor?.inCover() ?? false,
-      wantsGrenade: false,
+      wantsGrenade,
       canFlank: this.health.current / this.health.max > 0.4,
       threatPosition: this.threatLastKnown,
     });
     const order = this.squadDirector.getOrder(this.id);
     return { role: order.role, flankSide: order.flankSide };
+  }
+
+  /**
+   * Ventana de granada de flush-out: el target lleva un rato oculto
+   * (`flushAfterMemoryAge` — si esta a la vista se le dispara), la LKP cae en
+   * la banda [minRange, maxRange], el cooldown expiro y el slot de granada de
+   * la squad esta disponible.
+   */
+  private isGrenadeReady(elapsed: number, perception: PerceptionSnapshot): boolean {
+    const profile = this.preset.grenade;
+    if (!profile?.enabled || !this.slotBoard) return false;
+    if (elapsed < this.grenadeReadyAt) return false;
+    const target = perception.lastKnownPosition;
+    if (!target || perception.memoryAge < profile.flushAfterMemoryAge) return false;
+    const self = this.motor.getPosition();
+    const dx = target.x - self.x;
+    const dz = target.z - self.z;
+    const distSq = dx * dx + dz * dz;
+    if (distSq < profile.minRange * profile.minRange) return false;
+    if (distSq > profile.maxRange * profile.maxRange) return false;
+    return this.slotBoard.canClaim('grenade', this.id, this.faction);
+  }
+
+  /**
+   * (medic) Aliado vivo mas herido bajo el umbral dentro del rango: player u
+   * otro NPC del mismo bando. Null sin perfil medic o sin candidatos.
+   */
+  private resolveHealTarget(ctx: AiFrameContext): ActorSnapshot | null {
+    const medic = this.preset.medic;
+    if (!medic) return null;
+    const self = this.motor.getPosition();
+    let best: ActorSnapshot | null = null;
+    let bestHealth = medic.healThreshold;
+    const consider = (actor: ActorSnapshot): void => {
+      if (!actor.isAlive || actor.health01 === undefined) return;
+      if (actor.health01 >= bestHealth) return;
+      const dx = actor.position.x - self.x;
+      const dz = actor.position.z - self.z;
+      if (dx * dx + dz * dz > medic.range * medic.range) return;
+      best = actor;
+      bestHealth = actor.health01;
+    };
+    if (isAlliedWith(this.faction, ctx.player.faction)) consider(ctx.player);
+    for (const npc of ctx.npcs) {
+      if (npc.id === this.id) continue;
+      if (!isAlliedWith(this.faction, npc.faction)) continue;
+      consider(npc);
+    }
+    return best;
+  }
+
+  /** Aplica la curacion via `npc.heal` (Game resuelve el heal real) y arranca el cooldown. */
+  private performHeal(elapsed: number, target: ActorSnapshot): boolean {
+    const medic = this.preset.medic;
+    if (!medic || !target.isAlive) return false;
+    this.healReadyAt = elapsed + medic.cooldown;
+    this.eventBus.emit('npc.heal', {
+      medicId: this.id,
+      characterId: this.preset.id,
+      targetId: target.id,
+      amount: medic.healAmount,
+      position: this.motor.getPosition().clone(),
+    });
+    return true;
+  }
+
+  /** Emite la granada fisica hacia la LKP (arco del perfil) y arranca el cooldown. */
+  private throwGrenade(elapsed: number): boolean {
+    const profile = this.preset.grenade;
+    const target = this.threatLastKnown;
+    if (!profile || !target) return false;
+    const origin = this.motor.getPosition().clone();
+    origin.y += this.preset.perception.eyeHeight;
+    const dx = target.x - origin.x;
+    const dz = target.z - origin.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < 1e-3) return false;
+    const velocity = new Vector3(
+      (dx / dist) * profile.launchSpeed,
+      profile.launchLift,
+      (dz / dist) * profile.launchSpeed,
+    );
+    this.grenadeReadyAt = elapsed + profile.cooldown;
+    this.eventBus.emit('npc.grenade', {
+      id: this.id,
+      characterId: this.preset.id,
+      origin,
+      velocity,
+      damage: profile.damage,
+      radius: profile.radius,
+      impulse: profile.impulse,
+      fuseSeconds: profile.fuseSeconds,
+      sourceFaction: this.faction,
+      now: elapsed,
+    });
+    return true;
+  }
+
+  /**
+   * Detecta la ENTRADA a un schedule (ignorando los pasos por null cuando un
+   * schedule completa y se re-elige el mismo). Alimenta efectos por-schedule:
+   * cooldown de flinch y, mas adelante, callouts de voz.
+   */
+  private watchScheduleTransition(ctx: AiFrameContext): void {
+    const schedule = this.brain.snapshot().schedule;
+    if (schedule === null || schedule === this.lastScheduleId) return;
+    this.lastScheduleId = schedule;
+    if ((schedule === 'hit' || schedule === 'stagger') && this.preset.flinch) {
+      this.flinchCooldownTimer = this.preset.flinch.cooldown;
+    }
+    const calloutKind = this.preset.callouts?.bySchedule?.[schedule];
+    if (calloutKind) this.emitCallout(ctx, calloutKind);
+  }
+
+  /** Voz tactica throttled: un NPC no se pisa hablando (F.E.A.R.-style radio). */
+  private emitCallout(ctx: AiFrameContext, kind: NpcCalloutKind): void {
+    if (!this.preset.callouts) return;
+    if (ctx.elapsed - this.lastCalloutAt < CALLOUT_THROTTLE) return;
+    this.lastCalloutAt = ctx.elapsed;
+    this.eventBus.emit('npc.callout', {
+      id: this.id,
+      characterId: this.preset.id,
+      kind,
+      position: this.motor.getPosition().clone(),
+    });
+  }
+
+  /**
+   * Lifecycle del slot de ataque (estilo HL2): se reclama mientras el NPC
+   * quiere disparar (threat vivo a la vista o con memoria fresca, municion) y
+   * se suelta con histeresis al dejar de quererlo. Solo el dueño libera —
+   * los schedules leen el resultado via `HasAttackSlot`.
+   */
+  private tickAttackSlot(delta: number, perception: PerceptionSnapshot): void {
+    const board = this.slotBoard;
+    if (!board || this.preset.attackSlot !== true) return;
+    const wants =
+      (this.currentThreat?.isAlive ?? false) &&
+      (perception.visibleNow || perception.memoryAge < ATTACK_SLOT_MEMORY_GRACE) &&
+      !this.combatHandle.magazineEmpty() &&
+      !this.combatHandle.isReloading();
+    if (wants) {
+      this.attackSlotUnwantedFor = 0;
+      board.tryClaim('attack', this.id, this.faction);
+      return;
+    }
+    if (!board.holds('attack', this.id, this.faction)) return;
+    this.attackSlotUnwantedFor += delta;
+    if (this.attackSlotUnwantedFor >= ATTACK_SLOT_RELEASE_DELAY) {
+      board.release('attack', this.id, this.faction);
+      this.attackSlotUnwantedFor = 0;
+    }
   }
 
   private countAlliesNear(ctx: AiFrameContext): number {
@@ -756,12 +977,27 @@ export class Npc implements INpc {
     return count;
   }
 
+  /**
+   * Ancla efectiva del ally: la orden ir-a-punto del squad del jugador si es
+   * miembro y hay una vigente; si no, el player (comportamiento Alyx).
+   */
+  private resolveAnchorPosition(ctx: AiFrameContext): Vector3 | null {
+    if (!this.preset.anchor) return null;
+    if (this.playerSquadEligible && ctx.playerSquad?.isMember(this.id)) {
+      const order = ctx.playerSquad.orderPosition;
+      if (order) return order;
+    }
+    return ctx.player.isAlive ? ctx.player.position : null;
+  }
+
   private isAnchorFar(ctx: AiFrameContext): boolean {
     const anchor = this.preset.anchor;
-    if (!anchor || !ctx.player.isAlive) return false;
+    if (!anchor) return false;
+    const anchorPos = this.resolveAnchorPosition(ctx);
+    if (!anchorPos) return false;
     const self = this.motor.getPosition();
-    const dx = ctx.player.position.x - self.x;
-    const dz = ctx.player.position.z - self.z;
+    const dx = anchorPos.x - self.x;
+    const dz = anchorPos.z - self.z;
     return dx * dx + dz * dz > anchor.regroupDistance * anchor.regroupDistance;
   }
 
@@ -773,6 +1009,7 @@ export class Npc implements INpc {
   private emitThreatSpottedIfNeeded(ctx: AiFrameContext, conditions: number): void {
     const seeing = (conditions & Cond.SeeEnemy) !== 0;
     const risingEdge = seeing && !this.wasSeeingEnemy;
+    if (risingEdge) this.emitCallout(ctx, 'contact');
     const throttleOk = ctx.elapsed - this.lastSpottedEmitAt >= SPOTTED_EMIT_INTERVAL;
     if (seeing && this.currentThreat && (risingEdge || throttleOk)) {
       this.lastSpottedEmitAt = ctx.elapsed;
@@ -802,37 +1039,6 @@ export class Npc implements INpc {
     this.motor.setSpeedMultiplier(multiplier);
   }
 }
-
-const COND_NAMES = [
-  'IsDead',
-  'JustHit',
-  'LowHealth',
-  'SeeEnemy',
-  'LostEnemy',
-  'EnemyDead',
-  'HeardCombat',
-  'HeardSuspicious',
-  'EnemyInMeleeRange',
-  'EnemyTooClose',
-  'LowAmmo',
-  'MagazineEmpty',
-  'ReloadDone',
-  'CoverAvailable',
-  'BetterCoverAvailable',
-  'CoverBlown',
-  'PathBlocked',
-  'Stuck',
-  'DoorBlocking',
-  'EnemyInBuilding',
-  'SelfInBuilding',
-  'SameRoomAsEnemy',
-  'SquadFlankAvailable',
-  'SquadOnPoint',
-  'AlliesNear',
-  'AnchorFar',
-  'EnemyInLeapRange',
-  'Tipped',
-];
 
 /** Candidato con `id` dado más cercano a `position` (desambigua player vs sus ghosts). */
 function nearestWithId(
@@ -866,10 +1072,11 @@ function isBodyTipped(rotation: Quaternion): boolean {
   return tmpUp.y < 0.5;
 }
 
+/** Derivado de `Cond` para que el trace nunca se desincronice del catalogo de bits. */
 function conditionMaskToNames(mask: number): string[] {
   const out: string[] = [];
-  for (let i = 0; i < COND_NAMES.length; i += 1) {
-    if ((mask & (1 << i)) !== 0) out.push(COND_NAMES[i]);
+  for (const [name, flag] of Object.entries(Cond)) {
+    if ((mask & flag) !== 0) out.push(name);
   }
   return out;
 }

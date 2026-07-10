@@ -1,26 +1,33 @@
 import type { ScheduleDefinition } from '@engine/ai/brain/Task';
-import { NO_CONDITIONS } from '@engine/ai/brain/Condition';
 import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
-import { condMask } from '@game/npc/brain/NpcConditions';
+import { condMask, type CondKey } from '@game/npc/brain/NpcConditions';
 import {
   createAimTask,
-  createFlinchTask,
+  createMoveIntoRangeTask,
   createWaitTask,
   FaceThreatTask,
   FireBurstTask,
-  PlayDeathTask,
-  ReloadWeaponTask,
 } from '@game/npc/brain/tasks/CoreTasks';
 import {
   createFlankTask,
-  createInvestigateTask,
   createMoveToCoverTask,
-  createPatrolTask,
   createPeekFireCycleTask,
   createRepositionTask,
   createRetreatTask,
-  createSearchSweepTask,
 } from '@game/npc/brain/tasks/TacticalTasks';
+import { createOverwatchTask, createThrowGrenadeTask } from '@game/npc/brain/tasks/SquadTasks';
+import {
+  DEFAULT_ALERT_CONDS,
+  deadSchedule,
+  hitSchedule,
+  idleSchedule,
+  investigateCombatSchedule,
+  investigateSuspiciousSchedule,
+  noticeSuspicionSchedule,
+  patrolSchedule,
+  reloadSchedules,
+  searchLastKnownSchedule,
+} from './commonSchedules';
 import type { NpcPreset, NpcPresetOptions } from './NpcPreset';
 
 /**
@@ -33,24 +40,13 @@ import type { NpcPreset, NpcPresetOptions } from './NpcPreset';
  * al oir combate lejano van a investigar. Cover y flank se suman en los
  * schedules tacticos (fases cover/squad) sin tocar estos.
  */
+const COMBINE_ALERT_CONDS: readonly CondKey[] = [...DEFAULT_ALERT_CONDS, 'MagazineEmpty'];
+
 export function buildCombinePreset(options: NpcPresetOptions = {}): NpcPreset {
+  const flinch = options.flinch ?? { duration: 0.18, cooldown: 1.5 };
   const schedules: ScheduleDefinition<NpcBrainContext>[] = [
-    {
-      id: 'dead',
-      priority: 1000,
-      required: condMask('IsDead'),
-      blockedBy: NO_CONDITIONS,
-      interrupts: NO_CONDITIONS,
-      tasks: [PlayDeathTask],
-    },
-    {
-      id: 'hit',
-      priority: 900,
-      required: condMask('JustHit'),
-      blockedBy: condMask('IsDead'),
-      interrupts: NO_CONDITIONS,
-      tasks: [createFlinchTask(0.18)],
-    },
+    deadSchedule(),
+    hitSchedule(flinch.duration),
     {
       id: 'retreat',
       priority: 850,
@@ -59,35 +55,20 @@ export function buildCombinePreset(options: NpcPresetOptions = {}): NpcPreset {
       interrupts: condMask('EnemyDead'),
       tasks: [createRetreatTask(), createWaitTask(0.4)],
     },
-    {
-      // Con cover a mano, recargar cubierto en vez de parado a la vista.
-      id: 'reloadInCover',
-      priority: 810,
-      required: condMask('MagazineEmpty', 'CoverAvailable'),
-      blockedBy: condMask('IsDead', 'EnemyInMeleeRange'),
-      interrupts: NO_CONDITIONS,
-      tasks: [createMoveToCoverTask(), ReloadWeaponTask],
-    },
-    {
-      id: 'reload',
-      priority: 800,
-      required: condMask('MagazineEmpty'),
-      blockedBy: condMask('IsDead', 'EnemyInMeleeRange'),
-      interrupts: NO_CONDITIONS,
-      tasks: [ReloadWeaponTask],
-    },
+    ...reloadSchedules({ blockInMelee: true }),
     {
       // El ciclo cubrirse → asomarse → rafaga. `SquadOnPoint` lo bloquea:
       // los roles de empuje del squad pelean en el abierto via engage.
       id: 'takeCover',
       priority: 640,
-      required: condMask('SeeEnemy', 'CoverAvailable'),
+      required: condMask('SeeEnemy', 'CoverAvailable', 'HasAttackSlot'),
       blockedBy: condMask(
         'IsDead',
         'MagazineEmpty',
         'SquadOnPoint',
         'SquadFlankAvailable',
         'EnemyInMeleeRange',
+        'TooFarToShoot',
       ),
       interrupts: condMask('CoverBlown', 'EnemyTooClose', 'EnemyDead', 'MagazineEmpty'),
       tasks: [createMoveToCoverTask(), createPeekFireCycleTask()],
@@ -104,8 +85,8 @@ export function buildCombinePreset(options: NpcPresetOptions = {}): NpcPreset {
     {
       id: 'engage',
       priority: 600,
-      required: condMask('SeeEnemy'),
-      blockedBy: condMask('IsDead', 'MagazineEmpty'),
+      required: condMask('SeeEnemy', 'HasAttackSlot'),
+      blockedBy: condMask('IsDead', 'MagazineEmpty', 'TooFarToShoot'),
       interrupts: condMask('LostEnemy', 'EnemyDead', 'EnemyInMeleeRange', 'MagazineEmpty'),
       tasks: [
         FaceThreatTask,
@@ -116,68 +97,76 @@ export function buildCombinePreset(options: NpcPresetOptions = {}): NpcPreset {
       ],
     },
     {
-      id: 'searchLastKnown',
-      priority: 500,
-      required: condMask('LostEnemy'),
-      blockedBy: condMask('IsDead', 'SeeEnemy'),
-      interrupts: condMask('SeeEnemy', 'EnemyDead'),
-      tasks: [createSearchSweepTask(), createWaitTask(0.5)],
+      // A la vista pero fuera del rango util del arma: avanzar esprintando
+      // hasta posicion de tiro en vez de tirotear al aire (estilo HL2).
+      id: 'closeDistance',
+      priority: 590,
+      required: condMask('SeeEnemy', 'TooFarToShoot'),
+      blockedBy: condMask('IsDead', 'MagazineEmpty', 'EnemyInMeleeRange'),
+      interrupts: condMask('LostEnemy', 'EnemyDead', 'MagazineEmpty'),
+      tasks: [createMoveIntoRangeTask()],
     },
     {
-      id: 'investigateCombat',
-      priority: 320,
-      required: condMask('HeardCombat'),
-      blockedBy: condMask('IsDead', 'SeeEnemy', 'LostEnemy'),
-      interrupts: condMask('SeeEnemy', 'LostEnemy'),
-      tasks: [createInvestigateTask(), createWaitTask(0.5)],
-    },
-    {
-      id: 'investigateSuspicious',
-      priority: 300,
-      required: condMask('HeardSuspicious'),
-      blockedBy: condMask('IsDead', 'SeeEnemy', 'LostEnemy', 'HeardCombat'),
-      interrupts: condMask('SeeEnemy', 'LostEnemy', 'HeardCombat'),
-      tasks: [createInvestigateTask(), createWaitTask(0.8)],
-    },
-    {
-      id: 'idle',
-      priority: 100,
-      required: NO_CONDITIONS,
+      // Sin slot de ataque (ya hay 2 companeros disparando): presiona sin
+      // disparar — reposicion lateral encarando al threat. Cuando un slot se
+      // libera, engage (600) lo pisa solo por prioridad.
+      id: 'standby',
+      priority: 580,
+      required: condMask('SeeEnemy'),
       blockedBy: condMask(
         'IsDead',
-        'SeeEnemy',
-        'LostEnemy',
-        'JustHit',
+        'HasAttackSlot',
         'MagazineEmpty',
-        'HeardCombat',
-        'HeardSuspicious',
+        'TooFarToShoot',
+        'EnemyInMeleeRange',
+        'SquadFlankAvailable',
       ),
-      interrupts: condMask('SeeEnemy', 'LostEnemy', 'JustHit', 'HeardCombat', 'HeardSuspicious'),
-      tasks: [createWaitTask(1.0)],
+      interrupts: condMask('LostEnemy', 'EnemyDead', 'MagazineEmpty', 'EnemyInMeleeRange'),
+      tasks: [createRepositionTask(3.5, 2.2), FaceThreatTask, createWaitTask(0.4)],
     },
+    {
+      // El target lleva un rato oculto: granada de flush-out a la LKP, estilo
+      // HL2. `GrenadeReady` ya valida cooldown, banda de rango y slot libre.
+      id: 'grenadeFlush',
+      priority: 570,
+      required: condMask('LostEnemy', 'GrenadeReady'),
+      blockedBy: condMask('IsDead', 'SeeEnemy', 'EnemyInMeleeRange'),
+      interrupts: condMask('SeeEnemy', 'EnemyDead'),
+      tasks: [createThrowGrenadeTask(), createWaitTask(0.5)],
+    },
+    {
+      // Un solo miembro sostiene la mira sobre la LKP mientras el resto barre
+      // (searchLastKnown): si el enemigo se asoma, overwatch lo castiga.
+      id: 'overwatch',
+      priority: 560,
+      required: condMask('LostEnemy', 'OverwatchFree'),
+      blockedBy: condMask('IsDead', 'SeeEnemy', 'MagazineEmpty'),
+      interrupts: condMask('SeeEnemy', 'EnemyDead', 'MagazineEmpty'),
+      tasks: [createOverwatchTask()],
+    },
+    searchLastKnownSchedule(0.5),
+    investigateCombatSchedule(0.5),
+    noticeSuspicionSchedule(),
+    investigateSuspiciousSchedule(0.8),
+    idleSchedule(1.0, COMBINE_ALERT_CONDS),
   ];
 
   if (options.hasPatrol) {
-    schedules.push({
-      id: 'patrol',
-      priority: 150,
-      required: NO_CONDITIONS,
-      blockedBy: condMask(
-        'IsDead',
-        'SeeEnemy',
-        'LostEnemy',
-        'JustHit',
-        'MagazineEmpty',
-        'HeardCombat',
-        'HeardSuspicious',
-      ),
-      interrupts: condMask('SeeEnemy', 'LostEnemy', 'JustHit', 'HeardCombat', 'HeardSuspicious'),
-      tasks: [createPatrolTask()],
-    });
+    schedules.push(patrolSchedule(COMBINE_ALERT_CONDS));
   }
 
   return {
     id: 'combine',
+    attackSlot: true,
+    flinch,
+    callouts: {
+      bySchedule: {
+        flank: 'engaging',
+        closeDistance: 'engaging',
+        reload: 'coverme',
+        reloadInCover: 'coverme',
+      },
+    },
     perception: {
       visionRange: 32,
       visionConeRadians: (160 * Math.PI) / 180,

@@ -5,6 +5,7 @@ import { HazardWarning } from './HazardWarning';
 import { HealthArmorHUD } from './HealthArmorHUD';
 import { ObjectiveHUD } from './ObjectiveHUD';
 import { InteractionPrompt } from '@game/ui/overlay/InteractionPrompt';
+import { SquadHUD } from './SquadHUD';
 import { WeaponHUD } from './WeaponHUD';
 import { WeaponSelectorView } from './WeaponSelectorView';
 
@@ -24,6 +25,7 @@ export class HUDView implements Disposable {
   readonly hazardWarning = new HazardWarning();
   readonly interaction = new InteractionPrompt();
   readonly weaponSelector = new WeaponSelectorView();
+  readonly squad = new SquadHUD();
   readonly objective: ObjectiveHUD;
 
   private readonly feed = document.createElement('div');
@@ -41,6 +43,7 @@ export class HUDView implements Disposable {
       this.interaction.element,
       this.healthArmor.element,
       this.weapon.element,
+      this.squad.element,
       this.objective.element,
       this.hazardWarning.element,
       this.feed,

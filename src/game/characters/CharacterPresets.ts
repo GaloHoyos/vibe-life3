@@ -1,5 +1,10 @@
 ﻿import { Vector3 } from "three";
-import type { CharacterDefinition, CharacterId } from "@engine/characters/CharacterDefinition";
+import type { ModelAssetId } from "@engine/assets/AssetManifest";
+import type {
+  CharacterAIProfileId,
+  CharacterDefinition,
+  CharacterId,
+} from "@engine/characters/CharacterDefinition";
 
 const baseHumanoid = {
   type: "humanoid",
@@ -89,7 +94,8 @@ const baseHumanoid = {
     viewConeRadians: Math.PI * 0.75,
     hearingRadius: 14,
     memoryDuration: 6,
-    eyeHeight: 1.55,
+    // Offset desde el CENTRO de la capsula (convencion de PerceptionSystem).
+    eyeHeight: 0.62,
   },
   attack: {
     enabled: false,
@@ -112,6 +118,107 @@ const baseHumanoid = {
   },
   debug: false,
 } satisfies Omit<CharacterDefinition, "id" | "modelId">;
+
+/**
+ * Rebelde de la resistencia (citizen HL2): base de las 6 variantes visuales
+ * y el medic. Aliados del player, SMG con punteria peor que Alyx, siguen al
+ * jugador y respetan slots de ataque (ver `rebelPreset`).
+ */
+function buildRebelDefinition(
+  id: CharacterId,
+  modelId: ModelAssetId,
+  overrides: { aiProfileId?: CharacterAIProfileId } = {},
+): CharacterDefinition {
+  return {
+    ...baseHumanoid,
+    id,
+    modelId,
+    faction: "resistance",
+    aiProfileId: overrides.aiProfileId ?? "rebelAlly",
+    visualOffset: new Vector3(0, -0.875, 0),
+    movement: {
+      ...baseHumanoid.movement,
+      maxSpeed: 4.0,
+      acceleration: 15,
+      turnSpeed: 9,
+      rotationSmoothing: 0.22,
+      turnBeforeMoveAngle: 1.0,
+      minMoveFacingDot: 0.2,
+    },
+    health: { maxHealth: 60 },
+    flinch: { duration: 0.18, cooldown: 1.2 },
+    animation: {
+      ...baseHumanoid.animation,
+      restPose: {
+        type: "tpose_to_relaxed",
+        leftUpperArm: { z: 1.05, x: -0.3 },
+        rightUpperArm: { z: -1.05, x: -0.3 },
+        leftForearm: { z: 0.2, x: -0.5 },
+        rightForearm: { z: -0.2, x: -0.5 },
+        spine: { x: 0.02 },
+        chest: { x: 0.01 },
+        head: { x: -0.02 },
+      },
+      armsMode: "weaponAim",
+      walkStyle: "normal",
+      walk: {
+        stepFrequency: 5.2,
+        strideLength: 0.52,
+        stepHeight: 0.04,
+        armSwing: 0.13,
+        torsoBob: 0.024,
+        torsoLean: 0.07,
+        maxLegSwing: 0.5,
+        maxKneeBend: 0.3,
+        maxArmSwing: 0.19,
+      },
+    },
+    perception: {
+      viewDistance: 26,
+      viewConeRadians: Math.PI * (130 / 180),
+      hearingRadius: 16,
+      memoryDuration: 5,
+      eyeHeight: 0.62,
+      detection: {
+        baseTime: 0.9,
+        instantRange: 8,
+        suspicionThreshold: 0.35,
+        decayRate: 0.6,
+        alertMultiplier: 3,
+      },
+    },
+    ai: { detectionRange: 26 },
+    attack: {
+      enabled: true,
+      type: "ranged",
+      damage: 0,
+      range: 18,
+      cooldown: 0.9,
+      windup: 0,
+      hitWindow: 0,
+      knockback: 0,
+      requireLineOfSight: true,
+      facingDotThreshold: 0.5,
+      ranged: {
+        weaponId: "smg",
+        burstSize: 5,
+        pauseBetweenBursts: 1.0,
+        aimError: 0.1,
+        aimErrorSettled: 0.035,
+        aimSettleDuration: 1.4,
+        aimTime: 0.25,
+        reactionTime: 0.3,
+      },
+    },
+    stumble: {
+      stumbleImpulseThreshold: 0.35,
+      stumbleDuration: 0.4,
+      fallAngleThreshold: 0.95,
+      getUpDelay: 0.8,
+      recoverDuration: 0.55,
+    },
+  };
+}
 
 export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
   zombie: {
@@ -170,6 +277,15 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     ragdoll: {
       ...baseHumanoid.ragdoll,
     },
+    health: { maxHealth: 50 },
+    // Depredador de oido: vision corta y angosta, oreja larga (ver zombiePreset).
+    perception: {
+      viewDistance: 14,
+      viewConeRadians: Math.PI * (100 / 180),
+      hearingRadius: 25,
+      memoryDuration: 10,
+      eyeHeight: 0.62,
+    },
     ai: {
       ...baseHumanoid.ai,
       detectionRange: 26,
@@ -203,7 +319,7 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       turnBeforeMoveAngle: 0.95,
       minMoveFacingDot: 0.2,
     },
-    health: { maxHealth: 80 },
+    health: { maxHealth: 50 },
     animation: {
       ...baseHumanoid.animation,
       restPose: {
@@ -232,10 +348,17 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     },
     perception: {
       viewDistance: 32,
-      viewConeRadians: Math.PI * (140 / 180),
+      viewConeRadians: Math.PI * (160 / 180),
       hearingRadius: 18,
       memoryDuration: 8,
       eyeHeight: 0.62,
+      detection: {
+        baseTime: 1.1,
+        instantRange: 7,
+        suspicionThreshold: 0.35,
+        decayRate: 0.6,
+        alertMultiplier: 3,
+      },
     },
     ai: {
       detectionRange: 32,
@@ -299,7 +422,9 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       turnBeforeMoveAngle: 0.95,
       minMoveFacingDot: 0.2,
     },
-    health: { maxHealth: 80 },
+    // Elite: el doble de aguante, mejor punteria y casi no flinchea.
+    health: { maxHealth: 100 },
+    flinch: { duration: 0.12, cooldown: 2.5 },
     animation: {
       ...baseHumanoid.animation,
       restPose: {
@@ -328,10 +453,17 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     },
     perception: {
       viewDistance: 32,
-      viewConeRadians: Math.PI * (140 / 180),
+      viewConeRadians: Math.PI * (160 / 180),
       hearingRadius: 18,
       memoryDuration: 8,
       eyeHeight: 0.62,
+      detection: {
+        baseTime: 1.1,
+        instantRange: 7,
+        suspicionThreshold: 0.35,
+        decayRate: 0.6,
+        alertMultiplier: 3,
+      },
     },
     ai: {
       detectionRange: 32,
@@ -351,8 +483,8 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
         weaponId: "ar3",
         burstSize: 4,
         pauseBetweenBursts: 1.1,
-        aimError: 0.16,
-        aimErrorSettled: 0.045,
+        aimError: 0.1,
+        aimErrorSettled: 0.03,
         aimSettleDuration: 1.6,
         aimTime: 0.25,
         reactionTime: 0.35,
@@ -395,7 +527,7 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       turnBeforeMoveAngle: 0.95,
       minMoveFacingDot: 0.2,
     },
-    health: { maxHealth: 80 },
+    health: { maxHealth: 50 },
     animation: {
       ...baseHumanoid.animation,
       restPose: {
@@ -424,10 +556,17 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     },
     perception: {
       viewDistance: 32,
-      viewConeRadians: Math.PI * (140 / 180),
+      viewConeRadians: Math.PI * (160 / 180),
       hearingRadius: 18,
       memoryDuration: 8,
       eyeHeight: 0.62,
+      detection: {
+        baseTime: 1.1,
+        instantRange: 7,
+        suspicionThreshold: 0.35,
+        decayRate: 0.6,
+        alertMultiplier: 3,
+      },
     },
     ai: {
       detectionRange: 32,
@@ -524,6 +663,13 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       hearingRadius: 16,
       memoryDuration: 5,
       eyeHeight: 0.62,
+      detection: {
+        baseTime: 0.9,
+        instantRange: 8,
+        suspicionThreshold: 0.35,
+        decayRate: 0.6,
+        alertMultiplier: 3,
+      },
     },
     ai: {
       detectionRange: 28,
@@ -558,6 +704,13 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       recoverDuration: 0.55,
     },
   },
+  rebelF1: buildRebelDefinition("rebelF1", "rebelF1"),
+  rebelF2: buildRebelDefinition("rebelF2", "rebelF2"),
+  rebelF3: buildRebelDefinition("rebelF3", "rebelF3"),
+  rebelM1: buildRebelDefinition("rebelM1", "rebelM1"),
+  rebelM2: buildRebelDefinition("rebelM2", "rebelM2"),
+  rebelM3: buildRebelDefinition("rebelM3", "rebelM3"),
+  rebelMedic: buildRebelDefinition("rebelMedic", "rebelF2", { aiProfileId: "rebelMedic" }),
   headcrab: {
     ...baseHumanoid,
     id: "headcrab",

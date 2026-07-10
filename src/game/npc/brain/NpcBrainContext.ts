@@ -55,6 +55,25 @@ export interface NpcMoveOptions {
   gait?: 'walk' | 'sprint';
 }
 
+/**
+ * Interfaz minima de los squad slots que los tasks consumen (los tasks no ven
+ * el SquadDirector). El slot de ataque NO esta aca: su lifecycle lo maneja el
+ * `Npc` por sensores (`HasAttackSlot`), no los tasks.
+ */
+export interface NpcSlotHandle {
+  /** Reclama el slot unico de overwatch de la squad. True si quedo en poder del NPC. */
+  claimOverwatch(): boolean;
+  releaseOverwatch(): void;
+  claimGrenade(): boolean;
+  /** `lockoutSeconds` veda el slot para toda la squad (espaciar granadas). */
+  releaseGrenade(lockoutSeconds?: number): void;
+  /**
+   * Emite la granada fisica hacia la LKP y arranca el cooldown del NPC.
+   * Presupone `claimGrenade()` previo. False si no hay perfil/target valido.
+   */
+  throwGrenade(elapsed: number): boolean;
+}
+
 /** Estado del mundo que el `Npc` empuja al combat handle cada frame. */
 export interface NpcCombatTickArgs {
   delta: number;
@@ -115,6 +134,16 @@ export interface NpcBrainContext {
   threat: ActorSnapshot | null;
   /** Ultimo punto conocido del threat (memoria de perception). */
   threatLastKnown: Vector3 | null;
+  /** Donde se sospecha que hay un enemigo (acumulador sub-umbral de deteccion). */
+  threatSuspected: Vector3 | null;
+  /**
+   * Ancla efectiva del ally (player u orden ir-a-punto del squad del
+   * jugador). Null en NPCs sin `anchor`. Los tasks de follow/regroup usan
+   * esto, no `player` directo.
+   */
+  anchorPosition: Vector3 | null;
+  /** Offset de formacion alrededor del anchor (miembros del squad del jugador). */
+  anchorOffset: Vector3 | null;
   /** Snapshot del player (puede ser aliado — no necesariamente threat). */
   player: ActorSnapshot;
   /** Ruta de patrol del nivel, o null si el NPC no patrulla. */
@@ -125,6 +154,14 @@ export interface NpcBrainContext {
   tactical: NpcTacticalHandle | null;
   /** Rol asignado por el SquadDirector este frame. Null sin squad. */
   squad: { role: SquadRole; flankSide: 1 | -1 } | null;
+  /** Claims de slots de squad (overwatch/granada). Null sin squad. */
+  slots: NpcSlotHandle | null;
+  /**
+   * Curacion (solo presets medic con un objetivo valido este frame): `target`
+   * es el aliado mas herido en rango; `heal` aplica la curacion (emite
+   * `npc.heal` y arranca el cooldown del medic).
+   */
+  medic: { target: ActorSnapshot; heal(elapsed: number): boolean } | null;
   conditions: ConditionMask;
   navSpace: NavSpace;
   buildingRegistry: BuildingRegistry;
