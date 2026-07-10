@@ -512,6 +512,9 @@ export class GrenadeSystem implements Disposable {
     this.physics.registerCollider(collider, {
       id: `grenade-${this.nextId}`,
       kind: "dynamic",
+      // HL2 no calcula el golpe de la frag por masa: manda apenas 0.1 de
+      // DMG_CRUSH para que el personaje reaccione al "bonk".
+      impactDamageOverride: 0.1,
     });
     return body;
   }

@@ -95,13 +95,12 @@ export class PropImpactSystem {
         return;
       }
 
-      const mass = body.mass();
-      const bodyPartMul = hit.metadata.bodyPart?.damageMultiplier ?? 1;
-      const raw =
-        speed * (1 + mass * PropImpactConfig.massWeight) * PropImpactConfig.speedFactor;
-      const damage =
-        Math.min(PropImpactConfig.damageMax, Math.max(PropImpactConfig.damageMin, raw)) *
-        bodyPartMul;
+      const damageOverride = metadata.impactDamageOverride;
+      const damage = damageOverride ?? this.computePhysicsDamage(
+        speed,
+        body.mass(),
+        hit.metadata.bodyPart?.damageMultiplier ?? 1,
+      );
       const attribution = this.attributions.get(body.handle);
       hit.metadata.damageable?.applyDamage(
         damage,
@@ -135,6 +134,19 @@ export class PropImpactSystem {
         });
       }
     });
+  }
+
+  private computePhysicsDamage(
+    speed: number,
+    mass: number,
+    bodyPartMultiplier: number,
+  ): number {
+    const raw =
+      speed * (1 + mass * PropImpactConfig.massWeight) * PropImpactConfig.speedFactor;
+    return Math.min(
+      PropImpactConfig.damageMax,
+      Math.max(PropImpactConfig.damageMin, raw),
+    ) * bodyPartMultiplier;
   }
 
   /** Transición de nivel: los handles del mundo viejo dejan de valer. */

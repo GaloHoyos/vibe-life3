@@ -44,6 +44,7 @@ describe("GrenadeSystem", () => {
       throw new Error("Expected grenade collider to be registered");
     }
     expect(physics.getColliderMetadata(collider)?.id).toBe("grenade-0");
+    expect(physics.getColliderMetadata(collider)?.impactDamageOverride).toBe(0.1);
 
     const removeSpy = vi.spyOn(physics, "removeDynamicBody");
     system.update(0.016, 0);

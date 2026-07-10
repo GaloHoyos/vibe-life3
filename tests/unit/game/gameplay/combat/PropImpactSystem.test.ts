@@ -12,7 +12,7 @@ beforeAll(async () => {
   await RAPIER.init();
 });
 
-async function setup() {
+async function setup(impactDamageOverride?: number) {
   const physics = new PhysicsWorld();
   await physics.init();
   const raycast = new Raycast(physics);
@@ -36,7 +36,15 @@ async function setup() {
   // Prop dinámico pegado al NPC volando hacia él a 20 m/s (el cast es corto:
   // max(0.6, speed·delta·2) ≈ 0.67 m desde el centro del prop).
   const prop = physics.createDynamicBox(
-    { id: "crate", position: new Vector3(1.2, 1, 0), size: new Vector3(0.4, 0.4, 0.4), mass: 1 },
+    {
+      id: "crate",
+      position: new Vector3(1.2, 1, 0),
+      size: new Vector3(0.4, 0.4, 0.4),
+      mass: 1,
+      metadata: impactDamageOverride === undefined
+        ? undefined
+        : { impactDamageOverride },
+    },
     new Object3D(),
   );
   prop.setLinvel({ x: 20, y: 0, z: 0 }, true);
@@ -119,5 +127,15 @@ describe("PropImpactSystem", () => {
     system.update(1 / 60, 1);
 
     expect(applyDamage).not.toHaveBeenCalled();
+  });
+
+  it("respeta un daño de impacto fijo sin escalarlo por masa ni hitbox", async () => {
+    const { system, prop, applyDamage } = await setup(0.1);
+    prop.setAdditionalMass(100, true);
+
+    system.update(1 / 60, 1);
+
+    expect(applyDamage).toHaveBeenCalledTimes(1);
+    expect(applyDamage.mock.calls[0][0]).toBe(0.1);
   });
 });

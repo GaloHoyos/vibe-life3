@@ -31,6 +31,12 @@ export interface PhysicsMetadata {
    * el traveller de props debe ignorarlo o lo teleportaría dos veces.
    */
   selfPortalTraversal?: boolean;
+  /**
+   * Daño fijo al impactar un NPC, en vez de la fórmula por masa/velocidad.
+   * Source usa este caso para las granadas frag: apenas 0.1 de DMG_CRUSH para
+   * que el personaje reaccione al golpe sin que la granada sea un prop letal.
+   */
+  impactDamageOverride?: number;
   bodyPart?: {
     name: string;
     damageMultiplier: number;
