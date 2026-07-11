@@ -25,6 +25,7 @@ export interface NpcAnimator {
   updateStandalone(delta: number, opts?: { dead?: boolean }): void;
   setAiming(target: Vector3 | null, pose?: WeaponHandedness): void;
   setActivity(activity: AnimationActivity): void;
+  setCrouch?(amount: number): void;
   notifyShot(): void;
   notifyReload(duration: number): void;
   notifyAttack(): void;

@@ -1,6 +1,6 @@
 import type { Vector3 } from 'three';
 import type { ConditionMask } from '@engine/ai/brain/Condition';
-import type { NavSpace } from '@engine/ai/nav/NavSpace';
+import type { NavAgentProfile } from '@engine/ai/navigation/NavigationTypes';
 import type { GameEventBus } from '@game/GameEvents';
 import type { ActorSnapshot } from '@game/npc/core/INpc';
 import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
@@ -18,6 +18,10 @@ export interface NpcSelfSnapshot {
   health: number;
   maxHealth: number;
   radius: number;
+}
+
+export interface NpcNavigationQueries {
+  projectPoint(position: Vector3, profile: NavAgentProfile): Vector3 | null;
 }
 
 /**
@@ -163,7 +167,8 @@ export interface NpcBrainContext {
    */
   medic: { target: ActorSnapshot; heal(elapsed: number): boolean } | null;
   conditions: ConditionMask;
-  navSpace: NavSpace;
+  navigation: NpcNavigationQueries;
+  navigationProfile: NavAgentProfile;
   buildingRegistry: BuildingRegistry;
   locomotion: NpcLocomotionHandle;
   combat: NpcCombatHandle;

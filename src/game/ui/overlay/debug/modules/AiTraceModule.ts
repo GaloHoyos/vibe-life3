@@ -1,6 +1,7 @@
 import { Vector3 } from "three";
 import { NpcAiTraceRecorder } from "@game/debug/NpcAiTraceRecorder";
-import type { NavSpace } from "@engine/ai/nav/NavSpace";
+import type { NavigationService } from "@engine/ai/navigation/NavigationService";
+import { NavigationProfiles } from "@game/npc/navigation/NavAgentProfiles";
 import type { GameEventBus } from "@game/GameEvents";
 import type { INpc } from "@game/npc/core/INpc";
 import type { DebugFrame, DebugModule } from "../DebugModule";
@@ -61,7 +62,7 @@ export class AiTraceModule implements DebugModule {
   private uiRefreshTimer = 0;
   private lastNpcsKey = "";
   private currentNpcIds: string[] = [];
-  private currentNavSpace: NavSpace | null = null;
+  private currentNavigation: NavigationService | null = null;
 
   constructor(eventBus: GameEventBus) {
     this.recorder = new NpcAiTraceRecorder(eventBus);
@@ -146,21 +147,21 @@ export class AiTraceModule implements DebugModule {
         this.refresh();
       },
       navSpace: () =>
-        this.currentNavSpace ? exportNavSpaceText(this.currentNavSpace) : "(navSpace no disponible)",
+        this.currentNavigation ? exportNavigationText(this.currentNavigation) : "(navigation no disponible)",
       downloadNavSpace: () => this.handleNavSpaceExport(),
       cellsNear: (x, z, radius = 3) =>
-        this.currentNavSpace
-          ? exportCellsNear(this.currentNavSpace, x, z, radius)
-          : "(navSpace no disponible)",
+        this.currentNavigation
+          ? exportSamplesNear(this.currentNavigation, x, z, radius)
+          : "(navigation no disponible)",
       tryPath: (fx, fy, fz, tx, ty, tz) =>
-        this.currentNavSpace
-          ? exportTryPath(this.currentNavSpace, fx, fy, fz, tx, ty, tz)
-          : "(navSpace no disponible)",
+        this.currentNavigation
+          ? exportNavigationTryPath(this.currentNavigation, fx, fy, fz, tx, ty, tz)
+          : "(navigation no disponible)",
     };
   }
 
   update(frame: DebugFrame): void {
-    this.currentNavSpace = frame.navSpace;
+    this.currentNavigation = frame.navigation;
     this.recorder.update(frame.elapsed, frame.npcs);
     this.uiRefreshTimer -= frame.delta;
     if (this.uiRefreshTimer <= 0) {
@@ -207,7 +208,7 @@ export class AiTraceModule implements DebugModule {
   }
 
   private handleNavSpaceExport(): void {
-    if (!this.currentNavSpace) {
+    if (!this.currentNavigation) {
       if (this.statusLine) {
         this.statusLine.textContent = "NavSpace no disponible todavía";
       }
@@ -215,7 +216,7 @@ export class AiTraceModule implements DebugModule {
     }
 
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    downloadTextFile(`navspace-debug-${stamp}.txt`, exportNavSpaceText(this.currentNavSpace));
+    downloadTextFile(`navigation-debug-${stamp}.txt`, exportNavigationText(this.currentNavigation));
   }
 
   private syncNpcsList(npcs: readonly INpc[]): void {
@@ -310,82 +311,33 @@ function formatTime(t: number): string {
   return `${String(min).padStart(2, "0")}:${sec.toFixed(2).padStart(5, "0")}`;
 }
 
-interface ComponentStats {
-  count: number;
-  byZone: Map<string, number>;
-  sample: [number, number, number];
-  minY: number;
-  maxY: number;
-}
-
-/** Dump legible del NavSpace: resumen por componente (zona/surface/altura) + portales. */
-function exportNavSpaceText(navSpace: NavSpace): string {
-  const cells = navSpace.getCells();
-  const portals = navSpace.getPortals();
-  const byComponent = new Map<number, ComponentStats>();
-  let orphans = 0;
-  for (const cell of cells) {
-    let stats = byComponent.get(cell.componentId);
-    if (!stats) {
-      stats = { count: 0, byZone: new Map(), sample: cell.center, minY: Infinity, maxY: -Infinity };
-      byComponent.set(cell.componentId, stats);
-    }
-    stats.count += 1;
-    const zone = `${cell.buildingId ?? "exterior"}/${cell.roomId ?? "-"}/${cell.surface}`;
-    stats.byZone.set(zone, (stats.byZone.get(zone) ?? 0) + 1);
-    stats.minY = Math.min(stats.minY, cell.center[1]);
-    stats.maxY = Math.max(stats.maxY, cell.center[1]);
-    if (cell.edgeCount === 0) orphans += 1;
-  }
-  const lines: string[] = [
-    `NavSpace: ${cells.length} celdas, ${portals.length} portales, ${byComponent.size} componentes, ${orphans} huerfanas`,
+function exportNavigationText(navigation: NavigationService): string {
+  const snapshot = navigation.debugSnapshot();
+  const links = navigation.getActionLinks();
+  return [
+    `NavigationService ready=${snapshot.ready} pending=${snapshot.pendingRequests} avg=${snapshot.averageUpdateMs.toFixed(3)}ms p95=${snapshot.p95UpdateMs.toFixed(3)}ms reservations=${snapshot.activeReservations}`,
+    ...snapshot.profiles.map((profile) =>
+      `  ${profile.id}: ${profile.triangleCount} triangulos, ${profile.obstacleCount} obstaculos`,
+    ),
     "",
-    "Componentes:",
-  ];
-  for (const [componentId, stats] of [...byComponent.entries()].sort((a, b) => b[1].count - a[1].count)) {
-    const [sx, sy, sz] = stats.sample;
-    lines.push(
-      `  #${componentId}: ${stats.count} celdas, y=[${stats.minY.toFixed(1)}, ${stats.maxY.toFixed(1)}], sample=(${sx.toFixed(1)}, ${sy.toFixed(1)}, ${sz.toFixed(1)})`,
-    );
-    const zones = [...stats.byZone.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
-    for (const [zone, count] of zones) {
-      lines.push(`      ${zone}: ${count}`);
-    }
-  }
-  lines.push("", "Portales:");
-  for (const portal of portals) {
-    const [x, y, z] = portal.position;
-    lines.push(
-      `  ${portal.id} kind=${portal.kind} w=${portal.width.toFixed(2)} pos=(${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)})${portal.doorId ? ` door=${portal.doorId}` : ""}`,
-    );
-  }
-  return lines.join("\n");
+    `Action links: ${links.length}`,
+    ...links.map((link) =>
+      `  ${link.id} kind=${link.kind} cost=${link.cost.toFixed(2)} start=${formatPoint(link.start)} end=${formatPoint(link.end)}${link.doorId ? ` door=${link.doorId}` : ""}`,
+    ),
+  ].join("\n");
 }
 
-/** Listado crudo de celdas dentro del radio XZ, con sus edges. Para depurar conectividad local. */
-function exportCellsNear(navSpace: NavSpace, x: number, z: number, radius: number): string {
-  const cells = navSpace.getCells();
-  const edges = navSpace.getEdges();
-  const lines: string[] = [];
-  for (const cell of cells) {
-    const dx = cell.center[0] - x;
-    const dz = cell.center[2] - z;
-    if (dx * dx + dz * dz > radius * radius) continue;
-    const targets: string[] = [];
-    for (let i = cell.edgeStart; i < cell.edgeStart + cell.edgeCount; i += 1) {
-      const to = cells[edges[i].toCell];
-      targets.push(`${edges[i].toCell}(${to.center[0].toFixed(1)},${to.center[1].toFixed(1)},${to.center[2].toFixed(1)})`);
-    }
-    lines.push(
-      `#${cell.index} (${cell.center[0].toFixed(2)}, ${cell.center[1].toFixed(2)}, ${cell.center[2].toFixed(2)}) ` +
-        `${cell.surface} room=${cell.roomId ?? "-"} comp=${cell.componentId} → [${targets.join(", ")}]`,
+function exportSamplesNear(navigation: NavigationService, x: number, z: number, radius: number): string {
+  const lines = navigation.getSamples(NavigationProfiles.humanoid.id)
+    .filter((sample) => Math.hypot(sample.position.x - x, sample.position.z - z) <= radius)
+    .map((sample) =>
+      `#${sample.id} ${formatPoint(sample.position)} area=${sample.area} room=${sample.roomId ?? "-"}`,
     );
-  }
-  return lines.length > 0 ? lines.join("\n") : "(sin celdas en el radio)";
+  return lines.length > 0 ? lines.join("\n") : "(sin poligonos en el radio)";
 }
 
-function exportTryPath(
-  navSpace: NavSpace,
+function exportNavigationTryPath(
+  navigation: NavigationService,
   fx: number,
   fy: number,
   fz: number,
@@ -393,18 +345,21 @@ function exportTryPath(
   ty: number,
   tz: number,
 ): string {
-  const start = navSpace.cellAtRaw(fx, fy, fz);
-  const goal = navSpace.cellAtRaw(tx, ty, tz);
-  const fmt = (c: typeof start) =>
-    c
-      ? `#${c.index} (${c.center[0].toFixed(1)}, ${c.center[1].toFixed(1)}, ${c.center[2].toFixed(1)}) comp=${c.componentId}`
-      : "null";
-  if (!start || !goal) return `start=${fmt(start)} goal=${fmt(goal)} → sin celdas`;
-  const path = navSpace.findPath(new Vector3(fx, fy, fz), new Vector3(tx, ty, tz));
-  return (
-    `start=${fmt(start)} goal=${fmt(goal)} → ` +
-    (path ? `path de ${path.cells.length} celdas, ${path.length.toFixed(1)} m` : "PATH NULL")
-  );
+  const from = new Vector3(fx, fy, fz);
+  const to = new Vector3(tx, ty, tz);
+  const start = navigation.projectPoint(from, NavigationProfiles.humanoid);
+  const goal = navigation.projectPoint(to, NavigationProfiles.humanoid);
+  if (!start || !goal) {
+    return `start=${start ? formatPoint(start) : "null"} goal=${goal ? formatPoint(goal) : "null"} -> sin poligono`;
+  }
+  const path = navigation.requestPath(NavigationProfiles.humanoid, start, goal);
+  return path
+    ? `start=${formatPoint(start)} goal=${formatPoint(goal)} -> ${path.points.length} corners, ${path.actions.length} acciones, ${path.length.toFixed(1)} m`
+    : `start=${formatPoint(start)} goal=${formatPoint(goal)} -> PATH NULL`;
+}
+
+function formatPoint(point: Vector3): string {
+  return `(${point.x.toFixed(1)}, ${point.y.toFixed(1)}, ${point.z.toFixed(1)})`;
 }
 
 function downloadTextFile(filename: string, text: string): void {

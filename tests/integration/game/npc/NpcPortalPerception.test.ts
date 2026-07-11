@@ -6,8 +6,8 @@ import { Raycast } from "@engine/physics/Raycast";
 import { CharacterMotor } from "@engine/physics/character/CharacterMotor";
 import { DynamicFlyerMotor } from "@engine/physics/character/DynamicFlyerMotor";
 import { EventBus } from "@engine/core/EventBus";
-import { NavSpace } from "@engine/ai/nav/NavSpace";
-import { PathRequestQueue } from "@engine/ai/nav/PathRequestQueue";
+import { NavigationRequestQueue } from "@engine/ai/navigation/NavigationRequestQueue";
+import type { NavigationService } from "@engine/ai/navigation/NavigationService";
 import { PortalPairState, type PortalFrame } from "@engine/portals/PortalFrame";
 import { PortalRaycast } from "@engine/portals/PortalRaycast";
 import {
@@ -68,8 +68,26 @@ interface World {
   pair: PortalPairState;
   losRaycast: PortalRaycast;
   eventBus: EventBus<GameEventMap>;
-  navSpace: NavSpace;
-  pathQueue: PathRequestQueue;
+  navigation: NavigationService;
+  navigationRequests: NavigationRequestQueue;
+}
+
+/**
+ * Navegación mínima sin navmesh: paths en línea recta (lo que el dominio aéreo
+ * real devuelve con LOS despejado) y sin proyección (nadie deambula).
+ */
+function stubNavigation(): NavigationService {
+  return {
+    createAgent: () => null,
+    releaseAgentReservations: () => {},
+    projectPoint: () => null,
+    requestPath: (_profile: unknown, from: Vector3, to: Vector3) => ({
+      points: [to.clone()],
+      actions: [],
+      length: from.distanceTo(to),
+      partial: false,
+    }),
+  } as unknown as NavigationService;
 }
 
 async function makeWorld(): Promise<World> {
@@ -97,15 +115,15 @@ async function makeWorld(): Promise<World> {
   const pair = new PortalPairState();
   pair.set("a", portalA());
   pair.set("b", portalB());
-  const navSpace = new NavSpace([], [], []);
+  const navigation = stubNavigation();
   return {
     physics,
     raycast,
     pair,
     losRaycast: new PortalRaycast(raycast, pair),
     eventBus: new EventBus<GameEventMap>(),
-    navSpace,
-    pathQueue: new PathRequestQueue(navSpace),
+    navigation,
+    navigationRequests: new NavigationRequestQueue(navigation),
   };
 }
 
@@ -205,9 +223,9 @@ function makeZombie(world: World): { npc: Npc; combat: ReturnType<typeof fakeCom
     motor,
     combat,
     preset,
-    navSpace: world.navSpace,
+    navigation: world.navigation,
     buildingRegistry: new BuildingRegistry([]),
-    pathQueue: world.pathQueue,
+    navigationRequests: world.navigationRequests,
     raycast: world.raycast,
     losRaycast: world.losRaycast,
     eventBus: world.eventBus,
@@ -243,9 +261,9 @@ function makeManhack(world: World, exits: Vector3[]): Npc {
     motor,
     combat: fakeCombat(),
     preset,
-    navSpace: world.navSpace,
+    navigation: world.navigation,
     buildingRegistry: new BuildingRegistry([]),
-    pathQueue: world.pathQueue,
+    navigationRequests: world.navigationRequests,
     raycast: world.raycast,
     losRaycast: world.losRaycast,
     eventBus: world.eventBus,
@@ -256,7 +274,7 @@ function simulate(world: World, npc: Npc, seconds: number, trace = false): void 
   const frames = Math.round(seconds / DT);
   for (let i = 0; i < frames; i += 1) {
     const ctx = makeContext(world, DT, i * DT);
-    world.pathQueue.process();
+    world.navigationRequests.process();
     npc.update(ctx);
     world.physics.step(DT);
     npc.syncFromPhysics();
@@ -353,15 +371,15 @@ describe("NPC detrás de la pared NO ve por un portal del lado del player", () =
     const pair = new PortalPairState();
     pair.set("a", p1());
     pair.set("b", p2());
-    const navSpace = new NavSpace([], [], []);
+    const navigation = stubNavigation();
     return {
       physics,
       raycast,
       pair,
       losRaycast: new PortalRaycast(raycast, pair),
       eventBus: new EventBus<GameEventMap>(),
-      navSpace,
-      pathQueue: new PathRequestQueue(navSpace),
+      navigation,
+      navigationRequests: new NavigationRequestQueue(navigation),
     };
   }
 
@@ -417,9 +435,9 @@ describe("NPC detrás de la pared NO ve por un portal del lado del player", () =
       motor,
       combat: fakeCombat(),
       preset,
-      navSpace: world.navSpace,
+      navigation: world.navigation,
       buildingRegistry: new BuildingRegistry([]),
-      pathQueue: world.pathQueue,
+      navigationRequests: world.navigationRequests,
       raycast: world.raycast,
       losRaycast: world.losRaycast,
       eventBus: world.eventBus,
@@ -429,7 +447,7 @@ describe("NPC detrás de la pared NO ve por un portal del lado del player", () =
   function run(world: World, npc: Npc, seconds: number): void {
     const frames = Math.round(seconds / DT);
     for (let i = 0; i < frames; i += 1) {
-      world.pathQueue.process();
+      world.navigationRequests.process();
       npc.update(contextFor(world, DT, i * DT));
       world.physics.step(DT);
       npc.syncFromPhysics();
@@ -444,7 +462,7 @@ describe("NPC detrás de la pared NO ve por un portal del lado del player", () =
     let everVisible = false;
     const frames = Math.round(2 / DT);
     for (let i = 0; i < frames; i += 1) {
-      world.pathQueue.process();
+      world.navigationRequests.process();
       behind.update(contextFor(world, DT, i * DT));
       world.physics.step(DT);
       behind.syncFromPhysics();

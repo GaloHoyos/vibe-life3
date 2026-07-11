@@ -37,6 +37,8 @@ export interface PhysicsMetadata {
    * que el personaje reaccione al golpe sin que la granada sea un prop letal.
    */
   impactDamageOverride?: number;
+  /** Tamaño del blocker temporal para el Tile Cache de navegación. */
+  navigationObstacleSize?: [number, number, number];
   bodyPart?: {
     name: string;
     damageMultiplier: number;
@@ -186,6 +188,7 @@ export class PhysicsWorld {
     this.registerCollider(collider, {
       id: options.id,
       kind: 'dynamic',
+      navigationObstacleSize: [options.size.x, options.size.y, options.size.z],
       ...options.metadata,
     });
     return rigidBody;

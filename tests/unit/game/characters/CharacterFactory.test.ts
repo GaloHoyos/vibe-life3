@@ -107,8 +107,11 @@ function trackingAssets(): AssetManager & {
 
 function runtimeServices(): NpcRuntimeServices {
   return {
-    navSpace: {},
-    pathQueue: {
+    navigation: {
+      createAgent: vi.fn(() => null),
+      releaseAgentReservations: vi.fn(),
+    },
+    navigationRequests: {
       cancel: vi.fn(),
       enqueue: vi.fn(),
     },

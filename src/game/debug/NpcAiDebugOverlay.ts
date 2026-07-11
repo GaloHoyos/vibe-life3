@@ -1,6 +1,13 @@
 import {
   CanvasTexture,
+  DoubleSide,
+  EdgesGeometry,
+  Float32BufferAttribute,
   Group,
+  LineBasicMaterial,
+  LineSegments,
+  Mesh,
+  MeshBasicMaterial,
   Points,
   PointsMaterial,
   Sprite,
@@ -15,20 +22,20 @@ import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
-import type { NavSpace } from "@engine/ai/nav/NavSpace";
+import type { NavigationService } from "@engine/ai/navigation/NavigationService";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { INpc, NpcAiDebugSnapshot } from "@game/npc/core/INpc";
 import type { Disposable } from "@shared/types/lifecycle";
 
 interface NpcAiDebugFrame {
   playerPosition: Vector3 | undefined;
-  navSpace: NavSpace | null;
+  navigation: NavigationService | null;
   npcs: readonly INpc[];
 }
 
 const REFRESH_INTERVAL = 0.35;
 const NAV_RADIUS = 60;
-const NAV_MAX_NODES = 2600;
+const NAV_MAX_TRIANGLES = 6000;
 const NPC_RADIUS = 120;
 const LIFT = new Vector3(0, 0.18, 0);
 const LABEL_CACHE_MAX = 256;
@@ -54,6 +61,7 @@ export class NpcAiDebugOverlay implements Disposable {
   );
   private enabled = false;
   private refreshIn = 0;
+  private navigationProfileId = "humanoid";
 
   constructor(
     private readonly scene: Scene,
@@ -77,6 +85,12 @@ export class NpcAiDebugOverlay implements Disposable {
     } else {
       this.clear();
     }
+  }
+
+  setNavigationProfile(profileId: string): void {
+    if (this.navigationProfileId === profileId) return;
+    this.navigationProfileId = profileId;
+    this.refreshIn = 0;
   }
 
   update(delta: number, frame: NpcAiDebugFrame): void {
@@ -132,7 +146,7 @@ export class NpcAiDebugOverlay implements Disposable {
   private rebuild(frame: NpcAiDebugFrame): void {
     this.clear();
     if (!frame.playerPosition) return;
-    this.drawNavSpace(frame, frame.playerPosition);
+    this.drawNavigation(frame, frame.playerPosition);
 
     for (const npc of frame.npcs) {
       const snapshot = npc.getAiDebugSnapshot();
@@ -146,114 +160,103 @@ export class NpcAiDebugOverlay implements Disposable {
     }
   }
 
-  private drawNavSpace(frame: NpcAiDebugFrame, playerPosition: Vector3): void {
-    if (!frame.navSpace) {
-      return;
-    }
-
-    const cells = frame.navSpace.getCells();
-    const edges = frame.navSpace.getEdges();
+  private drawNavigation(frame: NpcAiDebugFrame, playerPosition: Vector3): void {
+    if (!frame.navigation) return;
     const radiusSq = NAV_RADIUS * NAV_RADIUS;
+    const triangleCount = this.addNavigationMesh(
+      frame.navigation.getDebugMeshGeometry(this.navigationProfileId),
+      playerPosition,
+      radiusSq,
+    );
 
-    const connectedPositions: Vector3[] = [];
-    const orphanPositions: Vector3[] = [];
-    const floatLineSegments: Vector3[] = [];
-    const sinkLineSegments: Vector3[] = [];
-    const voidLineSegments: Vector3[] = [];
-    const includedCells = new Set<number>();
-    let orphanCount = 0;
-    let floatingCount = 0;
-    let sunkCount = 0;
-    let voidCount = 0;
-
-    // Seleccion por cercania: con cap por indice se dibujaba solo la primera
-    // banda del scan (esquina NO del mapa) y el resto parecia sin cobertura.
-    const inRange: Array<{ cell: (typeof cells)[number]; distSq: number }> = [];
-    for (const cell of cells) {
-      const dx = cell.center[0] - playerPosition.x;
-      const dz = cell.center[2] - playerPosition.z;
-      const distSq = dx * dx + dz * dz;
-      if (distSq > radiusSq) continue;
-      inRange.push({ cell, distSq });
+    const actionSegments: Vector3[] = [];
+    const portalPoints: Vector3[] = [];
+    for (const link of frame.navigation.getActionLinks()) {
+      if (link.start.distanceToSquared(playerPosition) > radiusSq) continue;
+      if (link.profileIds && !link.profileIds.includes(this.navigationProfileId)) continue;
+      actionSegments.push(link.start.clone().add(LIFT), link.end.clone().add(LIFT));
+      if (link.kind === "portal") portalPoints.push(link.start.clone().add(LIFT));
     }
-    if (inRange.length > NAV_MAX_NODES) {
-      inRange.sort((a, b) => a.distSq - b.distSq);
-      inRange.length = NAV_MAX_NODES;
-    }
+    this.addLineSegments(actionSegments, 0xffc64b, 0.9, 3);
+    this.addPoints(portalPoints, 0xa86dff, 1, 0.72);
 
-    for (const { cell } of inRange) {
-      includedCells.add(cell.index);
-
-      const position = new Vector3(cell.center[0], cell.center[1], cell.center[2]);
-      const lifted = position.clone().add(LIFT);
-      if (cell.edgeCount === 0) {
-        orphanPositions.push(lifted);
-        orphanCount += 1;
-      } else {
-        connectedPositions.push(lifted);
-      }
-
-      const drop = this.measureDropToGround(position);
-      if (drop === "void") {
-        voidLineSegments.push(
-          position.clone(),
-          position.clone().add(new Vector3(0, -DROP_RAY_DISTANCE, 0)),
-        );
-        voidCount += 1;
-      } else if (drop.kind === "floating") {
-        floatLineSegments.push(position.clone(), drop.groundPoint);
-        floatingCount += 1;
-      } else if (drop.kind === "sunk") {
-        sinkLineSegments.push(position.clone(), drop.groundPoint);
-        sunkCount += 1;
-      }
-    }
-
-    this.addPoints(connectedPositions, 0x61d6ff, 0.95, 0.45);
-    this.addPoints(orphanPositions, 0xff4b4b, 1, 0.6);
-    this.addLineSegments(floatLineSegments, 0xffa040, 0.85, 2);
-    this.addLineSegments(sinkLineSegments, 0xff4b4b, 0.95, 2);
-    this.addLineSegments(voidLineSegments, 0xff00ff, 0.95, 2);
-
-    // Edges del CSR, una sola direccion (toCell mayor) para no duplicar lineas.
-    const edgePoints: Vector3[] = [];
-    for (const cell of cells) {
-      if (!includedCells.has(cell.index)) continue;
-      for (let e = cell.edgeStart; e < cell.edgeStart + cell.edgeCount; e += 1) {
-        const edge = edges[e];
-        if (edge.toCell <= cell.index) continue;
-        const to = cells[edge.toCell];
-        edgePoints.push(
-          new Vector3(cell.center[0], cell.center[1], cell.center[2]).add(LIFT),
-          new Vector3(to.center[0], to.center[1], to.center[2]).add(LIFT),
-        );
-      }
-    }
-    this.addLineSegments(edgePoints, 0x2a9dc8, 0.7, 2.5);
-
-    const portalPositions: Vector3[] = [];
-    for (const portal of frame.navSpace.getPortals()) {
-      const p = new Vector3(portal.position[0], portal.position[1], portal.position[2]);
-      const dx = p.x - playerPosition.x;
-      const dz = p.z - playerPosition.z;
-      if (dx * dx + dz * dz > radiusSq) continue;
-      portalPositions.push(p.add(LIFT));
-    }
-    this.addPoints(portalPositions, 0xffd24b, 1, 0.7);
-
-    const labelPosition = playerPosition.clone().add(new Vector3(0, 3.2, 0));
-    const issues: string[] = [];
-    if (orphanCount > 0) issues.push(`huerf:${orphanCount}`);
-    if (floatingCount > 0) issues.push(`flot:${floatingCount}`);
-    if (sunkCount > 0) issues.push(`hund:${sunkCount}`);
-    if (voidCount > 0) issues.push(`vacio:${voidCount}`);
-    const detail = issues.length > 0 ? issues.join(" ") : "todos OK";
+    const snapshot = frame.navigation.debugSnapshot();
+    const detail = snapshot.profiles
+      .map((profile) => `${profile.id}:${profile.triangleCount}`)
+      .join(" ");
     this.addLabel(
-      `Nav local ${includedCells.size}/${cells.length}`,
-      detail,
-      labelPosition,
+      `Navmesh ${this.navigationProfileId} ${triangleCount} tris`,
+      `${detail} | avg ${snapshot.averageUpdateMs.toFixed(2)} p95 ${snapshot.p95UpdateMs.toFixed(2)} ms`,
+      playerPosition.clone().add(new Vector3(0, 3.2, 0)),
       "#84e9ff",
     );
+  }
+
+  private addNavigationMesh(
+    source: ReturnType<NavigationService["getDebugMeshGeometry"]>,
+    center: Vector3,
+    radiusSq: number,
+  ): number {
+    if (!source) return 0;
+    const triangles: Array<{ distanceSq: number; vertices: number[] }> = [];
+    for (let i = 0; i + 2 < source.indices.length; i += 3) {
+      const ia = source.indices[i] * 3;
+      const ib = source.indices[i + 1] * 3;
+      const ic = source.indices[i + 2] * 3;
+      const cx = (source.positions[ia] + source.positions[ib] + source.positions[ic]) / 3;
+      const cy = (source.positions[ia + 1] + source.positions[ib + 1] + source.positions[ic + 1]) / 3;
+      const cz = (source.positions[ia + 2] + source.positions[ib + 2] + source.positions[ic + 2]) / 3;
+      const dx = cx - center.x;
+      const dy = cy - center.y;
+      const dz = cz - center.z;
+      const distanceSq = dx * dx + dy * dy + dz * dz;
+      if (distanceSq > radiusSq) continue;
+      triangles.push({
+        distanceSq,
+        vertices: [
+          source.positions[ia], source.positions[ia + 1] + LIFT.y, source.positions[ia + 2],
+          source.positions[ib], source.positions[ib + 1] + LIFT.y, source.positions[ib + 2],
+          source.positions[ic], source.positions[ic + 1] + LIFT.y, source.positions[ic + 2],
+        ],
+      });
+    }
+    triangles.sort((a, b) => a.distanceSq - b.distanceSq);
+    const visible = triangles.slice(0, NAV_MAX_TRIANGLES);
+    if (visible.length === 0) return 0;
+
+    const geometry = new BufferGeometry();
+    geometry.setAttribute(
+      "position",
+      new Float32BufferAttribute(visible.flatMap((triangle) => triangle.vertices), 3),
+    );
+    const material = new MeshBasicMaterial({
+      color: 0x27c7e8,
+      opacity: 0.24,
+      transparent: true,
+      depthWrite: false,
+      side: DoubleSide,
+    });
+    const mesh = new Mesh(geometry, material);
+    mesh.renderOrder = 20;
+    this.root.add(mesh);
+
+    const edgeGeometry = new EdgesGeometry(geometry, 25);
+    const edgeMaterial = new LineBasicMaterial({
+      color: 0x84e9ff,
+      opacity: 0.72,
+      transparent: true,
+      depthWrite: false,
+    });
+    const edges = new LineSegments(edgeGeometry, edgeMaterial);
+    edges.renderOrder = 21;
+    this.root.add(edges);
+    this.disposers.push(() => {
+      geometry.dispose();
+      material.dispose();
+      edgeGeometry.dispose();
+      edgeMaterial.dispose();
+    });
+    return visible.length;
   }
 
   /**

@@ -1,7 +1,7 @@
 import { Vector3 } from 'three';
 import type { Task, TaskStatus } from '@engine/ai/brain/Task';
-import type { NavSpace } from '@engine/ai/nav/NavSpace';
-import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
+import type { NpcBrainContext, NpcNavigationQueries } from '@game/npc/brain/NpcBrainContext';
+import type { NavAgentProfile } from '@engine/ai/navigation/NavigationTypes';
 
 type NpcTask = Task<NpcBrainContext>;
 
@@ -12,12 +12,14 @@ const tmpCandidate = new Vector3();
  * Devuelve el primer candidato que cae sobre una celda navegable, con el `y`
  * ajustado al de la celda. Null si ninguno es valido.
  */
-function snapToNav(navSpace: NavSpace, candidates: Vector3[]): Vector3 | null {
+function snapToNav(
+  navigation: NpcNavigationQueries,
+  profile: NavAgentProfile,
+  candidates: Vector3[],
+): Vector3 | null {
   for (const candidate of candidates) {
-    const cell = navSpace.cellAt(candidate);
-    if (cell) {
-      return new Vector3(candidate.x, cell.center[1], candidate.z);
-    }
+    const projected = navigation.projectPoint(candidate, profile);
+    if (projected) return projected;
   }
   return null;
 }
@@ -81,7 +83,7 @@ export function createWanderTask(radius = 8, dwellMin = 1.5, dwellMax = 3.5): Np
       dwell = dwellMin + Math.random() * (dwellMax - dwellMin);
       const angle = Math.random() * Math.PI * 2;
       const distance = radius * (0.4 + Math.random() * 0.6);
-      target = snapToNav(ctx.navSpace, [
+      target = snapToNav(ctx.navigation, ctx.navigationProfile, [
         pointAt(ctx.self.position, angle, distance),
         pointAt(ctx.self.position, angle + 1.3, distance * 0.7),
         pointAt(ctx.self.position, angle - 1.3, distance * 0.5),
@@ -177,7 +179,7 @@ export function createSearchSweepTask(): NpcTask {
       // opuestos para que dos NPCs buscando no converjan exactamente igual.
       const baseAngle = Math.random() * Math.PI * 2;
       for (const offset of [0, Math.PI]) {
-        const candidate = snapToNav(ctx.navSpace, [
+        const candidate = snapToNav(ctx.navigation, ctx.navigationProfile, [
           pointAt(lkp, baseAngle + offset, 4),
           pointAt(lkp, baseAngle + offset + 0.6, 6),
         ]);
@@ -226,7 +228,7 @@ export function createRetreatTask(retreatDistance = 10, safeDistance = 18): NpcT
       const self = ctx.self.position;
       const awayAngle = Math.atan2(self.x - threatPos.x, self.z - threatPos.z);
       const spread = (35 * Math.PI) / 180;
-      target = snapToNav(ctx.navSpace, [
+      target = snapToNav(ctx.navigation, ctx.navigationProfile, [
         pointAt(self, awayAngle, retreatDistance),
         pointAt(self, awayAngle + spread, retreatDistance),
         pointAt(self, awayAngle - spread, retreatDistance),
@@ -351,7 +353,7 @@ export function createFlankTask(flankDistance = 12): NpcTask {
       const self = ctx.self.position;
       const toThreatAngle = Math.atan2(threatPos.x - self.x, threatPos.z - self.z);
       const lateralAngle = toThreatAngle + side * Math.PI * 0.45;
-      target = snapToNav(ctx.navSpace, [
+      target = snapToNav(ctx.navigation, ctx.navigationProfile, [
         pointAt(self, lateralAngle, flankDistance),
         pointAt(self, lateralAngle, flankDistance * 0.6),
         pointAt(self, toThreatAngle + side * Math.PI * 0.3, flankDistance),
@@ -506,7 +508,7 @@ export function createRepositionTask(lateralDistance = 2.5, timeout = 1.8): NpcT
       const toThreatAngle = Math.atan2(threatPos.x - self.x, threatPos.z - self.z);
       const lateralAngle = toThreatAngle + side * Math.PI * 0.5;
       tmpCandidate.copy(pointAt(self, lateralAngle, lateralDistance));
-      target = snapToNav(ctx.navSpace, [
+      target = snapToNav(ctx.navigation, ctx.navigationProfile, [
         tmpCandidate.clone(),
         pointAt(self, lateralAngle + side * 0.5, lateralDistance),
       ]);

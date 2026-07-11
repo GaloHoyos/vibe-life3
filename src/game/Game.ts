@@ -48,14 +48,14 @@ import { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
 import { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 import { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
 import { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
-import { computePortalNavLinks } from "@game/gameplay/weapons/portal/PortalNavLinks";
+import { computePortalNavigationLinks } from "@game/gameplay/weapons/portal/PortalNavLinks";
 import { PortalConfig } from "@game/config/portal.config";
 import { GrabSystem, InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
 import { PlayerSquadService } from "@game/gameplay/squad/PlayerSquadService";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
 import type { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
-import type { NavSpace } from "@engine/ai/nav/NavSpace";
-import type { PathRequestQueue } from "@engine/ai/nav/PathRequestQueue";
+import type { NavigationService } from "@engine/ai/navigation/NavigationService";
+import type { NavigationRequestQueue } from "@engine/ai/navigation/NavigationRequestQueue";
 import type { SquadDirector } from "@game/npc/ai/SquadDirector";
 import type {
   DynamicBoxDefinition,
@@ -153,8 +153,8 @@ export class Game {
   private tacticalMap: TacticalMap | null = null;
   private squadDirector: SquadDirector | null = null;
   private buildingRegistry: BuildingRegistry | null = null;
-  private navSpace: NavSpace | null = null;
-  private pathQueue: PathRequestQueue | null = null;
+  private navigation: NavigationService | null = null;
+  private navigationRequests: NavigationRequestQueue | null = null;
   private pendingExitTimeoutId: number | null = null;
   private playtestMode = false;
   /** Cargando el siguiente nivel encadenado: congela `tickPlaying` mientras dura. */
@@ -495,14 +495,14 @@ export class Game {
     eventBus.on("player.hazard", ({ amount, kind }) => {
       this.player?.health.takeDamage(amount, kind);
     });
-    // Links warp del NavSpace: cada colocación/limpieza del par re-deriva los
-    // edges dinámicos para que los NPCs planeen rutas a través de los portales.
+    // Action links runtime: cada cambio del par re-deriva entrada/salida sin
+    // reconstruir tiles del navmesh.
     const refreshPortalNavLinks = (): void => {
-      if (!this.navSpace || !PortalConfig.npcTraversal.enabled) {
+      if (!this.navigation || !PortalConfig.npcTraversal.enabled) {
         return;
       }
-      this.navSpace.setDynamicLinks(
-        computePortalNavLinks(portals.pair, this.navSpace),
+      this.navigation.setActionLinks(
+        computePortalNavigationLinks(portals.pair, this.navigation),
       );
     };
     eventBus.on("portal.placed", refreshPortalNavLinks);
@@ -813,8 +813,8 @@ export class Game {
    */
   private buildNpcRuntimeServices(raycast: Raycast): NpcRuntimeServices | undefined {
     if (
-      !this.navSpace ||
-      !this.pathQueue ||
+      !this.navigation ||
+      !this.navigationRequests ||
       !this.buildingRegistry ||
       !this.tacticalMap ||
       !this.squadDirector
@@ -822,8 +822,8 @@ export class Game {
       return undefined;
     }
     return {
-      navSpace: this.navSpace,
-      pathQueue: this.pathQueue,
+      navigation: this.navigation,
+      navigationRequests: this.navigationRequests,
       buildingRegistry: this.buildingRegistry,
       raycast,
       ...this.buildNpcPortalServices(),
@@ -1165,7 +1165,7 @@ export class Game {
       fps: time.fps,
       player: this.player,
       npcs: this.npcs,
-      navSpace: this.navSpace,
+      navigation: this.navigation,
       rendererInfo: renderer.renderer.info,
       physicsBodies: physics.getBodyCount(),
       playerPosition: this.player?.getPosition() ?? null,
@@ -1270,7 +1270,7 @@ export class Game {
     this.ammoPickups.forEach((pickup) =>
       pickup.update(time.delta, playerPosition, player.weapons),
     );
-    if (this.tacticalMap && this.navSpace && this.squadDirector) {
+    if (this.tacticalMap && this.navigation && this.squadDirector) {
       const playerSnapshot: ActorSnapshot = {
         id: "player",
         position: playerPosition,
@@ -1302,17 +1302,18 @@ export class Game {
           eligible: npc.playerSquadEligible,
         })),
       );
-      const portalGhosts: ActorSnapshot[] = portals
-        .projectPointThroughPortals(playerPosition)
-        .map((projection) => ({
-          ...playerSnapshot,
-          position: projection.position,
-          navPosition: playerSnapshot.position,
-          portalView: {
-            position: projection.viewPosition,
-            normal: projection.viewNormal,
-          },
-        }));
+      const portalGhosts: ActorSnapshot[] = [playerSnapshot, ...npcSnapshots]
+        .flatMap((actor) => portals
+          .projectPointThroughPortals(actor.position)
+          .map((projection) => ({
+            ...actor,
+            position: projection.position,
+            navPosition: actor.position,
+            portalView: {
+              position: projection.viewPosition,
+              normal: projection.viewNormal,
+            },
+          })));
       const ctx: AiFrameContext = {
         delta: time.delta,
         elapsed: time.elapsed,
@@ -1329,7 +1330,8 @@ export class Game {
         },
         eventBus: s.resolve(GameTokens.EventBus),
       };
-      this.pathQueue?.process();
+      this.navigationRequests?.process();
+      this.navigation?.update(time.delta);
       this.npcs.forEach((npc) => {
         ctx.aiLod = this.computeNpcAiLod(npc.position, playerPosition);
         ctx.npcs = npcIndex.query(npc.position, this.npcContextRadius, npc.id);
@@ -1823,6 +1825,9 @@ export class Game {
     services.resolve(GameTokens.GrabSystem).clear();
     services.resolve(GameTokens.PropImpacts).clear();
     services.resolve(GameTokens.PlayerSquad).reset();
+    this.navigation?.dispose();
+    this.navigation = null;
+    this.navigationRequests = null;
     physics.reset();
     sceneManager.clearLevel([...lighting.getLights(), ...vfx.getPersistentObjects()]);
 
@@ -1843,8 +1848,8 @@ export class Game {
     this.tacticalMap = loaded.tacticalMap;
     this.squadDirector = loaded.squadDirector;
     this.buildingRegistry = loaded.buildingRegistry;
-    this.navSpace = loaded.navSpace;
-    this.pathQueue = loaded.pathQueue;
+    this.navigation = loaded.navigation;
+    this.navigationRequests = loaded.navigationRequests;
 
     this.player = new Player(
       spawn ? new Vector3(...spawn.position) : new Vector3(...level.playerStart),

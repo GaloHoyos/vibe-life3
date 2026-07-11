@@ -2,14 +2,15 @@ import { Group, Quaternion, Vector3 } from 'three';
 import type { Faction } from '@engine/ai/Faction';
 import { isAlliedWith, isHostileTo } from '@engine/ai/Faction';
 import { Brain } from '@engine/ai/brain/Brain';
-import type { NavSpace } from '@engine/ai/nav/NavSpace';
-import type { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
 import { PerceptionSystem, isTargetVisible } from '@engine/ai/perception/PerceptionSystem';
 import type { PerceptionSnapshot } from '@engine/ai/perception/PerceptionSystem';
 import type { Raycast, RaycastSource } from '@engine/physics/Raycast';
 import type { NpcMotor } from '@engine/physics/character/NpcMotor';
-import { NpcLocomotion } from '@engine/ai/locomotion/NpcLocomotion';
-import type { LocomotionNeighbor, NpcLocomotionDebug } from '@engine/ai/locomotion/NpcLocomotion';
+import { NavigationLocomotion } from '@engine/ai/locomotion/NavigationLocomotion';
+import type { LocomotionNeighbor, NpcLocomotionDebug } from '@engine/ai/locomotion/NavigationLocomotion';
+import type { NavigationService } from '@engine/ai/navigation/NavigationService';
+import type { NavigationRequestQueue } from '@engine/ai/navigation/NavigationRequestQueue';
+import type { NavAgentProfile } from '@engine/ai/navigation/NavigationTypes';
 import type { GameEventBus } from '@game/GameEvents';
 import { Health } from '@game/gameplay/Health';
 import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
@@ -26,6 +27,7 @@ import type {
   NpcBrainContext,
   NpcCombatHandle,
   NpcLocomotionHandle,
+  NpcNavigationQueries,
   NpcSelfSnapshot,
   NpcSlotHandle,
 } from '@game/npc/brain/NpcBrainContext';
@@ -41,6 +43,7 @@ import type { NpcPreset } from '@game/npc/presets/NpcPreset';
 import type { DamageType } from '@shared/types/lifecycle';
 import type { DifficultyProvider } from '@game/config/difficulty.config';
 import type { NpcCalloutKind } from '@game/config/audio.config';
+import { navigationProfileForPreset } from '@game/npc/navigation/NavAgentProfiles';
 
 export interface NpcConstructionParams {
   id: string;
@@ -54,9 +57,9 @@ export interface NpcConstructionParams {
   preset: NpcPreset;
   /** Daño por cuchillazo de contacto (manhack); ×2 contra el player. Default 0 = no corta. */
   sliceDamage?: number;
-  navSpace: NavSpace;
+  navigation: NavigationService;
   buildingRegistry: BuildingRegistry;
-  pathQueue: PathRequestQueue;
+  navigationRequests: NavigationRequestQueue;
   raycast: Raycast;
   /** LOS/threat scoring. Portal-aware si hay portales; default `raycast`. */
   losRaycast?: RaycastSource;
@@ -114,7 +117,7 @@ export class Npc implements INpc {
   readonly playerSquadEligible: boolean;
 
   private readonly motor: NpcMotor;
-  private readonly locomotion: NpcLocomotion;
+  private readonly locomotion: NavigationLocomotion;
   private readonly perception: PerceptionSystem;
   private readonly brain: Brain<NpcBrainContext>;
   private readonly combatHandle: NpcCombatHandle;
@@ -124,7 +127,8 @@ export class Npc implements INpc {
   private readonly raycast: Raycast;
   private readonly losRaycast: RaycastSource;
   private readonly buildingRegistry: BuildingRegistry;
-  private readonly navSpace: NavSpace;
+  private readonly navigationQueries: NpcNavigationQueries;
+  private readonly navigationProfile: NavAgentProfile;
   private readonly eventBus: GameEventBus;
   private readonly animation: NpcAnimator | null;
   private readonly animationLookTarget = new Vector3();
@@ -177,23 +181,26 @@ export class Npc implements INpc {
     this.health = new Health(Math.max(1, Math.round(params.preset.maxHealth * healthMult)));
     this.motor = params.motor;
     this.preset = params.preset;
+    this.navigationProfile = navigationProfileForPreset(this.preset);
     this.sliceDamage = params.sliceDamage ?? 0;
     this.raycast = params.raycast;
     this.losRaycast = params.losRaycast ?? params.raycast;
     this.buildingRegistry = params.buildingRegistry;
-    this.navSpace = params.navSpace;
+    this.navigationQueries = params.navigation;
     this.eventBus = params.eventBus;
     this.combatHandle = params.combat;
     this.animation = params.animation ?? null;
-    this.locomotion = new NpcLocomotion(this.motor, this.navSpace, params.pathQueue, this.id, {
-      bodyRadius: this.preset.radius,
-      raycast: this.raycast,
-      flying: this.preset.movement.flying,
-      hoverHeight: this.preset.movement.hoverHeight,
-      directGround: this.preset.movement.directGround,
-      // Los flyers (manhack) se choquen y reboten en vez de mantener distancia.
-      separation: !this.preset.movement.flying && !this.preset.movement.directGround,
-    });
+    this.locomotion = new NavigationLocomotion(
+      this.motor,
+      params.navigation,
+      params.navigationRequests,
+      this.id,
+      this.navigationProfile,
+      {
+        hoverHeight: this.preset.movement.hoverHeight,
+        separation: !this.preset.movement.flying && !this.preset.movement.directGround,
+      },
+    );
     this.perception = new PerceptionSystem(this.preset.perception, this.id);
     this.brain = new Brain<NpcBrainContext>(this.preset.schedules);
     this.patrolRoute =
@@ -274,7 +281,7 @@ export class Npc implements INpc {
         ? { id: this.currentThreat.id, position: this.currentThreat.position, isAlive: this.currentThreat.isAlive }
         : null,
       delta,
-      this.losRaycast,
+      this.currentThreat?.portalView ? this.losRaycast : this.raycast,
     );
     this.threatLastKnown = perceptionSnapshot.lastKnownPosition;
     this.lastPerception = perceptionSnapshot;
@@ -373,7 +380,8 @@ export class Npc implements INpc {
         ? { target: healTarget, heal: (elapsed) => this.performHeal(elapsed, healTarget) }
         : null,
       conditions,
-      navSpace: this.navSpace,
+      navigation: this.navigationQueries,
+      navigationProfile: this.navigationProfile,
       buildingRegistry: this.buildingRegistry,
       locomotion: handle,
       combat: this.combatHandle,
@@ -449,6 +457,7 @@ export class Npc implements INpc {
       balanceIsStumbling: false,
       delta,
     });
+    this.animation.setCrouch?.(this.motor.isCrouched?.() ? 1 : 0);
     if (this.currentThreat && this.preset.weaponAim !== 'none') {
       this.animation.setAiming(this.currentThreat.position, this.preset.weaponAim);
     } else {
@@ -645,7 +654,7 @@ export class Npc implements INpc {
     this.noiseSensor.dispose();
     this.coverSensor?.dispose();
     this.squadDirector?.unregister(this.id);
-    this.locomotion.stop();
+    this.locomotion.dispose();
     this.motor.disable();
   }
 
@@ -714,6 +723,14 @@ export class Npc implements INpc {
       // mano (antes lo filtraba `isHostileTo(mismaFaccion)` devolviendo false).
       if (freeForAll || isHostileTo(this.faction, npc.faction)) candidates.push(npc);
     }
+    if (ctx.portalGhosts) {
+      for (const ghost of ctx.portalGhosts) {
+        if (!ghost.isAlive || ghost.id === this.id || ghost.id === ctx.player.id) continue;
+        if (!(freeForAll || isHostileTo(this.faction, ghost.faction))) continue;
+        if (ghost.portalView && !this.isInFrontOfPortalView(ghost.portalView)) continue;
+        candidates.push(ghost);
+      }
+    }
     if (candidates.length === 0) return null;
 
     // El player y sus ghosts de portal comparten id: resolver el vigente por
@@ -746,7 +763,7 @@ export class Npc implements INpc {
         self,
         facing,
         { id: candidate.id, position: candidate.position, isAlive: candidate.isAlive },
-        this.losRaycast,
+        candidate.portalView ? this.losRaycast : this.raycast,
         this.id,
       );
       if (!visible) score *= THREAT_UNSEEN_PENALTY;
@@ -787,7 +804,7 @@ export class Npc implements INpc {
       const dx = npc.position.x - self.x;
       const dz = npc.position.z - self.z;
       if (dx * dx + dz * dz > 16) continue;
-      this.neighborBuffer.push({ x: npc.position.x, z: npc.position.z, radius: npc.radius });
+      this.neighborBuffer.push({ x: npc.position.x, y: npc.position.y, z: npc.position.z, radius: npc.radius });
     }
     this.locomotion.setNeighbors(this.neighborBuffer);
   }

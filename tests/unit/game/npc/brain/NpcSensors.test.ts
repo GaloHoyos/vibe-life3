@@ -122,6 +122,21 @@ describe("computeNpcConditions", () => {
     expect(has(empty, Cond.OverwatchFree)).toBe(false);
   });
 
+  it("sólo habilita melee si el enemigo cercano está visible", () => {
+    const visible = makeInputs({ threat: makeThreat(1.4) });
+    expect(has(computeNpcConditions(visible), Cond.EnemyInMeleeRange)).toBe(true);
+
+    const hidden = makeInputs({
+      threat: makeThreat(1.4),
+      perception: {
+        ...visible.perception,
+        visibleNow: false,
+        hasMemory: true,
+      },
+    });
+    expect(has(computeNpcConditions(hidden), Cond.EnemyInMeleeRange)).toBe(false);
+  });
+
   it("IsDead cortocircuita el resto de los bits", () => {
     const inputs = makeInputs({ hasAttackSlot: true });
     inputs.self = { ...inputs.self, isAlive: false };

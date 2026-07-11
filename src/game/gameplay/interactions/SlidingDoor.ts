@@ -31,6 +31,10 @@ export class SlidingDoor {
     return this.open;
   }
 
+  isPassable(): boolean {
+    return this.open && this.mesh.position.distanceToSquared(this.openPosition) <= 0.04;
+  }
+
   update(delta: number): void {
     const target = this.open ? this.openPosition : this.closedPosition;
     const next = this.mesh.position.clone().lerp(target, Math.min(1, delta * this.speed));

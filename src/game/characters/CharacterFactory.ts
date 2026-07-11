@@ -44,10 +44,11 @@ import { KinematicFlyerMotor } from '@engine/physics/character/KinematicFlyerMot
 import { StriderWalkerMotor } from '@engine/physics/character/StriderWalkerMotor';
 import { StationaryDynamicMotor } from '@engine/physics/character/StationaryDynamicMotor';
 import type { NpcMotor } from '@engine/physics/character/NpcMotor';
-import type { NavSpace } from '@engine/ai/nav/NavSpace';
 import type { PortalPairState } from '@engine/portals/PortalFrame';
-import type { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
+import type { NavigationService } from '@engine/ai/navigation/NavigationService';
+import type { NavigationRequestQueue } from '@engine/ai/navigation/NavigationRequestQueue';
 import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
+import { navigationProfileForPreset } from '@game/npc/navigation/NavAgentProfiles';
 import type { TacticalMap } from '@game/npc/ai/TacticalMap';
 import type { SquadDirector } from '@game/npc/ai/SquadDirector';
 import { getMaterial } from '@engine/render/material/Materials';
@@ -57,8 +58,8 @@ import type { CharacterDefinition, CharacterId } from '@engine/characters/Charac
 import type { DifficultyProvider } from '@game/config/difficulty.config';
 
 export interface NpcRuntimeServices {
-  navSpace: NavSpace;
-  pathQueue: PathRequestQueue;
+  navigation: NavigationService;
+  navigationRequests: NavigationRequestQueue;
   buildingRegistry: BuildingRegistry;
   raycast: Raycast;
   /**
@@ -171,6 +172,7 @@ export class CharacterFactory {
     const isGunship = definition.aiProfileId === 'gunshipBoss';
     const isStrider = definition.aiProfileId === 'striderBoss';
     const turretAim = isTurret ? new TurretAimState() : null;
+    const navigationProfile = navigationProfileForPreset(preset);
     let striderMotor: StriderWalkerMotor | null = null;
     // Voladores (manhack) = rigid body dinamico real: lo agarra la gravity gun,
     // lo voltea una caja, se rompe contra la pared. Terrestres = cinematico.
@@ -245,6 +247,9 @@ export class CharacterFactory {
           gravity: definition.movement.gravity,
           stepOffset: preset.movement.stepOffset,
           snapToGround: preset.movement.snapToGround,
+          // Misma fuente que el clearance del navmesh: si el planner rutea por
+          // un hueco bajo, la cápsula agachada tiene que caber ahí.
+          crouchHeight: navigationProfile.canCrouch ? navigationProfile.navigationHeight : undefined,
           debug: definition.debug,
           metadata,
         });
@@ -326,7 +331,9 @@ export class CharacterFactory {
         onReload: (duration) => animation.notifyReload(duration),
       });
     } else {
-      const melee = new NpcCombat(instanceId, definition, this.eventBus, services.raycast);
+      // El impacto melee respeta paredes y portales abiertos usando el mismo
+      // raycast portal-aware que la percepción.
+      const melee = new NpcCombat(instanceId, definition, this.eventBus, services.losRaycast);
       combat = new NpcMeleeCombat(melee, definition.attack.range, () => animation.notifyAttack());
     }
     const npc = new Npc({
@@ -339,9 +346,9 @@ export class CharacterFactory {
       combat,
       preset,
       sliceDamage: definition.aiProfileId === 'manhackFlyer' ? definition.attack.damage : undefined,
-      navSpace: services.navSpace,
+      navigation: services.navigation,
       buildingRegistry: services.buildingRegistry,
-      pathQueue: services.pathQueue,
+      navigationRequests: services.navigationRequests,
       raycast: services.raycast,
       losRaycast: services.losRaycast,
       eventBus: this.eventBus,

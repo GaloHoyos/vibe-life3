@@ -48,9 +48,8 @@ export interface AiFrameContext {
   player: ActorSnapshot;
   npcs: ActorSnapshot[];
   /**
-   * Proyecciones del player a través de portales linked (hasta 2). Comparten
-   * `id`/`entity` con `player` — el raycast portal-aware resuelve el LOS real,
-   * y el daño aplica al player de verdad.
+   * Proyecciones de actores a través de portales linked. Comparten `id`/`entity`
+   * con el actor real; sólo estas posiciones se validan con LOS portal-aware.
    */
   portalGhosts?: ActorSnapshot[];
   tacticalMap: TacticalMap;

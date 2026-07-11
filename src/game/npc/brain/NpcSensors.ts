@@ -76,8 +76,18 @@ export function computeNpcConditions(inputs: SensorInputs): ConditionMask {
 
   if (inputs.threat?.isAlive) {
     const dist = planarDistance(inputs.self.position, inputs.threat.position);
-    if (dist <= inputs.meleeRange) mask |= Cond.EnemyInMeleeRange;
-    if (dist > inputs.meleeRange && dist <= inputs.leapRange) mask |= Cond.EnemyInLeapRange;
+    // La memoria puede conservar un threat al otro lado de una pared. Sin
+    // visión real no debe congelar al NPC en melee ni habilitar un salto.
+    if (inputs.perception.visibleNow && dist <= inputs.meleeRange) {
+      mask |= Cond.EnemyInMeleeRange;
+    }
+    if (
+      inputs.perception.visibleNow &&
+      dist > inputs.meleeRange &&
+      dist <= inputs.leapRange
+    ) {
+      mask |= Cond.EnemyInLeapRange;
+    }
     if (dist <= inputs.tooCloseRange) mask |= Cond.EnemyTooClose;
     // Solo con el enemigo a la vista: fuera del rango util del arma hay que
     // acercarse (closeDistance), no tirotear al aire.

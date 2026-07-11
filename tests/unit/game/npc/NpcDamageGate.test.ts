@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { Group, Quaternion, Vector3 } from "three";
 import { EventBus } from "@engine/core/EventBus";
-import type { NavSpace } from "@engine/ai/nav/NavSpace";
-import type { PathRequestQueue } from "@engine/ai/nav/PathRequestQueue";
+import type { NavigationService } from "@engine/ai/navigation/NavigationService";
+import type { NavigationRequestQueue } from "@engine/ai/navigation/NavigationRequestQueue";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { NpcMotor } from "@engine/physics/character/NpcMotor";
 import type { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
@@ -109,9 +109,13 @@ function createNpc(
     combat,
     preset: { ...basePreset, ...presetOverrides },
     difficulty,
-    navSpace: {} as NavSpace,
+    navigation: {
+      createAgent: () => null,
+      releaseAgentReservations: vi.fn(),
+      projectPoint: () => null,
+    } as unknown as NavigationService,
     buildingRegistry: {} as BuildingRegistry,
-    pathQueue: { cancel: vi.fn() } as unknown as PathRequestQueue,
+    navigationRequests: { cancel: vi.fn(), enqueue: vi.fn() } as unknown as NavigationRequestQueue,
     raycast: {} as Raycast,
     eventBus: bus,
     animation: null,

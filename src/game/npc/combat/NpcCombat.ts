@@ -1,6 +1,6 @@
 ﻿import { Vector3 } from "three";
 import type { CharacterDefinition } from "@engine/characters/CharacterDefinition";
-import type { Raycast } from "@engine/physics/Raycast";
+import type { RaycastSource } from "@engine/physics/Raycast";
 import type { Damageable } from "@shared/types/lifecycle";
 import type { GameEventBus } from "@game/GameEvents";
 
@@ -39,7 +39,7 @@ export class NpcCombat {
     private readonly id: string,
     private readonly definition: CharacterDefinition,
     private readonly eventBus: GameEventBus,
-    private readonly raycast: Raycast,
+    private readonly raycast: RaycastSource,
   ) {}
 
   /** Decrementa el cooldown global de ataque. Llamar cada frame. */
@@ -177,7 +177,7 @@ export class NpcCombat {
 
     if (
       attack.requireLineOfSight &&
-      !this.hasLineOfSight(ctx.npcPosition, directionToTarget, Math.sqrt(distanceSq), ctx.targetId)
+      !this.hasLineOfSight(ctx.npcPosition, ctx.targetPosition, ctx.targetId)
     ) {
       this.logDebug("attack failed: line of sight");
       return false;
@@ -188,17 +188,22 @@ export class NpcCombat {
 
   private hasLineOfSight(
     npcPosition: Vector3,
-    direction: Vector3,
-    distance: number,
+    targetPosition: Vector3,
     targetId: string,
   ): boolean {
     const origin = npcPosition
       .clone()
       .add(new Vector3(0, this.definition.perception.eyeHeight, 0));
-    const hit = this.raycast.cast(origin, direction, distance + 0.2);
+    const direction = targetPosition.clone().sub(origin);
+    const distance = direction.length();
+    if (distance <= 1e-4) return true;
+    direction.divideScalar(distance);
+    // El rayo nace dentro de la cápsula atacante: hay que excluirla para que
+    // el primer impacto relevante pueda ser el target o una pared intermedia.
+    const hit = this.raycast.cast(origin, direction, distance + 0.2, undefined, this.id);
     // El golpe vale si lo primero en la linea es el propio target — con
     // "player" hardcodeado, el melee nunca conectaba contra otros NPCs.
-    return hit?.metadata?.id === targetId;
+    return (hit?.metadata?.ownerId ?? hit?.metadata?.id) === targetId;
   }
 
   private logDebug(message: string): void {

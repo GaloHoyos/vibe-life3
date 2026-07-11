@@ -299,7 +299,7 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       windup: 0.35,
       hitWindow: 0.25,
       knockback: 2.0,
-      requireLineOfSight: false,
+      requireLineOfSight: true,
       facingDotThreshold: 0.35,
     },
   },

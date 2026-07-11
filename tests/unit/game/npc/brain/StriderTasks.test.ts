@@ -101,7 +101,8 @@ function makeContext(options: {
     slots: null,
     medic: null,
     conditions: 0,
-    navSpace: {} as NpcBrainContext["navSpace"],
+    navigation: {} as NpcBrainContext["navigation"],
+    navigationProfile: {} as NpcBrainContext["navigationProfile"],
     buildingRegistry: {} as NpcBrainContext["buildingRegistry"],
     locomotion: {
       moveTo: vi.fn(),
