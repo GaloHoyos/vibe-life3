@@ -90,6 +90,24 @@ describe("NavigationService", () => {
     expect(path!.actions.some((action) => action.link.kind === "portal")).toBe(true);
   }, 20_000);
 
+  it("does not mark the capsule-center descent onto open floor as crouch", async () => {
+    navigation = await NavigationService.create({
+      geometry: buildNavigationGeometry([box("floor", [0, -0.25, 0], [20, 0.5, 20])]),
+      groundProfiles: [NavigationProfiles.humanoid, NavigationProfiles.humanoidLimited],
+      raycast: new Raycast(physics),
+      physics,
+    });
+
+    const path = navigation.requestPath(
+      NavigationProfiles.humanoid,
+      new Vector3(-6, 0.9, -4),
+      new Vector3(6, 0, 4),
+    );
+
+    expect(path).not.toBeNull();
+    expect(path!.actions.some((action) => action.link.kind === "crouch")).toBe(false);
+  }, 20_000);
+
   it("keeps the 60-agent fixed-step crowd inside the navigation frame budget", async () => {
     const profile = testProfile();
     navigation = await NavigationService.create({

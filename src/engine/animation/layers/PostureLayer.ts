@@ -49,22 +49,33 @@ export class PostureLayer implements AnimationLayer {
       applyBoneRotationOffset(
         ctx.bones.leftThigh,
         this.axes.legSwingAxis,
-        crouch * CROUCH_THIGH_TUCK,
+        -crouch * CROUCH_THIGH_TUCK,
       );
       applyBoneRotationOffset(
         ctx.bones.rightThigh,
         this.axes.legSwingAxis,
-        crouch * CROUCH_THIGH_TUCK,
+        -crouch * CROUCH_THIGH_TUCK,
       );
       applyBoneRotationOffset(
         ctx.bones.leftShin,
         this.axes.kneeBendAxis,
-        -crouch * CROUCH_KNEE_BEND,
+        crouch * CROUCH_KNEE_BEND,
       );
       applyBoneRotationOffset(
         ctx.bones.rightShin,
         this.axes.kneeBendAxis,
-        -crouch * CROUCH_KNEE_BEND,
+        crouch * CROUCH_KNEE_BEND,
+      );
+      const footCounter = -crouch * (CROUCH_KNEE_BEND - CROUCH_THIGH_TUCK);
+      applyBoneRotationOffset(
+        ctx.bones.leftFoot,
+        this.axes.kneeBendAxis,
+        footCounter,
+      );
+      applyBoneRotationOffset(
+        ctx.bones.rightFoot,
+        this.axes.kneeBendAxis,
+        footCounter,
       );
       applyBoneRotationOffset(
         ctx.bones.spine,

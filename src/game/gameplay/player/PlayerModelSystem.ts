@@ -237,6 +237,7 @@ export class PlayerModelSystem {
     weaponPose: WeaponHandedness;
     position: [number, number, number];
     yaw: number;
+    pitch: number;
   } {
     return {
       loaded: this.animator !== null,
@@ -247,6 +248,7 @@ export class PlayerModelSystem {
       weaponPose: this.weaponPose,
       position: [this.root.position.x, this.root.position.y, this.root.position.z],
       yaw: this.root.rotation.y,
+      pitch: Math.asin(Math.max(-1, Math.min(1, this.tmpLook.y))),
     };
   }
 

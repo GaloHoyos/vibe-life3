@@ -129,6 +129,7 @@ export interface NpcAiDebugSnapshot {
     speed: number;
     desiredSpeed: number;
     grounded: boolean;
+    crouched?: boolean;
     distanceToTarget: number;
     yaw: number;
     targetYaw: number;

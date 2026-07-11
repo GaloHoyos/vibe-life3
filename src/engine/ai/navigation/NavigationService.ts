@@ -527,9 +527,18 @@ export class NavigationService {
     const actions: NavigationPath["actions"] = [];
     const isLow = (point: Vector3): boolean => {
       const projected = standing.query.findClosestPoint(point, {
-        halfExtents: { x: profile.radius * 0.75, y: 0.35, z: profile.radius * 0.75 },
+        halfExtents: {
+          x: profile.radius * 0.75,
+          // Los puntos iniciales pueden estar a la altura del centro de la
+          // cápsula. Hay que alcanzar el navmesh del piso para comparar X/Z.
+          y: Math.max(1, profile.standingHeight),
+          z: profile.radius * 0.75,
+        },
       });
-      return !projected.success || distanceSquared(projected.point, point) >= 0.25;
+      // `from` llega como centro de la cápsula, mientras el navmesh vive sobre
+      // el piso. La diferencia vertical no implica techo bajo; sólo importa si
+      // el perfil de pie no tiene superficie en la misma posición planar.
+      return !projected.success || planarDistance(projected.point, point) >= 0.5;
     };
     let previous = from;
     for (const end of rawPoints) {
@@ -974,7 +983,10 @@ function distanceSquared(a: { x: number; y: number; z: number }, b: Vector3): nu
   const dz = a.z - b.z;
   return dx * dx + dy * dy + dz * dz;
 }
-function planarDistance(a: Vector3, b: Vector3): number {
+function planarDistance(
+  a: { x: number; z: number },
+  b: { x: number; z: number },
+): number {
   return Math.hypot(a.x - b.x, a.z - b.z);
 }
 

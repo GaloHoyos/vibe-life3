@@ -927,7 +927,7 @@ export class Game {
     const raycast = new Raycast(physics);
     const origin = camera.camera.position;
     const direction = camera.getForwardDirection();
-    const hit = raycast.cast(origin, direction, 100);
+    const hit = raycast.cast(origin, direction, 100, undefined, "player");
     if (!hit) {
       eventBus.emit("subtitle.show", {
         text: "No hay superficie para spawnear Combine.",

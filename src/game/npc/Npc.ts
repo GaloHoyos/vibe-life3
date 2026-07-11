@@ -623,6 +623,7 @@ export class Npc implements INpc {
         speed: motorSnap.velocity.length(),
         desiredSpeed: motorSnap.desiredVelocity.length(),
         grounded: motorSnap.grounded,
+        crouched: this.motor.isCrouched?.() ?? false,
         distanceToTarget: motorSnap.distanceToTarget,
         yaw: motorSnap.yaw,
         targetYaw: motorSnap.targetYaw,
