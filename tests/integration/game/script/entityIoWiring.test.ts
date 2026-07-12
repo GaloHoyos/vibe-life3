@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Vector3 } from "three";
 import { EventBus } from "@engine/core/EventBus";
 import type { GameEventMap } from "@game/GameEvents";
-import { Sector1Arrival } from "@game/levels/maps/campaign/Sector1Arrival";
+import { Demo1Plaza } from "@game/levels/maps/campaign/Demo1Plaza";
 import { TriggerSystem } from "@game/levels/TriggerSystem";
 import { EntityIOSystem } from "@game/script/EntityIOSystem";
 import { EntityEventBridge } from "@game/script/EntityEventBridge";
@@ -11,24 +11,27 @@ import { effectiveName } from "@game/script/EntityIOTypes";
 
 /**
  * Wiring de punta a punta (trigger → puente → I/O → hooks de mundo) sobre los
- * datos reales del Sector 1: valida que cruzar el volumen de la esclusa
- * encadena el mensaje, la apertura de la puerta y el objetivo migrados a I/O.
+ * datos reales del Nivel demo 1: valida que cruzar los volúmenes encadena
+ * mensajes, spawners y el changelevel migrados a entity I/O.
  */
 function harness() {
   const bus = new EventBus<GameEventMap>();
   const io = new EntityIOSystem();
   const triggers = new TriggerSystem(bus);
-  const level = Sector1Arrival;
+  const level = Demo1Plaza;
 
   const calls = {
     dialogue: [] as string[],
+    spawners: [] as string[],
     doorsOpened: [] as string[],
     objectives: [] as string[],
     endLevel: 0,
   };
   const hooks: WorldEntityHooks = {
     showDialogue: (text) => calls.dialogue.push(text),
-    spawnNpcs: () => {},
+    spawnNpcs: (_npcs, spawnerName) => {
+      calls.spawners.push(spawnerName);
+    },
     setDoorOpen: (doorId, open) => {
       if (open) calls.doorsOpened.push(doorId);
       bus.emit("door.opened", { id: doorId, open });
@@ -64,28 +67,32 @@ function harness() {
   return { calls, io, triggers };
 }
 
-describe("entity I/O wiring (Sector 1)", () => {
-  it("cruzar la esclusa dispara mensaje + puerta + objetivo", () => {
+describe("entity I/O wiring (Demo 1 — Plaza)", () => {
+  it("cruzar el patio dispara el mensaje de emboscada y la primera oleada", () => {
     const { calls, io, triggers } = harness();
-    // El trigger tr-gate-open está centrado en [0, 1.2, 8] con tamaño [40, 3, 4].
-    triggers.update(new Vector3(0, 1.2, 8), 0.016);
+    // El trigger `ambush-trigger` está centrado en [0, 1.2, 14] con tamaño [46, 3, 3].
+    triggers.update(new Vector3(0, 1.2, 14), 0.016);
     io.update(0.016);
 
-    expect(calls.dialogue).toContain("Esclusa norte desbloqueada.");
-    expect(calls.doorsOpened).toContain("gate-1");
-    expect(calls.objectives).toContain("Cruzá la esclusa hacia la extracción");
+    expect(calls.dialogue).toContain("¡Emboscada! Combine entrando al patio.");
+    expect(calls.spawners).toContain("spawn-wave1");
+    // Las oleadas 2 y 3 tienen delay: todavía no dispararon.
+    expect(calls.spawners).not.toContain("spawn-wave2");
+
+    io.update(4.1);
+    expect(calls.spawners).toContain("spawn-wave2");
   });
 
-  it("el trigger de salida encadena el objetivo y el changelevel con su delay", () => {
+  it("el trigger de salida encadena el changelevel con su delay", () => {
     const { calls, io, triggers } = harness();
-    // tr-exit en [0, 1.2, -23], tamaño [40, 3, 3]; changelevel tiene delay 1.2s.
-    triggers.update(new Vector3(0, 1.2, -23), 0.016);
+    // `exit-trigger` arranca deshabilitado (se habilita al despejar el patio).
+    triggers.setEnabled("exit-trigger", true);
+    // Centrado en [0, 1.2, -100], tamaño [88, 3, 3]; el changelevel tiene delay 1s.
+    triggers.update(new Vector3(0, 1.2, -100), 0.016);
     io.update(0.016);
-
-    expect(calls.objectives).toContain("Sector 1 asegurado");
     expect(calls.endLevel).toBe(0); // Todavía no venció el delay.
 
-    io.update(1.3);
+    io.update(1.1);
     expect(calls.endLevel).toBe(1);
   });
 });

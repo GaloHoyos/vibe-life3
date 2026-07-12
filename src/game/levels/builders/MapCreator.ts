@@ -21,6 +21,7 @@ import type {
   WeaponPickupDefinition,
 } from '@game/levels/LevelDefinition';
 import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
+import type { CheckpointDefinition } from '@game/levels/CheckpointSystem';
 import type { ExplosiveBarrelDefinition } from '@game/gameplay/hazards/ExplosiveBarrel';
 import type { PlayerModelId } from '@game/config/playermodel.config';
 import type { LogicEntityDefinition } from '@game/script/EntityIOTypes';
@@ -102,6 +103,7 @@ export class MapBuilder {
   private readonly sequenceList: ScriptedSequenceDefinition[] = [];
   private readonly barrelList: ExplosiveBarrelDefinition[] = [];
   private readonly hazardList: HazardVolumeDefinition[] = [];
+  private readonly checkpointList: CheckpointDefinition[] = [];
   private terrainDef: TerrainDefinition | undefined;
 
   constructor(private readonly meta: MapMeta) {}
@@ -302,6 +304,12 @@ export class MapBuilder {
     return this;
   }
 
+  /** Punto de control para respawn (captura vida/armadura/inventario al cruzarlo). */
+  checkpoint(def: CheckpointDefinition): this {
+    this.checkpointList.push(def);
+    return this;
+  }
+
   /**
    * Punto world-space dentro de un room ya agregado. `local` es el offset XZ
    * desde el centro del room, clampeado a su AABB con 0.6 m de margen de
@@ -357,6 +365,7 @@ export class MapBuilder {
       sequences: this.sequenceList.length > 0 ? this.sequenceList : undefined,
       explosiveBarrels: this.barrelList.length > 0 ? this.barrelList : undefined,
       hazardVolumes: this.hazardList.length > 0 ? this.hazardList : undefined,
+      checkpoints: this.checkpointList.length > 0 ? this.checkpointList : undefined,
     };
   }
 
@@ -386,6 +395,7 @@ export class MapBuilder {
     this.sequenceList.forEach((s) => check(s.id));
     this.barrelList.forEach((b) => check(b.id));
     this.hazardList.forEach((h) => check(h.id));
+    this.checkpointList.forEach((c) => check(c.id));
     if (dupes.size > 0) {
       throw new Error(
         `MapBuilder('${this.meta.id}'): ids duplicados: ${[...dupes].join(', ')}`,

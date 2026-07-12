@@ -24,6 +24,7 @@ import { GameTokens } from "./ServiceTokens";
 import { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
 import { installIceConsole } from "@game/debug/IceConsole";
 import { installNpcConsole } from "@game/debug/NpcConsole";
+import { installPlayerConsole } from "@game/debug/PlayerConsole";
 import { installPlayerModelConsole } from "@game/debug/PlayerModelConsole";
 import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
 import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
@@ -150,6 +151,7 @@ export class Game {
   private player: Player | null = null;
   private playerModel: PlayerModelSystem | null = null;
   private uninstallNpcConsole: (() => void) | null = null;
+  private uninstallPlayerConsole: (() => void) | null = null;
   private uninstallIceConsole: (() => void) | null = null;
   private uninstallPlayerModelConsole: (() => void) | null = null;
   private npcs: INpc[] = [];
@@ -284,6 +286,8 @@ export class Game {
     this.collapsingStriders.clear();
     this.uninstallNpcConsole?.();
     this.uninstallNpcConsole = null;
+    this.uninstallPlayerConsole?.();
+    this.uninstallPlayerConsole = null;
     this.uninstallIceConsole?.();
     this.uninstallIceConsole = null;
     this.uninstallPlayerModelConsole?.();
@@ -1211,6 +1215,7 @@ export class Game {
     );
 
     this.uninstallNpcConsole = installNpcConsole(() => this.npcs);
+    this.uninstallPlayerConsole = installPlayerConsole(() => this.player);
     this.uninstallIceConsole = installIceConsole(() =>
       s.resolve(GameTokens.IceGun),
     );
