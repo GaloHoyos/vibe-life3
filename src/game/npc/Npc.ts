@@ -33,6 +33,8 @@ import type {
 } from '@game/npc/brain/NpcBrainContext';
 import { computeNpcConditions } from '@game/npc/brain/NpcSensors';
 import { Cond } from '@game/npc/brain/NpcConditions';
+import type { ConditionMask } from '@engine/ai/brain/Condition';
+import { NO_CONDITIONS, add, has } from '@engine/ai/brain/Condition';
 import { NpcDebugFlags } from '@game/npc/core/NpcDebugFlags';
 import { NpcNoiseSensor } from '@game/npc/brain/NpcNoiseSensor';
 import { NpcCoverSensor } from '@game/npc/brain/NpcCoverSensor';
@@ -115,8 +117,11 @@ export class Npc implements INpc {
   readonly position: Vector3;
   readonly radius: number;
   readonly playerSquadEligible: boolean;
+  readonly companionName: string | null;
 
   private readonly motor: NpcMotor;
+  /** Teleport para secuencias guionadas; undefined si el motor no lo soporta. */
+  private readonly scriptTeleport: ((position: Vector3, yaw: number) => void) | undefined;
   private readonly locomotion: NavigationLocomotion;
   private readonly perception: PerceptionSystem;
   private readonly brain: Brain<NpcBrainContext>;
@@ -154,7 +159,7 @@ export class Npc implements INpc {
   /** Muerto congelado: sin ragdoll; el visual lo mueve la estatua del ice gun. */
   private frozenSolid = false;
   private freezeHandle: NpcFreezeHandle | null = null;
-  private lastConditions = 0;
+  private lastConditions: ConditionMask = NO_CONDITIONS;
   private threatLastKnown: Vector3 | null = null;
   private currentThreat: ActorSnapshot | null = null;
   private readonly threatCandidates: ActorSnapshot[] = [];
@@ -172,6 +177,7 @@ export class Npc implements INpc {
     this.position = params.position;
     this.radius = params.preset.radius;
     this.playerSquadEligible = params.preset.playerSquad === true;
+    this.companionName = params.preset.companion?.displayName ?? null;
     this.height = params.height;
     this.difficulty = params.difficulty;
     // La vida enemiga se hornea con el mult de dificultad al spawnear (no cambia
@@ -180,6 +186,7 @@ export class Npc implements INpc {
     const healthMult = this.difficulty?.getModifiers().enemyHealthMult ?? 1;
     this.health = new Health(Math.max(1, Math.round(params.preset.maxHealth * healthMult)));
     this.motor = params.motor;
+    this.scriptTeleport = buildScriptTeleport(this.motor);
     this.preset = params.preset;
     this.navigationProfile = navigationProfileForPreset(this.preset);
     this.sliceDamage = params.sliceDamage ?? 0;
@@ -241,6 +248,9 @@ export class Npc implements INpc {
     }
 
     if (!this.health.isAlive()) {
+      // La IA no vuelve a tickear schedules después de morir, por lo que la
+      // secuencia debe cerrarse antes del early-return (incluye override AI).
+      ctx.script?.orderFor(this.id)?.notifyDone('canceled');
       if (this.frozenSolid) {
         // La estatua física del ice gun es dueña del visual: no tocarlo.
         return;
@@ -307,6 +317,7 @@ export class Npc implements INpc {
         this.locomotion.leap(target, params);
       },
       isLeaping: () => this.locomotion.isLeaping(),
+      teleport: this.scriptTeleport,
     };
 
     this.coverSensor?.update(
@@ -322,7 +333,8 @@ export class Npc implements INpc {
     const healTarget = ctx.elapsed >= this.healReadyAt ? this.resolveHealTarget(ctx) : null;
 
     const selfSnapshot = this.buildSelfSnapshot();
-    const conditions = computeNpcConditions({
+    let scriptOrder = ctx.script?.orderFor(this.id) ?? null;
+    let conditions = computeNpcConditions({
       self: selfSnapshot,
       threat: this.currentThreat,
       perception: perceptionSnapshot,
@@ -354,8 +366,24 @@ export class Npc implements INpc {
       selfRoomId: this.roomIdOf(this.motor.getPosition()),
       threatRoomId: this.threatLastKnown ? this.roomIdOf(this.threatLastKnown) : null,
     });
+    // Si el NPC ya estaba en combate/JustHit al recibir Start, el schedule
+    // scripted nunca llega a activarse y por tanto no existe un task que lo
+    // aborte. Cerramos la orden aquí; para una secuencia ya corriendo esto es
+    // idempotente y el interrupt del Brain se ocupa de frenar locomoción.
+    if (
+      scriptOrder &&
+      !scriptOrder.overrideAi &&
+      (has(conditions, Cond.SeeEnemy) || has(conditions, Cond.JustHit))
+    ) {
+      scriptOrder.notifyDone('canceled');
+      scriptOrder = null;
+    }
+    if (scriptOrder) {
+      conditions = add(conditions, Cond.ScriptActive);
+      if (scriptOrder.overrideAi) conditions = add(conditions, Cond.ScriptUninterruptible);
+    }
     this.emitThreatSpottedIfNeeded(ctx, conditions);
-    const suspecting = (conditions & Cond.EnemySuspected) !== 0;
+    const suspecting = has(conditions, Cond.EnemySuspected);
     if (suspecting && !this.wasSuspecting) this.emitCallout(ctx, 'alert');
     this.wasSuspecting = suspecting;
 
@@ -369,6 +397,7 @@ export class Npc implements INpc {
       threatLastKnown: this.threatLastKnown,
       threatSuspected: perceptionSnapshot.suspectedPosition,
       anchorPosition: this.resolveAnchorPosition(ctx),
+      anchorArrivalRadius: ctx.script?.anchorArrivalRadiusFor(this.id) ?? null,
       anchorOffset: isSquadMember ? (ctx.playerSquad?.formationOffsetFor(this.id) ?? null) : null,
       player: ctx.player,
       patrolRoute: this.patrolRoute,
@@ -379,6 +408,8 @@ export class Npc implements INpc {
       medic: healTarget
         ? { target: healTarget, heal: (elapsed) => this.performHeal(elapsed, healTarget) }
         : null,
+      script: scriptOrder,
+      gesture: (id, duration) => this.animation?.playGesture?.(id, duration),
       conditions,
       navigation: this.navigationQueries,
       navigationProfile: this.navigationProfile,
@@ -578,6 +609,7 @@ export class Npc implements INpc {
         id: this.id,
         characterId: this.preset.id,
         position: this.motor.getPosition().clone(),
+        ...(attackerId ? { attackerId } : {}),
       });
       if (!this.frozenSolid) {
         const deathVelocity = this.motor.getVelocity();
@@ -1001,6 +1033,9 @@ export class Npc implements INpc {
    */
   private resolveAnchorPosition(ctx: AiFrameContext): Vector3 | null {
     if (!this.preset.anchor) return null;
+    // La compañera guionada (wait/escort) pisa el ancla del player/squad.
+    const override = ctx.script?.anchorOverrideFor(this.id) ?? null;
+    if (override) return override;
     if (this.playerSquadEligible && ctx.playerSquad?.isMember(this.id)) {
       const order = ctx.playerSquad.orderPosition;
       if (order) return order;
@@ -1024,8 +1059,8 @@ export class Npc implements INpc {
    * re-emision throttled mientras mantenga LOS, para sostener la intel de
    * aliados que llegan tarde al combate).
    */
-  private emitThreatSpottedIfNeeded(ctx: AiFrameContext, conditions: number): void {
-    const seeing = (conditions & Cond.SeeEnemy) !== 0;
+  private emitThreatSpottedIfNeeded(ctx: AiFrameContext, conditions: ConditionMask): void {
+    const seeing = has(conditions, Cond.SeeEnemy);
     const risingEdge = seeing && !this.wasSeeingEnemy;
     if (risingEdge) this.emitCallout(ctx, 'contact');
     const throttleOk = ctx.elapsed - this.lastSpottedEmitAt >= SPOTTED_EMIT_INTERVAL;
@@ -1090,11 +1125,31 @@ function isBodyTipped(rotation: Quaternion): boolean {
   return tmpUp.y < 0.5;
 }
 
+/**
+ * Devuelve un teleport para secuencias guionadas si el motor lo soporta
+ * (mismo criterio de capacidades que el traversal de portales), o undefined
+ * para flyers/strider — así el `scriptMove` cae a walk en vez de teleportar.
+ */
+function buildScriptTeleport(
+  motor: NpcMotor,
+): ((position: Vector3, yaw: number) => void) | undefined {
+  const capable = motor as NpcMotor & Partial<PortalCapableMotor>;
+  const { teleport, snapYaw } = capable;
+  if (typeof teleport !== 'function' || typeof snapYaw !== 'function') {
+    return undefined;
+  }
+  const zeroVelocity = new Vector3();
+  return (position, yaw) => {
+    teleport.call(capable, position, zeroVelocity.set(0, 0, 0));
+    snapYaw.call(capable, yaw);
+  };
+}
+
 /** Derivado de `Cond` para que el trace nunca se desincronice del catalogo de bits. */
-function conditionMaskToNames(mask: number): string[] {
+function conditionMaskToNames(mask: ConditionMask): string[] {
   const out: string[] = [];
   for (const [name, flag] of Object.entries(Cond)) {
-    if ((mask & flag) !== 0) out.push(name);
+    if (has(mask, flag)) out.push(name);
   }
   return out;
 }

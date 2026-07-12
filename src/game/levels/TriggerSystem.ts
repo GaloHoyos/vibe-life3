@@ -1,44 +1,46 @@
 import { Euler, Quaternion, Vector3 } from 'three';
 import type { GameEventBus } from "@game/GameEvents";
 import { tupleToVector3 } from '@shared/math/VectorTuple';
-import type { TriggerAction, TriggerDefinition } from './LevelDefinition';
-
-interface PendingAction {
-  action: TriggerAction;
-  remaining: number;
-}
+import type { TriggerDefinition } from './LevelDefinition';
 
 interface RuntimeTrigger {
   definition: TriggerDefinition;
   center: Vector3;
   halfSize: Vector3;
   inverseRotation: Quaternion;
-  actions: readonly TriggerAction[];
+  /** El volumen puede emitir (no consumido por `once` ni deshabilitado). */
   active: boolean;
-  /** Estado del frame anterior, para disparar solo al entrar (flanco). */
+  /** Estado del frame anterior, para disparar solo al cruzar el borde (flanco). */
   inside: boolean;
+  /** Un trigger_once consumido no puede reactivarse por I/O. */
+  consumed: boolean;
+  /** StartTouch emitido para el solapamiento actual. */
+  touching: boolean;
+  /**
+   * Tiempo hasta que puede aceptarse otro StartTouch. Si el jugador reentra
+   * durante esta ventana, `inside` registra el solapamiento físico pero
+   * `touching` permanece false; al vencer el cooldown se acepta esa entrada sin
+   * obligarlo a salir y volver a entrar.
+   */
+  cooldownRemaining: number;
 }
 
 const tmpLocalPoint = new Vector3();
 
 /**
- * Volúmenes invisibles que ejecutan acciones al cruzarlos (diálogo, spawnear
- * NPCs, abrir puertas, acciones de nivel). Cada nivel registra los suyos vía
- * `LevelDefinition.triggers`. Dispara al entrar (no cada frame); si `once`, se
- * desactiva tras el primer disparo. Las acciones con `delay` se encolan y se
- * emiten al cumplirse — eso da el ritmo de un scripted sequence sin código.
- *
- * No conoce la lógica del juego: solo emite `trigger.action` y `Game` la ejecuta.
+ * Volúmenes invisibles que emiten outputs de entity I/O al cruzarlos:
+ * `trigger.entered` (→ `OnStartTouch`) al entrar y `trigger.exited` (→
+ * `OnEndTouch`) al salir. La lógica (qué pasa al entrar) vive en las conexiones
+ * del grafo de I/O; este sistema solo detecta flancos sobre la posición del
+ * jugador. Si `once`, se desactiva tras el primer `OnStartTouch`.
  */
 export class TriggerSystem {
   private readonly triggers: RuntimeTrigger[] = [];
-  private readonly pending: Array<{ trigger: RuntimeTrigger } & PendingAction> = [];
 
   constructor(private readonly eventBus: GameEventBus) {}
 
   clear(): void {
     this.triggers.length = 0;
-    this.pending.length = 0;
   }
 
   addTrigger(definition: TriggerDefinition): void {
@@ -53,69 +55,67 @@ export class TriggerSystem {
       center: position,
       halfSize,
       inverseRotation: rotation.invert(),
-      actions: normalizeActions(definition),
-      active: true,
+      active: !definition.startDisabled,
       inside: false,
+      consumed: false,
+      touching: false,
+      cooldownRemaining: 0,
     });
+  }
+
+  /** Habilita/deshabilita un trigger por id (inputs `Enable`/`Disable` del I/O). */
+  setEnabled(triggerId: string, enabled: boolean): void {
+    const trigger = this.triggers.find((t) => t.definition.id === triggerId);
+    if (!trigger) return;
+    if (trigger.consumed) return;
+    if (trigger.active === enabled) return;
+    trigger.active = enabled;
+    if (!enabled) this.endTouch(trigger);
+  }
+
+  toggleEnabled(triggerId: string): void {
+    const trigger = this.triggers.find((t) => t.definition.id === triggerId);
+    if (!trigger || trigger.consumed) return;
+    this.setEnabled(triggerId, !trigger.active);
+  }
+
+  isEnabled(triggerId: string): boolean {
+    return this.triggers.find((t) => t.definition.id === triggerId)?.active ?? false;
   }
 
   update(playerPosition: Vector3, delta: number): void {
     this.triggers.forEach((trigger) => {
-      const inside = trigger.active && containsPoint(trigger, playerPosition);
-      if (inside && !trigger.inside) {
-        this.fire(trigger);
+      trigger.cooldownRemaining = Math.max(0, trigger.cooldownRemaining - Math.max(0, delta));
+      const contains = containsPoint(trigger, playerPosition);
+      const wasInside = trigger.inside;
+      // `inside` sigue el volumen físico. `touching` sólo es true después de un
+      // StartTouch aceptado, por lo que una reentrada durante `wait` puede
+      // quedar pendiente hasta que venza el cooldown.
+      if (trigger.active) {
+        if (contains && !trigger.touching && trigger.cooldownRemaining <= 0) {
+          // Marcar antes de emitir hace robusto el estado ante un Disable
+          // reentrante disparado por las propias conexiones de OnStartTouch.
+          trigger.touching = true;
+          trigger.cooldownRemaining = Math.max(0, trigger.definition.wait ?? 0);
+          if (trigger.definition.once) {
+            trigger.active = false;
+            trigger.consumed = true;
+          }
+          this.eventBus.emit('trigger.entered', { id: trigger.definition.id });
+        } else if (!contains && wasInside) {
+          this.endTouch(trigger);
+        }
       }
-      trigger.inside = inside;
-    });
-
-    this.drainPending(delta);
-  }
-
-  private fire(trigger: RuntimeTrigger): void {
-    this.eventBus.emit('trigger.entered', { id: trigger.definition.id });
-    trigger.actions.forEach((action) => {
-      const delay = action.delay ?? 0;
-      if (delay > 0) {
-        this.pending.push({ trigger, action, remaining: delay });
-      } else {
-        this.dispatch(trigger, action);
-      }
-    });
-
-    if (trigger.definition.once) {
-      trigger.active = false;
-    }
-  }
-
-  private drainPending(delta: number): void {
-    for (let i = this.pending.length - 1; i >= 0; i -= 1) {
-      const entry = this.pending[i];
-      entry.remaining -= delta;
-      if (entry.remaining <= 0) {
-        this.dispatch(entry.trigger, entry.action);
-        this.pending.splice(i, 1);
-      }
-    }
-  }
-
-  private dispatch(trigger: RuntimeTrigger, action: TriggerAction): void {
-    this.eventBus.emit('trigger.action', {
-      triggerId: trigger.definition.id,
-      action,
-      position: trigger.center.clone(),
+      trigger.inside = contains;
     });
   }
-}
 
-/** Normaliza la forma legacy (`dialogue`) a la lista de acciones. */
-function normalizeActions(definition: TriggerDefinition): readonly TriggerAction[] {
-  if (definition.actions && definition.actions.length > 0) {
-    return definition.actions;
+  /** Cierra un touch aceptado exactamente una vez, incluso ante reentrancia. */
+  private endTouch(trigger: RuntimeTrigger): void {
+    if (!trigger.touching) return;
+    trigger.touching = false;
+    this.eventBus.emit('trigger.exited', { id: trigger.definition.id });
   }
-  if (definition.dialogue) {
-    return [{ kind: 'dialogue', ...definition.dialogue }];
-  }
-  return [];
 }
 
 function containsPoint(trigger: RuntimeTrigger, point: Vector3): boolean {

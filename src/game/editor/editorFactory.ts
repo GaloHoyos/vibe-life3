@@ -1,4 +1,6 @@
 import type { VectorTuple } from '@shared/math/VectorTuple';
+import { DefaultSoundscapeId } from '@game/config/audio.config';
+import type { LogicEntityDefinition, LogicEntityKind } from '@game/script/EntityIOTypes';
 import { newEid, type EditorEntity, type PropKind } from './EditorDocument';
 import {
   AMMO_IDS,
@@ -9,8 +11,11 @@ import {
   WEAPON_IDS,
 } from './editorOptions';
 
-/** Tipos de entidad creables desde la paleta (sin `prop`/`prebuiltBuilding`). */
-export type PaletteKind = Exclude<EditorEntity['kind'], 'prop' | 'prebuiltBuilding'>;
+/**
+ * Tipos de entidad creables desde la paleta con `createEntity` (sin `prop`/
+ * `prebuiltBuilding` ni `logic` — esos tienen factories propias).
+ */
+export type PaletteKind = Exclude<EditorEntity['kind'], 'prop' | 'prebuiltBuilding' | 'logic'>;
 
 let lidCounter = Math.floor(Math.random() * 0xffff);
 
@@ -54,7 +59,7 @@ export function createEntity(kind: PaletteKind, at: VectorTuple): EditorEntity {
     case 'charger':
       return { eid: newEid(kind), kind, def: { id: lid('charger'), kind: CHARGER_KINDS[0], position: [x, y, z], rotationY: 0 } };
     case 'trigger':
-      return { eid: newEid(kind), kind, def: { id: lid('trigger'), position: [x, y + 1, z], size: [3, 2, 3], once: true, actions: [{ kind: 'dialogue', text: 'Texto del trigger', duration: 3 }] } };
+      return { eid: newEid(kind), kind, def: { id: lid('trigger'), position: [x, y + 1, z], size: [3, 2, 3], once: true, connections: [] } };
     case 'explosiveBarrel':
       return { eid: newEid(kind), kind, def: { id: lid('barrel'), position: [x, y, z] } };
     case 'hazardVolume':
@@ -69,6 +74,45 @@ export function createEntity(kind: PaletteKind, at: VectorTuple): EditorEntity {
       return { eid: newEid(kind), kind, spec: { id: lid('house'), center: [x, z], floorY: y, width: 6, depth: 6, height: 3 } };
     case 'ramp':
       return { eid: newEid(kind), kind, spec: { id: lid('ramp'), start: [x, z], end: [x, z + 4], startY: y, endY: y + 2, width: 2, steps: 6 } };
+    case 'sequence': {
+      const id = lid('seq');
+      return { eid: newEid(kind), kind, def: { id, name: id, targetNpc: '', position: [x, y, z], moveMode: 'walk', steps: [], connections: [] } };
+    }
+  }
+}
+
+/** Crea una entidad lógica del entity I/O del sub-kind indicado. */
+export function createLogicEntity(logicKind: LogicEntityKind, at: VectorTuple): EditorEntity {
+  const [x, y, z] = at;
+  const id = lid('io');
+  const def = defaultLogicDef(logicKind, id, [x, y, z]);
+  return { eid: newEid('logic'), kind: 'logic', def, position: [x, y + 1, z] };
+}
+
+function defaultLogicDef(kind: LogicEntityKind, id: string, at: VectorTuple): LogicEntityDefinition {
+  switch (kind) {
+    case 'relay':
+      return { kind, id, name: id, connections: [] };
+    case 'auto':
+      return { kind, id, name: id, connections: [] };
+    case 'timer':
+      return { kind, id, name: id, interval: 5, connections: [] };
+    case 'counter':
+      return { kind, id, name: id, max: 3, connections: [] };
+    case 'marker':
+      return { kind, id, name: id, position: at };
+    case 'message':
+      return { kind, id, name: id, text: 'Texto', duration: 3, connections: [] };
+    case 'objective':
+      return { kind, id, name: id, text: 'Objetivo', connections: [] };
+    case 'soundscape':
+      return { kind, id, name: id, soundscape: DefaultSoundscapeId, connections: [] };
+    case 'npcSpawner':
+      return { kind, id, name: id, npcs: [], connections: [] };
+    case 'levelAction':
+      return { kind, id, name: id, action: LEVEL_ACTIONS[0], connections: [] };
+    case 'changelevel':
+      return { kind, id, name: id, connections: [] };
   }
 }
 
@@ -126,6 +170,18 @@ export function cloneEntity(entity: EditorEntity): EditorEntity {
       const base = lid('building');
       c.artifact.id = base;
       c.artifact.boxes = c.artifact.boxes.map((b, i) => ({ ...b, id: `${base}-b${i}` }));
+      break;
+    }
+    case 'logic': {
+      const nid = lid('io');
+      c.def.id = nid;
+      c.def.name = nid;
+      break;
+    }
+    case 'sequence': {
+      const nid = lid('seq');
+      c.def.id = nid;
+      c.def.name = nid;
       break;
     }
   }

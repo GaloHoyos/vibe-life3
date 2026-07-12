@@ -244,6 +244,11 @@ export class EditorScene {
       }
       case 'prebuiltBuilding':
         return groupFromBoxes(entity.artifact.boxes);
+      case 'sequence':
+        return placeholder(entity.def.position, [0.5, 0.5, 0.5], 'button', entity.def.rotation);
+      case 'logic':
+        // Entidades lógicas sin cuerpo físico: cubo pequeño para verlas/moverlas.
+        return placeholder(entity.position, [0.4, 0.4, 0.4], 'trim');
     }
   }
 }

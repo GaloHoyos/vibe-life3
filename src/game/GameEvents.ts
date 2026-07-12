@@ -4,12 +4,12 @@ import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { EventBus } from "@engine/core/EventBus";
 import type { PortalSlot } from "@engine/portals/PortalFrame";
 import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
-import type { TriggerAction } from "@game/levels/LevelDefinition";
 import type { HazardKind } from "@game/levels/HazardVolumeSystem";
 import type { NpcCalloutKind, UiSoundCue } from "@game/config/audio.config";
 import type { ChargerKind } from "@game/config/items.config";
 import type { DifficultyLevel } from "@game/config/difficulty.config";
 import type { DamageType } from "@shared/types/lifecycle";
+import type { ActivatorRef } from "@game/script/ActivatorRef";
 
 export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
 export type CombatEventSourceKind = "player" | "npc" | "system";
@@ -255,6 +255,8 @@ export interface GameEventMap {
   "npc.killed": {
     id: string;
     characterId: CharacterId;
+    /** Entidad que produjo el daño letal (`player` o id de NPC). */
+    attackerId?: string;
     /** Posición del NPC al morir, para reproducir el sonido de muerte en 3D. */
     position?: Vector3;
   };
@@ -277,18 +279,20 @@ export interface GameEventMap {
   "door.opened": {
     id: string;
     open: boolean;
+    /** Activador original de la transición; se conserva hasta !activator. */
+    activator?: ActivatorRef;
   };
   "trigger.entered": {
     id: string;
   };
-  /**
-   * Una acción de un trigger quedó lista para ejecutarse (ya pasó su `delay`).
-   * `Game` la despacha; el `TriggerSystem` no conoce la lógica del juego.
-   */
-  "trigger.action": {
-    triggerId: string;
-    action: TriggerAction;
-    position: Vector3;
+  /** El jugador salió del volumen de un trigger (flanco). Alimenta `OnEndTouch`. */
+  "trigger.exited": {
+    id: string;
+  };
+  /** Cambió el modo de una compañera (follow/wait/escort), por script o interacción. */
+  "companion.changed": {
+    id: string;
+    mode: "follow" | "wait" | "escort";
   };
   /** El jugador cruzó un volumen de checkpoint. `position` = punto de reaparición. */
   "checkpoint.reached": {

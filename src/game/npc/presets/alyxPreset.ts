@@ -20,6 +20,7 @@ import {
   hitSchedule,
   noticeSuspicionSchedule,
   reloadSchedules,
+  scriptedSchedules,
 } from './commonSchedules';
 import type { NpcPreset } from './NpcPreset';
 
@@ -36,6 +37,7 @@ const REGROUP_DISTANCE = 14;
 export function buildAlyxPreset(): NpcPreset {
   const schedules: ScheduleDefinition<NpcBrainContext>[] = [
     deadSchedule(),
+    ...scriptedSchedules(),
     hitSchedule(0.18),
     ...reloadSchedules(),
     {
@@ -106,6 +108,7 @@ export function buildAlyxPreset(): NpcPreset {
       followDistance: FOLLOW_DISTANCE,
       regroupDistance: REGROUP_DISTANCE,
     },
+    companion: { displayName: 'Alyx' },
     movement: {
       walkSpeed: 3.4,
       sprintSpeed: 6.0,

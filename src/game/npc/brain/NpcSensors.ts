@@ -1,5 +1,6 @@
 import type { Vector3 } from 'three';
 import type { ConditionMask } from '@engine/ai/brain/Condition';
+import { NO_CONDITIONS, add, has } from '@engine/ai/brain/Condition';
 import type { PerceptionSnapshot } from '@engine/ai/perception/PerceptionSystem';
 import type { ActorSnapshot } from '@game/npc/core/INpc';
 import type { NpcCombatHandle, NpcLocomotionHandle, NpcSelfSnapshot } from './NpcBrainContext';
@@ -51,27 +52,26 @@ export interface SensorInputs {
  * caller (`Npc.update`) la invoca una vez por tick antes de pasar al brain.
  */
 export function computeNpcConditions(inputs: SensorInputs): ConditionMask {
-  let mask = 0;
+  let mask = NO_CONDITIONS;
   if (!inputs.self.isAlive) {
-    mask |= Cond.IsDead;
-    return mask >>> 0;
+    return add(mask, Cond.IsDead);
   }
   if (inputs.self.health / inputs.self.maxHealth < inputs.lowHealthRatio) {
-    mask |= Cond.LowHealth;
+    mask = add(mask, Cond.LowHealth);
   }
-  if (inputs.justHit) mask |= Cond.JustHit;
-  if (inputs.flinchReady) mask |= Cond.FlinchReady;
-  if (inputs.tipped) mask |= Cond.Tipped;
+  if (inputs.justHit) mask = add(mask, Cond.JustHit);
+  if (inputs.flinchReady) mask = add(mask, Cond.FlinchReady);
+  if (inputs.tipped) mask = add(mask, Cond.Tipped);
 
   if (inputs.perception.visibleNow && inputs.threat?.isAlive) {
-    mask |= Cond.SeeEnemy;
+    mask = add(mask, Cond.SeeEnemy);
   } else if (inputs.perception.hasMemory && inputs.threat?.isAlive) {
-    mask |= Cond.LostEnemy;
+    mask = add(mask, Cond.LostEnemy);
   }
-  if (inputs.enemySuspected) mask |= Cond.EnemySuspected;
+  if (inputs.enemySuspected) mask = add(mask, Cond.EnemySuspected);
 
   if (inputs.threat && !inputs.threat.isAlive) {
-    mask |= Cond.EnemyDead;
+    mask = add(mask, Cond.EnemyDead);
   }
 
   if (inputs.threat?.isAlive) {
@@ -79,53 +79,53 @@ export function computeNpcConditions(inputs: SensorInputs): ConditionMask {
     // La memoria puede conservar un threat al otro lado de una pared. Sin
     // visión real no debe congelar al NPC en melee ni habilitar un salto.
     if (inputs.perception.visibleNow && dist <= inputs.meleeRange) {
-      mask |= Cond.EnemyInMeleeRange;
+      mask = add(mask, Cond.EnemyInMeleeRange);
     }
     if (
       inputs.perception.visibleNow &&
       dist > inputs.meleeRange &&
       dist <= inputs.leapRange
     ) {
-      mask |= Cond.EnemyInLeapRange;
+      mask = add(mask, Cond.EnemyInLeapRange);
     }
-    if (dist <= inputs.tooCloseRange) mask |= Cond.EnemyTooClose;
+    if (dist <= inputs.tooCloseRange) mask = add(mask, Cond.EnemyTooClose);
     // Solo con el enemigo a la vista: fuera del rango util del arma hay que
     // acercarse (closeDistance), no tirotear al aire.
-    if ((mask & Cond.SeeEnemy) !== 0 && dist > inputs.combat.effectiveRange()) {
-      mask |= Cond.TooFarToShoot;
+    if (has(mask, Cond.SeeEnemy) && dist > inputs.combat.effectiveRange()) {
+      mask = add(mask, Cond.TooFarToShoot);
     }
   }
 
-  if (inputs.combat.magazineEmpty()) mask |= Cond.MagazineEmpty;
-  if (inputs.locomotion.isStuck()) mask |= Cond.Stuck;
+  if (inputs.combat.magazineEmpty()) mask = add(mask, Cond.MagazineEmpty);
+  if (inputs.locomotion.isStuck()) mask = add(mask, Cond.Stuck);
 
-  if (inputs.noise.combat) mask |= Cond.HeardCombat;
-  if (inputs.noise.suspicious) mask |= Cond.HeardSuspicious;
-  if (inputs.alliesNear) mask |= Cond.AlliesNear;
-  if (inputs.anchorFar) mask |= Cond.AnchorFar;
-  if (inputs.coverAvailable) mask |= Cond.CoverAvailable;
-  if (inputs.coverBlown) mask |= Cond.CoverBlown;
-  if (inputs.squadFlankAvailable) mask |= Cond.SquadFlankAvailable;
-  if (inputs.squadOnPoint) mask |= Cond.SquadOnPoint;
-  if (inputs.hasAttackSlot) mask |= Cond.HasAttackSlot;
-  if (inputs.overwatchFree) mask |= Cond.OverwatchFree;
-  if (inputs.grenadeReady) mask |= Cond.GrenadeReady;
-  if (inputs.allyNeedsHealing) mask |= Cond.AllyNeedsHealing;
+  if (inputs.noise.combat) mask = add(mask, Cond.HeardCombat);
+  if (inputs.noise.suspicious) mask = add(mask, Cond.HeardSuspicious);
+  if (inputs.alliesNear) mask = add(mask, Cond.AlliesNear);
+  if (inputs.anchorFar) mask = add(mask, Cond.AnchorFar);
+  if (inputs.coverAvailable) mask = add(mask, Cond.CoverAvailable);
+  if (inputs.coverBlown) mask = add(mask, Cond.CoverBlown);
+  if (inputs.squadFlankAvailable) mask = add(mask, Cond.SquadFlankAvailable);
+  if (inputs.squadOnPoint) mask = add(mask, Cond.SquadOnPoint);
+  if (inputs.hasAttackSlot) mask = add(mask, Cond.HasAttackSlot);
+  if (inputs.overwatchFree) mask = add(mask, Cond.OverwatchFree);
+  if (inputs.grenadeReady) mask = add(mask, Cond.GrenadeReady);
+  if (inputs.allyNeedsHealing) mask = add(mask, Cond.AllyNeedsHealing);
 
   if (inputs.threatBuildingId && inputs.threatBuildingId !== inputs.selfBuildingId) {
-    mask |= Cond.EnemyInBuilding;
+    mask = add(mask, Cond.EnemyInBuilding);
   }
-  if (inputs.selfBuildingId) mask |= Cond.SelfInBuilding;
+  if (inputs.selfBuildingId) mask = add(mask, Cond.SelfInBuilding);
   if (
     inputs.threatRoomId &&
     inputs.selfRoomId &&
     inputs.threatRoomId === inputs.selfRoomId &&
     inputs.threatBuildingId === inputs.selfBuildingId
   ) {
-    mask |= Cond.SameRoomAsEnemy;
+    mask = add(mask, Cond.SameRoomAsEnemy);
   }
 
-  return mask >>> 0;
+  return mask;
 }
 
 function planarDistance(a: Vector3, b: Vector3): number {

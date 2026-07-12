@@ -21,6 +21,7 @@ import {
   hitSchedule,
   noticeSuspicionSchedule,
   reloadSchedules,
+  scriptedSchedules,
 } from './commonSchedules';
 import type { NpcMedicProfile, NpcPreset, NpcPresetOptions } from './NpcPreset';
 
@@ -53,6 +54,7 @@ export function buildRebelPreset(options: RebelPresetOptions = {}): NpcPreset {
   const flinch = options.flinch ?? { duration: 0.18, cooldown: 1.2 };
   const schedules: ScheduleDefinition<NpcBrainContext>[] = [
     deadSchedule(),
+    ...scriptedSchedules(),
     hitSchedule(flinch.duration),
     ...reloadSchedules(),
     {

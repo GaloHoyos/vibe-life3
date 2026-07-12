@@ -285,8 +285,12 @@ export function createFollowAnchorTask(followDistance = 6): NpcTask {
       const dz = target.z - ctx.self.position.z;
       const dist = Math.sqrt(dx * dx + dz * dz);
       // Con lugar de formacion asignado, el destino es exacto (radio corto).
-      const arrive = ctx.anchorOffset ? 1.2 : followDistance;
-      if (!moving && dist > arrive + 2) moving = true;
+      // Escort también impone un radio exacto; follow conserva sus 2 m de
+      // histéresis para no hacer ping-pong alrededor del jugador.
+      const preciseArrival = ctx.anchorArrivalRadius;
+      const arrive = preciseArrival ?? (ctx.anchorOffset ? 1.2 : followDistance);
+      const startMovingAt = preciseArrival != null ? arrive : arrive + 2;
+      if (!moving && dist > startMovingAt) moving = true;
       if (moving) {
         ctx.locomotion.moveTo(target, {
           gait: dist > followDistance * 2 ? 'sprint' : 'walk',
@@ -295,6 +299,10 @@ export function createFollowAnchorTask(followDistance = 6): NpcTask {
           ctx.locomotion.stop();
           moving = false;
         }
+      } else if (dist < 1 && ctx.player.isAlive) {
+        // Ancla pegada a sí mismo (compañera en 'wait'): encarar al player en
+        // vez del ancla degenerada.
+        ctx.locomotion.face(ctx.player.position);
       } else {
         ctx.locomotion.face(anchor);
       }
@@ -308,7 +316,7 @@ export function createFollowAnchorTask(followDistance = 6): NpcTask {
  * Regroup: sprint hacia el anchor hasta quedar a `arriveDistance`. Pensado
  * para `AnchorFar` — el ally quedo descolgado y vuelve aunque este en combate.
  */
-export function createRegroupTask(arriveDistance = 5): NpcTask {
+export function createRegroupTask(defaultArriveDistance = 5): NpcTask {
   const formationTarget = new Vector3();
   return {
     id: 'regroup',
@@ -321,6 +329,7 @@ export function createRegroupTask(arriveDistance = 5): NpcTask {
         : anchor;
       const dx = target.x - ctx.self.position.x;
       const dz = target.z - ctx.self.position.z;
+      const arriveDistance = ctx.anchorArrivalRadius ?? defaultArriveDistance;
       if (Math.sqrt(dx * dx + dz * dz) <= arriveDistance) {
         ctx.locomotion.stop();
         return 'success';

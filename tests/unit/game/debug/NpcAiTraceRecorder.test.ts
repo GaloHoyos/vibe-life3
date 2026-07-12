@@ -52,6 +52,7 @@ function fakeNpc(snapshot: NpcAiDebugSnapshot = fakeSnapshot()): INpc {
     position: snapshot.position,
     radius: 0.4,
     playerSquadEligible: false,
+    companionName: null,
     update: () => undefined,
     syncFromPhysics: () => undefined,
     getPortalTraversalHandle: () => null,

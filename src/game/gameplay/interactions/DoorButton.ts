@@ -17,11 +17,7 @@ export class DoorButton implements Interactable {
   ) {}
 
   interact(): void {
-    const open = this.door.toggle();
-    this.eventBus.emit('door.opened', {
-      id: this.door.id,
-      open,
-    });
+    const open = this.door.toggle({ kind: 'player' });
     this.eventBus.emit(
       'dialogue.show',
       open ? Dialogue.doorOpened : Dialogue.doorClosed,

@@ -1,6 +1,9 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
 import type { Object3D } from 'three';
 import { Vector3 } from 'three';
+import type { ActivatorRef } from '@game/script/ActivatorRef';
+
+export type DoorStateChange = (open: boolean, activator: ActivatorRef) => void;
 
 export class SlidingDoor {
   private readonly closedPosition: Vector3;
@@ -13,18 +16,21 @@ export class SlidingDoor {
     private readonly rigidBody: RAPIER.RigidBody,
     openOffset: Vector3,
     private readonly speed: number,
+    private readonly onStateChange?: DoorStateChange,
   ) {
     this.closedPosition = mesh.position.clone();
     this.openPosition = mesh.position.clone().add(openOffset);
   }
 
-  toggle(): boolean {
-    this.open = !this.open;
+  toggle(activator: ActivatorRef = { kind: 'none' }): boolean {
+    this.setOpen(!this.open, activator);
     return this.open;
   }
 
-  setOpen(open: boolean): void {
+  setOpen(open: boolean, activator: ActivatorRef = { kind: 'none' }): void {
+    if (this.open === open) return;
     this.open = open;
+    this.onStateChange?.(open, activator);
   }
 
   isOpen(): boolean {

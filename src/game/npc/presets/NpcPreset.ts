@@ -98,6 +98,12 @@ export interface NpcPreset {
    * formacion). Solo tiene sentido junto con `anchor`.
    */
   playerSquad?: boolean;
+  /**
+   * Compañera al estilo HL2 (Alyx): el jugador togglea follow/wait con USE (E) y
+   * el script la puede comandar (follow/wait/escort). Solo tiene sentido junto
+   * con `anchor`. `displayName` es el nombre visible en el prompt/diálogos.
+   */
+  companion?: { displayName: string };
   /** Movimiento. */
   movement: NpcMovementProfile;
   /** Schedules priorizados. El Brain los ordena desc por priority. */

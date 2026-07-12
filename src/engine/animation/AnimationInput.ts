@@ -2,6 +2,13 @@ import type { Vector3 } from "three";
 
 export type WeaponHandedness = "none" | "oneHanded" | "twoHanded";
 
+/**
+ * Gestos procedurales nombrados que una secuencia guionada puede disparar.
+ * `point`/`wave`/`talk` los rinde `GestureLayer` (brazos/torso); `crouch` lo
+ * mapea el bridge a `setCrouch` (el `PostureLayer` hace la flexión real).
+ */
+export type GestureId = "point" | "wave" | "talk" | "crouch";
+
 /** Qué están haciendo los brazos del personaje. Determina qué layer manda. */
 export type AnimationActivity =
   | "none"

@@ -1,4 +1,5 @@
 import type { Task, TaskStatus } from "@engine/ai/brain/Task";
+import { has } from "@engine/ai/brain/Condition";
 import type { NpcBrainContext } from "@game/npc/brain/NpcBrainContext";
 import { Cond } from "@game/npc/brain/NpcConditions";
 
@@ -38,7 +39,7 @@ export function createTurretScanTask(): NpcTask {
     init: () => {},
     tick: (ctx): TaskStatus => {
       // Memoria caducó → success: deja que el brain caiga a idle (se desactiva).
-      if ((ctx.conditions & Cond.LostEnemy) === 0) return "success";
+      if (!has(ctx.conditions, Cond.LostEnemy)) return "success";
       ctx.combat.scan?.();
       return "running";
     },
@@ -54,7 +55,7 @@ export const TurretTippedTask: NpcTask = {
   id: "turretTipped",
   init: () => {},
   tick: (ctx): TaskStatus => {
-    if ((ctx.conditions & Cond.Tipped) === 0) return "success";
+    if (!has(ctx.conditions, Cond.Tipped)) return "success";
     ctx.combat.tryFire();
     return "running";
   },

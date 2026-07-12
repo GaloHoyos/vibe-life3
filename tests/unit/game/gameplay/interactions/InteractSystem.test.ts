@@ -56,6 +56,23 @@ describe("InteractSystem", () => {
 
     expect(interactable.interactEnd).toHaveBeenCalledTimes(1);
   });
+
+  it("unregister quita el interactable por id y termina su hold activo", () => {
+    const system = new InteractSystem(new EventBus<GameEventMap>());
+    const interactable = fakeInteractable({ id: "alyx", object: meshAt(0, 0, -2) });
+    system.register(interactable);
+
+    system.update(
+      0.1,
+      new Vector3(0, 0, 0),
+      new Vector3(0, 0, -1),
+      fakeControls({ down: new Set(["interact"]) }),
+    );
+    system.unregister("alyx");
+
+    expect(interactable.interactEnd).toHaveBeenCalledTimes(1);
+    expect(system.getFocused()).toBeNull();
+  });
 });
 
 function meshAt(x: number, y: number, z: number): Object3D {

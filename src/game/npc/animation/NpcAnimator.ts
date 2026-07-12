@@ -1,6 +1,7 @@
 import type { Vector3 } from "three";
 import type {
   AnimationActivity,
+  GestureId,
   WeaponHandedness,
 } from "@engine/animation/AnimationInput";
 import type { CharacterMotorSnapshot } from "@engine/physics/character/CharacterMotor";
@@ -29,6 +30,8 @@ export interface NpcAnimator {
   notifyShot(): void;
   notifyReload(duration: number): void;
   notifyAttack(): void;
+  /** Dispara un gesto procedural nombrado (secuencias guionadas). Opcional. */
+  playGesture?(id: GestureId, duration: number): void;
   notifyHit(direction: Vector3, intensityFraction: number): void;
   notifyDeath(
     direction: Vector3 | undefined,

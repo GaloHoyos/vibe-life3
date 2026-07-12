@@ -4,6 +4,7 @@ import { listLibraryMaps } from '../mapLibrary';
 import type { TransformMode } from '../EditorSelection';
 import type { PaletteKind } from '../editorFactory';
 import type { PropKind } from '../EditorDocument';
+import type { LogicEntityKind } from '@game/script/EntityIOTypes';
 import { iconSpan, type EditorIconName } from './editorIcons';
 import { MenuButton, type MenuItem } from './EditorMenu';
 import { PALETTE_GROUPS } from './paletteCatalog';
@@ -26,6 +27,7 @@ export interface EditorMenuCallbacks {
   onFocus(): void;
   onAdd(kind: PaletteKind): void;
   onAddProp(prop: PropKind): void;
+  onAddLogic(logic: LogicEntityKind): void;
   onToggleGrid(visible: boolean): void;
   onToggleAxes(visible: boolean): void;
   onSnapChange(step: number | null): void;
@@ -156,7 +158,12 @@ export class EditorMenuBar implements Disposable {
       submenu: group.items.map((item) => ({
         label: item.label,
         icon: item.icon,
-        onClick: () => ('kind' in item ? this.cb.onAdd(item.kind) : this.cb.onAddProp(item.prop)),
+        onClick: () =>
+          'kind' in item
+            ? this.cb.onAdd(item.kind)
+            : 'logic' in item
+              ? this.cb.onAddLogic(item.logic)
+              : this.cb.onAddProp(item.prop),
       })),
     }));
   }

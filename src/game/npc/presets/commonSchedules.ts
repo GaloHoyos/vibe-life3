@@ -15,6 +15,7 @@ import {
   createPatrolTask,
   createSearchSweepTask,
 } from '@game/npc/brain/tasks/TacticalTasks';
+import { createScriptMoveTask, createScriptStepsTask } from '@game/npc/brain/tasks/ScriptTasks';
 
 type NpcSchedule = ScheduleDefinition<NpcBrainContext>;
 
@@ -32,6 +33,35 @@ export const DEFAULT_ALERT_CONDS: readonly CondKey[] = [
   'HeardCombat',
   'HeardSuspicious',
 ];
+
+/**
+ * Secuencias guionadas (scripted_sequence). `scriptedOverride` (2000) es
+ * ininterrumpible durante combate, pero la muerte siempre la cancela;
+ * `scripted` (900) cede ante `SeeEnemy`/`JustHit`. Los mismos bits figuran en
+ * `blockedBy` e `interrupts`: el Brain actual necesita elegir otro candidato
+ * antes de poder ejecutar el interrupt del schedule activo.
+ * Se insertan en los presets humanoides que pueden ser dirigidos por script.
+ */
+export function scriptedSchedules(): NpcSchedule[] {
+  return [
+    {
+      id: 'scriptedOverride',
+      priority: 2000,
+      required: condMask('ScriptActive', 'ScriptUninterruptible'),
+      blockedBy: condMask('IsDead'),
+      interrupts: condMask('IsDead'),
+      tasks: [createScriptMoveTask(), createScriptStepsTask()],
+    },
+    {
+      id: 'scripted',
+      priority: 900,
+      required: condMask('ScriptActive'),
+      blockedBy: condMask('IsDead', 'ScriptUninterruptible', 'SeeEnemy', 'JustHit'),
+      interrupts: condMask('IsDead', 'SeeEnemy', 'JustHit'),
+      tasks: [createScriptMoveTask(), createScriptStepsTask()],
+    },
+  ];
+}
 
 export function deadSchedule(): NpcSchedule {
   return {

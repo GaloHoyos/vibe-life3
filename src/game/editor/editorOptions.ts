@@ -14,7 +14,6 @@ import { CharacterPresets } from '@game/characters/CharacterPresets';
 import { Soundscapes, type SoundscapeId } from '@game/config/audio.config';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { LevelActionKind } from '@game/GameEvents';
-import type { TriggerAction } from '@game/levels/LevelDefinition';
 import type { HazardKind } from '@game/levels/HazardVolumeSystem';
 import { getAllLevels } from '@game/levels/LevelRegistry';
 import type { PropKind } from './EditorDocument';
@@ -33,9 +32,6 @@ export const SKYBOX_IDS: readonly SkyboxId[] = Object.keys(SkyboxManifest) as Sk
 export const SOUNDSCAPE_IDS: readonly SoundscapeId[] = Object.keys(Soundscapes) as SoundscapeId[];
 export { PLAYER_MODEL_IDS } from '@game/config/playermodel.config';
 export const LEVEL_ACTIONS: readonly LevelActionKind[] = ['respawnEncounters', 'spawnAllWeapons'];
-export const TRIGGER_ACTION_KINDS: readonly TriggerAction['kind'][] = [
-  'dialogue', 'spawnNpcs', 'door', 'levelAction', 'soundscape', 'objective', 'endLevel',
-];
 export const HAZARD_KINDS: readonly HazardKind[] = ['toxic', 'fire', 'electric', 'void'];
 
 /** Niveles registrados (campaña + custom). Para encadenar vía `nextLevel`. */

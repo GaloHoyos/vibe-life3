@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Vector3 } from "three";
 import { NavigationService } from "@engine/ai/navigation/NavigationService";
 import { buildNavigationGeometry } from "@engine/ai/navigation/NavigationGeometry";
@@ -88,6 +88,33 @@ describe("NavigationService", () => {
     );
     expect(path).not.toBeNull();
     expect(path!.actions.some((action) => action.link.kind === "portal")).toBe(true);
+  }, 20_000);
+
+  it("propaga el owner que activa un action link de puerta", async () => {
+    const profile = testProfile();
+    const openDoor = vi.fn();
+    navigation = await NavigationService.create({
+      geometry: buildNavigationGeometry([box("floor", [0, -0.25, 0], [8, 0.5, 8])]),
+      groundProfiles: [profile],
+      raycast: new Raycast(physics),
+      physics,
+      openDoor,
+    });
+    const link = {
+      id: "door-link",
+      kind: "door",
+      start: new Vector3(-1, 0, 0),
+      end: new Vector3(1, 0, 0),
+      bidirectional: true,
+      cost: 1,
+      width: 1,
+      doorId: "gate",
+      profileIds: [profile.id],
+    } as const;
+
+    navigation.activateAction(link, "npc-42");
+
+    expect(openDoor).toHaveBeenCalledWith("gate", "npc-42");
   }, 20_000);
 
   it("does not mark the capsule-center descent onto open floor as crouch", async () => {

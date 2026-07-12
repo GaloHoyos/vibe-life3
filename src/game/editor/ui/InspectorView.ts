@@ -11,12 +11,18 @@ import type {
 } from '@game/levels/builders/BuildingBuilder';
 import type { HouseSpec } from '@game/levels/builders/HouseBuilder';
 import type { RampSpec } from '@game/levels/builders/RampBuilder';
-import type { NPCDefinition, TriggerAction, TriggerDefinition } from '@game/levels/LevelDefinition';
-import type { CharacterId } from '@engine/characters/CharacterDefinition';
-import type { LevelActionKind } from '@game/GameEvents';
-import { DefaultSoundscapeId, type SoundscapeId } from '@game/config/audio.config';
+import type { TriggerDefinition } from '@game/levels/LevelDefinition';
+import type { EntityConnection, IOEntityFields, LogicEntityDefinition } from '@game/script/EntityIOTypes';
+import type { ScriptedSequenceDefinition, SequenceStep } from '@game/script/ScriptedSequenceTypes';
+import {
+  descriptorFor,
+  type EntityClassId,
+  type EntityInputDescriptor,
+  type InputParamKind,
+} from '@game/script/EntityCatalog';
+import type { GestureId } from '@engine/animation/AnimationInput';
 import type { EditorDocument, EditorEntity, PropEntitySpec } from '../EditorDocument';
-import { entityKindLabel, entityLevelId } from '../EditorDocument';
+import { entityIoName, entityKindLabel, entityLevelId } from '../EditorDocument';
 import {
   editablePayload,
   getPosition,
@@ -38,7 +44,6 @@ import {
   LEVEL_ACTIONS,
   MATERIAL_KEYS,
   SOUNDSCAPE_IDS,
-  TRIGGER_ACTION_KINDS,
   WEAPON_IDS,
 } from '../editorOptions';
 import {
@@ -252,6 +257,7 @@ export class InspectorView implements Disposable {
           entity.def.button.position = v;
           this.commit();
         }));
+        this.connectionsEditor(entity.def, 'door');
         return;
       case 'actionButton':
         this.append(textField('Etiqueta', entity.def.label, (v) => {
@@ -268,6 +274,7 @@ export class InspectorView implements Disposable {
           entity.def.characterId = v;
           this.commit();
         }));
+        this.connectionsEditor(entity.def, 'npc');
         return;
       case 'weaponPickup':
         this.append(selectField('Arma', entity.def.weaponId, WEAPON_IDS, (v) => {
@@ -354,6 +361,12 @@ export class InspectorView implements Disposable {
       case 'prebuiltBuilding':
         // Edificio importado: solo transform + JSON (no re-parametrizable).
         return;
+      case 'logic':
+        this.logicFields(entity.def);
+        return;
+      case 'sequence':
+        this.sequenceFields(entity.def);
+        return;
     }
   }
 
@@ -385,143 +398,355 @@ export class InspectorView implements Disposable {
   private triggerFields(def: TriggerDefinition): void {
     this.append(checkboxField('Una sola vez', def.once, (v) => {
       def.once = v;
+      if (v) def.wait = undefined;
+      this.commitAndRerender();
+    }));
+    if (!def.once) {
+      this.append(numberField('Espera entre activaciones (s)', def.wait ?? 0, (v) => {
+        def.wait = v > 0 ? v : undefined;
+        this.commit();
+      }, 0.25));
+    }
+    this.append(checkboxField('Arranca deshabilitado', def.startDisabled ?? false, (v) => {
+      def.startDisabled = v || undefined;
       this.commit();
     }));
-
-    const actions = ensureTriggerActions(def);
-    actions.forEach((action, i) =>
-      this.body.append(this.triggerActionEditor(actions, action, i)),
-    );
-    this.body.append(
-      miniButton('+ Accion', () => {
-        ensureTriggerActions(def).push({ kind: 'dialogue', text: '', duration: 3 });
-        this.commitAndRerender();
-      }),
-    );
+    this.connectionsEditor(def, 'trigger');
   }
 
-  private triggerActionEditor(
-    actions: TriggerAction[],
-    action: TriggerAction,
-    i: number,
-  ): HTMLElement {
-    const item = document.createElement('div');
-    item.className = 'editor-subitem';
-    item.append(
-      subitemHeader(`Accion ${i}`, () => {
-        actions.splice(i, 1);
-        this.commitAndRerender();
-      }),
-      selectField('Tipo', action.kind, TRIGGER_ACTION_KINDS, (v) => {
-        actions[i] = defaultTriggerAction(v as TriggerAction['kind'], action.delay);
-        this.commitAndRerender();
-      }).element,
-      numberField('Retardo (s)', action.delay ?? 0, (v) => {
-        action.delay = v > 0 ? v : undefined;
-        this.commit();
-      }, 0.25).element,
-    );
-    this.appendTriggerActionFields(item, action);
-    return item;
-  }
-
-  private appendTriggerActionFields(item: HTMLElement, action: TriggerAction): void {
-    switch (action.kind) {
-      case 'dialogue':
-        item.append(
-          textField('Hablante', action.speaker ?? '', (v) => {
-            action.speaker = v || undefined;
+  private logicFields(def: LogicEntityDefinition): void {
+    switch (def.kind) {
+      case 'relay':
+      case 'timer':
+        if (def.kind === 'timer') {
+          this.append(numberField('Intervalo (s)', def.interval, (v) => { def.interval = Math.max(0.1, v); this.commit(); }, 0.5));
+        } else {
+          this.append(checkboxField('Permitir retrigger rápido', def.allowFastRetrigger ?? false, (v) => {
+            def.allowFastRetrigger = v || undefined;
             this.commit();
-          }).element,
-          textField('Texto', action.text, (v) => { action.text = v; this.commit(); }).element,
-          numberField('Duracion (s)', action.duration, (v) => {
-            action.duration = v;
+          }));
+          this.append(checkboxField('Disparar una sola vez', def.triggerOnce ?? false, (v) => {
+            def.triggerOnce = v || undefined;
             this.commit();
-          }, 0.5).element,
-        );
-        return;
-      case 'door':
-        item.append(
-          textField('Puerta (id)', action.doorId, (v) => { action.doorId = v; this.commit(); }).element,
-          checkboxField('Abrir', action.open, (v) => { action.open = v; this.commit(); }).element,
-        );
-        return;
-      case 'levelAction':
-        item.append(
-          selectField('Accion de nivel', action.action, LEVEL_ACTIONS, (v) => {
-            action.action = v as LevelActionKind;
-            this.commit();
-          }).element,
-        );
-        return;
-      case 'soundscape':
-        item.append(
-          selectField('Ambiente sonoro', action.soundscape, SOUNDSCAPE_IDS, (v) => {
-            action.soundscape = v as SoundscapeId;
-            this.commit();
-          }).element,
-        );
-        return;
-      case 'objective':
-        item.append(
-          textField('Texto', action.text, (v) => { action.text = v; this.commit(); }).element,
-          checkboxField('Cumplido', action.completed ?? false, (v) => {
-            action.completed = v || undefined;
-            this.commit();
-          }).element,
-          vec3Field('Marcador', action.marker ?? [0, 0, 0], (v) => {
-            action.marker = v;
-            this.commit();
-          }).element,
-        );
-        return;
-      case 'spawnNpcs':
-        action.npcs.forEach((npc, ni) => item.append(this.spawnNpcEditor(action.npcs, npc, ni)));
-        item.append(
-          miniButton('+ NPC', () => {
-            action.npcs.push({
-              id: `npc-${Date.now().toString(36)}`,
-              characterId: CHARACTER_IDS[0],
-              position: [0, 1, 0],
-            });
-            this.commitAndRerender();
-          }),
-        );
-        return;
-      case 'endLevel': {
-        const note = document.createElement('p');
-        note.className = 'editor-note';
-        note.textContent = 'Encadena a "Nivel siguiente" (config. del nivel) o termina la campaña. ' +
-          'El landmark (default = centro del trigger) fija el punto de referencia para la transición relativa.';
-        item.append(note);
-        item.append(
-          checkboxField('Landmark propio', action.landmark !== undefined, (on) => {
-            action.landmark = on ? (action.landmark ?? [0, 0, 0]) : undefined;
-            this.commitAndRerender();
-          }).element,
-        );
-        if (action.landmark) {
-          item.append(
-            vec3Field('Landmark', action.landmark, (v) => { action.landmark = v; this.commit(); }).element,
-          );
+          }));
         }
-        return;
-      }
+        this.append(checkboxField('Arranca deshabilitado', def.startDisabled ?? false, (v) => { def.startDisabled = v || undefined; this.commit(); }));
+        break;
+      case 'counter':
+        this.append(numberField('Máximo', def.max, (v) => { def.max = Math.max(1, Math.floor(v)); this.commit(); }, 1));
+        break;
+      case 'message':
+        this.append(textField('Hablante', def.speaker ?? '', (v) => { def.speaker = v || undefined; this.commit(); }));
+        this.append(textField('Texto', def.text, (v) => { def.text = v; this.commit(); }));
+        this.append(numberField('Duración (s)', def.duration, (v) => { def.duration = v; this.commit(); }, 0.5));
+        break;
+      case 'objective':
+        this.append(textField('Texto', def.text, (v) => { def.text = v; this.commit(); }));
+        this.append(checkboxField('Cumplido', def.completed ?? false, (v) => { def.completed = v || undefined; this.commit(); }));
+        this.append(checkboxField('Con marcador', def.marker !== undefined, (v) => { def.marker = v ? (def.marker ?? [0, 1.6, 0]) : undefined; this.commitAndRerender(); }));
+        if (def.marker) this.append(vec3Field('Marcador', def.marker, (v) => { def.marker = v; this.commit(); }));
+        break;
+      case 'soundscape':
+        this.append(selectField('Ambiente', def.soundscape, SOUNDSCAPE_IDS, (v) => { def.soundscape = v as typeof def.soundscape; this.commit(); }));
+        break;
+      case 'levelAction':
+        this.append(selectField('Acción', def.action, LEVEL_ACTIONS, (v) => { def.action = v as typeof def.action; this.commit(); }));
+        break;
+      case 'changelevel':
+        this.append(checkboxField('Con landmark', def.landmark !== undefined, (v) => { def.landmark = v ? (def.landmark ?? [0, 1, 0]) : undefined; this.commitAndRerender(); }));
+        if (def.landmark) this.append(vec3Field('Landmark', def.landmark, (v) => { def.landmark = v; this.commit(); }));
+        break;
+      case 'npcSpawner':
+        this.spawnerNpcList(def);
+        break;
+      case 'marker':
+      case 'auto':
+        break;
+    }
+    if (def.kind === 'marker') {
+      this.ioNameField(def);
+    } else {
+      this.connectionsEditor(def, def.kind);
     }
   }
 
-  private spawnNpcEditor(npcs: NPCDefinition[], npc: NPCDefinition, ni: number): HTMLElement {
+  private spawnerNpcList(def: Extract<LogicEntityDefinition, { kind: 'npcSpawner' }>): void {
+    this.body.append(subheading('NPCs a spawnear'));
+    def.npcs.forEach((npc, ni) => {
+      const item = document.createElement('div');
+      item.className = 'editor-subitem';
+      item.append(
+        subitemHeader(`NPC ${ni}`, () => { def.npcs.splice(ni, 1); this.commitAndRerender(); }),
+        textField('Nombre I/O', npc.name ?? '', (v) => { npc.name = v || undefined; this.commitAndRerender(); }).element,
+        selectField('Personaje', npc.characterId, CHARACTER_IDS, (v) => { npc.characterId = v; this.commit(); }).element,
+        vec3Field('Posición', npc.position, (v) => { npc.position = v; this.commit(); }).element,
+      );
+      const matches = this.docIoTargets().filter((target) => target.name === (npc.name || npc.id));
+      if (matches.length > 1) {
+        item.append(connectionWarning(
+          `Targetname compartido por ${matches.length} entidades: los inputs se envían a todas (fan-out).`,
+        ));
+      }
+      this.body.append(item);
+    });
+    this.body.append(miniButton('+ NPC', () => {
+      def.npcs.push({ id: `npc-${Date.now().toString(36)}`, characterId: CHARACTER_IDS[0], position: [0, 1, 0] });
+      this.commitAndRerender();
+    }));
+  }
+
+  private sequenceFields(def: ScriptedSequenceDefinition): void {
+    this.append(selectField('NPC objetivo', def.targetNpc, this.docNpcNames(def.targetNpc), (v) => { def.targetNpc = v; this.commit(); }));
+    this.append(selectField('Movimiento', def.moveMode, ['walk', 'run', 'teleport', 'none'], (v) => { def.moveMode = v as typeof def.moveMode; this.commit(); }));
+    this.append(checkboxField('Ininterrumpible (override AI)', def.overrideAi ?? false, (v) => { def.overrideAi = v || undefined; this.commit(); }));
+    this.append(checkboxField('Repetible', def.repeatable ?? false, (v) => { def.repeatable = v || undefined; this.commit(); }));
+    this.sequenceStepsList(def);
+    this.connectionsEditor(def, 'sequence');
+  }
+
+  private sequenceStepsList(def: ScriptedSequenceDefinition): void {
+    this.body.append(subheading('Pasos de la secuencia'));
+    const steps = (def.steps ??= []);
+    steps.forEach((step, si) => {
+      const item = document.createElement('div');
+      item.className = 'editor-subitem';
+      item.append(subitemHeader(`Paso ${si}`, () => { steps.splice(si, 1); this.commitAndRerender(); }));
+      item.append(selectField('Tipo', step.kind, SEQUENCE_STEP_KINDS, (v) => {
+        steps[si] = defaultSequenceStep(v as SequenceStep['kind']);
+        this.commitAndRerender();
+      }).element);
+      appendSequenceStepFields(item, step, () => this.commit());
+      this.body.append(item);
+    });
+    this.body.append(miniButton('+ Paso', () => {
+      (def.steps ??= []).push({ kind: 'wait', seconds: 1 });
+      this.commitAndRerender();
+    }));
+  }
+
+  /**
+   * Editor de conexiones de entity I/O (output→input). `sourceClass` alimenta el
+   * dropdown de outputs; el target ofrece los nombres del documento + keywords.
+   */
+  private connectionsEditor(entity: IOEntityFields & { id: string }, sourceClass: EntityClassId): void {
+    this.ioNameField(entity);
+    this.body.append(subheading('Conexiones (output → input)'));
+    const connections = (entity.connections ??= []);
+    connections.forEach((conn, i) =>
+      this.body.append(this.connectionEditor(connections, conn, i, sourceClass)),
+    );
+    this.body.append(
+      miniButton('+ Conexion', () => {
+        const output = descriptorFor(sourceClass)?.outputs[0]?.id ?? '';
+        (entity.connections ??= []).push({ output, target: '', input: '' });
+        this.commitAndRerender();
+      }),
+    );
+  }
+
+  private ioNameField(entity: IOEntityFields & { id: string }): void {
+    this.body.append(subheading('Nombre I/O (targetname)'));
+    this.append(textField('Nombre', entity.name ?? '', (v) => {
+      entity.name = v || undefined;
+      this.commitAndRerender();
+    }));
+
+    const effectiveName = entity.name || entity.id;
+    const matches = this.docIoTargets().filter((target) => target.name === effectiveName);
+    if (matches.length > 1) {
+      const warning = document.createElement('p');
+      warning.className = 'editor-note editor-note--warning';
+      warning.setAttribute('role', 'note');
+      warning.textContent =
+        `Targetname compartido por ${matches.length} entidades: los inputs se envían a todas (fan-out).`;
+      this.body.append(warning);
+    }
+  }
+
+  private connectionEditor(
+    connections: EntityConnection[],
+    conn: EntityConnection,
+    i: number,
+    sourceClass: EntityClassId,
+  ): HTMLElement {
     const item = document.createElement('div');
     item.className = 'editor-subitem';
+    const outputs = descriptorFor(sourceClass)?.outputs.map((o) => o.id) ?? [];
+    const inputInfo = this.connectionInputInfo(conn.target, sourceClass, conn.input);
     item.append(
-      subitemHeader(`NPC ${ni}`, () => { npcs.splice(ni, 1); this.commitAndRerender(); }),
-      selectField('Personaje', npc.characterId, CHARACTER_IDS, (v) => {
-        npc.characterId = v as CharacterId;
-        this.commit();
+      subitemHeader(`Conexion ${i}`, () => {
+        connections.splice(i, 1);
+        this.commitAndRerender();
+      }),
+      selectField('Output', conn.output, withCurrent(outputs, conn.output), (v) => { conn.output = v; this.commit(); }).element,
+      selectField('Target', conn.target, this.docTargetNames(conn.target), (v) => {
+        conn.target = v;
+        this.normalizeConnectionInput(conn, sourceClass);
+        this.commitAndRerender();
       }).element,
-      vec3Field('Posicion', npc.position, (v) => { npc.position = v; this.commit(); }).element,
+      (inputInfo.knownTarget
+        ? selectField('Input', conn.input, withCurrent(inputInfo.inputs.map((input) => input.id), conn.input), (v) => {
+            conn.input = v;
+            this.normalizeConnectionParam(conn, sourceClass);
+            this.commitAndRerender();
+          })
+        : textField('Input', conn.input, (v) => { conn.input = v; this.commit(); })).element,
     );
+
+    const paramField = this.connectionParamField(conn, sourceClass);
+    if (paramField) item.append(paramField);
+
+    item.append(
+      numberField('Retardo (s)', conn.delay ?? 0, (v) => {
+        conn.delay = v > 0 ? v : undefined;
+        this.commit();
+      }, 0.25).element,
+      numberField('Max disparos (0 = ∞)', conn.maxFires ?? 0, (v) => {
+        conn.maxFires = v > 0 ? Math.floor(v) : undefined;
+        this.commit();
+      }, 1).element,
+    );
+
+    if (inputInfo.knownTarget && !inputInfo.descriptor) {
+      item.append(connectionWarning(`El input "${conn.input || '(vacio)'}" no existe en el target seleccionado.`));
+    } else if (conn.target !== '' && !inputInfo.knownTarget && !isContextTarget(conn.target)) {
+      item.append(connectionWarning(`El target "${conn.target}" no existe en este documento.`));
+    } else if (
+      inputInfo.descriptor?.param === 'targetName' &&
+      conn.param !== undefined &&
+      (typeof conn.param !== 'string' || !this.docIoTargets().some((target) =>
+        target.name === conn.param && target.classId === 'marker'))
+    ) {
+      item.append(connectionWarning(`El marker "${String(conn.param)}" no existe en este documento.`));
+    }
     return item;
+  }
+
+  /** Todos los targetnames del documento + keywords, con `current` garantizado presente. */
+  private docTargetNames(current: string): string[] {
+    const names = new Set(this.docIoTargets().map((target) => target.name));
+    return withCurrent(['!player', '!activator', '!caller', '!self', ...[...names].sort()], current);
+  }
+
+  private docNpcNames(current: string): string[] {
+    const names = new Set<string>();
+    for (const entity of this.callbacks.getDocument().entities) {
+      if (entity.kind === 'npc') names.add(entity.def.name ?? entity.def.id);
+      if (entity.kind === 'logic' && entity.def.kind === 'npcSpawner') {
+        for (const npc of entity.def.npcs) names.add(npc.name ?? npc.id);
+      }
+    }
+    return withCurrent([...names].sort(), current);
+  }
+
+  private docParamTargetNames(current: string): string[] {
+    const names = new Set(
+      this.docIoTargets()
+        .filter((target) => target.classId === 'marker')
+        .map((target) => target.name),
+    );
+    return withCurrent([...names].sort(), current);
+  }
+
+  private docIoTargets(): DocumentIOTarget[] {
+    const targets: DocumentIOTarget[] = [];
+    for (const entity of this.callbacks.getDocument().entities) {
+      const name = entityIoName(entity);
+      const classId = entityIoClass(entity);
+      if (name && classId) targets.push({ name, classId });
+
+      if (entity.kind === 'logic' && entity.def.kind === 'npcSpawner') {
+        for (const npc of entity.def.npcs) {
+          targets.push({ name: npc.name || npc.id, classId: 'npc' });
+        }
+      }
+    }
+    return targets;
+  }
+
+  private targetClasses(target: string, sourceClass: EntityClassId): EntityClassId[] {
+    if (target === '!self' || target === '!caller') return [sourceClass];
+    if (target === '!player') return ['player'];
+    if (isContextTarget(target)) return [];
+    return [...new Set(
+      this.docIoTargets()
+        .filter((candidate) => targetNameMatches(target, candidate.name))
+        .map((candidate) => candidate.classId),
+    )];
+  }
+
+  private connectionInputInfo(
+    target: string,
+    sourceClass: EntityClassId,
+    inputId: string,
+  ): ConnectionInputInfo {
+    const classes = this.targetClasses(target, sourceClass);
+    if (classes.length === 0) return { knownTarget: false, inputs: [] };
+
+    const descriptors = classes.map((classId) => descriptorFor(classId));
+    const first = descriptors[0]?.inputs ?? [];
+    const inputs = first.filter((input) => descriptors.every((descriptor) =>
+      descriptor?.inputs.some((candidate) =>
+        candidate.id === input.id && (candidate.param ?? 'none') === (input.param ?? 'none'),
+      ),
+    ));
+    return {
+      knownTarget: true,
+      inputs,
+      descriptor: inputs.find((input) => input.id === inputId),
+    };
+  }
+
+  private normalizeConnectionInput(conn: EntityConnection, sourceClass: EntityClassId): void {
+    const info = this.connectionInputInfo(conn.target, sourceClass, conn.input);
+    if (info.knownTarget && !info.descriptor) conn.input = info.inputs[0]?.id ?? '';
+    this.normalizeConnectionParam(conn, sourceClass);
+  }
+
+  private normalizeConnectionParam(conn: EntityConnection, sourceClass: EntityClassId): void {
+    const descriptor = this.connectionInputInfo(conn.target, sourceClass, conn.input).descriptor;
+    const paramKind = descriptor?.param ?? 'none';
+    if (paramKind === 'none') {
+      conn.param = undefined;
+    } else if (paramKind === 'number' && typeof conn.param !== 'number') {
+      conn.param = defaultNumberParam(conn.input);
+    } else if (paramKind !== 'number' && typeof conn.param !== 'string') {
+      conn.param = undefined;
+    }
+  }
+
+  private connectionParamField(
+    conn: EntityConnection,
+    sourceClass: EntityClassId,
+  ): HTMLElement | null {
+    const info = this.connectionInputInfo(conn.target, sourceClass, conn.input);
+    const paramKind: InputParamKind | null = info.descriptor?.param ?? (info.descriptor ? 'none' : null);
+    switch (paramKind) {
+      case 'none':
+        return null;
+      case 'number':
+        return numberField('Parametro', typeof conn.param === 'number' ? conn.param : defaultNumberParam(conn.input), (v) => {
+          conn.param = v;
+          this.commit();
+        }).element;
+      case 'targetName': {
+        const current = typeof conn.param === 'string' ? conn.param : '';
+        return selectField('Parametro (targetname)', current, this.docParamTargetNames(current), (v) => {
+          conn.param = v === '' ? undefined : v;
+          this.commit();
+        }).element;
+      }
+      case 'string':
+        return textField('Parametro', typeof conn.param === 'string' ? conn.param : '', (v) => {
+          conn.param = v === '' ? undefined : v;
+          this.commit();
+        }).element;
+      case null:
+        return textField('Parametro', conn.param === undefined ? '' : String(conn.param), (v) => {
+          conn.param = v === '' ? undefined : v;
+          this.commit();
+        }).element;
+    }
   }
 
   private storyEditor(spec: BuildingSpec, story: BuildingStorySpec, index: number): HTMLElement {
@@ -783,31 +1008,103 @@ function subitemHeader(title: string, onRemove: () => void): HTMLElement {
   return head;
 }
 
-/** Migra la forma legacy (`dialogue`) a `actions` la primera vez que se edita. */
-function ensureTriggerActions(def: TriggerDefinition): TriggerAction[] {
-  if (!def.actions) {
-    def.actions = def.dialogue ? [{ kind: 'dialogue', ...def.dialogue }] : [];
-    def.dialogue = undefined;
-  }
-  return def.actions;
+const SEQUENCE_STEP_KINDS: readonly SequenceStep['kind'][] = ['gesture', 'wait', 'waitForCue', 'say', 'face'];
+const GESTURE_IDS: readonly GestureId[] = ['point', 'wave', 'talk', 'crouch'];
+
+interface DocumentIOTarget {
+  name: string;
+  classId: EntityClassId;
 }
 
-function defaultTriggerAction(kind: TriggerAction['kind'], delay?: number): TriggerAction {
-  switch (kind) {
-    case 'dialogue':
-      return { kind, text: '', duration: 3, delay };
-    case 'spawnNpcs':
-      return { kind, npcs: [], delay };
+interface ConnectionInputInfo {
+  knownTarget: boolean;
+  inputs: readonly EntityInputDescriptor[];
+  descriptor?: EntityInputDescriptor;
+}
+
+function entityIoClass(entity: EditorEntity): EntityClassId | null {
+  switch (entity.kind) {
+    case 'trigger':
+      return 'trigger';
     case 'door':
-      return { kind, doorId: '', open: true, delay };
-    case 'levelAction':
-      return { kind, action: LEVEL_ACTIONS[0], delay };
-    case 'soundscape':
-      return { kind, soundscape: DefaultSoundscapeId, delay };
-    case 'objective':
-      return { kind, text: '', delay };
-    case 'endLevel':
-      return { kind, delay };
+      return 'door';
+    case 'npc':
+      return 'npc';
+    case 'logic':
+      return entity.def.kind;
+    case 'sequence':
+      return 'sequence';
+    default:
+      return null;
+  }
+}
+
+function isContextTarget(target: string): boolean {
+  return target === '!self' || target === '!activator' || target === '!caller' || target === '!player';
+}
+
+function connectionWarning(message: string): HTMLParagraphElement {
+  const warning = document.createElement('p');
+  warning.className = 'editor-note editor-note--warning';
+  warning.setAttribute('role', 'note');
+  warning.textContent = message;
+  return warning;
+}
+
+function defaultNumberParam(input: string): number {
+  return input === 'Add' || input === 'Subtract' ? 1 : 0;
+}
+
+function targetNameMatches(pattern: string, name: string): boolean {
+  if (!pattern.includes('*') && !pattern.includes('?')) return pattern === name;
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped.replace(/\*/g, '.*').replace(/\?/g, '.')}$`).test(name);
+}
+
+/** Lista de opciones con `current` garantizado presente (y primero si no vacío). */
+function withCurrent(options: readonly string[], current: string): string[] {
+  if (options.includes(current)) return [...options];
+  return [current, ...options];
+}
+
+function defaultSequenceStep(kind: SequenceStep['kind']): SequenceStep {
+  switch (kind) {
+    case 'gesture':
+      return { kind, gesture: 'point', duration: 1.5 };
+    case 'wait':
+      return { kind, seconds: 1 };
+    case 'waitForCue':
+      return { kind };
+    case 'say':
+      return { kind, text: '', duration: 3 };
+    case 'face':
+      return { kind, target: '!player' };
+  }
+}
+
+function appendSequenceStepFields(item: HTMLElement, step: SequenceStep, commit: () => void): void {
+  switch (step.kind) {
+    case 'gesture':
+      item.append(
+        selectField('Gesto', step.gesture, GESTURE_IDS, (v) => { step.gesture = v as GestureId; commit(); }).element,
+        numberField('Duración (s)', step.duration ?? 1, (v) => { step.duration = v; commit(); }, 0.25).element,
+      );
+      return;
+    case 'wait':
+      item.append(numberField('Segundos', step.seconds, (v) => { step.seconds = v; commit(); }, 0.25).element);
+      return;
+    case 'say':
+      item.append(
+        textField('Hablante', step.speaker ?? '', (v) => { step.speaker = v || undefined; commit(); }).element,
+        textField('Texto', step.text, (v) => { step.text = v; commit(); }).element,
+        numberField('Duración (s)', step.duration, (v) => { step.duration = v; commit(); }, 0.5).element,
+      );
+      return;
+    case 'face':
+      item.append(textField('Objetivo (marker o !player)', step.target, (v) => { step.target = v; commit(); }).element);
+      return;
+    case 'waitForCue':
+      return;
   }
 }
 

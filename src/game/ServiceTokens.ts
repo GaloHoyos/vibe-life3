@@ -16,6 +16,7 @@ import type { GameEventMap } from "./GameEvents";
 import type { DialogueSystem } from "@game/narrative/DialogueSystem";
 import type { GrabSystem, InteractSystem } from "@game/gameplay/interactions";
 import type { TriggerSystem } from "@game/levels/TriggerSystem";
+import type { EntityIOSystem } from "@game/script/EntityIOSystem";
 import type { CheckpointSystem } from "@game/levels/CheckpointSystem";
 import type { HazardVolumeSystem } from "@game/levels/HazardVolumeSystem";
 import type { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
@@ -64,6 +65,7 @@ export const GameTokens = {
   InteractSystem: new ServiceToken<InteractSystem>("InteractSystem"),
   GrabSystem: new ServiceToken<GrabSystem>("GrabSystem"),
   TriggerSystem: new ServiceToken<TriggerSystem>("TriggerSystem"),
+  EntityIO: new ServiceToken<EntityIOSystem>("EntityIOSystem"),
   CheckpointSystem: new ServiceToken<CheckpointSystem>("CheckpointSystem"),
   HazardVolumes: new ServiceToken<HazardVolumeSystem>("HazardVolumeSystem"),
   HUD: new ServiceToken<HUD>("HUD"),

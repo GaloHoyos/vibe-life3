@@ -13,6 +13,7 @@ import type { NpcPreset } from "@game/npc/presets/NpcPreset";
 import { recordEvents } from "@tests/support/events";
 import { Npc } from "@game/npc/Npc";
 import type { ActorSnapshot, AiFrameContext } from "@game/npc/core/INpc";
+import type { NpcScriptOrder } from "@game/script/NpcScriptOrder";
 
 const preset: NpcPreset = {
   id: "test-npc",
@@ -197,6 +198,40 @@ describe("Npc.applyDamage", () => {
   });
 });
 
+describe("Npc scripted sequence lifecycle", () => {
+  it("cancela una secuencia interrumpible si ya estaba en JustHit al comenzar", () => {
+    const { npc } = createNpc();
+    const { order, notifyDone } = fakeScriptOrder(false);
+    npc.applyDamage(1);
+
+    npc.update(contextWithScript(order));
+
+    expect(notifyDone).toHaveBeenCalledOnce();
+    expect(notifyDone).toHaveBeenCalledWith("canceled");
+  });
+
+  it("JustHit no cancela una secuencia override", () => {
+    const { npc } = createNpc();
+    const { order, notifyDone } = fakeScriptOrder(true);
+    npc.applyDamage(1);
+
+    npc.update(contextWithScript(order));
+
+    expect(notifyDone).not.toHaveBeenCalled();
+  });
+
+  it("cancela la secuencia antes del early-return de un NPC muerto", () => {
+    const { npc } = createNpc();
+    const { order, notifyDone } = fakeScriptOrder(true);
+    npc.applyDamage(1000);
+
+    npc.update(contextWithScript(order));
+
+    expect(notifyDone).toHaveBeenCalledOnce();
+    expect(notifyDone).toHaveBeenCalledWith("canceled");
+  });
+});
+
 describe("Npc portal LOS", () => {
   it("no valida la posicion real de otro NPC con el raycast portal-aware", () => {
     const directCast = vi.fn(() => ({ metadata: { id: "wall" } } as never));
@@ -240,3 +275,31 @@ describe("Npc portal LOS", () => {
     expect(portalCast).toHaveBeenCalled();
   });
 });
+
+function contextWithScript(order: NpcScriptOrder): AiFrameContext {
+  return {
+    ...context([]),
+    script: {
+      orderFor: () => order,
+      anchorOverrideFor: () => null,
+      anchorArrivalRadiusFor: () => null,
+    },
+  };
+}
+
+function fakeScriptOrder(overrideAi: boolean) {
+  const notifyDone = vi.fn();
+  const order: NpcScriptOrder = {
+    sequenceName: "test-sequence",
+    moveMode: "none",
+    movePosition: null,
+    faceYaw: null,
+    steps: [],
+    overrideAi,
+    isCuePending: () => false,
+    consumeCue: () => undefined,
+    notifyArrived: () => undefined,
+    notifyDone,
+  };
+  return { order, notifyDone };
+}

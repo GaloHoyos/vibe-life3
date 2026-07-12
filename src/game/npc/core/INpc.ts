@@ -5,6 +5,7 @@ import type { Health } from "@game/gameplay/Health";
 import type { GameEventBus } from "@game/GameEvents";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
 import type { SquadDirector, SquadRole } from "@game/npc/ai/SquadDirector";
+import type { NpcScriptOrder } from "@game/script/NpcScriptOrder";
 
 /**
  * Snapshot ligero de un actor del mundo (player u otro NPC) que cualquier
@@ -62,6 +63,17 @@ export interface AiFrameContext {
     orderPosition: Vector3 | null;
     isMember(id: string): boolean;
     formationOffsetFor(id: string): Vector3 | null;
+  };
+  /**
+   * Control guionado (scripted_sequence + compañera): `orderFor` da la orden de
+   * secuencia activa para un NPC; `anchorOverrideFor` pisa el ancla de una
+   * compañera (wait/escort). Ausente si el nivel no tiene scripting activo.
+   */
+  script?: {
+    orderFor(npcId: string): NpcScriptOrder | null;
+    anchorOverrideFor(npcId: string): Vector3 | null;
+    /** Radio preciso para destinos guionados; null conserva el follow normal. */
+    anchorArrivalRadiusFor(npcId: string): number | null;
   };
   eventBus: GameEventBus;
 }
@@ -227,6 +239,8 @@ export interface INpc {
   readonly radius: number;
   /** Elegible para el squad del jugador (preset con `playerSquad`). */
   readonly playerSquadEligible: boolean;
+  /** Nombre visible si es compañera (preset con `companion`), o null. */
+  readonly companionName: string | null;
 
   update(ctx: AiFrameContext): void;
   syncFromPhysics(): void;

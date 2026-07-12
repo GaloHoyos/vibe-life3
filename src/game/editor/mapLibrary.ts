@@ -1,5 +1,6 @@
 import type { EditorDocument } from './EditorDocument';
 import { isEditorDocument } from './persistence';
+import { migrateDocument } from './migrateDocument';
 
 /**
  * Biblioteca de mapas custom persistida en `localStorage`. A diferencia del
@@ -47,7 +48,7 @@ export function getLibraryMap(id: string): EditorDocument | null {
     const raw = localStorage.getItem(MAP_PREFIX + id);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    return isEditorDocument(parsed) ? parsed : null;
+    return isEditorDocument(parsed) ? migrateDocument(parsed) : null;
   } catch {
     return null;
   }

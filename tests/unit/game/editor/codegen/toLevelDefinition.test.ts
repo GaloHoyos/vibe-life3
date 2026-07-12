@@ -38,7 +38,7 @@ describe("toLevelDefinition", () => {
           size: [4, 2, 1],
           rotation: [0, Math.PI / 2, 0],
           once: false,
-          actions: [{ kind: "dialogue", text: "hola", duration: 1 }],
+          connections: [{ output: "OnStartTouch", target: "msg-1", input: "Show" }],
         },
       },
       {
@@ -72,6 +72,40 @@ describe("toLevelDefinition", () => {
       ammoId: "smg",
       rotation: [0, 0.5, 0],
     });
+  });
+
+  it("round-trip de logic + sequence: documento → nivel → documento", () => {
+    const entities: EditorEntity[] = [
+      {
+        eid: "logic-eid",
+        kind: "logic",
+        position: [0, 1, 0],
+        def: { kind: "counter", id: "kills", name: "kills", max: 3, connections: [{ output: "OnHitMax", target: "gate", input: "Open" }] },
+      },
+      {
+        eid: "marker-eid",
+        kind: "logic",
+        position: [4, 1, -2],
+        def: { kind: "marker", id: "exit", name: "exit", position: [4, 1, -2] },
+      },
+      {
+        eid: "seq-eid",
+        kind: "sequence",
+        def: { id: "intro", name: "intro", targetNpc: "alyx", position: [0, 1, -1], moveMode: "walk", steps: [{ kind: "gesture", gesture: "point" }] },
+      },
+    ];
+
+    const level = toLevelDefinition(testEditorDocument({ entities }));
+    expect(level.logicEntities).toHaveLength(2);
+    expect(level.sequences).toHaveLength(1);
+    expect(level.sequences?.[0]).toMatchObject({ id: "intro", targetNpc: "alyx" });
+
+    const roundTripped = fromLevelDefinition(level);
+    expect(roundTripped.entities.filter((e) => e.kind === "logic")).toHaveLength(2);
+    expect(roundTripped.entities.filter((e) => e.kind === "sequence")).toHaveLength(1);
+    // El marker recupera su posición de escena desde la def.
+    const marker = roundTripped.entities.find((e) => e.kind === "logic" && e.def.kind === "marker");
+    expect(marker?.kind === "logic" ? marker.position : null).toEqual([4, 1, -2]);
   });
 
   it("round-trip del playerModel: meta → nivel → meta", () => {

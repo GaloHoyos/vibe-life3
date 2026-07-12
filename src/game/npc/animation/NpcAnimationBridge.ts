@@ -4,6 +4,7 @@ import { ProceduralCharacterAnimator } from "@engine/animation/procedural/Proced
 import type {
   AnimationActivity,
   AnimationInput,
+  GestureId,
   WeaponHandedness,
 } from "@engine/animation/AnimationInput";
 import type { CharacterDefinition } from "@engine/characters/CharacterDefinition";
@@ -43,6 +44,8 @@ export class NpcAnimationBridge implements NpcAnimator {
   private isDead = false;
   private targetCrouch = 0;
   private currentCrouch = 0;
+  /** Mientras >0, un gesto `crouch` fuerza la flexión sobre el estado del motor. */
+  private gestureCrouchTimer = 0;
   private targetLeanSide = 0;
   private currentLeanSide = 0;
   private activity: AnimationActivity = "none";
@@ -112,6 +115,9 @@ export class NpcAnimationBridge implements NpcAnimator {
       });
     }
 
+    if (this.gestureCrouchTimer > 0) {
+      this.gestureCrouchTimer = Math.max(0, this.gestureCrouchTimer - frame.delta);
+    }
     this.tickPostureLerp();
   }
 
@@ -122,7 +128,23 @@ export class NpcAnimationBridge implements NpcAnimator {
    * lean). El collider fÃ­sico no cambia.
    */
   setCrouch(amount: number): void {
-    this.targetCrouch = Math.max(0, Math.min(1, amount));
+    const base = Math.max(0, Math.min(1, amount));
+    // Un gesto crouch activo pisa el estado de crouch del motor.
+    this.targetCrouch = this.gestureCrouchTimer > 0 ? 1 : base;
+  }
+
+  /**
+   * Dispara un gesto procedural. `crouch` se rinde vía `setCrouch` (flexión del
+   * PostureLayer) por `duration` segundos; el resto van al `GestureLayer`.
+   */
+  playGesture(id: GestureId, duration: number): void {
+    if (duration <= 0) return;
+    if (id === "crouch") {
+      this.gestureCrouchTimer = duration;
+      this.targetCrouch = 1;
+      return;
+    }
+    this.animator.triggerGesture(id, duration);
   }
 
   setLeanSide(amount: number): void {

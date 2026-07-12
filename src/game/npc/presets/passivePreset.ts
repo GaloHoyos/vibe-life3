@@ -1,6 +1,6 @@
 import type { ScheduleDefinition } from '@engine/ai/brain/Task';
 import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
-import { deadSchedule, hitSchedule, idleSchedule } from './commonSchedules';
+import { deadSchedule, hitSchedule, idleSchedule, scriptedSchedules } from './commonSchedules';
 import type { NpcPreset } from './NpcPreset';
 
 /**
@@ -11,6 +11,7 @@ import type { NpcPreset } from './NpcPreset';
 export function buildPassivePreset(): NpcPreset {
   const schedules: ScheduleDefinition<NpcBrainContext>[] = [
     deadSchedule(),
+    ...scriptedSchedules(),
     hitSchedule(0.3),
     idleSchedule(1.0, ['JustHit']),
   ];

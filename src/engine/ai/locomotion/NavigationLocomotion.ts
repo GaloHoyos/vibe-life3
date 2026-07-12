@@ -245,7 +245,7 @@ export class NavigationLocomotion {
     if (action?.link.kind === "door") {
       const distance = planarDistance(position, aim);
       if (distance <= this.waypointReachRadius * 1.35) {
-        this.navigation.activateAction(action.link);
+        this.navigation.activateAction(action.link, this.ownerId);
         if (!this.navigation.isActionReady(action.link)) {
           this.motor.update(delta, null, false, this.facingTarget);
           this.updateProgress(delta, position, false);

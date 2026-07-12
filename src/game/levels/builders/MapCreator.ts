@@ -23,6 +23,8 @@ import type {
 import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
 import type { ExplosiveBarrelDefinition } from '@game/gameplay/hazards/ExplosiveBarrel';
 import type { PlayerModelId } from '@game/config/playermodel.config';
+import type { LogicEntityDefinition } from '@game/script/EntityIOTypes';
+import type { ScriptedSequenceDefinition } from '@game/script/ScriptedSequenceTypes';
 import { buildBuilding, type BuildingSpec } from './BuildingBuilder';
 import { buildHouse, type HouseSpec } from './HouseBuilder';
 import { buildRamp, type RampSpec } from './RampBuilder';
@@ -96,6 +98,8 @@ export class MapBuilder {
   private readonly ammoPickupList: AmmoPickupDefinition[] = [];
   private readonly chargerList: ChargerDefinition[] = [];
   private readonly triggerList: TriggerDefinition[] = [];
+  private readonly logicList: LogicEntityDefinition[] = [];
+  private readonly sequenceList: ScriptedSequenceDefinition[] = [];
   private readonly barrelList: ExplosiveBarrelDefinition[] = [];
   private readonly hazardList: HazardVolumeDefinition[] = [];
   private terrainDef: TerrainDefinition | undefined;
@@ -274,6 +278,18 @@ export class MapBuilder {
     return this;
   }
 
+  /** Entidad lógica del entity I/O (relay, counter, timer, message, spawner, etc.). */
+  logic(def: LogicEntityDefinition): this {
+    this.logicList.push(def);
+    return this;
+  }
+
+  /** Secuencia guionada de un NPC (scripted_sequence). */
+  sequence(def: ScriptedSequenceDefinition): this {
+    this.sequenceList.push(def);
+    return this;
+  }
+
   /** Barril explosivo (prop dañable que explota al morir). */
   explosiveBarrel(def: ExplosiveBarrelDefinition): this {
     this.barrelList.push(def);
@@ -337,6 +353,8 @@ export class MapBuilder {
       ammoPickups: this.ammoPickupList.length > 0 ? this.ammoPickupList : undefined,
       chargers: this.chargerList.length > 0 ? this.chargerList : undefined,
       triggers: this.triggerList,
+      logicEntities: this.logicList.length > 0 ? this.logicList : undefined,
+      sequences: this.sequenceList.length > 0 ? this.sequenceList : undefined,
       explosiveBarrels: this.barrelList.length > 0 ? this.barrelList : undefined,
       hazardVolumes: this.hazardList.length > 0 ? this.hazardList : undefined,
     };
@@ -364,6 +382,8 @@ export class MapBuilder {
     this.ammoPickupList.forEach((p) => check(p.id));
     this.chargerList.forEach((c) => { check(c.id); check(`${c.id}-body`); });
     this.triggerList.forEach((t) => check(t.id));
+    this.logicList.forEach((l) => check(l.id));
+    this.sequenceList.forEach((s) => check(s.id));
     this.barrelList.forEach((b) => check(b.id));
     this.hazardList.forEach((h) => check(h.id));
     if (dupes.size > 0) {

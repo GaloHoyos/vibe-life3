@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Vector3 } from "three";
+import { NO_CONDITIONS } from "@engine/ai/brain/Condition";
 import type { NpcBrainContext } from "@game/npc/brain/NpcBrainContext";
 import { createStriderCloseTask, createStriderEngageTask } from "@game/npc/brain/tasks/StriderTasks";
 
@@ -100,7 +101,9 @@ function makeContext(options: {
     squad: null,
     slots: null,
     medic: null,
-    conditions: 0,
+    script: null,
+    gesture: () => {},
+    conditions: NO_CONDITIONS,
     navigation: {} as NpcBrainContext["navigation"],
     navigationProfile: {} as NpcBrainContext["navigationProfile"],
     buildingRegistry: {} as NpcBrainContext["buildingRegistry"],

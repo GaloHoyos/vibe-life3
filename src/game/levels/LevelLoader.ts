@@ -165,7 +165,18 @@ export class LevelLoader {
       // deslizamiento siga la orientacion (una puerta girada desliza girado).
       const openOffset = tupleToVector3(definition.openOffset);
       if (quat) openOffset.applyQuaternion(quat);
-      const door = new SlidingDoor(definition.id, mesh, body, openOffset, definition.speed);
+      const door = new SlidingDoor(
+        definition.id,
+        mesh,
+        body,
+        openOffset,
+        definition.speed,
+        (open, activator) => this.eventBus.emit('door.opened', {
+          id: definition.id,
+          open,
+          activator,
+        }),
+      );
       doors.push(door);
 
       const doorPos = tupleToVector3(definition.position);
@@ -217,7 +228,9 @@ export class LevelLoader {
       physics: this.physics,
       assetKey: level.id,
       maxAgents: 60,
-      openDoor: (doorId) => doors.find((door) => door.id === doorId)?.setOpen(true),
+      openDoor: (doorId, ownerId) => doors
+        .find((door) => door.id === doorId)
+        ?.setOpen(true, { kind: 'entity', key: ownerId, name: ownerId }),
       isDoorPassable: (doorId) => doors.find((door) => door.id === doorId)?.isPassable() ?? true,
       metadataAt: (position) => {
         const located = buildingRegistry.roomContaining(position);

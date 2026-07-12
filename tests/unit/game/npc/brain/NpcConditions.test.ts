@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { has, hasAll, hasAny } from "@engine/ai/brain/Condition";
+import { has, hasAll, hasAny, type ConditionMask } from "@engine/ai/brain/Condition";
 import { Cond, condMask } from "@game/npc/brain/NpcConditions";
+
+/** Cantidad de bits prendidos entre ambos words. */
+function popcount(mask: ConditionMask): number {
+  let count = 0;
+  for (let word of [mask.lo, mask.hi]) {
+    word >>>= 0;
+    while (word !== 0) {
+      count += word & 1;
+      word >>>= 1;
+    }
+  }
+  return count;
+}
 
 describe("NpcConditions", () => {
   it("builds stable condition masks from named condition keys", () => {
@@ -14,17 +27,15 @@ describe("NpcConditions", () => {
     expect(hasAny(mask, condMask("EnemyDead", "MagazineEmpty"))).toBe(true);
   });
 
-  it("assigns every condition a unique single bit within the 31-bit budget", () => {
+  it("assigns every condition a unique single bit across the two words", () => {
     const flags = Object.values(Cond);
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     for (const flag of flags) {
-      // Potencia de dos exacta (un solo bit).
-      expect(flag & (flag - 1)).toBe(0);
-      expect(flag).toBeGreaterThan(0);
-      // Bit 31 reservado para mantener `>>> 0` predecible.
-      expect(flag).toBeLessThanOrEqual(1 << 30);
-      expect(seen.has(flag)).toBe(false);
-      seen.add(flag);
+      // Exactamente un bit prendido entre lo/hi.
+      expect(popcount(flag)).toBe(1);
+      const key = `${flag.lo}:${flag.hi}`;
+      expect(seen.has(key)).toBe(false);
+      seen.add(key);
     }
   });
 });

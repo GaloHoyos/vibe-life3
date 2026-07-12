@@ -19,7 +19,7 @@ import { HevSuitSoundSystem } from "@game/audio/HevSuitSoundSystem";
 import { SoundscapeSystem } from "@game/audio/SoundscapeSystem";
 import { UISoundSystem } from "@game/audio/UISoundSystem";
 import { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
-import type { GameEventMap } from "./GameEvents";
+import type { GameEventBus, GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
 import { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
 import { installIceConsole } from "@game/debug/IceConsole";
@@ -61,11 +61,19 @@ import type {
   DynamicBoxDefinition,
   LevelDefinition,
   NPCDefinition,
-  TriggerAction,
 } from "@game/levels/LevelDefinition";
 import { LevelLoader, type NpcPortalServices } from "@game/levels/LevelLoader";
 import { getLevel, LevelRegistry, type LevelId } from "@game/levels/LevelRegistry";
 import { TriggerSystem } from "@game/levels/TriggerSystem";
+import { EntityIOSystem } from "@game/script/EntityIOSystem";
+import type { ActivatorRef } from "@game/script/ActivatorRef";
+import { EntityEventBridge } from "@game/script/EntityEventBridge";
+import { bindWorldEntities, type WorldEntityHooks } from "@game/script/WorldEntityBinder";
+import { effectiveName } from "@game/script/EntityIOTypes";
+import { NpcDirectory } from "@game/script/NpcDirectory";
+import { ScriptedSequenceSystem } from "@game/script/ScriptedSequenceSystem";
+import { bindNpcEntity } from "@game/script/NpcEntityBinder";
+import { CompanionSystem } from "@game/script/CompanionSystem";
 import { CheckpointSystem, type CheckpointSnapshot } from "@game/levels/CheckpointSystem";
 import { HazardVolumeSystem } from "@game/levels/HazardVolumeSystem";
 import { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
@@ -171,6 +179,18 @@ export class Game {
   private actionSpawnSerial = 0;
   private lastSquadCommandAt = -Infinity;
   private readonly npcContextRadius = 90;
+  /** Puente eventos→outputs del entity I/O del nivel actual. Recreado por load. */
+  private entityBridge: EntityEventBridge | null = null;
+  /** Markers (info_target) del nivel actual, por nombre. Destinos de escolta/secuencia. */
+  private markerTable = new Map<string, Vector3>();
+  /** Índice targetname↔NPC para el entity I/O. Se limpia en el teardown. */
+  private readonly npcDirectory = new NpcDirectory();
+  /** Secuencias guionadas del nivel actual. Recreado por load. */
+  private sequenceSystem: ScriptedSequenceSystem | null = null;
+  /** Compañeras (follow/wait/escort) del nivel actual. Recreado por load. */
+  private companionSystem: CompanionSystem | null = null;
+  /** Invalida spawns asíncronos cuando cambia o se dispone el nivel. */
+  private levelGeneration = 0;
 
   constructor(private readonly engine: Engine, options: GameOptions = {}) {
     this.root = engine.root;
@@ -249,6 +269,7 @@ export class Game {
   }
 
   dispose(): void {
+    this.levelGeneration += 1;
     this.engine.stop();
     this.unbindBrowserEvents();
 
@@ -287,6 +308,18 @@ export class Game {
     s.resolve(GameTokens.MainMenu).dispose();
     s.resolve(GameTokens.DebugMenu).dispose();
     s.resolve(GameTokens.LevelEditor).dispose();
+    // Invalida delays y continuaciones async antes de vaciar servicios. Sin
+    // esto, un npcSpawner que terminara durante dispose podia emitir outputs
+    // contra hooks de un Game ya desmontado.
+    s.resolve(GameTokens.EntityIO).clear();
+    this.entityBridge?.dispose();
+    this.entityBridge = null;
+    this.sequenceSystem?.clear();
+    this.sequenceSystem = null;
+    this.companionSystem?.clear();
+    this.companionSystem = null;
+    this.npcDirectory.clear();
+    this.markerTable.clear();
     s.resolve(GameTokens.EventBus).clear();
 
     this.engine.dispose();
@@ -426,6 +459,7 @@ export class Game {
       new GrabSystem(eventBus, physics, raycast, portals.pair, propImpacts),
     );
     s.register(GameTokens.TriggerSystem, new TriggerSystem(eventBus));
+    s.register(GameTokens.EntityIO, new EntityIOSystem());
     s.register(GameTokens.CheckpointSystem, new CheckpointSystem(eventBus));
     s.register(GameTokens.HazardVolumes, new HazardVolumeSystem(eventBus, vfx));
     s.register(GameTokens.PlayerSquad, new PlayerSquadService(eventBus));
@@ -473,6 +507,11 @@ export class Game {
         });
       },
     );
+    eventBus.on("npc.killed", ({ id }) => {
+      // Una compañera muerta deja de ser interactuable y comandable.
+      s.resolve(GameTokens.InteractSystem).unregister(id);
+      this.companionSystem?.unregister(id);
+    });
     eventBus.on("npc.heal", ({ targetId, amount }) => {
       if (targetId === "player") {
         this.player?.health.heal(amount);
@@ -482,9 +521,6 @@ export class Game {
     });
     eventBus.on("level.action", ({ action, position }) => {
       void this.handleLevelAction(action, position);
-    });
-    eventBus.on("trigger.action", ({ action, position }) => {
-      void this.runTriggerAction(action, position);
     });
     eventBus.on("checkpoint.reached", ({ position }) => {
       this.captureCheckpoint(position);
@@ -623,49 +659,160 @@ export class Game {
     }
   }
 
-  /** Ejecuta una acción disparada por un trigger (ya pasó su `delay`). */
-  private async runTriggerAction(
-    action: TriggerAction,
-    position: Vector3,
-  ): Promise<void> {
-    if (!this.currentLevel) {
-      return;
-    }
-    switch (action.kind) {
-      case "dialogue":
-        this.engine.services.resolve(GameTokens.EventBus).emit("dialogue.show", {
-          speaker: action.speaker,
-          text: action.text,
-          duration: action.duration,
-        });
-        return;
-      case "spawnNpcs": {
+  /**
+   * Hooks de efecto de mundo que ejecutan los inputs del entity I/O. Reusan los
+   * métodos existentes de `Game`; el módulo de script queda desacoplado de la
+   * orquestación. La posición para acciones sin punto propio (level action,
+   * changelevel sin landmark) sale del jugador.
+   */
+  private buildWorldEntityHooks(): WorldEntityHooks {
+    const eventBus = this.engine.services.resolve(GameTokens.EventBus);
+    const generation = this.levelGeneration;
+    return {
+      showDialogue: (text, duration, speaker) => {
+        eventBus.emit("dialogue.show", { speaker, text, duration });
+      },
+      spawnNpcs: (npcs, spawnerName) => {
         this.actionSpawnSerial += 1;
-        await this.spawnNpcs(action.npcs, `trigger-${this.actionSpawnSerial}`);
-        return;
-      }
-      case "door":
-        this.setDoorOpen(action.doorId, action.open);
-        return;
-      case "levelAction":
-        await this.handleLevelAction(action.action, position);
-        return;
-      case "objective":
-        this.engine.services.resolve(GameTokens.EventBus).emit("objective.updated", {
-          text: action.text,
-          completed: action.completed,
-          marker: action.marker ? tupleToVector3(action.marker) : null,
+        return this.spawnNpcs(
+          npcs,
+          `${spawnerName}-${this.actionSpawnSerial}`,
+          generation,
+        );
+      },
+      setDoorOpen: (doorId, open, activator) => this.setDoorOpen(doorId, open, activator),
+      toggleDoor: (doorId, activator) => this.toggleDoor(doorId, activator),
+      runLevelAction: (action) => {
+        void this.handleLevelAction(action, this.playerActionOrigin());
+      },
+      updateObjective: (text, completed, marker) => {
+        eventBus.emit("objective.updated", {
+          text,
+          completed,
+          marker: marker ? tupleToVector3(marker) : null,
         });
-        return;
-      case "soundscape":
+      },
+      activateSoundscape: (id) => {
+        if (!this.currentLevel) return;
         this.engine.services
           .resolve(GameTokens.Soundscapes)
-          .activate(action.soundscape, this.currentLevel.audio.ambiences);
-        return;
-      case "endLevel":
-        void this.goToNextLevel(action.landmark, position);
-        return;
-    }
+          .activate(id, this.currentLevel.audio.ambiences);
+      },
+      endLevel: (landmark) => {
+        void this.goToNextLevel(landmark, this.playerActionOrigin());
+      },
+      setTriggerEnabled: (triggerId, enabled) => {
+        this.engine.services.resolve(GameTokens.TriggerSystem).setEnabled(triggerId, enabled);
+      },
+      toggleTrigger: (triggerId) => {
+        this.engine.services.resolve(GameTokens.TriggerSystem).toggleEnabled(triggerId);
+      },
+      killPlayer: () => {
+        const player = this.player;
+        if (player?.isAlive()) player.applyDamage(player.health.max * 10);
+      },
+      teleportPlayer: (position) => {
+        this.player?.controller.teleport(position, new Vector3());
+      },
+    };
+  }
+
+  /** Origen para acciones de I/O sin punto propio: la posición actual del jugador. */
+  private playerActionOrigin(): Vector3 {
+    return this.player?.getPosition().clone() ?? new Vector3();
+  }
+
+  /**
+   * Registra el grafo de entity I/O del nivel: handles + conexiones de las
+   * entidades lógicas/puertas/triggers, el puente eventos→outputs y la tabla de
+   * markers. Los triggers ya los registró el `LevelLoader` en el `TriggerSystem`;
+   * acá se cablea su cara de I/O.
+   */
+  private setupEntityIO(
+    level: LevelDefinition,
+    entityIO: EntityIOSystem,
+    eventBus: GameEventBus,
+  ): void {
+    const logic = level.logicEntities ?? [];
+    this.markerTable = bindWorldEntities(
+      entityIO,
+      { logic, doors: level.doors, triggers: level.triggers },
+      this.buildWorldEntityHooks(),
+    );
+
+    const companion = new CompanionSystem(entityIO, this.npcDirectory, eventBus);
+    this.companionSystem = companion;
+
+    this.npcs.forEach((npc, index) => {
+      const definition = level.npcs[index];
+      if (definition) this.bindNpcForScript(definition, npc, entityIO);
+    });
+
+    // Secuencias guionadas (scripted_sequence).
+    this.sequenceSystem = new ScriptedSequenceSystem(
+      entityIO,
+      this.npcDirectory,
+      this.markerTable,
+      eventBus,
+    );
+    (level.sequences ?? []).forEach((def) => this.sequenceSystem?.register(def));
+
+    const triggerSources = new Map(
+      level.triggers.map((def) => [def.id, { key: def.id, name: effectiveName(def) }]),
+    );
+    const doorSources = new Map(
+      level.doors.map((def) => [def.id, { key: def.id, name: effectiveName(def) }]),
+    );
+
+    this.entityBridge = new EntityEventBridge(eventBus, entityIO, {
+      triggerSource: (id) => triggerSources.get(id) ?? null,
+      doorSource: (id) => doorSources.get(id) ?? null,
+      npcSource: (id) => this.npcDirectory.sourceOf(id),
+    });
+  }
+
+  private bindNpcForScript(
+    definition: NPCDefinition,
+    npc: INpc,
+    entityIO = this.engine.services.resolve(GameTokens.EntityIO),
+  ): void {
+    const companion = this.companionSystem;
+    bindNpcEntity(
+      {
+        io: entityIO,
+        directory: this.npcDirectory,
+        markers: this.markerTable,
+        companion: companion
+          ? {
+              startFollowing: (id) => companion.setMode(id, 'follow'),
+              stopFollowing: (id) => companion.setMode(id, 'wait'),
+              escortTo: (id, point) => companion.setMode(id, 'escort', point),
+            }
+          : undefined,
+      },
+      definition,
+      npc,
+    );
+    this.registerCompanionIfNeeded(npc);
+  }
+
+  /**
+   * Si el NPC es compañera (preset con `companion`), lo registra en el
+   * `CompanionSystem` y expone la interacción USE (E) que togglea follow/wait.
+   */
+  private registerCompanionIfNeeded(npc: INpc): void {
+    const name = npc.companionName;
+    if (!name || !this.companionSystem) return;
+    this.companionSystem.registerCompanion(npc, name);
+    this.engine.services.resolve(GameTokens.InteractSystem).register({
+      id: npc.id,
+      label: `Hablar con ${name}`,
+      object: npc.mesh,
+      maxDistance: 3,
+      interact: () => {
+        this.companionSystem?.toggle(npc.id);
+      },
+    });
   }
 
   /**
@@ -754,16 +901,32 @@ export class Game {
     };
   }
 
-  private setDoorOpen(doorId: string, open: boolean): void {
+  private setDoorOpen(
+    doorId: string,
+    open: boolean,
+    activator: ActivatorRef = { kind: "none" },
+  ): void {
     const door = this.doors.find((d) => d.id === doorId);
     if (!door) {
-      console.warn(`[Game] Trigger: puerta '${doorId}' no existe`);
+      console.warn(`[Game] I/O: puerta '${doorId}' no existe`);
       return;
     }
-    door.setOpen(open);
-    this.engine.services
-      .resolve(GameTokens.EventBus)
-      .emit("door.opened", { id: doorId, open });
+    if (door.isOpen() === open) return;
+    // SlidingDoor es la unica fuente de eventos de transicion; asi botones,
+    // navegacion e I/O comparten deduplicacion y preservan el activator.
+    door.setOpen(open, activator);
+  }
+
+  private toggleDoor(
+    doorId: string,
+    activator: ActivatorRef = { kind: "none" },
+  ): void {
+    const door = this.doors.find((d) => d.id === doorId);
+    if (!door) {
+      console.warn(`[Game] I/O: puerta '${doorId}' no existe`);
+      return;
+    }
+    this.setDoorOpen(doorId, !door.isOpen(), activator);
   }
 
   private async respawnLevelEncounters(level: LevelDefinition): Promise<void> {
@@ -775,6 +938,7 @@ export class Game {
   private async spawnNpcs(
     definitions: NPCDefinition[],
     idPrefix: string,
+    expectedGeneration = this.levelGeneration,
   ): Promise<void> {
     const services = this.engine.services;
     const characters = services.resolve(GameTokens.Characters);
@@ -801,8 +965,13 @@ export class Game {
         definition.patrol?.map(tupleToVector3) ?? [],
         npcServices,
       );
+      if (expectedGeneration !== this.levelGeneration) {
+        npc.dispose();
+        return;
+      }
       scene.scene.add(npc.mesh);
       enemySounds.registerActor(npc.id, npc.mesh, definition.characterId);
+      this.bindNpcForScript(definition, npc);
       this.npcs.push(npc);
     }
   }
@@ -1195,6 +1364,7 @@ export class Game {
     const gizmos = s.resolve(EngineTokens.Gizmos);
     const interactSystem = s.resolve(GameTokens.InteractSystem);
     const triggerSystem = s.resolve(GameTokens.TriggerSystem);
+    const entityIO = s.resolve(GameTokens.EntityIO);
     const checkpointSystem = s.resolve(GameTokens.CheckpointSystem);
     const hazardVolumes = s.resolve(GameTokens.HazardVolumes);
     const weaponEffects = s.resolve(GameTokens.WeaponEffects);
@@ -1328,6 +1498,12 @@ export class Game {
           isMember: (id) => playerSquad.isMember(id),
           formationOffsetFor: (id) => playerSquad.formationOffsetFor(id),
         },
+        script: {
+          orderFor: (id) => this.sequenceSystem?.orderFor(id) ?? null,
+          anchorOverrideFor: (id) => this.companionSystem?.anchorOverrideFor(id) ?? null,
+          anchorArrivalRadiusFor: (id) =>
+            this.companionSystem?.anchorArrivalRadiusFor(id) ?? null,
+        },
         eventBus: s.resolve(GameTokens.EventBus),
       };
       this.navigationRequests?.process();
@@ -1383,6 +1559,8 @@ export class Game {
       );
     }
     triggerSystem.update(playerPosition, time.delta);
+    this.companionSystem?.update(time.elapsed);
+    entityIO.update(time.delta);
     checkpointSystem.update(playerPosition);
     hazardVolumes.update(playerPosition, time.delta);
     s.resolve(GameTokens.HUD).updateObjective(camera.camera);
@@ -1751,6 +1929,7 @@ export class Game {
     level: LevelDefinition,
     spawn?: CheckpointSnapshot,
   ): Promise<void> {
+    this.levelGeneration += 1;
     const services = this.engine.services;
     const physics = services.resolve(EngineTokens.Physics);
     const sceneManager = services.resolve(EngineTokens.Scene);
@@ -1764,11 +1943,19 @@ export class Game {
     const eventBus = services.resolve(GameTokens.EventBus);
     const interactSystem = services.resolve(GameTokens.InteractSystem);
     const triggerSystem = services.resolve(GameTokens.TriggerSystem);
+    const entityIO = services.resolve(GameTokens.EntityIO);
     const checkpointSystem = services.resolve(GameTokens.CheckpointSystem);
     const hazardVolumes = services.resolve(GameTokens.HazardVolumes);
     const explosiveBarrels = services.resolve(GameTokens.ExplosiveBarrels);
     const characters = services.resolve(GameTokens.Characters);
     const footsteps = services.resolve(GameTokens.Footsteps);
+
+    // Cortar el grafo anterior antes del primer await. Una creación de NPC que
+    // termine mientras carga el skybox ya ve otro lifecycle y no puede emitir
+    // un OnSpawned tardío contra el nivel saliente.
+    this.entityBridge?.dispose();
+    this.entityBridge = null;
+    entityIO.clear();
 
     this.currentLevel = level;
 
@@ -1820,6 +2007,12 @@ export class Game {
     services.resolve(GameTokens.EnemySounds).clearActors();
     interactSystem.clear();
     triggerSystem.clear();
+    this.markerTable.clear();
+    this.npcDirectory.clear();
+    this.sequenceSystem?.clear();
+    this.sequenceSystem = null;
+    this.companionSystem?.clear();
+    this.companionSystem = null;
     checkpointSystem.clear();
     hazardVolumes.clear();
     services.resolve(GameTokens.GrabSystem).clear();
@@ -1850,6 +2043,8 @@ export class Game {
     this.buildingRegistry = loaded.buildingRegistry;
     this.navigation = loaded.navigation;
     this.navigationRequests = loaded.navigationRequests;
+
+    this.setupEntityIO(level, entityIO, eventBus);
 
     this.player = new Player(
       spawn ? new Vector3(...spawn.position) : new Vector3(...level.playerStart),

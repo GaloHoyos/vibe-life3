@@ -26,6 +26,7 @@ import {
   noticeSuspicionSchedule,
   patrolSchedule,
   reloadSchedules,
+  scriptedSchedules,
   searchLastKnownSchedule,
 } from './commonSchedules';
 import type { NpcPreset, NpcPresetOptions } from './NpcPreset';
@@ -46,6 +47,7 @@ export function buildCombinePreset(options: NpcPresetOptions = {}): NpcPreset {
   const flinch = options.flinch ?? { duration: 0.18, cooldown: 1.5 };
   const schedules: ScheduleDefinition<NpcBrainContext>[] = [
     deadSchedule(),
+    ...scriptedSchedules(),
     hitSchedule(flinch.duration),
     {
       id: 'retreat',

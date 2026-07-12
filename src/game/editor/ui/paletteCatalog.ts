@@ -1,11 +1,13 @@
 import type { PropKind } from '../EditorDocument';
 import type { PaletteKind } from '../editorFactory';
+import type { LogicEntityKind } from '@game/script/EntityIOTypes';
 import type { EditorIconName } from './editorIcons';
 
-/** Una entrada de la paleta: o crea una entidad (`kind`) o un prop (`prop`). */
+/** Una entrada de la paleta: crea una entidad (`kind`), un prop (`prop`) o una lógica de I/O (`logic`). */
 export type PaletteEntry =
   | { label: string; icon: EditorIconName; kind: PaletteKind }
-  | { label: string; icon: EditorIconName; prop: PropKind };
+  | { label: string; icon: EditorIconName; prop: PropKind }
+  | { label: string; icon: EditorIconName; logic: LogicEntityKind };
 
 export interface PaletteGroup {
   title: string;
@@ -61,6 +63,24 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
     items: [
       { label: 'Barril explosivo', icon: 'cube', kind: 'explosiveBarrel' },
       { label: 'Kill-volume', icon: 'warning', kind: 'hazardVolume' },
+    ],
+  },
+  {
+    title: 'Logica (I/O)',
+    icon: 'bolt',
+    items: [
+      { label: 'Secuencia', icon: 'person', kind: 'sequence' },
+      { label: 'Relay', icon: 'bolt', logic: 'relay' },
+      { label: 'Auto (al cargar)', icon: 'bolt', logic: 'auto' },
+      { label: 'Timer', icon: 'bolt', logic: 'timer' },
+      { label: 'Contador', icon: 'bolt', logic: 'counter' },
+      { label: 'Marcador', icon: 'target', logic: 'marker' },
+      { label: 'Mensaje', icon: 'bolt', logic: 'message' },
+      { label: 'Objetivo', icon: 'target', logic: 'objective' },
+      { label: 'Ambiente sonoro', icon: 'bolt', logic: 'soundscape' },
+      { label: 'Spawner de NPCs', icon: 'person', logic: 'npcSpawner' },
+      { label: 'Accion de nivel', icon: 'bolt', logic: 'levelAction' },
+      { label: 'Cambio de nivel', icon: 'bolt', logic: 'changelevel' },
     ],
   },
   {

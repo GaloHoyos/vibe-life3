@@ -2,8 +2,9 @@ import { createMap } from '@game/levels/builders/MapCreator';
 import { crateStack, coverWall } from '@game/levels/builders/PropBuilder';
 
 /**
- * Campaña de prueba (1/3). Ejercita: objetivo + brújula, trigger con diálogo,
- * apertura de puerta por trigger y encadenado al Sector 2 vía `endLevel`.
+ * Campaña de prueba (1/3). Ejercita: objetivo + brújula, trigger que encadena
+ * diálogo + apertura de puerta + objetivo vía entity I/O, y salida de nivel
+ * (`changelevel`) al Sector 2.
  */
 export const Sector1Arrival = createMap({
   id: 'test-01-arrival',
@@ -47,15 +48,19 @@ export const Sector1Arrival = createMap({
   .pickup({ id: 'wp-pistol', weaponId: 'pistol', position: [-1.5, 0.4, 20] })
   .pickup({ id: 'wp-smg', weaponId: 'smg', position: [1.5, 0.4, 20] })
   .item({ id: 'it-medkit', itemId: 'medkit', position: [0, 0.4, 16] })
+  .logic({ kind: 'message', id: 'msg-gate', name: 'msg-gate', speaker: 'Sistema', text: 'Esclusa norte desbloqueada.', duration: 3 })
+  .logic({ kind: 'objective', id: 'obj-cross', name: 'obj-cross', text: 'Cruzá la esclusa hacia la extracción', marker: [0, 1.6, -23] })
+  .logic({ kind: 'objective', id: 'obj-s1-done', name: 'obj-s1-done', text: 'Sector 1 asegurado', completed: true })
+  .logic({ kind: 'changelevel', id: 'exit-s1', name: 'exit-s1', landmark: [0, 1, -23] })
   .trigger({
     id: 'tr-gate-open',
     position: [0, 1.2, 8],
     size: [40, 3, 4],
     once: true,
-    actions: [
-      { kind: 'dialogue', speaker: 'Sistema', text: 'Esclusa norte desbloqueada.', duration: 3 },
-      { kind: 'door', doorId: 'gate-1', open: true },
-      { kind: 'objective', text: 'Cruzá la esclusa hacia la extracción', marker: [0, 1.6, -23] },
+    connections: [
+      { output: 'OnStartTouch', target: 'msg-gate', input: 'Show' },
+      { output: 'OnStartTouch', target: 'gate-1', input: 'Open' },
+      { output: 'OnStartTouch', target: 'obj-cross', input: 'Apply' },
     ],
   })
   .trigger({
@@ -63,9 +68,9 @@ export const Sector1Arrival = createMap({
     position: [0, 1.2, -23],
     size: [40, 3, 3],
     once: true,
-    actions: [
-      { kind: 'objective', text: 'Sector 1 asegurado', completed: true },
-      { kind: 'endLevel', landmark: [0, 1, -23], delay: 1.2 },
+    connections: [
+      { output: 'OnStartTouch', target: 'obj-s1-done', input: 'Apply' },
+      { output: 'OnStartTouch', target: 'exit-s1', input: 'Trigger', delay: 1.2 },
     ],
   })
   .build();

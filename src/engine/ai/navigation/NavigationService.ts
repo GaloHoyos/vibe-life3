@@ -63,7 +63,7 @@ export interface NavigationServiceOptions {
   physics: PhysicsWorld;
   maxAgents?: number;
   assetKey?: string;
-  openDoor?: (doorId: string) => void;
+  openDoor?: (doorId: string, ownerId: string) => void;
   isDoorPassable?: (doorId: string) => boolean;
   metadataAt?: (position: Vector3) => { buildingId: string | null; roomId: string | null };
 }
@@ -228,8 +228,8 @@ export class NavigationService {
     }
   }
 
-  activateAction(link: NavigationActionLink): void {
-    if (link.kind === "door" && link.doorId) this.options.openDoor?.(link.doorId);
+  activateAction(link: NavigationActionLink, ownerId: string): void {
+    if (link.kind === "door" && link.doorId) this.options.openDoor?.(link.doorId, ownerId);
   }
 
   isActionReady(link: NavigationActionLink): boolean {

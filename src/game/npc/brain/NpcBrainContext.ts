@@ -1,6 +1,7 @@
 import type { Vector3 } from 'three';
 import type { ConditionMask } from '@engine/ai/brain/Condition';
 import type { NavAgentProfile } from '@engine/ai/navigation/NavigationTypes';
+import type { GestureId } from '@engine/animation/AnimationInput';
 import type { GameEventBus } from '@game/GameEvents';
 import type { ActorSnapshot } from '@game/npc/core/INpc';
 import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
@@ -8,6 +9,7 @@ import type { Faction } from '@engine/ai/Faction';
 import type { NoiseSnapshot } from '@game/npc/brain/NpcNoiseSensor';
 import type { NpcTacticalHandle } from '@game/npc/brain/NpcCoverSensor';
 import type { SquadRole } from '@game/npc/ai/SquadDirector';
+import type { NpcScriptOrder } from '@game/script/NpcScriptOrder';
 
 export interface NpcSelfSnapshot {
   id: string;
@@ -43,6 +45,12 @@ export interface NpcLocomotionHandle {
   leap(target: Vector3, params: NpcLeapParams): void;
   /** True mientras el cuerpo este en el aire por un `leap`. */
   isLeaping(): boolean;
+  /**
+   * Teletransporte instantaneo a un punto encarando `yaw` (secuencias guionadas
+   * con `moveMode: 'teleport'`). Opcional: solo motores terrestres estandar lo
+   * exponen; flyers/strider no.
+   */
+  teleport?(position: Vector3, yaw: number): void;
 }
 
 export interface NpcLeapParams {
@@ -144,8 +152,13 @@ export interface NpcBrainContext {
    * Ancla efectiva del ally (player u orden ir-a-punto del squad del
    * jugador). Null en NPCs sin `anchor`. Los tasks de follow/regroup usan
    * esto, no `player` directo.
-   */
+  */
   anchorPosition: Vector3 | null;
+  /**
+   * Radio de llegada impuesto por el controlador del ancla (escort). Null o
+   * undefined usa la distancia social propia del task de follow/regroup.
+   */
+  anchorArrivalRadius?: number | null;
   /** Offset de formacion alrededor del anchor (miembros del squad del jugador). */
   anchorOffset: Vector3 | null;
   /** Snapshot del player (puede ser aliado — no necesariamente threat). */
@@ -166,6 +179,10 @@ export interface NpcBrainContext {
    * `npc.heal` y arranca el cooldown del medic).
    */
   medic: { target: ActorSnapshot; heal(elapsed: number): boolean } | null;
+  /** Orden de secuencia guionada activa para este NPC, o null. */
+  script: NpcScriptOrder | null;
+  /** Dispara un gesto procedural nombrado (pasos `gesture` de una secuencia). */
+  gesture(id: GestureId, duration: number): void;
   conditions: ConditionMask;
   navigation: NpcNavigationQueries;
   navigationProfile: NavAgentProfile;
