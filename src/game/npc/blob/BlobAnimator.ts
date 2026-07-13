@@ -1,5 +1,6 @@
 import {
   AdditiveBlending,
+  Color,
   CylinderGeometry,
   DoubleSide,
   Group,
@@ -24,6 +25,7 @@ import { BlobSurfaceLodController } from '@engine/blob/BlobSurfaceLod';
 import { blobSurfaceScheduler } from '@engine/blob/BlobSurfaceScheduler';
 import { MetaballSurface } from '@engine/blob/MetaballSurface';
 import { BlobConfig } from '@game/config/blob.config';
+import { NpcDebugFlags } from '@game/npc/core/NpcDebugFlags';
 import type { AnimationFrame, NpcAnimator } from '@game/npc/animation/NpcAnimator';
 import type { BlobHitboxes } from './BlobHitboxes';
 import type { GameEventBus } from '@game/GameEvents';
@@ -39,6 +41,15 @@ const TMP_INVERSE_QUAT = new Quaternion();
 const TMP_IMPACT = new Vector3();
 const SURFACE_GUARD_CELLS = 3;
 const SURFACE_DEFORM_WORLD_AMPLITUDE = 0.025;
+const TMP_COLOR = new Color();
+const PARTICLE_DEBUG_DETACHED_TINT = new Color(0xff4df0);
+const PARTICLE_DEBUG_COLORS: Readonly<Record<BlobParticleRole, number>> = {
+  [BlobParticleRole.Brain]: 0xff2f1a,
+  [BlobParticleRole.Structural]: 0xff9f2e,
+  [BlobParticleRole.Support]: 0x3fa7ff,
+  [BlobParticleRole.TendonEnd]: 0xffe14d,
+  [BlobParticleRole.Flesh]: 0x54e08a,
+};
 /** Ellipsoidal field kernels: gel spreads sideways instead of looking spherical. */
 const SURFACE_VERTICAL_SCALE = 0.68;
 
@@ -73,6 +84,7 @@ export class BlobAnimator implements NpcAnimator {
   private readonly tendons: InstancedMesh;
   private readonly tendonDummy = new Object3D();
   private hitboxes: BlobHitboxes | null = null;
+  private particleDebug: InstancedMesh | null = null;
   private readonly parentPos = new Vector3();
   private parentYaw = 0;
   private elapsed = 0;
@@ -224,6 +236,12 @@ export class BlobAnimator implements NpcAnimator {
     if (Array.isArray(this.tendons.material)) this.tendons.material.forEach((m) => m.dispose());
     else this.tendons.material.dispose();
     this.tendons.removeFromParent();
+    if (this.particleDebug) {
+      this.particleDebug.geometry.dispose();
+      if (!Array.isArray(this.particleDebug.material)) this.particleDebug.material.dispose();
+      this.particleDebug.removeFromParent();
+      this.particleDebug = null;
+    }
   }
 
   private updateVisuals(distance: number, visible: boolean, force: boolean): void {
@@ -263,7 +281,65 @@ export class BlobAnimator implements NpcAnimator {
     }
     this.updateCore();
     this.updateTendons();
+    this.updateParticleDebug();
     this.hitboxes?.sync();
+  }
+
+  /**
+   * Vista debug del organismo: una esfera por partícula real, coloreada por
+   * rol y tintada si pertenece a un chunk desprendido; se dibuja a través de
+   * la piel para observar la simulación (menú debug → NPCs).
+   */
+  private updateParticleDebug(): void {
+    if (!NpcDebugFlags.showBlobParticles) {
+      if (this.particleDebug) this.particleDebug.visible = false;
+      return;
+    }
+    const mesh = this.ensureParticleDebug();
+    TMP_QUAT.setFromAxisAngle(UP, -this.parentYaw);
+    let instance = 0;
+    for (const particle of this.runtime.particles) {
+      if (!particle.active || particle.scale <= 0.02) continue;
+      this.tendonDummy.position
+        .copy(particle.renderPosition)
+        .sub(this.parentPos)
+        .applyQuaternion(TMP_QUAT);
+      this.tendonDummy.quaternion.identity();
+      this.tendonDummy.scale.setScalar(
+        Math.max(0.02, particle.radius * particle.scale * 0.6),
+      );
+      this.tendonDummy.updateMatrix();
+      mesh.setMatrixAt(instance, this.tendonDummy.matrix);
+      TMP_COLOR.setHex(PARTICLE_DEBUG_COLORS[particle.role]);
+      if (particle.componentId !== 0) TMP_COLOR.lerp(PARTICLE_DEBUG_DETACHED_TINT, 0.55);
+      mesh.setColorAt(instance, TMP_COLOR);
+      instance++;
+    }
+    mesh.count = instance;
+    mesh.visible = instance > 0;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }
+
+  private ensureParticleDebug(): InstancedMesh {
+    if (this.particleDebug) return this.particleDebug;
+    const mesh = new InstancedMesh(
+      new SphereGeometry(1, 8, 6),
+      new MeshBasicMaterial({
+        transparent: true,
+        opacity: 0.85,
+        depthTest: false,
+        depthWrite: false,
+      }),
+      this.runtime.particles.length,
+    );
+    mesh.name = `blob-particles-debug-${this.ownerId}`;
+    mesh.renderOrder = 4;
+    mesh.frustumCulled = false;
+    this.root.add(mesh);
+    this.particleDebug = mesh;
+    return mesh;
   }
 
   private tickAudio(delta: number, speed: number): void {
