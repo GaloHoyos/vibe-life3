@@ -51,7 +51,7 @@ export interface BlobComponent {
   active: boolean;
   /** World Y of the lowest supported particle; reference for climb budgets. */
   groundY: number;
-  /** True for gunfire-severed chunks that crawl back to the main mass. */
+  /** True for severed chunks (gunfire or stranding) crawling back home. */
   detached: boolean;
 }
 
@@ -148,14 +148,24 @@ export interface BlobOrganismOptions {
    * seconds after the brain instead of the whole mass jumping as one body.
    */
   launchStaggerSeconds?: number;
-  /** Distance (× bodyRadius) beyond which trailing gel counts as torn off. */
-  strandDistanceScale?: number;
+  /**
+   * Scale on the neighbor-to-neighbor reach (gel cohesion range or ball
+   * contact, whichever is larger) that keeps a particle connected to the
+   * organism; goo beyond every link is stranded.
+   */
+  strandLinkScale?: number;
   /** Seconds a particle must stay beyond reach before it severs as a chunk. */
   strandSeconds?: number;
   /** Ground crawl speed of shot-off chunks returning to the main mass. */
   crawlReturnSpeed?: number;
   /** Ballistic grace before a detached chunk starts crawling back. */
   detachReturnDelaySeconds?: number;
+  /** Upward speed of a returning chunk's hop once its crawl is blocked. */
+  chunkHopUpSpeed?: number;
+  /** Planar speed toward the main mass during a blocked chunk's hop. */
+  chunkHopForwardSpeed?: number;
+  /** Seconds without crawl progress before a returning chunk hops. */
+  chunkHopBlockedSeconds?: number;
   /** Flow speed of flesh climbing over an envelop victim. */
   envelopFlowSpeed?: number;
   /** Fraction of eligible flesh allowed to leave the mound to envelop. */

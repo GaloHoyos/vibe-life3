@@ -37,10 +37,14 @@ export const BlobConfig = {
     crawlReturnSpeed: 2.3,
     /** Peso del líquido al saltar: la carne baja despega hasta este retraso. */
     leapStagger: 0.22,
-    /** Gel rezagado más allá de este radio (× baseRadius) se corta como chunk. */
-    strandDistanceScale: 2.1,
+    /** Alcance de vínculo gel-a-gel (× cohesión/contacto) que define pertenencia. */
+    strandLinkScale: 1,
     /** Segundos colgando fuera de alcance antes de separarse por gravedad. */
     strandSeconds: 0.45,
+    /** Mini-salto del chunk que vuelve cuando su crawl queda bloqueado. */
+    chunkHopUpSpeed: 4.6,
+    chunkHopForwardSpeed: 3.4,
+    chunkHopBlockedSeconds: 0.55,
     /** Altura del domo al envolver una víctima (pies a cabeza). */
     envelopHeight: 1.7,
     /** Flujo del manto sobre la víctima al envolverla. */

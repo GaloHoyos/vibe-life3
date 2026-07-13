@@ -421,6 +421,88 @@ describe("BlobOrganismRuntime gravity and ballistics", () => {
     }
   });
 
+  it("leaps without dragging detached chunks, which keep crawling home mid-flight", () => {
+    const runtime = new BlobOrganismRuntime({
+      seed: 17,
+      motionResolver: (_particle, _from, desired) => ({ position: desired, grounded: true }),
+    });
+    const point = runtime.particles[130].position.clone();
+    expect(runtime.detachAt(point, 0.7, new Vector3(6, 0, 0))).toBeGreaterThanOrEqual(3);
+    // Pasada la gracia balística y frenada la inercia del disparo, el chunk
+    // ya repta de vuelta hacia la masa.
+    for (let index = 0; index < 33; index++) {
+      runtime.step(BLOB_FIXED_STEP_SECONDS, { gravity: 18 });
+    }
+    const chunk = runtime.components.find(
+      (component) => component.active && component.detached,
+    );
+    expect(chunk).toBeDefined();
+    const chunkIndices = [...chunk!.particleIndices];
+    const main = runtime.components[0];
+    const planarBefore = Math.hypot(
+      chunk!.center.x - main.center.x,
+      chunk!.center.z - main.center.z,
+    );
+
+    runtime.launch(new Vector3(0, 6, 0));
+    expect(runtime.airborne).toBe(true);
+    expect(runtime.particles[0].velocity.y).toBeGreaterThan(5);
+    for (const index of chunkIndices) {
+      expect(runtime.particles[index].velocity.y).toBeLessThan(3);
+    }
+
+    for (let index = 0; index < 5; index++) {
+      runtime.step(BLOB_FIXED_STEP_SECONDS, { gravity: 18 });
+    }
+    expect(runtime.airborne).toBe(true);
+    const planarAfter = Math.hypot(
+      chunk!.center.x - main.center.x,
+      chunk!.center.z - main.center.z,
+    );
+    expect(planarAfter).toBeLessThan(planarBefore - 0.1);
+  });
+
+  it("dissolves sub-chunk scraps home instead of leashing them to locomotion", () => {
+    let pinning = true;
+    const pinned = new Set<number>();
+    const runtime = new BlobOrganismRuntime({
+      seed: 21,
+      motionResolver: (particle, from, desired) =>
+        pinning && pinned.has(particle.index)
+          ? { position: from, grounded: true }
+          : { position: desired, grounded: true },
+    });
+    const fringe = [...runtime.activeParticles]
+      .filter((particle) => particle.role === BlobParticleRole.Flesh)
+      .sort((a, b) => a.position.x - b.position.x)
+      .slice(0, 2);
+    for (const particle of fringe) pinned.add(particle.index);
+
+    let maxComponents = 1;
+    let minScale = 1;
+    for (let stepIndex = 0; stepIndex < 90; stepIndex++) {
+      if (stepIndex === 45) pinning = false;
+      runtime.step(BLOB_FIXED_STEP_SECONDS, {
+        desiredVelocity: new Vector3(3, 0, 0),
+        gravity: 18,
+      });
+      maxComponents = Math.max(maxComponents, runtime.componentCount);
+      for (const index of pinned) {
+        minScale = Math.min(minScale, runtime.particles[index].scale);
+      }
+    }
+
+    // Un resto menor al mínimo de chunk no quema un slot de componente: se
+    // disuelve donde quedó y regenera escondido dentro de la masa.
+    expect(maxComponents).toBe(1);
+    expect(minScale).toBeLessThan(0.5);
+    for (const index of pinned) {
+      const particle = runtime.particles[index];
+      expect(particle.componentId).toBe(0);
+      expect(particle.position.distanceTo(runtime.center)).toBeLessThan(2);
+    }
+  });
+
   it("launches ballistic, suspends steering, and lands when support returns", () => {
     let grounded = false;
     const runtime = new BlobOrganismRuntime({
@@ -500,6 +582,39 @@ describe("BlobOrganismRuntime gunfire detachment", () => {
       reunited = runtime.componentCount === 1;
     }
     expect(reunited).toBe(true);
+  });
+
+  it("hops a blocked returning chunk toward the mass instead of stalling", () => {
+    let blockChunk = false;
+    const runtime = new BlobOrganismRuntime({
+      seed: 17,
+      motionResolver: (particle, from, desired) =>
+        blockChunk && particle.componentId !== 0
+          ? { position: from, grounded: true }
+          : { position: desired, grounded: true },
+    });
+    const point = runtime.particles[130].position.clone();
+    expect(runtime.detachAt(point, 0.7, new Vector3(6, 0, 0))).toBeGreaterThanOrEqual(3);
+    for (let index = 0; index < 21; index++) {
+      runtime.step(BLOB_FIXED_STEP_SECONDS, { gravity: 18 });
+    }
+    blockChunk = true;
+
+    let hopVelocityY = 0;
+    for (let index = 0; index < 60 && hopVelocityY < 2.5; index++) {
+      runtime.step(BLOB_FIXED_STEP_SECONDS, { gravity: 18 });
+      const chunk = runtime.components.find(
+        (component) => component.active && component.detached,
+      );
+      if (!chunk) break;
+      for (const particleIndex of chunk.particleIndices) {
+        hopVelocityY = Math.max(
+          hopVelocityY,
+          runtime.particles[particleIndex].velocity.y,
+        );
+      }
+    }
+    expect(hopVelocityY).toBeGreaterThan(2.5);
   });
 });
 
