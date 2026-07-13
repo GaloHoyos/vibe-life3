@@ -242,11 +242,13 @@ export class NavigationLocomotion {
         return;
       }
     }
-    if (action?.link.kind === "door") {
+    if (action?.link.kind === "door" || action?.link.kind === "flow") {
       const distance = planarDistance(position, aim);
       if (distance <= this.waypointReachRadius * 1.35) {
-        this.navigation.activateAction(action.link, this.ownerId);
-        if (!this.navigation.isActionReady(action.link)) {
+        if (action.link.kind === "door") {
+          this.navigation.activateAction(action.link, this.ownerId);
+        }
+        if (action.link.kind === "door" && !this.navigation.isActionReady(action.link)) {
           this.motor.update(delta, null, false, this.facingTarget);
           this.updateProgress(delta, position, false);
           return;

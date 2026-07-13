@@ -12,6 +12,10 @@ export interface AnimationFrame {
   balanceIsStumbling: boolean;
   /** Segundos del frame; los decays temporales (flashes) deben usar esto. */
   delta: number;
+  /** Distancia visual mínima (player o cámara de portal) para elegir LOD. */
+  viewerDistance?: number;
+  /** False cuando ninguna cámara dibujó al NPC recientemente. */
+  visible?: boolean;
 }
 
 /**
@@ -39,4 +43,6 @@ export interface NpcAnimator {
     partName: string | undefined,
   ): void;
   disable(): void;
+  /** Libera recursos GPU/físicos propios. Debe ser idempotente. */
+  dispose?(): void;
 }

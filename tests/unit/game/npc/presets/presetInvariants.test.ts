@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { NpcPreset } from "@game/npc/presets/NpcPreset";
 import { buildAlyxPreset } from "@game/npc/presets/alyxPreset";
+import { buildBlobPreset } from "@game/npc/presets/blobPreset";
 import { buildCombinePreset } from "@game/npc/presets/combinePreset";
 import { buildGunshipPreset } from "@game/npc/presets/gunshipPreset";
 import { buildHeadcrabPreset } from "@game/npc/presets/headcrabPreset";
@@ -13,6 +14,7 @@ import { buildZombiePreset } from "@game/npc/presets/zombiePreset";
 
 const builders: Array<[string, () => NpcPreset]> = [
   ["alyx", () => buildAlyxPreset()],
+  ["blob", () => buildBlobPreset()],
   ["combine", () => buildCombinePreset()],
   ["combine+patrol", () => buildCombinePreset({ hasPatrol: true })],
   ["gunship", () => buildGunshipPreset()],

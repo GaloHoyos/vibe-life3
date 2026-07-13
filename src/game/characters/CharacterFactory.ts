@@ -20,6 +20,7 @@ import { buildPassivePreset } from '@game/npc/presets/passivePreset';
 import { buildRebelPreset } from '@game/npc/presets/rebelPreset';
 import { buildZombiePreset } from '@game/npc/presets/zombiePreset';
 import { buildHeadcrabPreset } from '@game/npc/presets/headcrabPreset';
+import { buildBlobPreset } from '@game/npc/presets/blobPreset';
 import { buildManhackPreset } from '@game/npc/presets/manhackPreset';
 import { buildTurretPreset } from '@game/npc/presets/turretPreset';
 import { buildGunshipPreset } from '@game/npc/presets/gunshipPreset';
@@ -33,12 +34,18 @@ import { TurretCombat } from '@game/npc/combat/TurretCombat';
 import { TurretAimState } from '@game/npc/combat/TurretAimState';
 import { GunshipCannonCombat } from '@game/npc/combat/GunshipCannonCombat';
 import { StriderCombat } from '@game/npc/combat/StriderCombat';
+import { BlobAnimator } from '@game/npc/blob/BlobAnimator';
+import { BlobContactCombat } from '@game/npc/blob/BlobContactCombat';
+import { BlobHitboxes } from '@game/npc/blob/BlobHitboxes';
+import { BlobSwarmState } from '@game/npc/blob/BlobSwarmState';
+import { BlobOrganismRuntime } from '@engine/blob/BlobOrganismRuntime';
 import type { NpcCombatHandle } from '@game/npc/brain/NpcBrainContext';
 import type { ModelAssetId } from '@engine/assets/AssetManifest';
 import type { GameEventBus } from "@game/GameEvents";
 import type { PhysicsMetadata, PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import { Raycast, type RaycastSource } from '@engine/physics/Raycast';
 import { CharacterMotor } from '@engine/physics/character/CharacterMotor';
+import { BlobMotor } from '@engine/physics/character/BlobMotor';
 import { DynamicFlyerMotor } from '@engine/physics/character/DynamicFlyerMotor';
 import { KinematicFlyerMotor } from '@engine/physics/character/KinematicFlyerMotor';
 import { StriderWalkerMotor } from '@engine/physics/character/StriderWalkerMotor';
@@ -56,6 +63,8 @@ import { CharacterPresets } from './CharacterPresets';
 import { applyDefinitionStats } from './CharacterStats';
 import type { CharacterDefinition, CharacterId } from '@engine/characters/CharacterDefinition';
 import type { DifficultyProvider } from '@game/config/difficulty.config';
+import type { Damageable } from '@shared/types/lifecycle';
+import { BlobConfig } from '@game/config/blob.config';
 
 export interface NpcRuntimeServices {
   navigation: NavigationService;
@@ -152,10 +161,7 @@ export class CharacterFactory {
       ...(definition.flinch ? { flinch: definition.flinch } : {}),
     });
     const visualGroup = wrapVisualRoot(visualRoot);
-    const ownerProxy: {
-      applyDamage: (amount: number, dir?: Vector3, part?: string, attackerId?: string, point?: Vector3) => void;
-      isAlive: () => boolean;
-    } = {
+    const ownerProxy: Damageable = {
       applyDamage: () => {},
       isAlive: () => true,
     };
@@ -171,7 +177,26 @@ export class CharacterFactory {
     const isTurret = definition.aiProfileId === 'floorTurret';
     const isGunship = definition.aiProfileId === 'gunshipBoss';
     const isStrider = definition.aiProfileId === 'striderBoss';
+    const isBlob = definition.aiProfileId === 'blobCreature';
     const turretAim = isTurret ? new TurretAimState() : null;
+    // Blob: combat (escribe threat/kills) y animator (dimensiona el enjambre)
+    // comparten estado — mismo patrón que `turretAim`.
+    const blobRuntime = isBlob
+      ? new BlobOrganismRuntime({
+          center: position,
+          initialParticleCount: BlobConfig.swarm.baseElements,
+          maxParticleCount: BlobConfig.swarm.maxElements,
+          particleRadius: BlobConfig.swarm.elementRadius,
+          bodyRadius: BlobConfig.swarm.baseRadius,
+          // El Blobulator superpone fuertemente las muestras del campo. El
+          // literal anterior (1.65 radios) inflaba 192 puntos hasta formar una
+          // bola y luego una lámina; este factor es la única fuente de tuning.
+          separationDistance:
+            BlobConfig.swarm.elementRadius * BlobConfig.swarm.separationScale,
+          locomotionSpeed: preset.movement.sprintSpeed,
+        })
+      : null;
+    const blobState = blobRuntime ? new BlobSwarmState(blobRuntime) : null;
     const navigationProfile = navigationProfileForPreset(preset);
     let striderMotor: StriderWalkerMotor | null = null;
     // Voladores (manhack) = rigid body dinamico real: lo agarra la gravity gun,
@@ -215,6 +240,28 @@ export class CharacterFactory {
           metadata,
           raycast: services.raycast,
         }))
+      : isBlob && blobRuntime
+      ? new BlobMotor(this.physics, blobRuntime, {
+          id: instanceId,
+          maxSpeed: preset.movement.walkSpeed,
+          acceleration: preset.movement.acceleration,
+          turnSpeed: preset.movement.turnSpeed,
+          metadata,
+          onConsumeProp: (biomass, consumedAt) => {
+            this.eventBus.emit('npc.heal', {
+              medicId: instanceId,
+              characterId: definition.id,
+              targetId: instanceId,
+              amount: biomass * 2.5,
+              position: consumedAt,
+            });
+            this.eventBus.emit('npc.attack', {
+              id: instanceId,
+              characterId: definition.id,
+              position: consumedAt,
+            });
+          },
+        })
       : preset.movement.flying
       ? new DynamicFlyerMotor(this.physics, {
           id: instanceId,
@@ -255,8 +302,51 @@ export class CharacterFactory {
         });
     const striderAnimator =
       isStrider && striderMotor ? new StriderAnimator(visualRoot, striderMotor) : null;
-    const animation: NpcAnimator =
-      isTurret && turretAim
+    const blobAnimator = blobRuntime
+      ? new BlobAnimator(visualRoot, {
+          ownerId: instanceId,
+          runtime: blobRuntime,
+          eventBus: this.eventBus,
+          characterId: definition.id,
+        })
+      : null;
+    let blobNpcForFeedback: Npc | null = null;
+    if (blobAnimator && blobRuntime) {
+      // Hitboxes sensor por elemento + núcleo: las balas reaccionan sobre la
+      // masa (knock/pop) y el daño llega al pool vía el ownerProxy late-bound.
+      blobAnimator.attachHitboxes(
+        new BlobHitboxes({
+          physics: this.physics,
+          ownerId: instanceId,
+          characterId: definition.id,
+          faction: definition.faction,
+          runtime: blobRuntime,
+          pool: ownerProxy,
+          onMassImpact: (impact) => {
+            // La piel no pierde HP, pero un impacto sigue siendo un evento
+            // sensorial completo: despierta/reconstruye la superficie en el
+            // siguiente frame y reproduce el golpe húmedo del Blob.
+            blobAnimator.notifyMassImpact(
+              impact.point,
+              impact.direction,
+              Math.min(1, Math.max(0.2, impact.damage / 35)),
+            );
+            this.eventBus.emit('npc.damaged', {
+              id: instanceId,
+              characterId: definition.id,
+              amount: 0,
+              health: blobNpcForFeedback?.health.current ?? BlobConfig.core.maxHealth,
+              point: impact.point.clone(),
+              direction: impact.direction.clone(),
+              bodyPart: 'blob-mass',
+            });
+          },
+        }),
+      );
+    }
+    const animation: NpcAnimator = blobAnimator
+      ? blobAnimator
+      : isTurret && turretAim
         ? new TurretAnimator(visualRoot, turretAim)
         : isGunship
         ? new GunshipAnimator(visualRoot)
@@ -309,6 +399,16 @@ export class CharacterFactory {
         onCannonShot: () => striderAnimator?.notifyCannonShot(),
         onStomp: () => animation.notifyAttack(),
       });
+    } else if (blobState && blobRuntime) {
+      combat = new BlobContactCombat({
+        id: instanceId,
+        characterId: definition.id,
+        eventBus: this.eventBus,
+        raycast: services.losRaycast,
+        state: blobState,
+        runtime: blobRuntime,
+        eyeHeight: definition.perception.eyeHeight,
+      });
     } else if (ranged) {
       const losRaycast = services.losRaycast;
       const realCombat = new NpcRangedCombat(
@@ -338,6 +438,8 @@ export class CharacterFactory {
     }
     const npc = new Npc({
       id: instanceId,
+      characterId: definition.id,
+      blobPrey: definition.blobPrey ?? null,
       faction: definition.faction,
       position,
       visualRoot: visualGroup,
@@ -354,12 +456,24 @@ export class CharacterFactory {
       eventBus: this.eventBus,
       difficulty: this.difficulty,
       animation,
+      blobControl: blobRuntime
+        ? {
+            setPose: (pose) => blobRuntime.setPose(pose),
+            resetPose: () => blobRuntime.resetPose(),
+            split: (components) => blobRuntime.split(components),
+            merge: () => blobRuntime.merge(),
+            drainEvents: () => blobRuntime.drainEvents(),
+          }
+        : null,
       patrolRoute: patrolPoints,
       tacticalMap: services.tacticalMap,
       squadDirector: services.squadDirector,
     });
+    blobNpcForFeedback = npc;
     ownerProxy.applyDamage = npc.applyDamage.bind(npc);
     ownerProxy.isAlive = npc.isAlive.bind(npc);
+    // El enjambre encoge con la vida; se enlaza acá porque la metadata/animator
+    // se crean antes que la instancia `Npc` (mismo late-binding que ownerProxy).
     return npc;
   }
 }
@@ -378,6 +492,8 @@ function resolvePresetFor(definition: CharacterDefinition, options: NpcPresetOpt
       return applyDefinitionStats(buildPassivePreset(), definition);
     case 'headcrabMelee':
       return buildHeadcrabPreset();
+    case 'blobCreature':
+      return buildBlobPreset();
     case 'manhackFlyer':
       return buildManhackPreset();
     case 'floorTurret':
@@ -403,6 +519,12 @@ function computeMountYaw(position: Vector3, patrol: Vector3[]): number {
 
 /** Visuales procedurales para NPCs sin GLB (registrar uno nuevo = una entrada). */
 const proceduralVisuals: Record<string, () => Object3D> = {
+  // El grupo lo puebla `BlobAnimator` (isosuperficie de metaballs por frame).
+  blob: () => {
+    const group = new Group();
+    group.name = 'blob-root';
+    return group;
+  },
   manhack: createManhackVisual,
   floorTurret: createTurretVisual,
   gunship: createGunshipVisual,

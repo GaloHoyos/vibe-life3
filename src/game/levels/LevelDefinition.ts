@@ -17,6 +17,7 @@ import type { LevelId } from '@game/levels/LevelRegistry';
 import type { PlayerModelId } from '@game/config/playermodel.config';
 import type { IOEntityFields, LogicEntityDefinition } from '@game/script/EntityIOTypes';
 import type { ScriptedSequenceDefinition } from '@game/script/ScriptedSequenceTypes';
+import type { BlobPoseDefinition } from '@game/npc/blob/BlobControl';
 
 /** Rotacion Euler XYZ en radianes. Omitida = alineado a los ejes. */
 type RotationTuple = VectorTuple;
@@ -27,6 +28,8 @@ export interface StaticBoxDefinition {
   size: VectorTuple;
   material: MaterialKey;
   rotation?: RotationTuple;
+  /** El perfil de navegación Blob puede fluir a través de este sólido. */
+  blobPermeable?: boolean;
 }
 
 export interface DynamicBoxDefinition {
@@ -36,6 +39,13 @@ export interface DynamicBoxDefinition {
   mass: number;
   material: MaterialKey;
   rotation?: RotationTuple;
+  /** Opt-in explícito: el Blob puede absorber y eliminar este prop. */
+  blobConsumable?: {
+    /** Default runtime: 2 s. */
+    consumeSeconds?: number;
+    /** Partículas de carne obtenidas. Default runtime: 4. */
+    biomass?: number;
+  };
 }
 
 export interface DoorDefinition extends IOEntityFields {
@@ -69,6 +79,8 @@ export interface NPCDefinition extends IOEntityFields {
   characterId: CharacterId;
   patrol?: VectorTuple[];
   rotation?: RotationTuple;
+  /** Poses coreografiadas disponibles para `SetBlobPose` por id. */
+  blobPoses?: BlobPoseDefinition[];
 }
 
 export interface WeaponPickupDefinition {

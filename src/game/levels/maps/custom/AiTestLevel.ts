@@ -452,6 +452,13 @@ export const AiTestLevel: LevelDefinition = {
       position: [18, 4.5, -11],
       characterId: "combine",
     },
+    // Blob en el gimnasio de obstáculos: piso llano, cover bajo alrededor y
+    // combines al NW para probar el consumo NPC-vs-NPC arrastrándolo.
+    {
+      id: "ai-blob-gym",
+      position: [16, 1, 20],
+      characterId: "blob",
+    },
     // 2 zombies en los corredores.
     {
       id: "ai-zombie-corridor-1",

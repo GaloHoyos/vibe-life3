@@ -49,7 +49,11 @@ interface ChunkEntry {
 // SUBTRACT controls blend softness; ISOLATION > 0 is mandatory (at exactly 0,
 // the polygonizer classifies empty cells as "inside" and floods the domain).
 // Exported so one-shot bakes (`bakeBlobGeometry`) share the same field shape.
-export const BLOB_FIELD_SUBTRACT = 12;
+// Un soporte más ancho evita picos de densidad al cubrir las ~192 partículas
+// del organismo. Con 12 el campo caía demasiado rápido y cada pequeño grupo
+// interno producía una aguja; 4 conserva el mismo radio aislado pero mezcla la
+// contribución con vecinos antes de polygonizar, como un gel continuo.
+export const BLOB_FIELD_SUBTRACT = 4;
 export const BLOB_FIELD_ISOLATION = 4;
 /** Field support extends past the surface radius by this factor. */
 export const BLOB_SUPPORT_FACTOR = Math.sqrt(

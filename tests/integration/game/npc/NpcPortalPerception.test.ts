@@ -216,6 +216,7 @@ function makeZombie(world: World): { npc: Npc; combat: ReturnType<typeof fakeCom
   });
   const npc = new Npc({
     id: "zombie-1",
+    characterId: "zombie",
     faction: "zombies",
     position: new Vector3(0, 0.9, 2),
     visualRoot: new Group(),
@@ -254,6 +255,7 @@ function makeManhack(world: World, exits: Vector3[]): Npc {
   });
   return new Npc({
     id: "manhack-1",
+    characterId: "manhack",
     faction: "combine",
     position: new Vector3(0, 1.4, 2),
     visualRoot: new Group(),
@@ -428,6 +430,7 @@ describe("NPC detrás de la pared NO ve por un portal del lado del player", () =
     });
     return new Npc({
       id: "zombie-x",
+      characterId: "zombie",
       faction: "zombies",
       position: position.clone(),
       visualRoot: new Group(),

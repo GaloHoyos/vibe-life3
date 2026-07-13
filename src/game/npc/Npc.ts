@@ -46,9 +46,13 @@ import type { DamageType } from '@shared/types/lifecycle';
 import type { DifficultyProvider } from '@game/config/difficulty.config';
 import type { NpcCalloutKind } from '@game/config/audio.config';
 import { navigationProfileForPreset } from '@game/npc/navigation/NavAgentProfiles';
+import type { BlobPreyDefinition, CharacterId } from '@engine/characters/CharacterDefinition';
+import type { NpcBlobControlHandle } from '@game/npc/blob/BlobControl';
 
 export interface NpcConstructionParams {
   id: string;
+  characterId?: CharacterId;
+  blobPrey?: BlobPreyDefinition | null;
   faction: Faction;
   position: Vector3;
   visualRoot: Group;
@@ -69,6 +73,7 @@ export interface NpcConstructionParams {
   /** Multiplicadores de dificultad; ausente = sin escalado (tests, normal). */
   difficulty?: DifficultyProvider;
   animation?: NpcAnimator | null;
+  blobControl?: NpcBlobControlHandle | null;
   patrolRoute?: Vector3[] | null;
   tacticalMap?: TacticalMap | null;
   squadDirector?: SquadDirector | null;
@@ -82,6 +87,8 @@ interface PortalCapableMotor {
   teleport(position: Vector3, velocity: Vector3): void;
   snapYaw(yaw: number): void;
   setPortalExclusions(handles: ReadonlySet<number> | null): void;
+  /** Operación atómica para motores compuestos (Blob). */
+  teleportPose?(position: Vector3, velocity: Vector3, yaw: number): void;
 }
 
 /** Radio (m) dentro del cual un aliado vivo cuenta para `AlliesNear`. */
@@ -111,6 +118,8 @@ const CALLOUT_THROTTLE = 4.0;
  */
 export class Npc implements INpc {
   readonly id: string;
+  readonly characterId: CharacterId;
+  readonly blobPrey: BlobPreyDefinition | null;
   readonly mesh: Group;
   readonly health: Health;
   readonly faction: Faction;
@@ -136,7 +145,9 @@ export class Npc implements INpc {
   private readonly navigationProfile: NavAgentProfile;
   private readonly eventBus: GameEventBus;
   private readonly animation: NpcAnimator | null;
+  private readonly blobControl: NpcBlobControlHandle | null;
   private readonly animationLookTarget = new Vector3();
+  private lastViewerDistance = 0;
   private readonly tmpSliceDir = new Vector3();
 
   private readonly noiseSensor: NpcNoiseSensor;
@@ -156,7 +167,7 @@ export class Npc implements INpc {
   private readonly height: number;
   private justHitTimer = 0;
   private disposed = false;
-  /** Muerto congelado: sin ragdoll; el visual lo mueve la estatua del ice gun. */
+  /** Congelado sólido: el visual lo mueve la estatua; el Blob muere al shatter. */
   private frozenSolid = false;
   private freezeHandle: NpcFreezeHandle | null = null;
   private lastConditions: ConditionMask = NO_CONDITIONS;
@@ -172,6 +183,8 @@ export class Npc implements INpc {
 
   constructor(params: NpcConstructionParams) {
     this.id = params.id;
+    this.characterId = params.characterId ?? params.preset.id;
+    this.blobPrey = params.blobPrey ?? null;
     this.faction = params.faction;
     this.mesh = params.visualRoot;
     this.position = params.position;
@@ -197,6 +210,7 @@ export class Npc implements INpc {
     this.eventBus = params.eventBus;
     this.combatHandle = params.combat;
     this.animation = params.animation ?? null;
+    this.blobControl = params.blobControl ?? null;
     this.locomotion = new NavigationLocomotion(
       this.motor,
       params.navigation,
@@ -208,7 +222,11 @@ export class Npc implements INpc {
         separation: !this.preset.movement.flying && !this.preset.movement.directGround,
       },
     );
-    this.perception = new PerceptionSystem(this.preset.perception, this.id);
+    this.perception = new PerceptionSystem(
+      this.preset.perception,
+      this.id,
+      this.preset.id === 'blob' ? (metadata) => metadata?.blobPermeable !== true : undefined,
+    );
     this.brain = new Brain<NpcBrainContext>(this.preset.schedules);
     this.patrolRoute =
       params.patrolRoute && params.patrolRoute.length > 0 ? params.patrolRoute : null;
@@ -241,6 +259,7 @@ export class Npc implements INpc {
   update(ctx: AiFrameContext): void {
     if (this.disposed) return;
     const delta = ctx.delta;
+    this.lastViewerDistance = ctx.viewerDistance ?? (ctx.aiLod === 'near' ? 0 : ctx.aiLod === 'mid' ? 30 : 65);
     if (this.justHitTimer > 0) this.justHitTimer = Math.max(0, this.justHitTimer - delta);
     if (this.aggroTimer > 0) this.aggroTimer = Math.max(0, this.aggroTimer - delta);
     if (this.flinchCooldownTimer > 0) {
@@ -261,6 +280,9 @@ export class Npc implements INpc {
       this.animation?.updateStandalone(delta, { dead: true });
       return;
     }
+    // El Blob congelado conserva el cerebro vivo hasta que se rompa la estatua,
+    // pero ni IA, locomoción, combate ni render vuelven a escribir su visual.
+    if (this.frozenSolid) return;
 
     this.syncMeshFromMotor();
 
@@ -487,6 +509,8 @@ export class Npc implements INpc {
       lookTarget,
       balanceIsStumbling: false,
       delta,
+      viewerDistance: this.lastViewerDistance,
+      visible: true,
     });
     this.animation.setCrouch?.(this.motor.isCrouched?.() ? 1 : 0);
     if (this.currentThreat && this.preset.weaponAim !== 'none') {
@@ -506,7 +530,7 @@ export class Npc implements INpc {
     // Solo motores terrestres estándar (CharacterMotor, detectado por
     // capacidades para no importar la clase): flyers/strider tienen
     // locomoción propia y no tiene sentido teleportarlos por el disco.
-    if (!this.health.isAlive()) {
+    if (!this.health.isAlive() || this.frozenSolid) {
       return null;
     }
     const motor = this.motor as typeof this.motor & Partial<PortalCapableMotor>;
@@ -525,8 +549,12 @@ export class Npc implements INpc {
       getPosition: () => motor.getPosition(),
       getVelocity: () => getVelocity.call(motor),
       teleport: (position, velocity, yaw) => {
-        teleport.call(motor, position, velocity);
-        snapYaw.call(motor, yaw);
+        if (typeof motor.teleportPose === 'function') {
+          motor.teleportPose(position, velocity, yaw);
+        } else {
+          teleport.call(motor, position, velocity);
+          snapYaw.call(motor, yaw);
+        }
       },
       setColliderExclusions: (handles) => setPortalExclusions.call(motor, handles),
     };
@@ -544,6 +572,7 @@ export class Npc implements INpc {
         getPosition: () => this.motor.getPosition(),
         isAlive: () => this.isAlive(),
         freezeSolid: () => this.freezeSolid(),
+        shatter: () => this.shatterFrozen(),
       };
     }
     return this.freezeHandle;
@@ -552,11 +581,22 @@ export class Npc implements INpc {
   private freezeSolid(): Group | null {
     if (this.disposed || !this.health.isAlive()) return null;
     this.frozenSolid = true;
+    if (this.preset.id === 'blob') {
+      this.locomotion.stop();
+      this.motor.disable();
+      this.animation?.disable();
+      return this.mesh;
+    }
     // La muerte pasa por applyDamage (eventos, squad, motor.disable), pero con
     // `frozenSolid` se omite el ragdoll: la pose queda rígida tal como está.
     this.applyDamage(this.health.max * 10, undefined, undefined, 'player');
     this.animation?.disable();
     return this.mesh;
+  }
+
+  private shatterFrozen(): void {
+    if (!this.frozenSolid || !this.health.isAlive()) return;
+    this.applyDamage(this.health.max * 10, undefined, 'blob-core', 'player');
   }
 
   applyDamage(
@@ -688,7 +728,12 @@ export class Npc implements INpc {
     this.coverSensor?.dispose();
     this.squadDirector?.unregister(this.id);
     this.locomotion.dispose();
+    this.animation?.dispose?.();
     this.motor.disable();
+  }
+
+  getBlobControlHandle(): NpcBlobControlHandle | null {
+    return this.health.isAlive() && !this.disposed ? this.blobControl : null;
   }
 
   private syncMeshFromMotor(): void {
@@ -754,12 +799,21 @@ export class Npc implements INpc {
       if (!npc.isAlive || npc.id === this.id) continue;
       // `infighting` ignora la matriz de facciones — hay que excluir el self a
       // mano (antes lo filtraba `isHostileTo(mismaFaccion)` devolviendo false).
-      if (freeForAll || isHostileTo(this.faction, npc.faction)) candidates.push(npc);
+      if (
+        freeForAll ||
+        (this.preset.id === 'blob'
+          ? this.canConsume(npc)
+          : isHostileTo(this.faction, npc.faction))
+      ) {
+        candidates.push(npc);
+      }
     }
     if (ctx.portalGhosts) {
       for (const ghost of ctx.portalGhosts) {
         if (!ghost.isAlive || ghost.id === this.id || ghost.id === ctx.player.id) continue;
-        if (!(freeForAll || isHostileTo(this.faction, ghost.faction))) continue;
+        if (!(freeForAll || (this.preset.id === 'blob'
+          ? this.canConsume(ghost)
+          : isHostileTo(this.faction, ghost.faction)))) continue;
         if (ghost.portalView && !this.isInFrontOfPortalView(ghost.portalView)) continue;
         candidates.push(ghost);
       }
@@ -798,6 +852,7 @@ export class Npc implements INpc {
         { id: candidate.id, position: candidate.position, isAlive: candidate.isAlive },
         candidate.portalView ? this.losRaycast : this.raycast,
         this.id,
+        this.preset.id === 'blob' ? (metadata) => metadata?.blobPermeable !== true : undefined,
       );
       if (!visible) score *= THREAT_UNSEEN_PENALTY;
       if (candidate === current) currentScore = score;
@@ -826,6 +881,10 @@ export class Npc implements INpc {
     const dy = self.y + this.preset.perception.eyeHeight - view.position.y;
     const dz = self.z - view.position.z;
     return dx * view.normal.x + dy * view.normal.y + dz * view.normal.z > 0;
+  }
+
+  private canConsume(actor: ActorSnapshot): boolean {
+    return this.preset.id === 'blob' && actor.blobPrey !== undefined;
   }
 
   /** Vecinos vivos a < 4 m para la separacion de locomotion. */
@@ -1140,8 +1199,12 @@ function buildScriptTeleport(
   }
   const zeroVelocity = new Vector3();
   return (position, yaw) => {
-    teleport.call(capable, position, zeroVelocity.set(0, 0, 0));
-    snapYaw.call(capable, yaw);
+    if (typeof capable.teleportPose === 'function') {
+      capable.teleportPose(position, zeroVelocity.set(0, 0, 0), yaw);
+    } else {
+      teleport.call(capable, position, zeroVelocity.set(0, 0, 0));
+      snapYaw.call(capable, yaw);
+    }
   };
 }
 

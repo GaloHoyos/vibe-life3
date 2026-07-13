@@ -128,7 +128,10 @@ export class LevelLoader {
         position: tupleToVector3(definition.position),
         size: tupleToVector3(definition.size),
         rotation: definition.rotation ? quatFromEuler(definition.rotation) : undefined,
-        metadata: { surface: materialToSurface(definition.material) },
+        metadata: {
+          surface: materialToSurface(definition.material),
+          blobPermeable: definition.blobPermeable === true,
+        },
       });
     });
     const buildingRegistry = new BuildingRegistry(buildings);
@@ -143,7 +146,17 @@ export class LevelLoader {
           size: tupleToVector3(definition.size),
           rotation: definition.rotation ? quatFromEuler(definition.rotation) : undefined,
           mass: definition.mass,
-          metadata: { surface: materialToSurface(definition.material) },
+          metadata: {
+            surface: materialToSurface(definition.material),
+            ...(definition.blobConsumable
+              ? {
+                  blobConsumable: {
+                    consumeSeconds: definition.blobConsumable.consumeSeconds ?? 2,
+                    biomass: definition.blobConsumable.biomass ?? 4,
+                  },
+                }
+              : {}),
+          },
         },
         mesh,
       );
@@ -241,10 +254,14 @@ export class LevelLoader {
         NavigationProfiles.humanoid,
         NavigationProfiles.humanoidLimited,
         NavigationProfiles.headcrab,
+        NavigationProfiles.blob,
         NavigationProfiles.strider,
       ],
     });
-    navigation.setSemanticActionLinks(buildDoorNavigationLinks(buildings, navigation));
+    navigation.setSemanticActionLinks([
+      ...buildDoorNavigationLinks(buildings, navigation),
+      ...buildBlobFlowNavigationLinks(allStaticBoxes, navigation),
+    ]);
     const navigationRequests = new NavigationRequestQueue(navigation, 3);
     console.info(
       `[LevelLoader] NavigationService: ${navigation.debugSnapshot().profiles.map((p) => `${p.id}:${p.triangleCount}`).join(', ')} (${Math.round(performance.now() - navigationBuildStart)} ms)`,
@@ -434,6 +451,49 @@ function buildDoorNavigationLinks(
         profileIds: [NavigationProfiles.humanoid.id],
       });
     }
+  }
+  return links;
+}
+
+function buildBlobFlowNavigationLinks(
+  boxes: LevelDefinition['staticBoxes'],
+  navigation: NavigationService,
+): NavigationActionLink[] {
+  const links: NavigationActionLink[] = [];
+  for (const box of boxes) {
+    if (!box.blobPermeable) continue;
+    const center = tupleToVector3(box.position);
+    const size = tupleToVector3(box.size);
+    const rotation = box.rotation ? quatFromEuler(box.rotation) : undefined;
+    const localNormal = size.x <= size.z ? new Vector3(1, 0, 0) : new Vector3(0, 0, 1);
+    if (rotation) localNormal.applyQuaternion(rotation);
+    localNormal.y = 0;
+    if (localNormal.lengthSq() < 1e-4) continue;
+    localNormal.normalize();
+    const halfThickness = (size.x <= size.z ? size.x : size.z) * 0.5;
+    const reach = halfThickness + NavigationProfiles.blob.radius + 0.35;
+    const floorY = center.y - size.y * 0.5 + 0.05;
+    const start = navigation.projectPoint(
+      center.clone().setY(floorY).addScaledVector(localNormal, -reach),
+      NavigationProfiles.blob,
+    );
+    const end = navigation.projectPoint(
+      center.clone().setY(floorY).addScaledVector(localNormal, reach),
+      NavigationProfiles.blob,
+    );
+    if (!start || !end) continue;
+    links.push({
+      id: `blob-flow-${box.id}`,
+      kind: 'flow',
+      start,
+      traverseStart: start.clone().addScaledVector(localNormal, 0.15),
+      end,
+      bidirectional: true,
+      cost: start.distanceTo(end) + 0.25,
+      width: Math.max(size.x, size.z),
+      profileIds: [NavigationProfiles.blob.id],
+      permeableId: box.id,
+    });
   }
   return links;
 }

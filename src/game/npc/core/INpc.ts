@@ -6,6 +6,8 @@ import type { GameEventBus } from "@game/GameEvents";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
 import type { SquadDirector, SquadRole } from "@game/npc/ai/SquadDirector";
 import type { NpcScriptOrder } from "@game/script/NpcScriptOrder";
+import type { NpcBlobControlHandle } from "@game/npc/blob/BlobControl";
+import type { BlobPreyDefinition, CharacterId } from "@engine/characters/CharacterDefinition";
 
 /**
  * Snapshot ligero de un actor del mundo (player u otro NPC) que cualquier
@@ -21,6 +23,8 @@ export interface ActorSnapshot {
   radius: number;
   /** Fraccion de vida 0..1 (para medics/priorizacion). Game la llena por frame. */
   health01?: number;
+  /** Opt-in de presa orgánica copiado desde la definición del personaje. */
+  blobPrey?: BlobPreyDefinition;
   /**
    * Posición real NAVEGABLE del actor cuando `position` es una proyección
    * (ghost de portal: `position` queda detrás del disco, correcta para
@@ -46,6 +50,8 @@ export interface AiFrameContext {
   delta: number;
   elapsed: number;
   aiLod: "near" | "mid" | "far";
+  /** Distancia del observador principal; útil para LOD visual propio del actor. */
+  viewerDistance?: number;
   player: ActorSnapshot;
   npcs: ActorSnapshot[];
   /**
@@ -211,8 +217,8 @@ export interface NpcPortalHandle {
 
 /**
  * Handle mínimo para que la ice gun convierta a un NPC en estatua de hielo.
- * Congelarse es letal: `freezeSolid()` mata sin ragdoll y la estatua física
- * (cuerpo rígido único) pasa a ser dueña del visual.
+ * Por defecto `freezeSolid()` mata sin ragdoll; organismos que implementan
+ * `shatter` (Blob) conservan vida hasta que la estatua se rompe.
  */
 export interface NpcFreezeHandle {
   id: string;
@@ -227,11 +233,14 @@ export interface NpcFreezeHandle {
    * estatua física de la ice gun. Null si ya estaba muerto.
    */
   freezeSolid(): Group | null;
+  /** Finaliza un congelamiento no letal (Blob) cuando la estatua se rompe. */
+  shatter?(): void;
 }
 
 /** Interfaz uniforme que consume `Game`/`LevelLoader`. La implementa `Npc`. */
 export interface INpc {
   readonly id: string;
+  readonly characterId?: CharacterId;
   readonly mesh: Group;
   readonly health: Health;
   readonly faction: Faction;
@@ -241,6 +250,8 @@ export interface INpc {
   readonly playerSquadEligible: boolean;
   /** Nombre visible si es compañera (preset con `companion`), o null. */
   readonly companionName: string | null;
+  /** Opt-in de presa orgánica; null excluye al NPC de consumo Blob. */
+  readonly blobPrey?: BlobPreyDefinition | null;
 
   update(ctx: AiFrameContext): void;
   syncFromPhysics(): void;
@@ -248,6 +259,8 @@ export interface INpc {
   getPortalTraversalHandle(): NpcPortalHandle | null;
   /** Handle de congelamiento (ice gun), o null si el NPC ya no está vivo. */
   getFreezeHandle(): NpcFreezeHandle | null;
+  /** Control de poses/fragmentación; sólo existe para el organismo Blob. */
+  getBlobControlHandle?(): NpcBlobControlHandle | null;
   applyDamage(
     amount: number,
     hitDirection?: Vector3,

@@ -20,7 +20,8 @@ export type NavigationActionKind =
   | "drop"
   | "crouch"
   | "door"
-  | "portal";
+  | "portal"
+  | "flow";
 
 export interface NavAgentProfile {
   id: string;
@@ -64,6 +65,8 @@ export interface NavigationActionLink {
   profileIds?: readonly string[];
   doorId?: string;
   portalId?: string;
+  /** Id del sólido permeable que origina un enlace flow del Blob. */
+  permeableId?: string;
 }
 
 export type NavigationStatus =

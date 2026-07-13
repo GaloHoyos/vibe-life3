@@ -958,6 +958,7 @@ function profileAllowsLink(profile: NavAgentProfile, link: NavigationActionLink)
     case "crouch": return profile.canCrouch;
     case "door": return profile.canOpenDoors;
     case "portal": return profile.canUsePortals;
+    case "flow": return profile.id === "blob";
   }
 }
 function directedLinkVariants(link: NavigationActionLink): NavigationActionLink[] {

@@ -80,6 +80,7 @@ import { HazardVolumeSystem } from "@game/levels/HazardVolumeSystem";
 import { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
 import { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 import type { ActorSnapshot, AiFrameContext, INpc, NpcFreezeHandle, NpcPortalHandle } from "@game/npc/core/INpc";
+import { blobSurfaceScheduler } from '@engine/blob/BlobSurfaceScheduler';
 import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
 import { DialogueSystem } from "@game/narrative/DialogueSystem";
 import { LevelEvents } from "@game/narrative/LevelEvents";
@@ -1454,6 +1455,7 @@ export class Game {
         isAlive: player.isAlive(),
         radius: 0.35,
         health01: player.health.max > 0 ? player.health.current / player.health.max : 0,
+        blobPrey: { biomass: 12 },
       };
       const npcSnapshots: ActorSnapshot[] = this.npcs.map((npc) => ({
         id: npc.id,
@@ -1463,6 +1465,7 @@ export class Game {
         isAlive: npc.isAlive(),
         radius: npc.radius,
         health01: npc.health.max > 0 ? npc.health.current / npc.health.max : 0,
+        ...(npc.blobPrey ? { blobPrey: npc.blobPrey } : {}),
       }));
       const npcIndex = new ActorSpatialIndex(npcSnapshots);
       const playerSquad = s.resolve(GameTokens.PlayerSquad);
@@ -1515,9 +1518,17 @@ export class Game {
       this.navigation?.update(time.delta);
       this.npcs.forEach((npc) => {
         ctx.aiLod = this.computeNpcAiLod(npc.position, playerPosition);
+        let viewerDistance = npc.position.distanceTo(playerPosition);
+        for (const ghost of portalGhosts) {
+          if (ghost.id === npc.id) {
+            viewerDistance = Math.min(viewerDistance, ghost.position.distanceTo(playerPosition));
+          }
+        }
+        ctx.viewerDistance = viewerDistance;
         ctx.npcs = npcIndex.query(npc.position, this.npcContextRadius, npc.id);
         npc.update(ctx);
       });
+      blobSurfaceScheduler.runFrame();
       this.squadDirector.tickAssignments(time.elapsed, null);
     }
     this.doors.forEach((door) => door.update(time.delta));

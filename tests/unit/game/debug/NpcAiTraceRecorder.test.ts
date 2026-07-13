@@ -46,6 +46,8 @@ describe("NpcAiTraceRecorder", () => {
 function fakeNpc(snapshot: NpcAiDebugSnapshot = fakeSnapshot()): INpc {
   return {
     id: snapshot.id,
+    characterId: "zombie",
+    blobPrey: null,
     mesh: new Group(),
     health: new Health(snapshot.maxHealth),
     faction: "zombies",

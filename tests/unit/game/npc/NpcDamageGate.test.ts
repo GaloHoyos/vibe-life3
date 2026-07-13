@@ -101,6 +101,7 @@ function createNpc(
   const position = new Vector3(0, 0, 0);
   return new Npc({
     id: "npc-1",
+    characterId: "boss",
     faction: "combine",
     position,
     visualRoot: new Group(),

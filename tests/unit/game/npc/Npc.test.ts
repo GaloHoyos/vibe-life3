@@ -90,6 +90,7 @@ function createNpc(
   return {
     npc: new Npc({
       id: "npc-1",
+      characterId: "test-npc",
       faction: "zombies",
       position,
       visualRoot: new Group(),

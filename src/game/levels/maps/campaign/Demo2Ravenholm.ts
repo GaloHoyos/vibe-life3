@@ -121,6 +121,10 @@ export const Demo2Ravenholm = createMap({
   // ── Personajes presentes al cargar ──────────────────────────────────────────
   .npc({ id: 'grigori', characterId: 'rebelM3', position: [-10, 1, 100] })
   .npc({ id: 'brother', characterId: 'rebelM1', position: [4, 1, 46] })
+  // Blobs (npc_blob de Ep3): uno en el patio bajo la pasarela (reveal de horror
+  // desde el catwalk) y otro presionando el gauntlet, lejos del fuego.
+  .npc({ id: 'blob-pit', characterId: 'blob', position: [-8, 1, -2] })
+  .npc({ id: 'blob-gauntlet', characterId: 'blob', position: [8, 1, -36] })
   // ── Armas / munición / vitals (kit de Ravenholm) ────────────────────────────
   .pickup({ id: 'wp-crowbar', weaponId: 'crowbar', position: [2, 0.4, 106] })
   .pickup({ id: 'wp-gravity', weaponId: 'gravityGun', position: [0, 0.4, 106] })

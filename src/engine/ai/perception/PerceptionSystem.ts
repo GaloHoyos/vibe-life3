@@ -1,5 +1,6 @@
 import { Vector3 } from 'three';
 import type { RaycastSource } from '@engine/physics/Raycast';
+import type { PhysicsMetadata } from '@engine/physics/PhysicsWorld';
 
 export interface PerceptionTarget {
   id: string;
@@ -90,6 +91,7 @@ export class PerceptionSystem {
   constructor(
     private readonly config: PerceptionConfig,
     private readonly selfId?: string,
+    private readonly losFilter?: (metadata: PhysicsMetadata | undefined) => boolean,
   ) {}
 
   /**
@@ -201,7 +203,15 @@ export class PerceptionSystem {
     targetActor: PerceptionTarget,
     raycast: RaycastSource,
   ): boolean {
-    return isTargetVisible(this.config, self, facing, targetActor, raycast, this.selfId);
+    return isTargetVisible(
+      this.config,
+      self,
+      facing,
+      targetActor,
+      raycast,
+      this.selfId,
+      this.losFilter,
+    );
   }
 }
 
@@ -219,6 +229,7 @@ export function isTargetVisible(
   raycast: RaycastSource,
   /** Id del observador, para excluir sus propios colliders del LOS. */
   selfId?: string,
+  filter?: (metadata: PhysicsMetadata | undefined) => boolean,
 ): boolean {
   const target = targetActor.position;
   const dx = target.x - self.x;
@@ -237,7 +248,14 @@ export function isTargetVisible(
   tmpDir.set(target.x - tmpFrom.x, target.y + 1.0 - tmpFrom.y, target.z - tmpFrom.z);
   const losDist = tmpDir.length();
   if (losDist < 1e-3) return true;
-  const hit = raycast.cast(tmpFrom, tmpDir, losDist - 0.1, undefined, selfId);
+  const hit = raycast.cast(
+    tmpFrom,
+    tmpDir,
+    losDist - 0.1,
+    undefined,
+    selfId,
+    filter ? (metadata) => filter(metadata) : undefined,
+  );
   if (!hit) return true;
   // El ray puede pegar en la capsula o en un hitbox del propio target (player u
   // otro NPC): eso sigue siendo linea de vision valida (los hitboxes vivos tienen

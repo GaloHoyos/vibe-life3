@@ -23,6 +23,8 @@ export type SequenceStep =
  * Secuencia guionada de un NPC (equivalente a `scripted_sequence` de Source):
  * mueve al NPC nombrado a un punto, lo encara y ejecuta una lista de pasos.
  * Inputs `Start`/`Cancel`/`Cue`; outputs `OnBegin`/`OnArrived`/`OnEnd`/`OnCanceled`.
+ * Un Blob se coreografía sólo con conexiones I/O: `OnBegin -> SetBlobPose`,
+ * `OnBlobPoseReached -> Cue` y `OnEnd -> ResetBlobPose`.
  */
 export interface ScriptedSequenceDefinition {
   id: string;
