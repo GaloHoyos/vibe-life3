@@ -5,7 +5,6 @@ import type {
   BlobParticleMotionResolver,
   BlobResolvedMotion,
 } from '@engine/blob/BlobTypes';
-import { BlobParticleRole } from '@engine/blob/BlobTypes';
 import type { BlobOrganismRuntime } from '@engine/blob/BlobOrganismRuntime';
 import type { PhysicsMetadata, PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import type { CharacterMotorSnapshot, NpcMotor, SliceHit } from './NpcMotor';
@@ -16,19 +15,49 @@ export interface BlobMotorConfig {
   acceleration: number;
   turnSpeed: number;
   metadata: PhysicsMetadata;
+  /** Downward acceleration (m/s²) fed into the organism simulation. */
+  gravity?: number;
+  /** Ledge height the ooze pours over instantly (Valve's elevated trace). */
+  stepUpHeight?: number;
+  /** Upward flow speed while pressure holds the mass against a wall. */
+  climbSpeed?: number;
+  /** Maximum height above the component's support the ooze can climb. */
+  maxClimb?: number;
+  /** Cap on the velocity change shoved props may receive, in Δv per second. */
+  propPushMaxDeltaV?: number;
   onConsumeProp?: (biomass: number, position: Vector3) => void;
+}
+
+interface PropPush {
+  body: RAPIER.RigidBody;
+  impulse: Vector3;
+  point: Vector3;
 }
 
 const IDENTITY = { x: 0, y: 0, z: 0, w: 1 } as const;
 const Y_AXIS = new Vector3(0, 1, 0);
 const SKIN = 0.015;
-const MAX_SWEEPS = 2;
+const MAX_SWEEPS = 3;
 const MAX_DEPENETRATION_PASSES = 3;
 const DEPENETRATION_SLOP = 0.002;
 const MOTION_EPSILON_SQ = 1e-8;
 const TOI_EPSILON = 1e-5;
-const SUPPORT_GRAVITY = 18;
-const MAX_SUPPORT_DROP_PER_STEP = 0.025;
+const DEFAULT_GRAVITY = 18;
+const DEFAULT_STEP_UP = 0.24;
+const DEFAULT_CLIMB_SPEED = 2.4;
+const DEFAULT_MAX_CLIMB = 1.3;
+// Debe superar la desaceleración por fricción de piso (µ·g ≈ 10 m/s²) o el
+// empuje nunca arranca un prop apoyado.
+const DEFAULT_PROP_PUSH_MAX_DELTAV = 14;
+/**
+ * Blocked-flow speed → impulse factor (kg·s equivalent per particle contact).
+ * Sustained pressing must beat floor friction on light props (Valve applied a
+ * flat -150 force per element for the same reason).
+ */
+const PROP_PUSH_SPEED_TRANSFER = 0.8;
+const GROUND_NORMAL_MIN_Y = 0.55;
+const WALL_NORMAL_MAX_Y = 0.35;
+const MIN_LEAP_UP_SPEED = 2.8;
 
 /**
  * Motor sin cápsula sólida: el organismo se mueve mediante sweeps de sus
@@ -50,6 +79,7 @@ export class BlobMotor implements NpcMotor {
   private readonly motionResult: BlobResolvedMotion = {
     position: this.resolvedPosition,
     velocity: this.resolvedVelocity,
+    grounded: false,
   };
   private enabled = true;
   private speedMultiplier = 1;
@@ -59,6 +89,13 @@ export class BlobMotor implements NpcMotor {
   private portalExclusions: ReadonlySet<number> | null = null;
   private flowMergeIn = 0;
   private readonly propConsumeTimers = new Map<number, number>();
+  private readonly propPushes = new Map<number, PropPush>();
+  private readonly stepUpProbe = new Vector3();
+  private readonly gravity: number;
+  private readonly stepUpHeight: number;
+  private readonly climbSpeed: number;
+  private readonly maxClimb: number;
+  private readonly propPushMaxDeltaV: number;
 
   readonly resolveParticleMotion: BlobParticleMotionResolver = (
     particle,
@@ -71,6 +108,14 @@ export class BlobMotor implements NpcMotor {
     private readonly runtime: BlobOrganismRuntime,
     private readonly config: BlobMotorConfig,
   ) {
+    this.gravity = Math.max(0, config.gravity ?? DEFAULT_GRAVITY);
+    this.stepUpHeight = Math.max(0, config.stepUpHeight ?? DEFAULT_STEP_UP);
+    this.climbSpeed = Math.max(0, config.climbSpeed ?? DEFAULT_CLIMB_SPEED);
+    this.maxClimb = Math.max(0, config.maxClimb ?? DEFAULT_MAX_CLIMB);
+    this.propPushMaxDeltaV = Math.max(
+      0,
+      config.propPushMaxDeltaV ?? DEFAULT_PROP_PUSH_MAX_DELTAV,
+    );
     this.body = physics.world.createRigidBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
         runtime.center.x,
@@ -134,12 +179,14 @@ export class BlobMotor implements NpcMotor {
     const change = targetVelocity.sub(this.desiredVelocity);
     if (change.lengthSq() > maxChange * maxChange) change.setLength(maxChange);
     this.desiredVelocity.add(change);
-    this.maybeSplitForPermeable(delta);
+    const airborne = this.runtime.airborne;
+    if (!airborne) this.maybeSplitForPermeable(delta);
 
     this.runtime.step(delta, {
       anchor: this.runtime.center,
-      target: wantsMove ? targetPosition : null,
+      target: wantsMove && !airborne ? targetPosition : null,
       desiredVelocity: this.desiredVelocity,
+      gravity: this.gravity,
       motionResolver: this.resolveParticleMotion,
     });
     this.tickDynamicProps(delta);
@@ -207,8 +254,30 @@ export class BlobMotor implements NpcMotor {
     this.body.setEnabled(false);
   }
 
-  leapTo(): void {}
-  isLeaping(): boolean { return false; }
+  /**
+   * Salto balístico de todo el organismo (jump links del navmesh y el "hoppy
+   * blob" del documental): misma parábola que CharacterMotor, aplicada como
+   * lanzamiento coherente de partículas; el aterrizaje lo detecta el runtime
+   * cuando recupera soporte.
+   */
+  leapTo(target: Vector3, upSpeed: number, maxForwardSpeed: number): void {
+    if (!this.enabled || this.runtime.airborne) return;
+    const up = Math.max(MIN_LEAP_UP_SPEED, upSpeed);
+    const gravity = Math.max(1, this.gravity);
+    const position = this.runtime.center;
+    const dx = target.x - position.x;
+    const dz = target.z - position.z;
+    const planar = Math.hypot(dx, dz);
+    const flightTime = (2 * up) / gravity;
+    const needed = flightTime > 0 ? planar / flightTime : maxForwardSpeed;
+    const forward = Math.min(needed, Math.max(1, maxForwardSpeed));
+    const dirX = planar > 1e-4 ? dx / planar : this.forward.x;
+    const dirZ = planar > 1e-4 ? dz / planar : this.forward.z;
+    this.desiredVelocity.set(dirX * forward, 0, dirZ * forward);
+    this.runtime.launch(this.remaining.set(dirX * forward, up, dirZ * forward));
+  }
+
+  isLeaping(): boolean { return this.runtime.airborne; }
   isIncapacitated(): boolean { return false; }
   consumeImpactDamage(): number { return 0; }
   reactToHit(): void {}
@@ -221,21 +290,17 @@ export class BlobMotor implements NpcMotor {
   ): BlobResolvedMotion | Vector3 {
     this.resolvedPosition.copy(from);
     this.remaining.copy(desired).sub(from);
-    // Las partículas de apoyo funcionan como pies: buscan suelo y arrastran el
-    // esqueleto mediante constraints. La masa ya no queda flotando con el
-    // centro invisible de una cápsula.
-    if (particle.role === BlobParticleRole.Support) {
-      const step = this.runtime.fixedStepSeconds;
-      this.remaining.y -= Math.min(
-        MAX_SUPPORT_DROP_PER_STEP,
-        0.5 * SUPPORT_GRAVITY * step * step,
-      );
-    }
+    this.motionResult.grounded = false;
     if (this.remaining.lengthSq() < MOTION_EPSILON_SQ) return this.resolvedPosition;
 
+    const intentX = this.remaining.x;
+    const intentZ = this.remaining.z;
+    const intentPlanar = Math.hypot(intentX, intentZ);
     const shape = new RAPIER.Ball(Math.max(0.05, particle.radius * particle.scale));
     let impacts = 0;
     let depenetrationPasses = 0;
+    let stepUpUsed = false;
+    let climbed = false;
     while (impacts < MAX_SWEEPS && this.remaining.lengthSq() >= MOTION_EPSILON_SQ) {
       const hit = this.physics.world.castShape(
         this.resolvedPosition,
@@ -271,12 +336,61 @@ export class BlobMotor implements NpcMotor {
         continue;
       }
 
+      this.normal.set(hit.normal1.x, hit.normal1.y, hit.normal1.z).normalize();
+      // La orientación de normal1 depende de qué shape la reporta; para el
+      // slide, el soporte y el empuje sirve únicamente la normal que se opone
+      // al movimiento.
+      if (this.normal.dot(this.remaining) > 0) this.normal.negate();
+      if (this.normal.y > GROUND_NORMAL_MIN_Y) this.motionResult.grounded = true;
+      this.notePropContact(hit);
+      const pressingIntoWall =
+        this.normal.y < WALL_NORMAL_MAX_Y &&
+        intentPlanar > 1e-4 &&
+        intentX * this.normal.x + intentZ * this.normal.z < -0.3 * intentPlanar;
+
+      // Valve's elements traced 8 units above their origin: motion that a
+      // ledge stops at foot level often clears one step higher, which is what
+      // lets the goo pour over crates and stair steps without a jump.
+      if (pressingIntoWall && !stepUpUsed && this.stepUpHeight > 0 && this.tryStepUp(shape)) {
+        stepUpUsed = true;
+        continue;
+      }
+
       impacts++;
       this.resolvedPosition.addScaledVector(this.remaining, Math.max(0, toi - 0.002));
-      this.normal.set(hit.normal1.x, hit.normal1.y, hit.normal1.z).normalize();
       this.remaining.multiplyScalar(1 - toi);
+      const prePlanar = Math.hypot(this.remaining.x, this.remaining.z);
       const intoSurface = this.remaining.dot(this.normal);
       if (intoSurface < 0) this.remaining.addScaledVector(this.normal, -intoSurface);
+
+      // Liquid pressure: sliding keeps whatever tangential flow the wall
+      // allows. Only when the surface kills most of the advance does the
+      // blocked displacement become an upward ooze along the wall, bounded by
+      // how high the mass can pile above its own support.
+      if (
+        pressingIntoWall &&
+        !climbed &&
+        this.climbSpeed > 0 &&
+        Math.hypot(this.remaining.x, this.remaining.z) < prePlanar * 0.3 &&
+        this.resolvedPosition.y - this.componentGroundY(particle) < this.maxClimb
+      ) {
+        climbed = true;
+        const upDot = this.normal.y;
+        this.stepUpProbe.set(
+          -this.normal.x * upDot,
+          1 - upDot * upDot,
+          -this.normal.z * upDot,
+        );
+        if (this.stepUpProbe.lengthSq() > 1e-6) {
+          this.stepUpProbe.normalize();
+          const climbDistance = Math.min(
+            Math.max(prePlanar, intentPlanar * 0.5),
+            this.climbSpeed * this.runtime.fixedStepSeconds,
+          );
+          this.remaining.copy(this.stepUpProbe).multiplyScalar(climbDistance);
+          continue;
+        }
+      }
     }
 
     // Two contacts are enough to compute a corner/sliding direction, but the
@@ -317,10 +431,81 @@ export class BlobMotor implements NpcMotor {
     this.normal.set(contact.normal1.x, contact.normal1.y, contact.normal1.z);
     if (this.normal.lengthSq() < 1e-10) return false;
     this.normal.normalize();
+    if (this.normal.y > GROUND_NORMAL_MIN_Y) this.motionResult.grounded = true;
     this.resolvedPosition.addScaledVector(this.normal, clearance - contact.distance);
     const intoSurface = this.remaining.dot(this.normal);
     if (intoSurface < 0) this.remaining.addScaledVector(this.normal, -intoSurface);
     return true;
+  }
+
+  /**
+   * Empuje de flujo sobre props dinámicos, fiel al npc_blob original: Valve
+   * aplicaba `ApplyForceOffset(-150·normal)` en el punto del trace, con lo que
+   * la masa volcaba y apartaba objetos físicos al fluir contra ellos. Acá cada
+   * partícula bloqueada acumula impulso; `tickDynamicProps` lo aplica una vez
+   * por cuerpo con un tope de Δv para que nada salga disparado.
+   */
+  private notePropContact(
+    hit: NonNullable<ReturnType<RAPIER.World['castShape']>>,
+  ): void {
+    const body = hit.collider.parent();
+    if (!body || !body.isDynamic()) return;
+    const metadata = this.physics.getColliderMetadata(hit.collider);
+    if (metadata?.kind !== 'dynamic') return;
+    const blockedSpeed =
+      -Math.min(0, this.remaining.dot(this.normal)) / this.runtime.fixedStepSeconds;
+    if (blockedSpeed <= 0.05) return;
+    let push = this.propPushes.get(body.handle);
+    if (!push) {
+      push = { body, impulse: new Vector3(), point: new Vector3() };
+      this.propPushes.set(body.handle, push);
+    }
+    push.impulse.addScaledVector(this.normal, -blockedSpeed * PROP_PUSH_SPEED_TRANSFER);
+    push.point.set(hit.witness1.x, hit.witness1.y, hit.witness1.z);
+  }
+
+  /** Reintenta el movimiento bloqueado un escalón más arriba (con headroom). */
+  private tryStepUp(shape: RAPIER.Ball): boolean {
+    this.stepUpProbe.set(0, this.stepUpHeight, 0);
+    const liftHit = this.physics.world.castShape(
+      this.resolvedPosition,
+      IDENTITY,
+      this.stepUpProbe,
+      shape,
+      SKIN,
+      1,
+      true,
+      undefined,
+      undefined,
+      undefined,
+      this.body,
+      (collider) => this.shouldCollide(collider),
+    );
+    if (liftHit && liftHit.time_of_impact < 0.95) return false;
+    this.stepUpProbe.copy(this.resolvedPosition);
+    this.stepUpProbe.y += this.stepUpHeight;
+    const forwardHit = this.physics.world.castShape(
+      this.stepUpProbe,
+      IDENTITY,
+      this.remaining,
+      shape,
+      SKIN,
+      1,
+      true,
+      undefined,
+      undefined,
+      undefined,
+      this.body,
+      (collider) => this.shouldCollide(collider),
+    );
+    if (forwardHit && MathUtils.clamp(forwardHit.time_of_impact, 0, 1) < 0.4) return false;
+    this.resolvedPosition.y += this.stepUpHeight;
+    return true;
+  }
+
+  private componentGroundY(particle: BlobParticle): number {
+    const component = this.runtime.components[particle.componentId];
+    return component ? component.groundY : this.runtime.center.y - 1;
   }
 
   private shouldCollide(collider: RAPIER.Collider): boolean {
@@ -328,13 +513,10 @@ export class BlobMotor implements NpcMotor {
     const metadata = this.physics.getColliderMetadata(collider);
     if ((metadata?.ownerId ?? metadata?.id) === this.config.id) return false;
     if (metadata?.blobPermeable) return false;
+    // Presa en digestión: la masa fluye por encima mientras corre su timer.
+    if (metadata?.blobConsumable) return false;
     // La masa puede envolver actores; sus hitboxes no son paredes de flujo.
     if (metadata?.kind === 'npc' || metadata?.kind === 'player') return false;
-    const body = collider.parent();
-    // Props livianos son desplazados/envueltos una vez por organismo en
-    // tickDynamicProps. Si cada una de las 192 partículas los trata además
-    // como pared, el prop inmoviliza la red antes de recibir ese empuje.
-    if (metadata?.kind === 'dynamic' && body?.isDynamic() && body.mass() <= 25) return false;
     return true;
   }
 
@@ -362,6 +544,19 @@ export class BlobMotor implements NpcMotor {
   }
 
   private tickDynamicProps(delta: number): void {
+    // Empujes de flujo acumulados por los sweeps de este update. El tope de Δv
+    // por cuerpo evita que doscientas partículas conviertan una caja en bala.
+    for (const push of this.propPushes.values()) {
+      if (!push.body.isValid()) continue;
+      const mass = Math.max(0.2, push.body.mass());
+      const maxImpulse = mass * this.propPushMaxDeltaV * Math.max(delta, 1 / 240);
+      if (push.impulse.lengthSq() > maxImpulse * maxImpulse) {
+        push.impulse.setLength(maxImpulse);
+      }
+      push.body.applyImpulseAtPoint(push.impulse, push.point, true);
+    }
+    this.propPushes.clear();
+
     const seen = new Set<number>();
     const consumed: Array<{ body: RAPIER.RigidBody; biomass: number; position: Vector3 }> = [];
     const shape = new RAPIER.Ball(1.15);
@@ -381,13 +576,16 @@ export class BlobMotor implements NpcMotor {
           // advance them at most once per motor update.
           if (seen.has(body.handle)) return true;
           seen.add(body.handle);
+          if (!metadata.blobConsumable) return true;
+          // Succión de digestión: solo la presa marcada consumible se hunde
+          // hacia el centro de la masa; el resto de los props ahora son
+          // obstáculos reales que el flujo empuja por contacto.
           TMP_PROP_DIR.copy(component.center).sub(body.translation());
           TMP_PROP_DIR.y = Math.max(0.1, TMP_PROP_DIR.y);
-          if (TMP_PROP_DIR.lengthSq() > 1e-5 && body.mass() <= 25) {
+          if (TMP_PROP_DIR.lengthSq() > 1e-5) {
             TMP_PROP_DIR.normalize().multiplyScalar(delta * 7);
             body.applyImpulse(TMP_PROP_DIR, true);
           }
-          if (!metadata.blobConsumable) return true;
           const elapsed = (this.propConsumeTimers.get(body.handle) ?? 0) + delta;
           this.propConsumeTimers.set(body.handle, elapsed);
           if (elapsed >= metadata.blobConsumable.consumeSeconds) {

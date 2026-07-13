@@ -67,7 +67,10 @@ describe("BlobMotor swept particle motion", () => {
 
     expect(result.x).toBeLessThan(-0.2);
     expect(result.x).toBeGreaterThan(-1);
-    expect(result.y).toBeCloseTo(1);
+    // La presión de líquido convierte el avance bloqueado en ooze ascendente,
+    // acotado por climbSpeed·dt por step.
+    expect(result.y).toBeGreaterThanOrEqual(1);
+    expect(result.y).toBeLessThan(1.12);
   });
 
   it("ignores a collider explicitly marked blobPermeable", async () => {
@@ -92,16 +95,34 @@ describe("BlobMotor swept particle motion", () => {
     expect(result.distanceToSquared(desired)).toBeLessThan(1e-10);
   });
 
-  it("uses a bounded dt-squared support probe instead of a fixed downward jump", async () => {
-    const { runtime, motor } = await createMotor();
-    const from = new Vector3(0, 1, 0);
-    const result = resolvedPosition(
-      motor.resolveParticleMotion(runtime.particles[25], from, from.clone()),
-    );
-    const expectedDrop = 0.5 * 18 * BLOB_FIXED_STEP_SECONDS * BLOB_FIXED_STEP_SECONDS;
+  it("drops the whole unsupported organism with real gravity and rests it on the floor", async () => {
+    const physics = new PhysicsWorld();
+    await physics.init();
+    physics.createStaticBox({
+      id: "floor",
+      position: new Vector3(0, -0.2, 0),
+      size: new Vector3(30, 0.4, 30),
+    });
+    physics.updateQueryPipeline();
+    const runtime = new BlobOrganismRuntime({ center: new Vector3(0, 2.5, 0), seed: 11 });
+    const motor = new BlobMotor(physics, runtime, {
+      id: "blob-gravity",
+      maxSpeed: 3.4,
+      acceleration: 14,
+      turnSpeed: 8,
+      metadata: { id: "blob-gravity", kind: "npc", characterId: "blob" },
+    });
+    const startY = runtime.center.y;
 
-    expect(from.y - result.y).toBeCloseTo(expectedDrop);
-    expect(from.y - result.y).toBeLessThan(0.0251);
+    for (let frame = 0; frame < 90; frame++) motor.update(1 / 30, null, false);
+
+    expect(runtime.center.y).toBeLessThan(startY - 1);
+    const contactHeights = runtime.activeParticles.map(
+      (particle) => particle.position.y - particle.radius,
+    );
+    const lowest = Math.min(...contactHeights);
+    expect(lowest).toBeGreaterThan(-0.06);
+    expect(lowest).toBeLessThan(0.2);
   });
 
   it("depenetrates a floor overlap and preserves horizontal motion", async () => {
@@ -150,7 +171,7 @@ describe("BlobMotor swept particle motion", () => {
     expect(physics.world.castShape).toHaveBeenCalledTimes(3);
   });
 
-  it("flows through lightweight dynamic props handled by tickDynamicProps", async () => {
+  it("blocks against lightweight dynamic props instead of flowing through them", async () => {
     const { physics, runtime, motor } = await createMotor();
     const prop = physics.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic().setTranslation(0, 1, 0),
@@ -163,6 +184,33 @@ describe("BlobMotor swept particle motion", () => {
     physics.updateQueryPipeline();
     expect(prop.mass()).toBeLessThanOrEqual(25);
 
+    const result = resolvedPosition(
+      motor.resolveParticleMotion(
+        runtime.particles[81],
+        new Vector3(-1, 1, 0),
+        new Vector3(1, 1, 0),
+      ),
+    );
+
+    expect(result.x).toBeLessThan(-0.2);
+  });
+
+  it("flows through props marked blobConsumable while digesting them", async () => {
+    const { physics, runtime, motor } = await createMotor();
+    const prop = physics.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(0, 1, 0),
+    );
+    const propCollider = physics.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(0.1, 1, 1),
+      prop,
+    );
+    physics.registerCollider(propCollider, {
+      id: "blob-food",
+      kind: "dynamic",
+      blobConsumable: { consumeSeconds: 2, biomass: 4 },
+    });
+    physics.updateQueryPipeline();
+
     const desired = new Vector3(1, 1, 0);
     const result = resolvedPosition(
       motor.resolveParticleMotion(
@@ -173,6 +221,52 @@ describe("BlobMotor swept particle motion", () => {
     );
 
     expect(result.distanceToSquared(desired)).toBeLessThan(1e-10);
+  });
+
+  it("shoves a dynamic prop aside with the accumulated flow impulse", async () => {
+    const physics = new PhysicsWorld();
+    await physics.init();
+    physics.createStaticBox({
+      id: "floor",
+      position: new Vector3(0, -0.2, 0),
+      size: new Vector3(30, 0.4, 30),
+    });
+    const prop = physics.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(1.6, 0.31, 0),
+    );
+    const propCollider = physics.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(0.3, 0.3, 0.3).setDensity(28),
+      prop,
+    );
+    physics.registerCollider(propCollider, { id: "crate", kind: "dynamic" });
+    physics.updateQueryPipeline();
+    const runtime = new BlobOrganismRuntime({ center: new Vector3(-1.2, 0.9, 0), seed: 7 });
+    const motor = new BlobMotor(physics, runtime, {
+      id: "blob-push",
+      maxSpeed: 3.4,
+      acceleration: 14,
+      turnSpeed: 12,
+      metadata: { id: "blob-push", kind: "npc", characterId: "blob" },
+    });
+    const startX = prop.translation().x;
+    const particle = runtime.particles[81];
+
+    // Presión de flujo sostenida contra la cara del prop (la masa apretando):
+    // cada sweep bloqueado acumula impulso y tickDynamicProps lo aplica con
+    // tope de Δv. La fricción de piso pierde y la caja se desliza.
+    for (let round = 0; round < 15; round++) {
+      for (let contact = 0; contact < 6; contact++) {
+        motor.resolveParticleMotion(
+          particle,
+          new Vector3(0.9, 0.31, 0),
+          new Vector3(1.35, 0.31, 0),
+        );
+      }
+      motor.update(1 / 60, null, false);
+      physics.step(1 / 60);
+    }
+
+    expect(prop.translation().x).toBeGreaterThan(startX + 0.1);
   });
 
   it("still treats heavyweight dynamic props as solid", async () => {
@@ -234,6 +328,73 @@ describe("BlobMotor swept particle motion", () => {
     // stayed anchored at z=-5 and stopped the brain around z=3.
     expect(runtime.center.z).toBeGreaterThan(6.5);
     expect(motor.getVelocity().length()).toBeGreaterThan(0.25);
+  });
+
+  it("pours over a low step via the elevated retry", async () => {
+    const { physics, runtime, motor } = await createMotor();
+    physics.createStaticBox({
+      id: "floor",
+      position: new Vector3(0, -0.2, 0),
+      size: new Vector3(30, 0.4, 30),
+    });
+    physics.createStaticBox({
+      id: "step",
+      position: new Vector3(0.8, 0.09, 0),
+      size: new Vector3(1, 0.18, 4),
+    });
+    physics.updateQueryPipeline();
+
+    const particle = runtime.particles[81];
+    const result = resolvedPosition(
+      motor.resolveParticleMotion(
+        particle,
+        new Vector3(-0.2, 0.35, 0),
+        new Vector3(0.7, 0.35, 0),
+      ),
+    );
+
+    expect(result.x).toBeGreaterThan(0.4);
+    expect(result.y).toBeGreaterThan(0.45);
+  });
+});
+
+describe("BlobMotor ballistic leap", () => {
+  it("launches the organism in a parabola and lands back on support", async () => {
+    const physics = new PhysicsWorld();
+    await physics.init();
+    physics.createStaticBox({
+      id: "floor",
+      position: new Vector3(0, -0.2, 0),
+      size: new Vector3(40, 0.4, 40),
+    });
+    physics.updateQueryPipeline();
+    const runtime = new BlobOrganismRuntime({ center: new Vector3(0, 0.8, 0), seed: 29 });
+    const motor = new BlobMotor(physics, runtime, {
+      id: "blob-leap",
+      maxSpeed: 3.4,
+      acceleration: 14,
+      turnSpeed: 12,
+      metadata: { id: "blob-leap", kind: "npc", characterId: "blob" },
+    });
+    for (let frame = 0; frame < 30; frame++) motor.update(1 / 30, null, false);
+    expect(motor.isLeaping()).toBe(false);
+
+    motor.leapTo(new Vector3(3, 0, 0), 6.5, 5);
+    expect(motor.isLeaping()).toBe(true);
+
+    let frames = 0;
+    let apex = runtime.center.y;
+    while (motor.isLeaping() && frames < 120) {
+      motor.update(1 / 30, null, false);
+      apex = Math.max(apex, runtime.center.y);
+      frames++;
+    }
+
+    expect(motor.isLeaping()).toBe(false);
+    expect(frames).toBeLessThan(120);
+    // Voló de verdad: ganó altura y avanzó hacia el target antes de aterrizar.
+    expect(apex).toBeGreaterThan(1.2);
+    expect(runtime.center.x).toBeGreaterThan(1.2);
   });
 });
 

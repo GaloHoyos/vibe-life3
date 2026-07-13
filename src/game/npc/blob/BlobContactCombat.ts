@@ -42,19 +42,38 @@ export class BlobContactCombat implements NpcCombatHandle {
     const threat = args.threat;
     if (!threat || !threat.isAlive) {
       this.opts.state.setThreat(null);
+      this.opts.runtime.setEnvelopTarget(null);
       return;
     }
     this.opts.state.setThreat(threat.position);
 
+    const dx = threat.position.x - args.position.x;
+    const dz = threat.position.z - args.position.z;
+    // Envelop: con la presa al alcance y sin pared en el medio, la carne fluye
+    // sobre su cápsula (npc_blob convergía cada elemento en el enemigo y
+    // contraía el radio del grupo al comer).
+    const withinEnvelopRange =
+      Math.hypot(dx, dz) <= this.opts.state.contactRange * 1.3;
+    const seesThreat =
+      withinEnvelopRange &&
+      this.hasLineOfSight(args.position, threat.position, threat.id);
+    if (seesThreat) {
+      this.opts.runtime.setEnvelopTarget({
+        position: threat.position,
+        radius: Math.max(0.3, threat.radius),
+        height: BlobConfig.swarm.envelopHeight,
+      });
+    } else {
+      this.opts.runtime.setEnvelopTarget(null);
+    }
+
     if (this.damageTimer > 0) {
       return;
     }
-    const dx = threat.position.x - args.position.x;
-    const dz = threat.position.z - args.position.z;
     if (!this.touchesThreat(threat.position, threat.radius)) {
       return;
     }
-    if (!this.hasLineOfSight(args.position, threat.position, threat.id)) {
+    if (!seesThreat) {
       return;
     }
 

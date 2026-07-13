@@ -195,6 +195,25 @@ export class BlobHitboxes {
           impulse,
           BlobConfig.swarm.elementRadius * 1.65,
         );
+        // Un golpe pesado no solo abolla: arranca el kernel como chunk libre
+        // que cae, repta de vuelta y se re-absorbe. Mientras falta esa masa el
+        // cerebro queda más expuesto (la ventana para matarlo).
+        if (
+          amount >= BlobConfig.physics.detachDamageThreshold ||
+          damageType === 'explosive'
+        ) {
+          const detachRadius =
+            BlobConfig.physics.detachRadiusBase +
+            amount * BlobConfig.physics.detachRadiusPerDamage;
+          const detachSpeed = Math.min(
+            BlobConfig.physics.detachMaxSpeed,
+            BlobConfig.physics.detachSpeedBase +
+              amount * BlobConfig.physics.detachSpeedPerDamage,
+          );
+          const detachVelocity = impactDirection.clone().multiplyScalar(detachSpeed);
+          detachVelocity.y += 1.4;
+          this.opts.runtime.detachAt(impulsePoint, detachRadius, detachVelocity);
+        }
         const particleIndex = this.recordLocalOpening(
           hitPoint,
           impactDirection,
@@ -253,6 +272,27 @@ export class BlobHitboxes {
           BlobConfig.physics.shockwaveSpeed * Math.min(1.5, amount / 40),
           BlobConfig.physics.shockwaveUpSpeed,
         );
+        // La detonación arranca el lado expuesto: un chunk grande sale volando
+        // en la dirección del estallido y deja el flanco del cerebro abierto.
+        if (amount >= 12) {
+          const anchor = this.opts.runtime.nearestParticle(origin, false);
+          if (anchor) {
+            const blastVelocity = anchor.position.clone().sub(origin);
+            blastVelocity.y = 0;
+            if (blastVelocity.lengthSq() <= 1e-4) blastVelocity.set(0, 0, 1);
+            blastVelocity
+              .normalize()
+              .multiplyScalar(
+                Math.min(BlobConfig.physics.detachMaxSpeed, 4 + amount * 0.05),
+              );
+            blastVelocity.y = 2.2;
+            this.opts.runtime.detachAt(
+              anchor.position,
+              BlobConfig.swarm.baseRadius * 0.75,
+              blastVelocity,
+            );
+          }
+        }
         if (!wasExposed) return;
         this.opts.pool.applyDamage(
           amount,

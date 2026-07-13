@@ -49,6 +49,17 @@ export interface BlobComponent {
   readonly center: Vector3;
   readonly velocity: Vector3;
   active: boolean;
+  /** World Y of the lowest supported particle; reference for climb budgets. */
+  groundY: number;
+  /** True for gunfire-severed chunks that crawl back to the main mass. */
+  detached: boolean;
+}
+
+/** Victim capsule the flesh flows over while the organism smothers it. */
+export interface BlobEnvelopTarget {
+  position: Vec3;
+  radius: number;
+  height: number;
 }
 
 export const BLOB_POSE_KINDS = [
@@ -97,6 +108,11 @@ export interface BlobStepInput {
   target?: Vec3 | null;
   desiredVelocity?: Vec3;
   frozen?: boolean;
+  /**
+   * Downward acceleration (m/s²) integrated on unsupported particles. Supplied
+   * by the physics motor; pure simulations omit it and stay weightless.
+   */
+  gravity?: number;
   /** Optional per-step sphere sweep supplied by BlobMotor/Rapier. */
   motionResolver?: BlobParticleMotionResolver;
 }
@@ -121,6 +137,22 @@ export interface BlobOrganismOptions {
   separationDistance?: number;
   locomotionSpeed?: number;
   seed?: number;
+  /**
+   * Sideways sine undulation while travelling (Valve's insect-like variance).
+   * Amplitude is a velocity in m/s; 0 (default) disables the wobble.
+   */
+  waveAmplitude?: number;
+  waveFrequency?: number;
+  /** Ground crawl speed of shot-off chunks returning to the main mass. */
+  crawlReturnSpeed?: number;
+  /** Ballistic grace before a detached chunk starts crawling back. */
+  detachReturnDelaySeconds?: number;
+  /** Flow speed of flesh climbing over an envelop victim. */
+  envelopFlowSpeed?: number;
+  /** Fraction of eligible flesh allowed to leave the mound to envelop. */
+  envelopFraction?: number;
+  /** Angular drift of the envelop sheath (rad/s); keeps the skin alive. */
+  envelopSwirlSpeed?: number;
   /** Default per-particle sweep/slide adapter. Pure simulations may omit it. */
   motionResolver?: BlobParticleMotionResolver;
 }
@@ -130,6 +162,8 @@ export interface BlobResolvedMotion {
   position: Vec3;
   /** Optional collision-corrected velocity (for example after sliding). */
   velocity?: Vec3;
+  /** The sweep rested on a walkable surface; gates gravity accumulation. */
+  grounded?: boolean;
 }
 
 /**

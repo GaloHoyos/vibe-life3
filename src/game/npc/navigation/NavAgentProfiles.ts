@@ -80,16 +80,18 @@ export const NavigationProfiles = {
     stepHeight: 0.32,
     maxSpeed: 3.4,
     acceleration: 14,
-    canJump: false,
+    // La masa cruza jump links en balística (BlobMotor.leapTo). Mismos
+    // parámetros que el headcrab, cuyo dominio smallGround comparte.
+    canJump: true,
     canCrouch: false,
     canDrop: true,
     canOpenDoors: false,
     canUsePortals: true,
-    jumpSpeed: 0,
-    maxJumpDistance: 0,
+    jumpSpeed: 7.5,
+    maxJumpDistance: 4,
     safeDropHeight: 4,
     fallbackProfileId: "headcrab",
-    maxTraversalLinks: 0,
+    maxTraversalLinks: 96,
   }),
   manhack: profile({
     id: "manhack",

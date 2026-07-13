@@ -3,6 +3,7 @@ import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
 import { condMask } from '@game/npc/brain/NpcConditions';
 import { BlobConfig } from '@game/config/blob.config';
 import { createMoveToThreatTask, createWaitTask } from '@game/npc/brain/tasks/CoreTasks';
+import { createLeapTask } from '@game/npc/brain/tasks/CreatureTasks';
 import {
   deadSchedule,
   idleSchedule,
@@ -10,7 +11,19 @@ import {
   investigateSuspiciousSchedule,
   searchLastKnownSchedule,
 } from './commonSchedules';
-import type { NpcPreset } from './NpcPreset';
+import type { NpcLeapProfile, NpcPreset } from './NpcPreset';
+
+/**
+ * Hop del "hoppy blob" del documental: parábola baja de toda la masa (g=18 del
+ * organismo → apex ≈ 1.2 m, alcance ≈ 3.5-4 m). El windup junta la masa porque
+ * la locomoción se frena; el splat del aterrizaje lo reparte la propia sim.
+ */
+const BLOB_LEAP: NpcLeapProfile = {
+  windup: 0.45,
+  upSpeed: 6.5,
+  maxForwardSpeed: 5,
+  recover: 1.1,
+};
 
 /**
  * Preset del blob (npc_blob de HL2:Ep3): masa amorfa de metaballs que persigue
@@ -23,6 +36,16 @@ export function buildBlobPreset(): NpcPreset {
   const schedules: ScheduleDefinition<NpcBrainContext>[] = [
     deadSchedule(),
     {
+      // Se abalanza en parábola cuando la presa está en la banda de salto —
+      // prioridad sobre envelop para que el hop no se corte una vez en el aire.
+      id: 'hopAttack',
+      priority: 760,
+      required: condMask('SeeEnemy', 'EnemyInLeapRange'),
+      blockedBy: condMask('IsDead'),
+      interrupts: condMask('EnemyDead'),
+      tasks: [createLeapTask(BLOB_LEAP), createWaitTask(BLOB_LEAP.recover)],
+    },
+    {
       id: 'envelop',
       priority: 720,
       required: condMask('EnemyInMeleeRange'),
@@ -34,8 +57,8 @@ export function buildBlobPreset(): NpcPreset {
       id: 'chase',
       priority: 600,
       required: condMask('SeeEnemy'),
-      blockedBy: condMask('IsDead', 'EnemyInMeleeRange'),
-      interrupts: condMask('EnemyInMeleeRange', 'LostEnemy', 'EnemyDead'),
+      blockedBy: condMask('IsDead', 'EnemyInMeleeRange', 'EnemyInLeapRange'),
+      interrupts: condMask('EnemyInMeleeRange', 'EnemyInLeapRange', 'LostEnemy', 'EnemyDead'),
       tasks: [createMoveToThreatTask(0.9, 'sprint')],
     },
     searchLastKnownSchedule(0.8),
@@ -59,6 +82,8 @@ export function buildBlobPreset(): NpcPreset {
     maxHealth: BlobConfig.core.maxHealth,
     radius: 0.3,
     meleeRange: BlobConfig.contact.baseRange,
+    leapRange: 6,
+    leap: BLOB_LEAP,
     tooCloseRange: 0,
     lowHealthRatio: 0,
     weaponAim: 'none',

@@ -247,3 +247,39 @@ describe('BlobHitboxes', () => {
     expect(found).toBe(0);
   });
 });
+
+describe('BlobHitboxes desprendimiento por impactos pesados', () => {
+  it('un golpe pesado arranca un chunk y abre exposición del cerebro', async () => {
+    const { metadata, runtime } = await setup();
+    const mass = metadata.find((item) => item.bodyPart?.name === 'blob-mass')!;
+    expect(runtime.componentCount).toBe(1);
+
+    mass.damageable!.applyDamage(
+      40,
+      new Vector3(1, 0, 0),
+      undefined,
+      'player',
+      runtime.center.clone().add(new Vector3(-1.2, 0, 0)),
+      'bullet',
+    );
+
+    expect(runtime.componentCount).toBeGreaterThan(1);
+    expect(runtime.exposure).toBeGreaterThan(0.1);
+  });
+
+  it('una bala liviana solo abolla la masa: sin desprendimiento', async () => {
+    const { metadata, runtime } = await setup();
+    const mass = metadata.find((item) => item.bodyPart?.name === 'blob-mass')!;
+
+    mass.damageable!.applyDamage(
+      10,
+      new Vector3(1, 0, 0),
+      undefined,
+      'player',
+      runtime.center.clone(),
+      'bullet',
+    );
+
+    expect(runtime.componentCount).toBe(1);
+  });
+});

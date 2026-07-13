@@ -30,8 +30,19 @@ export const BlobConfig = {
     climbSpeed: 2.4,
     maxClimb: 1.3,
     stackRide: 0.8,
+    /** Escalón que el flujo vierte de una (trace elevado estilo npc_blob). */
+    stepUpHeight: 0.26,
+    /** Chunks volados por disparos: gracia balística y crawl de regreso. */
+    detachReturnDelay: 0.55,
+    crawlReturnSpeed: 2.3,
     /** Altura del domo al envolver una víctima (pies a cabeza). */
     envelopHeight: 1.7,
+    /** Flujo del manto sobre la víctima al envolverla. */
+    envelopFlowSpeed: 2.9,
+    /** Fracción de la carne que abandona el montículo para envolver. */
+    envelopFraction: 0.62,
+    /** Deriva angular del manto (rad/s): la piel sigue fluyendo al matar. */
+    envelopSwirlSpeed: 0.55,
   },
   /** Hitboxes y reacción física por elemento. */
   physics: {
@@ -58,6 +69,15 @@ export const BlobConfig = {
     /** Sacudida radial de toda la masa ante golpes fuertes (explosiones). */
     shockwaveSpeed: 5.5,
     shockwaveUpSpeed: 2.2,
+    /** Daño por golpe que desprende un chunk de masa (todo explosivo también). */
+    detachDamageThreshold: 24,
+    detachRadiusBase: 0.6,
+    detachRadiusPerDamage: 0.008,
+    detachSpeedBase: 3.4,
+    detachSpeedPerDamage: 0.09,
+    detachMaxSpeed: 6.5,
+    /** Tope de Δv/s al empujar props; debe ganarle a la fricción (µ·g ≈ 10). */
+    propPushMaxDeltaV: 14,
   },
   /** Núcleo/"cerebro" emisivo visible a través de la masa translúcida. */
   core: {

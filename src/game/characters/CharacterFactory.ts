@@ -194,6 +194,13 @@ export class CharacterFactory {
           separationDistance:
             BlobConfig.swarm.elementRadius * BlobConfig.swarm.separationScale,
           locomotionSpeed: preset.movement.sprintSpeed,
+          waveAmplitude: BlobConfig.swarm.speedWaveAmplitude,
+          waveFrequency: BlobConfig.swarm.waveFrequency,
+          crawlReturnSpeed: BlobConfig.swarm.crawlReturnSpeed,
+          detachReturnDelaySeconds: BlobConfig.swarm.detachReturnDelay,
+          envelopFlowSpeed: BlobConfig.swarm.envelopFlowSpeed,
+          envelopFraction: BlobConfig.swarm.envelopFraction,
+          envelopSwirlSpeed: BlobConfig.swarm.envelopSwirlSpeed,
         })
       : null;
     const blobState = blobRuntime ? new BlobSwarmState(blobRuntime) : null;
@@ -247,6 +254,11 @@ export class CharacterFactory {
           acceleration: preset.movement.acceleration,
           turnSpeed: preset.movement.turnSpeed,
           metadata,
+          gravity: BlobConfig.swarm.gravity,
+          stepUpHeight: BlobConfig.swarm.stepUpHeight,
+          climbSpeed: BlobConfig.swarm.climbSpeed,
+          maxClimb: BlobConfig.swarm.maxClimb,
+          propPushMaxDeltaV: BlobConfig.physics.propPushMaxDeltaV,
           onConsumeProp: (biomass, consumedAt) => {
             this.eventBus.emit('npc.heal', {
               medicId: instanceId,

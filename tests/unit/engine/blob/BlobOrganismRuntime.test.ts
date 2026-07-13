@@ -336,3 +336,135 @@ describe("BlobOrganismRuntime poses and teleport", () => {
     }
   });
 });
+
+describe("BlobOrganismRuntime gravity and ballistics", () => {
+  it("only accumulates gravity when the step input provides it", () => {
+    const runtime = new BlobOrganismRuntime({ seed: 3 });
+    runtime.step(BLOB_FIXED_STEP_SECONDS);
+    expect(Math.abs(runtime.particles[100].velocity.y)).toBeLessThan(0.5);
+
+    for (let index = 0; index < 15; index++) {
+      runtime.step(BLOB_FIXED_STEP_SECONDS, { gravity: 18 });
+    }
+    expect(runtime.particles[100].velocity.y).toBeLessThan(-2);
+    expect(runtime.particles[100].velocity.y).toBeGreaterThanOrEqual(-9.001);
+  });
+
+  it("rests particles whose resolver reports ground support", () => {
+    const runtime = new BlobOrganismRuntime({
+      seed: 3,
+      motionResolver: (_particle, from) => ({ position: from, grounded: true }),
+    });
+    for (let index = 0; index < 12; index++) {
+      runtime.step(BLOB_FIXED_STEP_SECONDS, { gravity: 18 });
+    }
+    expect(Math.abs(runtime.particles[100].velocity.y)).toBeLessThan(0.7);
+  });
+
+  it("launches ballistic, suspends steering, and lands when support returns", () => {
+    let grounded = false;
+    const runtime = new BlobOrganismRuntime({
+      seed: 5,
+      motionResolver: (_particle, _from, desired) => ({
+        position: desired,
+        grounded,
+      }),
+    });
+    runtime.launch(new Vector3(4, 6, 0));
+    expect(runtime.airborne).toBe(true);
+
+    const still = new Vector3(0, 0, 0);
+    for (let index = 0; index < 12; index++) {
+      runtime.step(BLOB_FIXED_STEP_SECONDS, { gravity: 18, desiredVelocity: still });
+    }
+    // Locomotion no frena el proyectil: la velocidad horizontal se conserva.
+    expect(runtime.airborne).toBe(true);
+    expect(runtime.particles[50].velocity.x).toBeGreaterThan(3);
+
+    grounded = true;
+    for (let index = 0; index < 8 && runtime.airborne; index++) {
+      runtime.step(BLOB_FIXED_STEP_SECONDS, { gravity: 18 });
+    }
+    expect(runtime.airborne).toBe(false);
+  });
+});
+
+describe("BlobOrganismRuntime gunfire detachment", () => {
+  it("detaches the local kernel as a returning chunk and exposes the brain", () => {
+    const runtime = new BlobOrganismRuntime({ seed: 13 });
+    const exposureBefore = runtime.exposure;
+    const point = runtime.particles[120].position.clone();
+
+    const count = runtime.detachAt(point, 0.8, new Vector3(5, 2, 0));
+
+    expect(count).toBeGreaterThanOrEqual(3);
+    expect(runtime.componentCount).toBe(2);
+    expect(runtime.particles[0].componentId).toBe(0);
+    const chunk = runtime.components.find(
+      (component) => component.active && component.id !== 0,
+    );
+    expect(chunk?.detached).toBe(true);
+    expect(runtime.exposure).toBeGreaterThan(exposureBefore);
+  });
+
+  it("refuses to detach while a choreographed pose is held", () => {
+    const runtime = new BlobOrganismRuntime({ seed: 13 });
+    runtime.setPose({ kind: "column", duration: 0.5 });
+    expect(runtime.detachAt(runtime.center, 1, new Vector3(3, 0, 0))).toBe(0);
+  });
+
+  it("keeps a detached chunk crawling home until it re-merges with the mass", () => {
+    const runtime = new BlobOrganismRuntime({
+      seed: 17,
+      motionResolver: (_particle, _from, desired) => ({
+        position: desired,
+        grounded: true,
+      }),
+    });
+    const point = runtime.particles[130].position.clone();
+    expect(runtime.detachAt(point, 0.7, new Vector3(6, 0, 0))).toBeGreaterThanOrEqual(3);
+    expect(runtime.componentCount).toBe(2);
+
+    for (let index = 0; index < 21; index++) {
+      runtime.step(BLOB_FIXED_STEP_SECONDS, { gravity: 18 });
+    }
+    const chunk = runtime.components.find(
+      (component) => component.active && component.id !== 0,
+    );
+    expect(chunk).toBeDefined();
+    expect(chunk!.center.distanceTo(runtime.components[0].center)).toBeGreaterThan(1.5);
+
+    let reunited = false;
+    for (let index = 0; index < 240 && !reunited; index++) {
+      runtime.step(BLOB_FIXED_STEP_SECONDS, { gravity: 18 });
+      reunited = runtime.componentCount === 1;
+    }
+    expect(reunited).toBe(true);
+  });
+});
+
+describe("BlobOrganismRuntime envelop", () => {
+  it("flows eligible flesh into a vertical sheath around the envelop target", () => {
+    const runtime = new BlobOrganismRuntime({
+      seed: 23,
+      envelopFraction: 0.6,
+      envelopFlowSpeed: 3,
+      envelopSwirlSpeed: 0.5,
+    });
+    const target = runtime.center.clone().add(new Vector3(1.2, -0.4, 0));
+    runtime.setEnvelopTarget({ position: target, radius: 0.35, height: 1.7 });
+    advance(runtime, 1.6);
+
+    const sheath = runtime.activeParticles.filter((particle) => {
+      const planar = Math.hypot(
+        particle.position.x - target.x,
+        particle.position.z - target.z,
+      );
+      return planar < 1.05 && particle.position.y > target.y + 0.5;
+    });
+    expect(sheath.length).toBeGreaterThan(8);
+
+    runtime.setEnvelopTarget(null);
+    expect(runtime.airborne).toBe(false);
+  });
+});
