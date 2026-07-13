@@ -35,6 +35,12 @@ export const BlobConfig = {
     /** Chunks volados por disparos: gracia balística y crawl de regreso. */
     detachReturnDelay: 0.55,
     crawlReturnSpeed: 2.3,
+    /** Peso del líquido al saltar: la carne baja despega hasta este retraso. */
+    leapStagger: 0.22,
+    /** Gel rezagado más allá de este radio (× baseRadius) se corta como chunk. */
+    strandDistanceScale: 2.1,
+    /** Segundos colgando fuera de alcance antes de separarse por gravedad. */
+    strandSeconds: 0.45,
     /** Altura del domo al envolver una víctima (pies a cabeza). */
     envelopHeight: 1.7,
     /** Flujo del manto sobre la víctima al envolverla. */
@@ -69,13 +75,16 @@ export const BlobConfig = {
     /** Sacudida radial de toda la masa ante golpes fuertes (explosiones). */
     shockwaveSpeed: 5.5,
     shockwaveUpSpeed: 2.2,
-    /** Daño por golpe que desprende un chunk de masa (todo explosivo también). */
-    detachDamageThreshold: 24,
+    /**
+     * Daño acumulado en la misma zona (ventana `localOpeningSeconds`) que
+     * desprende un chunk de masa; todo explosivo desprende siempre.
+     */
+    detachDamageThreshold: 12,
     detachRadiusBase: 0.6,
     detachRadiusPerDamage: 0.008,
-    detachSpeedBase: 3.4,
+    detachSpeedBase: 4.6,
     detachSpeedPerDamage: 0.09,
-    detachMaxSpeed: 6.5,
+    detachMaxSpeed: 8,
     /** Tope de Δv/s al empujar props; debe ganarle a la fricción (µ·g ≈ 10). */
     propPushMaxDeltaV: 14,
   },

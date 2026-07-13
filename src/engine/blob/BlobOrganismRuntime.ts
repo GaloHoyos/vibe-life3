@@ -77,6 +77,12 @@ const DETACH_CROSS_COHESION_SCALE = 4;
 const BALLISTIC_MIN_AIR_SECONDS = 0.2;
 const BALLISTIC_MAX_SECONDS = 2.5;
 const BALLISTIC_LANDED_FRACTION = 0.3;
+const DEFAULT_LAUNCH_STAGGER_SECONDS = 0.22;
+const LAUNCH_MIN_UP_SCALE = 0.78;
+const LAUNCH_LEAVE_FRACTION = 0.08;
+const LAUNCH_LEAVE_BAND = 0.18;
+const DEFAULT_STRAND_DISTANCE_SCALE = 2.1;
+const DEFAULT_STRAND_SECONDS = 0.45;
 const SCALE_REGROW_SECONDS = 0.7;
 const DEFAULT_CRAWL_RETURN_SPEED = 2.2;
 const DEFAULT_DETACH_RETURN_DELAY = 0.55;
@@ -216,6 +222,16 @@ export class BlobOrganismRuntime {
   private ballistic = false;
   private ballisticLaunchedAt = -Infinity;
   private lastGroundedFraction = 0;
+  /** Staggered leap wave: fixed-step time at which each particle lifts off. */
+  private readonly launchAt: Float32Array;
+  private readonly launchUpScale: Float32Array;
+  private readonly launchVelocity = new Vector3();
+  private pendingLaunchCount = 0;
+  /** First fixed-step time a component-0 particle was beyond the gel's reach. */
+  private readonly strandedSince: Float32Array;
+  private readonly launchStaggerSeconds: number;
+  private readonly strandDistanceSq: number;
+  private readonly strandSeconds: number;
   /** Simulation time at which each gunfire-severed chunk starts crawling home. */
   private readonly detachedReturnAt: number[];
   private readonly detachedSince: number[];
@@ -271,6 +287,18 @@ export class BlobOrganismRuntime {
       1,
     );
     this.envelopSwirlSpeed = finiteOr(options.envelopSwirlSpeed, DEFAULT_ENVELOP_SWIRL_SPEED);
+    this.launchStaggerSeconds = Math.max(
+      0,
+      finiteOr(options.launchStaggerSeconds, DEFAULT_LAUNCH_STAGGER_SECONDS),
+    );
+    this.strandSeconds = Math.max(
+      BLOB_FIXED_STEP_SECONDS,
+      finiteOr(options.strandSeconds, DEFAULT_STRAND_SECONDS),
+    );
+    this.strandDistanceSq =
+      (this.bodyRadius *
+        Math.max(1.2, finiteOr(options.strandDistanceScale, DEFAULT_STRAND_DISTANCE_SCALE))) **
+      2;
     if (options.center) this.center.copy(options.center);
 
     this.mutableParticles = [];
@@ -281,6 +309,9 @@ export class BlobOrganismRuntime {
     this.waveFrequencyScale = new Float32Array(this.maxParticleCount);
     this.waveAmplitudeScale = new Float32Array(this.maxParticleCount);
     this.envelopBand = new Float32Array(this.maxParticleCount);
+    this.launchAt = new Float32Array(this.maxParticleCount).fill(-1);
+    this.launchUpScale = new Float32Array(this.maxParticleCount).fill(1);
+    this.strandedSince = new Float32Array(this.maxParticleCount).fill(-1);
     this.detachedReturnAt = new Array<number>(MAX_COMPONENTS).fill(-1);
     this.detachedSince = new Array<number>(MAX_COMPONENTS).fill(-1);
     this.pendingAttach = new Array<boolean>(MAX_COMPONENTS).fill(false);
@@ -649,6 +680,10 @@ export class BlobOrganismRuntime {
     for (const index of indices) {
       const particle = this.mutableParticles[index];
       particle.componentId = slot;
+      if (this.launchAt[index] >= 0) {
+        this.launchAt[index] = -1;
+        this.pendingLaunchCount--;
+      }
       const jitter = 0.86 + 0.28 * indexRandom(index, 11, this.seed);
       particle.velocity.set(
         velocity.x * jitter,
@@ -685,23 +720,85 @@ export class BlobOrganismRuntime {
    * Ballistic hop of the whole organism (the "hoppy blob" prototype and the
    * navmesh jump links). Locomotion steering pauses until enough particles
    * regain support; cohesion and constraints keep the mass in one piece.
+   * The liquid has weight: brain and skeleton lift off at once, lower flesh
+   * follows staggered with a flatter arc, and a sliver of grounded goo stays
+   * glued to the floor (stranding later severs it into a chunk that crawls
+   * back home).
    */
   launch(velocity: Vector3): void {
     if (!Number.isFinite(velocity.lengthSq())) return;
     this.cancelPose();
     this.ballistic = true;
     this.ballisticLaunchedAt = this.simulationTime;
+    this.launchVelocity.copy(velocity);
+    this.pendingLaunchCount = 0;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let index = 0; index < this.activeCount; index++) {
+      const y = this.mutableParticles[index].position.y;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    const span = Math.max(EPSILON, maxY - minY);
+    const leaveBudget = Math.floor(this.activeCount * LAUNCH_LEAVE_FRACTION);
+    let leftBehind = 0;
     for (let index = 0; index < this.activeCount; index++) {
       const particle = this.mutableParticles[index];
+      this.launchAt[index] = -1;
       if (particle.frozen) continue;
-      particle.velocity.set(
-        velocity.x + (indexRandom(index, 21, this.seed) - 0.5) * 0.5,
-        velocity.y * (0.94 + 0.12 * indexRandom(index, 23, this.seed)),
-        velocity.z + (indexRandom(index, 22, this.seed) - 0.5) * 0.5,
-      );
-      this.clampParticleVelocity(particle);
-      this.groundedUntil[index] = 0;
+      // Skeleton and arms are direct brain anchors: they must fly with the
+      // brain or their springs bleed the parabola dry. The wave lives in the
+      // support/flesh bulk.
+      const rigid =
+        index === 0 ||
+        particle.role === BlobParticleRole.Structural ||
+        particle.role === BlobParticleRole.TendonEnd;
+      const heightT = clamp((particle.position.y - minY) / span, 0, 1);
+      if (
+        !rigid &&
+        particle.componentId === 0 &&
+        leftBehind < leaveBudget &&
+        heightT < LAUNCH_LEAVE_BAND &&
+        this.groundedUntil[index] > this.simulationTime &&
+        indexRandom(index, 24, this.seed) < 0.5
+      ) {
+        leftBehind++;
+        continue;
+      }
+      this.launchUpScale[index] = rigid
+        ? 1
+        : LAUNCH_MIN_UP_SCALE + (1 - LAUNCH_MIN_UP_SCALE) * heightT;
+      const delay = rigid
+        ? 0
+        : (1 - heightT) *
+          this.launchStaggerSeconds *
+          (0.7 + 0.6 * indexRandom(index, 25, this.seed));
+      if (delay < BLOB_FIXED_STEP_SECONDS) {
+        this.applyLaunchVelocity(index);
+      } else {
+        this.launchAt[index] = this.simulationTime + delay;
+        this.pendingLaunchCount++;
+      }
     }
+  }
+
+  private applyLaunchVelocity(index: number): void {
+    const particle = this.mutableParticles[index];
+    particle.velocity.set(
+      this.launchVelocity.x + (indexRandom(index, 21, this.seed) - 0.5) * 0.5,
+      this.launchVelocity.y *
+        this.launchUpScale[index] *
+        (0.94 + 0.12 * indexRandom(index, 23, this.seed)),
+      this.launchVelocity.z + (indexRandom(index, 22, this.seed) - 0.5) * 0.5,
+    );
+    this.clampParticleVelocity(particle);
+    this.groundedUntil[index] = 0;
+  }
+
+  private clearPendingLaunches(): void {
+    if (this.pendingLaunchCount === 0) return;
+    this.launchAt.fill(-1);
+    this.pendingLaunchCount = 0;
   }
 
   nearestParticle(point: Vector3, includeBrain = true): BlobParticle | null {
@@ -757,6 +854,7 @@ export class BlobOrganismRuntime {
       throw new RangeError("Blob component count must be an integer from 2 through 6");
     }
     this.cancelPose();
+    this.clearPendingLaunches();
     this.merging = false;
     this.emittedMergeEvent = false;
     // Scripted splits own every component slot: forget gunfire chunk state.
@@ -821,6 +919,7 @@ export class BlobOrganismRuntime {
       this.events.push({ type: "error", command: "setPose", reason: "unknown pose" });
       throw new RangeError(`Unknown blob pose: ${String(definition.kind)}`);
     }
+    this.clearPendingLaunches();
     const target = this.buildPoseTargets(definition);
     this.poseTransition = {
       definition,
@@ -835,6 +934,7 @@ export class BlobOrganismRuntime {
   }
 
   resetPose(duration = DEFAULT_POSE_SECONDS): void {
+    this.clearPendingLaunches();
     const target = this.mutableParticles.map((particle, index) =>
       this.center.clone().add(this.normalOffsets[index]),
     );
@@ -887,6 +987,7 @@ export class BlobOrganismRuntime {
         .add(destinationVelocity);
     }
     for (const offset of this.normalOffsets) offset.applyQuaternion(rotation);
+    this.launchVelocity.applyQuaternion(rotation);
     this.transformPoseVectors(this.poseTransition?.start, sourceCenter, destination, rotation);
     this.transformPoseVectors(this.poseTransition?.target, sourceCenter, destination, rotation);
     this.transformPoseVectors(this.heldPoseTargets, sourceCenter, destination, rotation);
@@ -950,8 +1051,85 @@ export class BlobOrganismRuntime {
     if (this.attachPendingComponents()) this.refreshComponents();
     if (this.merging && this.attachNearbyMergeComponents()) this.refreshComponents();
     this.advanceReconnection();
+    if (this.detachStrandedParticles()) this.refreshComponents();
     this.advanceDetachedLifecycles();
     this.finishBallisticIfLanded();
+  }
+
+  /**
+   * Component-0 flesh dragged beyond the gel's reach (dangling off a ledge,
+   * goo left glued to the floor by a hop) is already torn by gravity, yet
+   * locomotion kept steering it on an invisible leash. Severing it into a
+   * detached chunk gives it the same crawl-home/reabsorb lifecycle as
+   * gunfire chunks.
+   */
+  private detachStrandedParticles(): boolean {
+    if (
+      this.merging ||
+      this.isLocomotionPaused ||
+      this.simulationTime < this.splitLaunchUntil
+    ) {
+      return false;
+    }
+    const brain = this.mutableParticles[0];
+    let stranded: number[] | null = null;
+    let torn = 0;
+    for (let index = 1; index < this.activeCount; index++) {
+      const particle = this.mutableParticles[index];
+      if (
+        particle.componentId !== 0 ||
+        particle.frozen ||
+        particle.scale <= 0.1 ||
+        this.launchAt[index] >= 0 ||
+        this.envelopingUntil[index] > this.simulationTime ||
+        particle.position.distanceToSquared(brain.position) <= this.strandDistanceSq
+      ) {
+        this.strandedSince[index] = -1;
+        continue;
+      }
+      if (this.strandedSince[index] < 0) {
+        this.strandedSince[index] = this.simulationTime;
+      }
+      (stranded ??= []).push(index);
+      if (this.simulationTime - this.strandedSince[index] >= this.strandSeconds) torn++;
+    }
+    // The tear fires once enough gel has hung beyond reach for the full
+    // window, and it then takes every currently-stranded particle with it:
+    // staggered threshold crossings must not burn one component slot per
+    // mini-batch while sub-minimum leftovers dangle forever.
+    if (!stranded || torn < DETACH_MIN_PARTICLES) return false;
+    let slot = -1;
+    for (let id = 1; id < MAX_COMPONENTS; id++) {
+      if (!this.mutableComponents[id].active) {
+        slot = id;
+        break;
+      }
+    }
+    if (slot < 0) return false;
+    for (const index of stranded) {
+      this.mutableParticles[index].componentId = slot;
+      this.strandedSince[index] = -1;
+    }
+    const breakUntil = this.simulationTime + DETACH_CONSTRAINT_BREAK_SECONDS;
+    for (const constraint of this.mutableConstraints) {
+      if (!constraint.active) continue;
+      const aOut = this.mutableParticles[constraint.particleA].componentId === slot;
+      const bOut = this.mutableParticles[constraint.particleB].componentId === slot;
+      if (aOut === bOut) continue;
+      constraint.connection = 0;
+      constraint.brokenUntil = Math.max(constraint.brokenUntil, breakUntil);
+    }
+    this.detachedReturnAt[slot] = this.simulationTime + this.detachReturnDelaySeconds;
+    this.detachedSince[slot] = this.simulationTime;
+    this.pendingAttach[slot] = false;
+    this.exposureOpening = clamp(
+      this.exposureOpening +
+        0.05 +
+        (stranded.length / Math.max(1, this.activeCount)) * 0.5,
+      0,
+      1,
+    );
+    return true;
   }
 
   private integrateLocomotion(input: BlobStepInput): void {
@@ -1004,6 +1182,12 @@ export class BlobOrganismRuntime {
 
       if (this.ballistic) {
         // In flight the mass is a projectile: gravity below, no steering.
+        // Delayed flesh keeps its weight until the launch wave reaches it.
+        if (this.launchAt[index] >= 0 && this.simulationTime >= this.launchAt[index]) {
+          this.launchAt[index] = -1;
+          this.pendingLaunchCount--;
+          this.applyLaunchVelocity(index);
+        }
       } else if (
         particle.componentId !== 0 &&
         !this.merging &&
@@ -1137,11 +1321,22 @@ export class BlobOrganismRuntime {
       }
       // Springs pull harder than the envelop flow can push; while an end is
       // smothering a victim the link softens so the shell shape can win.
+      // Same yield across the launch wave: airborne mass must not stay
+      // anchored to flesh still waiting on the ground, and while ballistic
+      // every spring slackens — trailing goo streams behind the parabola
+      // instead of stealing the brain's apex.
+      const waveSoftness =
+        (this.launchAt[constraint.particleA] >= 0) !==
+        (this.launchAt[constraint.particleB] >= 0)
+          ? 0.15
+          : this.ballistic
+            ? 0.35
+            : 1;
       const softness =
         this.envelopingUntil[constraint.particleA] > this.simulationTime ||
         this.envelopingUntil[constraint.particleB] > this.simulationTime
           ? 0.3
-          : 1;
+          : waveSoftness;
       const correctionDistance = clamp(
         (distance - constraint.restLength) *
           constraint.stiffness *
@@ -1191,6 +1386,10 @@ export class BlobOrganismRuntime {
       } else {
         TMP_A.subVectors(b.position, a.position).multiplyScalar(1 / distance);
       }
+      // Across the launch wave the gel is tearing: cohesion and viscosity
+      // must not glue airborne mass to flesh still waiting on the ground.
+      const waveTorn =
+        (this.launchAt[a.index] >= 0) !== (this.launchAt[b.index] >= 0);
       if (distance < this.separationDistance) {
         const push = (this.separationDistance - distance) * 0.19;
         const aWeight = this.gelInverseMass(a);
@@ -1198,7 +1397,7 @@ export class BlobOrganismRuntime {
         const inverseWeight = 2 / (aWeight + bWeight);
         a.position.addScaledVector(TMP_A, -push * aWeight * inverseWeight);
         b.position.addScaledVector(TMP_A, push * bWeight * inverseWeight);
-      } else {
+      } else if (!waveTorn) {
         const attraction =
           GEL_COHESION_PER_PAIR *
           (1 - (distance - this.separationDistance) / (cohesionRange - this.separationDistance));
@@ -1208,6 +1407,7 @@ export class BlobOrganismRuntime {
         a.position.addScaledVector(TMP_A, attraction * aWeight * inverseWeight);
         b.position.addScaledVector(TMP_A, -attraction * bWeight * inverseWeight);
       }
+      if (waveTorn) return;
       TMP_B.subVectors(b.velocity, a.velocity).multiplyScalar(GEL_VISCOSITY * 0.5);
       if (a.role !== BlobParticleRole.Brain) a.velocity.add(TMP_B);
       if (b.role !== BlobParticleRole.Brain) b.velocity.sub(TMP_B);
@@ -1419,7 +1619,10 @@ export class BlobOrganismRuntime {
   private finishBallisticIfLanded(): void {
     if (!this.ballistic) return;
     const airTime = this.simulationTime - this.ballisticLaunchedAt;
-    if (airTime < BALLISTIC_MIN_AIR_SECONDS) return;
+    // While the launch wave is still travelling down the mass, the grounded
+    // fraction counts particles that simply have not lifted off yet.
+    if (airTime >= BALLISTIC_MAX_SECONDS) this.clearPendingLaunches();
+    if (airTime < BALLISTIC_MIN_AIR_SECONDS || this.pendingLaunchCount > 0) return;
     if (
       this.lastGroundedFraction >= BALLISTIC_LANDED_FRACTION ||
       airTime >= BALLISTIC_MAX_SECONDS

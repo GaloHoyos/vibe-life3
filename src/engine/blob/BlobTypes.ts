@@ -143,6 +143,15 @@ export interface BlobOrganismOptions {
    */
   waveAmplitude?: number;
   waveFrequency?: number;
+  /**
+   * Liquid weight on leaps: the lowest flesh lifts off up to this many
+   * seconds after the brain instead of the whole mass jumping as one body.
+   */
+  launchStaggerSeconds?: number;
+  /** Distance (× bodyRadius) beyond which trailing gel counts as torn off. */
+  strandDistanceScale?: number;
+  /** Seconds a particle must stay beyond reach before it severs as a chunk. */
+  strandSeconds?: number;
   /** Ground crawl speed of shot-off chunks returning to the main mass. */
   crawlReturnSpeed?: number;
   /** Ballistic grace before a detached chunk starts crawling back. */

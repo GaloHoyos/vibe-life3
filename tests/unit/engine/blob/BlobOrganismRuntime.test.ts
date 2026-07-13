@@ -361,6 +361,66 @@ describe("BlobOrganismRuntime gravity and ballistics", () => {
     expect(Math.abs(runtime.particles[100].velocity.y)).toBeLessThan(0.7);
   });
 
+  it("launches as a staggered wave: the brain lifts first and low flesh lags", () => {
+    let grounded = true;
+    const runtime = new BlobOrganismRuntime({
+      seed: 11,
+      motionResolver: (_particle, from) => ({ position: from, grounded }),
+    });
+    advance(runtime, 0.5);
+
+    runtime.launch(new Vector3(0, 6, 0));
+    expect(runtime.airborne).toBe(true);
+    expect(runtime.particles[0].velocity.y).toBeGreaterThan(5);
+    const laggards = runtime.activeParticles.filter(
+      (particle) => Math.abs(particle.velocity.y) < 1,
+    ).length;
+    expect(laggards).toBeGreaterThan(30);
+
+    grounded = false;
+    for (let index = 0; index < 12; index++) runtime.step(BLOB_FIXED_STEP_SECONDS);
+    const lifted = runtime.activeParticles.filter(
+      (particle) => particle.velocity.y > 3,
+    ).length;
+    // La ola alcanza a casi toda la masa; solo el goo adherido queda abajo.
+    expect(lifted).toBeGreaterThan(runtime.particleCount * 0.85);
+    expect(lifted).toBeLessThan(runtime.particleCount);
+  });
+
+  it("severs flesh stranded beyond reach into a gravity-detached chunk", () => {
+    // Borde trasero clavado en el suelo (el gel que queda colgado del filo de
+    // un precipicio) mientras el organismo camina en +x.
+    const pinned = new Set<number>();
+    const runtime = new BlobOrganismRuntime({
+      seed: 21,
+      motionResolver: (particle, from, desired) =>
+        pinned.has(particle.index)
+          ? { position: from, grounded: true }
+          : { position: desired, grounded: true },
+    });
+    for (const particle of runtime.activeParticles) {
+      if (particle.index !== 0 && particle.position.x < runtime.center.x - 0.55) {
+        pinned.add(particle.index);
+      }
+    }
+    expect(pinned.size).toBeGreaterThanOrEqual(3);
+
+    for (let index = 0; index < 90; index++) {
+      runtime.step(BLOB_FIXED_STEP_SECONDS, {
+        desiredVelocity: new Vector3(3, 0, 0),
+        gravity: 18,
+      });
+    }
+
+    expect(runtime.componentCount).toBeGreaterThanOrEqual(2);
+    expect(
+      runtime.components.some((component) => component.active && component.detached),
+    ).toBe(true);
+    for (const index of pinned) {
+      expect(runtime.particles[index].componentId).not.toBe(0);
+    }
+  });
+
   it("launches ballistic, suspends steering, and lands when support returns", () => {
     let grounded = false;
     const runtime = new BlobOrganismRuntime({

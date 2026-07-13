@@ -282,4 +282,23 @@ describe('BlobHitboxes desprendimiento por impactos pesados', () => {
 
     expect(runtime.componentCount).toBe(1);
   });
+
+  it('el fuego sostenido liviano carga la zona y termina volando un chunk', async () => {
+    const { metadata, runtime } = await setup();
+    const mass = metadata.find((item) => item.bodyPart?.name === 'blob-mass')!;
+    const point = runtime.center.clone().add(new Vector3(-1.2, 0, 0));
+
+    for (let shot = 0; shot < 3 && runtime.componentCount === 1; shot++) {
+      mass.damageable!.applyDamage(
+        5,
+        new Vector3(1, 0, 0),
+        undefined,
+        'player',
+        point,
+        'bullet',
+      );
+    }
+
+    expect(runtime.componentCount).toBeGreaterThan(1);
+  });
 });

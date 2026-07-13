@@ -20,6 +20,8 @@ interface LocalOpening {
   strength: number;
   expiresAt: number;
   opensCorePath: boolean;
+  /** Daño acumulado en la zona; al superar el umbral vuela un chunk. */
+  detachCharge: number;
 }
 
 export interface BlobMassImpact {
@@ -195,30 +197,34 @@ export class BlobHitboxes {
           impulse,
           BlobConfig.swarm.elementRadius * 1.65,
         );
-        // Un golpe pesado no solo abolla: arranca el kernel como chunk libre
-        // que cae, repta de vuelta y se re-absorbe. Mientras falta esa masa el
-        // cerebro queda más expuesto (la ventana para matarlo).
+        const opening = this.recordLocalOpening(hitPoint, impactDirection, amount);
+        // El fuego sostenido carga la zona: no hace falta un único golpe
+        // pesado. Al superar el umbral acumulado, el kernel se arranca como
+        // chunk libre que sale volando, cae, repta de vuelta y se re-absorbe.
+        // Mientras falta esa masa el cerebro queda más expuesto (la ventana
+        // para matarlo).
+        const detachCharge = opening?.detachCharge ?? amount;
         if (
-          amount >= BlobConfig.physics.detachDamageThreshold ||
+          detachCharge >= BlobConfig.physics.detachDamageThreshold ||
           damageType === 'explosive'
         ) {
           const detachRadius =
             BlobConfig.physics.detachRadiusBase +
-            amount * BlobConfig.physics.detachRadiusPerDamage;
+            detachCharge * BlobConfig.physics.detachRadiusPerDamage;
           const detachSpeed = Math.min(
             BlobConfig.physics.detachMaxSpeed,
             BlobConfig.physics.detachSpeedBase +
-              amount * BlobConfig.physics.detachSpeedPerDamage,
+              detachCharge * BlobConfig.physics.detachSpeedPerDamage,
           );
           const detachVelocity = impactDirection.clone().multiplyScalar(detachSpeed);
           detachVelocity.y += 1.4;
-          this.opts.runtime.detachAt(impulsePoint, detachRadius, detachVelocity);
+          if (
+            this.opts.runtime.detachAt(impulsePoint, detachRadius, detachVelocity) > 0 &&
+            opening
+          ) {
+            opening.detachCharge = 0;
+          }
         }
-        const particleIndex = this.recordLocalOpening(
-          hitPoint,
-          impactDirection,
-          amount,
-        );
         this.opts.onMassImpact?.({
           point: hitPoint,
           direction: impactDirection.clone(),
@@ -226,7 +232,7 @@ export class BlobHitboxes {
           damage: amount,
           damageType: damageType ?? 'bullet',
           clusterIndex,
-          particleIndex,
+          particleIndex: opening?.anchorParticleIndex ?? null,
           affectedParticles,
         });
       },
@@ -406,7 +412,7 @@ export class BlobHitboxes {
     point: Vector3,
     direction: Vector3,
     amount: number,
-  ): number | null {
+  ): LocalOpening | null {
     this.discardExpiredOpenings();
     const nearest = this.opts.runtime.nearestParticle(point, false);
     if (!nearest) return null;
@@ -426,6 +432,7 @@ export class BlobHitboxes {
         strength: 0,
         expiresAt: 0,
         opensCorePath: false,
+        detachCharge: 0,
       };
       this.localOpenings.push(opening);
     }
@@ -437,6 +444,7 @@ export class BlobHitboxes {
         BlobConfig.physics.localOpeningBaseStrength +
         Math.max(0, amount) * BlobConfig.physics.localOpeningStrengthPerDamage,
     );
+    opening.detachCharge += Math.max(0, amount);
     opening.expiresAt =
       this.opts.runtime.simulationTimeSeconds + BlobConfig.physics.localOpeningSeconds;
 
@@ -450,7 +458,7 @@ export class BlobHitboxes {
     opening.opensCorePath ||=
       forwardDistance > 0 &&
       perpendicularSq <= BlobConfig.physics.coreHitboxRadius ** 2;
-    return nearest.index;
+    return opening;
   }
 
   private openingInfluenceAt(center: Vector3): number {
