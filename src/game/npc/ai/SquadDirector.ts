@@ -1,5 +1,6 @@
 import { Vector3 } from "three";
 import type { Faction } from "@engine/ai/Faction";
+import { SquadSlotBoard } from "./SquadSlotBoard";
 
 export type SquadRole =
   | "leader"
@@ -29,6 +30,8 @@ export interface SquadOrder {
 }
 
 export class SquadDirector {
+  /** Slots limitados por faccion (attack/grenade/overwatch), estilo HL2. */
+  readonly slots = new SquadSlotBoard();
   private readonly reports = new Map<string, SquadReport>();
   private readonly orders = new Map<string, SquadOrder>();
   private lastTickAt = -Infinity;
@@ -46,6 +49,7 @@ export class SquadDirector {
   unregister(id: string): void {
     this.reports.delete(id);
     this.orders.delete(id);
+    this.slots.unregister(id);
   }
 
   getRole(id: string): SquadRole {
@@ -61,6 +65,8 @@ export class SquadDirector {
   }
 
   tickAssignments(elapsed: number, threatPosition: Vector3 | null): void {
+    // El reloj de lockouts corre todos los frames, aun con el throttle abajo.
+    this.slots.tick(elapsed);
     if (elapsed - this.lastTickAt < this.tickInterval) return;
     this.lastTickAt = elapsed;
 

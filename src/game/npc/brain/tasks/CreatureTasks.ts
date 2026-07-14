@@ -1,34 +1,8 @@
 import type { Task, TaskStatus } from '@engine/ai/brain/Task';
-import { threatNavPosition, type NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
+import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
 import type { NpcLeapProfile } from '@game/npc/presets/NpcPreset';
 
 type NpcTask = Task<NpcBrainContext>;
-
-/**
- * Embiste al threat sin frenar (manhack): re-encara su posicion actual cada
- * tick y dispara el mordisco (gated por cooldown del combat, conecta por
- * contacto). Como nunca para, el flyer mantiene su altura de hover y rebota
- * contra el player / paredes en vez de quedar flotando bajo. Corre indefinido;
- * el schedule sale por sus `interrupts` (LostEnemy / EnemyDead).
- */
-export function createChargeAttackTask(gait: 'walk' | 'sprint' = 'sprint'): NpcTask {
-  return {
-    id: 'chargeAttack',
-    init: () => {},
-    tick: (ctx): TaskStatus => {
-      // Terrestre: persigue la posición navegable real (ghost → ruta por A*).
-      const target = threatNavPosition(ctx);
-      if (!target) {
-        ctx.locomotion.stop();
-        return 'failure';
-      }
-      ctx.locomotion.moveTo(target, { gait });
-      ctx.combat.tryFire();
-      return 'running';
-    },
-    abort: (ctx) => ctx.locomotion.stop(),
-  };
-}
 
 /**
  * Persecucion pura de un volador (manhack): vuela a la posicion del threat sin

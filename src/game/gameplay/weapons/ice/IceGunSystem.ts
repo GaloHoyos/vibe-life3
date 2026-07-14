@@ -88,6 +88,7 @@ interface Statue {
   group: Group;
   body: RAPIER.RigidBody;
   iceMesh: Mesh | null;
+  onShatter?: () => void;
 }
 
 interface PaintState {
@@ -648,7 +649,7 @@ export class IceGunSystem implements Disposable {
       );
     }
 
-    this.statues.set(handle.id, { group, body, iceMesh });
+    this.statues.set(handle.id, { group, body, iceMesh, onShatter: handle.shatter });
     this.eventBus.emit("ice.frozen", {
       targetId: handle.id,
       position: group.position.clone(),
@@ -662,6 +663,7 @@ export class IceGunSystem implements Disposable {
       return;
     }
     this.statues.delete(targetId);
+    statue.onShatter?.();
     this.vfx.explosion(point ?? statue.group.position, {
       scale: 0.85,
       color: ICE_COLOR,

@@ -29,7 +29,7 @@ interface AttachedSound {
  * mundo. Mantiene un mapa por objeto para poder limpiar al destruir.
  */
 export class PositionalSoundManager {
-  private readonly listener: AudioListener;
+  private listener: AudioListener | null = null;
   private readonly attached = new Map<Object3D, AttachedSound[]>();
   /**
    * `attachToObject` es async (espera el buffer): si `stopAttached` llega
@@ -44,18 +44,8 @@ export class PositionalSoundManager {
     private readonly audioSystem: AudioSystem,
     private readonly sounds: SoundManager,
     private readonly scene: Object3D,
-    camera: Object3D,
-  ) {
-    // El `AudioListener` de Three usa su `AudioContext` singleton; forzarlo al
-    // mismo contexto que los buses del mixer para poder conectar el panner al
-    // bus.gain (conectar nodos entre contextos distintos lanza DOMException).
-    const context = this.audioSystem.getContext();
-    if (context) {
-      ThreeAudioContext.setContext(context);
-    }
-    this.listener = new AudioListener();
-    camera.add(this.listener);
-  }
+    private readonly camera: Object3D,
+  ) {}
 
   playAt(
     soundId: string,
@@ -156,7 +146,12 @@ export class PositionalSoundManager {
       return;
     }
 
-    const audio = new PositionalAudio(this.listener);
+    const listener = this.ensureListener();
+    if (!listener) {
+      return;
+    }
+
+    const audio = new PositionalAudio(listener);
     audio.setBuffer(buffer);
     audio.setLoop(options.loop ?? false);
     audio.setRefDistance(options.refDistance ?? 1.2);
@@ -168,6 +163,24 @@ export class PositionalSoundManager {
       return;
     }
     audio.play();
+  }
+
+  private ensureListener(): AudioListener | null {
+    if (this.listener) {
+      return this.listener;
+    }
+
+    // `AudioListener` pide el singleton de Three en su constructor. Crearlo
+    // durante el bootstrap construiría un segundo AudioContext fuera de un
+    // gesto; por eso se instancia recién cuando AudioSystem ya fue desbloqueado.
+    const context = this.audioSystem.getContext();
+    if (!context) {
+      return null;
+    }
+    ThreeAudioContext.setContext(context);
+    this.listener = new AudioListener();
+    this.camera.add(this.listener);
+    return this.listener;
   }
 
   /**

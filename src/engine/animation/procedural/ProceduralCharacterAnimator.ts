@@ -3,7 +3,7 @@ import type { CharacterAnimationConfig } from "@engine/characters/CharacterDefin
 import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Damageable } from "@shared/types/lifecycle";
 import { AnimationDebug } from "@engine/animation/AnimationDebug";
-import type { AnimationInput } from "@engine/animation/AnimationInput";
+import type { AnimationInput, GestureId } from "@engine/animation/AnimationInput";
 import { BoneMapper } from "@engine/animation/pose/BoneMapper";
 import { HumanoidRestPose } from "@engine/animation/pose/HumanoidRestPose";
 import { AimLayer } from "@engine/animation/layers/AimLayer";
@@ -11,6 +11,7 @@ import type { AnimationLayer, AnimationLayerContext } from "@engine/animation/la
 import { AttackLayer } from "@engine/animation/layers/AttackLayer";
 import { HitLayer } from "@engine/animation/layers/HitLayer";
 import { IdleLayer } from "@engine/animation/layers/IdleLayer";
+import { GestureLayer } from "@engine/animation/layers/GestureLayer";
 import { LocomotionLayer } from "@engine/animation/layers/LocomotionLayer";
 import { LookAtLayer } from "@engine/animation/layers/LookAtLayer";
 import { PostureLayer } from "@engine/animation/layers/PostureLayer";
@@ -74,6 +75,7 @@ export class ProceduralCharacterAnimator {
   private readonly idle = new IdleLayer();
   private readonly aim: AimLayer;
   private readonly reload = new ReloadLayer();
+  private readonly gesture = new GestureLayer();
   private readonly attack = new AttackLayer();
   private readonly hit = new HitLayer();
   private readonly lookAt: LookAtLayer;
@@ -97,6 +99,7 @@ export class ProceduralCharacterAnimator {
       this.posture,
       this.aim,
       this.reload,
+      this.gesture,
       this.attack,
       this.hit,
       this.lookAt,
@@ -164,6 +167,10 @@ export class ProceduralCharacterAnimator {
 
   triggerReload(duration: number): void {
     this.reload.trigger(duration);
+  }
+
+  triggerGesture(id: GestureId, duration: number): void {
+    this.gesture.trigger(id, duration);
   }
 
   die(hitDirection?: Vector3, hitPartName?: string): void {

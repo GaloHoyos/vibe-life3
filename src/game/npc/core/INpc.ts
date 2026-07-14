@@ -5,6 +5,9 @@ import type { Health } from "@game/gameplay/Health";
 import type { GameEventBus } from "@game/GameEvents";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
 import type { SquadDirector, SquadRole } from "@game/npc/ai/SquadDirector";
+import type { NpcScriptOrder } from "@game/script/NpcScriptOrder";
+import type { CharacterId } from "@engine/characters/CharacterDefinition";
+import type { PortalFrame } from "@engine/portals/PortalFrame";
 
 /**
  * Snapshot ligero de un actor del mundo (player u otro NPC) que cualquier
@@ -18,6 +21,8 @@ export interface ActorSnapshot {
   entity: Damageable;
   isAlive: boolean;
   radius: number;
+  /** Fraccion de vida 0..1 (para medics/priorizacion). Game la llena por frame. */
+  health01?: number;
   /**
    * Posición real NAVEGABLE del actor cuando `position` es una proyección
    * (ghost de portal: `position` queda detrás del disco, correcta para
@@ -43,16 +48,37 @@ export interface AiFrameContext {
   delta: number;
   elapsed: number;
   aiLod: "near" | "mid" | "far";
+  /** Distancia del observador principal; útil para LOD visual propio del actor. */
+  viewerDistance?: number;
   player: ActorSnapshot;
   npcs: ActorSnapshot[];
   /**
-   * Proyecciones del player a través de portales linked (hasta 2). Comparten
-   * `id`/`entity` con `player` — el raycast portal-aware resuelve el LOS real,
-   * y el daño aplica al player de verdad.
+   * Proyecciones de actores a través de portales linked. Comparten `id`/`entity`
+   * con el actor real; sólo estas posiciones se validan con LOS portal-aware.
    */
   portalGhosts?: ActorSnapshot[];
   tacticalMap: TacticalMap;
   squadDirector: SquadDirector;
+  /**
+   * Squad del jugador (rebeldes): membresia, orden ir-a-punto vigente y
+   * offset de formacion. Los miembros anclan a la orden en vez del player.
+   */
+  playerSquad?: {
+    orderPosition: Vector3 | null;
+    isMember(id: string): boolean;
+    formationOffsetFor(id: string): Vector3 | null;
+  };
+  /**
+   * Control guionado (scripted_sequence + compañera): `orderFor` da la orden de
+   * secuencia activa para un NPC; `anchorOverrideFor` pisa el ancla de una
+   * compañera (wait/escort). Ausente si el nivel no tiene scripting activo.
+   */
+  script?: {
+    orderFor(npcId: string): NpcScriptOrder | null;
+    anchorOverrideFor(npcId: string): Vector3 | null;
+    /** Radio preciso para destinos guionados; null conserva el follow normal. */
+    anchorArrivalRadiusFor(npcId: string): number | null;
+  };
   eventBus: GameEventBus;
 }
 
@@ -119,6 +145,7 @@ export interface NpcAiDebugSnapshot {
     speed: number;
     desiredSpeed: number;
     grounded: boolean;
+    crouched?: boolean;
     distanceToTarget: number;
     yaw: number;
     targetYaw: number;
@@ -183,13 +210,24 @@ export interface NpcPortalHandle {
   getPosition(): Vector3;
   getVelocity(): Vector3;
   teleport(position: Vector3, velocity: Vector3, yaw: number): void;
+  /**
+   * Atomic full-frame traversal for composite organisms. The generic
+   * position/velocity/yaw fallback cannot rotate an internal 3D hierarchy.
+   * Returning false asks the portal system to use the generic fallback.
+   */
+  teleportThroughPortal?(
+    entry: PortalFrame,
+    exit: PortalFrame,
+    position: Vector3,
+    velocity: Vector3,
+    yaw: number,
+  ): boolean;
   setColliderExclusions(handles: ReadonlySet<number> | null): void;
 }
 
 /**
  * Handle mínimo para que la ice gun convierta a un NPC en estatua de hielo.
- * Congelarse es letal: `freezeSolid()` mata sin ragdoll y la estatua física
- * (cuerpo rígido único) pasa a ser dueña del visual.
+ * `freezeSolid()` mata al NPC sin ragdoll y cede el visual a la estatua física.
  */
 export interface NpcFreezeHandle {
   id: string;
@@ -204,16 +242,23 @@ export interface NpcFreezeHandle {
    * estatua física de la ice gun. Null si ya estaba muerto.
    */
   freezeSolid(): Group | null;
+  /** Cierra el runtime del NPC cuando la estatua de hielo se rompe. */
+  shatter?(): void;
 }
 
 /** Interfaz uniforme que consume `Game`/`LevelLoader`. La implementa `Npc`. */
 export interface INpc {
   readonly id: string;
+  readonly characterId?: CharacterId;
   readonly mesh: Group;
   readonly health: Health;
   readonly faction: Faction;
   readonly position: Vector3;
   readonly radius: number;
+  /** Elegible para el squad del jugador (preset con `playerSquad`). */
+  readonly playerSquadEligible: boolean;
+  /** Nombre visible si es compañera (preset con `companion`), o null. */
+  readonly companionName: string | null;
 
   update(ctx: AiFrameContext): void;
   syncFromPhysics(): void;

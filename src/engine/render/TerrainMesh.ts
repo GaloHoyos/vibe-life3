@@ -2,7 +2,12 @@
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import { tupleToVector3 } from '@shared/math/VectorTuple';
 import type { HeightField } from '@shared/math/HeightField';
-import { getMaterial, materialNeedsUv1, type MaterialKey } from '@engine/render/material/Materials';
+import {
+  getMaterial,
+  materialNeedsUv1,
+  materialUvPreScale,
+  type MaterialKey,
+} from '@engine/render/material/Materials';
 
 export interface TerrainMeshOptions {
   id: string;
@@ -31,6 +36,7 @@ export function createTerrainMesh(field: HeightField, options: TerrainMeshOption
   const positions = new Float32Array(vertexCount * 3);
   const uvs = new Float32Array(vertexCount * 2);
   const indices = new Uint32Array((widthSamples - 1) * (depthSamples - 1) * 6);
+  const uvPreScale = materialUvPreScale(options.material);
 
   for (let xi = 0; xi < widthSamples; xi++) {
     for (let zi = 0; zi < depthSamples; zi++) {
@@ -40,8 +46,8 @@ export function createTerrainMesh(field: HeightField, options: TerrainMeshOption
       positions[i * 3 + 0] = (u - 0.5) * sizeX;
       positions[i * 3 + 1] = heights[i];
       positions[i * 3 + 2] = (v - 0.5) * sizeZ;
-      uvs[i * 2 + 0] = u;
-      uvs[i * 2 + 1] = v;
+      uvs[i * 2 + 0] = uvPreScale === null ? u : u * sizeX * uvPreScale;
+      uvs[i * 2 + 1] = uvPreScale === null ? v : v * sizeZ * uvPreScale;
     }
   }
 

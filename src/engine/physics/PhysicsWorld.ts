@@ -31,6 +31,22 @@ export interface PhysicsMetadata {
    * el traveller de props debe ignorarlo o lo teleportaría dos veces.
    */
   selfPortalTraversal?: boolean;
+  /**
+   * Daño fijo al impactar un NPC, en vez de la fórmula por masa/velocidad.
+   * Source usa este caso para las granadas frag: apenas 0.1 de DMG_CRUSH para
+   * que el personaje reaccione al golpe sin que la granada sea un prop letal.
+   */
+  impactDamageOverride?: number;
+  /**
+   * Colliders que representan un mismo organismo se deduplican con esta clave
+   * durante daño radial. Esto permite mantener hitboxes de detalle para balas
+   * sin que una explosión aplique daño una vez por collider.
+   */
+  explosionGroupId?: string;
+  /** Damageable canónico del grupo explosivo (por ejemplo, el núcleo de un jefe). */
+  explosionDamageable?: Damageable;
+  /** Tamaño del blocker temporal para el Tile Cache de navegación. */
+  navigationObstacleSize?: [number, number, number];
   bodyPart?: {
     name: string;
     damageMultiplier: number;
@@ -166,6 +182,46 @@ export class PhysicsWorld {
     return rigidBody;
   }
 
+  /**
+   * Crea varias cajas estáticas como colliders locales de un único rigid
+   * body fijo en el origen. Para geometría de nivel esto evita pagar un body
+   * de Rapier por cada detalle sin perder la identidad de cada superficie:
+   * cada collider conserva su propia metadata, traslación y rotación.
+   *
+   * Las poses de `PhysicsBoxOptions` siguen expresadas en world space. Como el
+   * body contenedor queda en el origen y con rotación identidad, se aplican
+   * directamente como transformaciones locales de cada collider.
+   *
+   * Un lote vacío no muta el mundo y devuelve `null`.
+   */
+  createStaticBoxes(options: readonly PhysicsBoxOptions[]): RAPIER.RigidBody | null {
+    if (options.length === 0) return null;
+
+    const rigidBody = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    for (const box of options) {
+      let colliderDesc = createBoxCollider(box.size).setTranslation(
+        box.position.x,
+        box.position.y,
+        box.position.z,
+      );
+      if (box.rotation) {
+        colliderDesc = colliderDesc.setRotation({
+          x: box.rotation.x,
+          y: box.rotation.y,
+          z: box.rotation.z,
+          w: box.rotation.w,
+        });
+      }
+      const collider = this.world.createCollider(colliderDesc, rigidBody);
+      this.registerCollider(collider, {
+        id: box.id,
+        kind: 'static',
+        ...box.metadata,
+      });
+    }
+    return rigidBody;
+  }
+
   createDynamicBox(options: PhysicsBoxOptions, mesh: Object3D): RAPIER.RigidBody {
     const rigidBody = this.world.createRigidBody(
       applyRotation(
@@ -180,6 +236,7 @@ export class PhysicsWorld {
     this.registerCollider(collider, {
       id: options.id,
       kind: 'dynamic',
+      navigationObstacleSize: [options.size.x, options.size.y, options.size.z],
       ...options.metadata,
     });
     return rigidBody;

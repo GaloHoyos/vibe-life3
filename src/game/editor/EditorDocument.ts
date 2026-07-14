@@ -15,6 +15,9 @@ import type {
 } from '@game/levels/LevelDefinition';
 import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
 import type { ExplosiveBarrelDefinition } from '@game/gameplay/hazards/ExplosiveBarrel';
+import type { VectorTuple } from '@shared/math/VectorTuple';
+import type { LogicEntityDefinition } from '@game/script/EntityIOTypes';
+import type { ScriptedSequenceDefinition } from '@game/script/ScriptedSequenceTypes';
 import type { BuildingSpec } from '@game/levels/builders/BuildingBuilder';
 import type { HouseSpec } from '@game/levels/builders/HouseBuilder';
 import type { RampSpec } from '@game/levels/builders/RampBuilder';
@@ -71,6 +74,13 @@ export type EditorEntity = EditorEntityBase &
     | { kind: 'trigger'; def: TriggerDefinition }
     | { kind: 'explosiveBarrel'; def: ExplosiveBarrelDefinition }
     | { kind: 'hazardVolume'; def: HazardVolumeDefinition }
+    /**
+     * Entidad lógica del entity I/O. `position` es placement del editor (para el
+     * outliner/escena); para `marker` se sincroniza con `def.position`, para el
+     * resto es solo visual y no viaja al `LevelDefinition`.
+     */
+    | { kind: 'logic'; def: LogicEntityDefinition; position: VectorTuple }
+    | { kind: 'sequence'; def: ScriptedSequenceDefinition }
     | { kind: 'building'; spec: BuildingSpec }
     | { kind: 'house'; spec: HouseSpec }
     | { kind: 'ramp'; spec: RampSpec }
@@ -135,6 +145,21 @@ export function entityLevelId(entity: EditorEntity): string {
   }
 }
 
+/** Nombre I/O (targetname) de la entidad, o null si no es direccionable. */
+export function entityIoName(entity: EditorEntity): string | null {
+  switch (entity.kind) {
+    case 'trigger':
+    case 'door':
+    case 'npc':
+      return entity.def.name ?? entity.def.id;
+    case 'logic':
+    case 'sequence':
+      return entity.def.name ?? entity.def.id;
+    default:
+      return null;
+  }
+}
+
 const KIND_LABELS: Record<EditorEntityKind, string> = {
   staticBox: 'Caja estatica',
   dynamicBox: 'Caja dinamica',
@@ -153,6 +178,8 @@ const KIND_LABELS: Record<EditorEntityKind, string> = {
   ramp: 'Rampa',
   prop: 'Prop',
   prebuiltBuilding: 'Edificio (importado)',
+  logic: 'Entidad logica',
+  sequence: 'Secuencia',
 };
 
 export function entityKindLabel(kind: EditorEntityKind): string {

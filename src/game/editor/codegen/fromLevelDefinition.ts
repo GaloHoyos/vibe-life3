@@ -1,6 +1,13 @@
 import type { LevelDefinition } from '@game/levels/LevelDefinition';
 import type { MapMeta } from '@game/levels/builders/MapCreator';
+import type { VectorTuple } from '@shared/math/VectorTuple';
+import type { LogicEntityDefinition } from '@game/script/EntityIOTypes';
 import { newEid, type EditorDocument, type EditorEntity } from '../EditorDocument';
+
+/** Placement de escena de una entidad lógica: su punto si es marker, si no el origen. */
+function logicPosition(def: LogicEntityDefinition): VectorTuple {
+  return def.kind === 'marker' ? [...def.position] : [0, 1, 0];
+}
 
 /**
  * Convierte un `LevelDefinition` (ya construido) en un `EditorDocument`. Las
@@ -41,6 +48,8 @@ export function fromLevelDefinition(level: LevelDefinition): EditorDocument {
   for (const def of level.triggers) entities.push({ eid: newEid('trigger'), kind: 'trigger', def: clone(def) });
   for (const def of level.explosiveBarrels ?? []) entities.push({ eid: newEid('explosiveBarrel'), kind: 'explosiveBarrel', def: clone(def) });
   for (const def of level.hazardVolumes ?? []) entities.push({ eid: newEid('hazardVolume'), kind: 'hazardVolume', def: clone(def) });
+  for (const def of level.logicEntities ?? []) entities.push({ eid: newEid('logic'), kind: 'logic', def: clone(def), position: logicPosition(def) });
+  for (const def of level.sequences ?? []) entities.push({ eid: newEid('sequence'), kind: 'sequence', def: clone(def) });
 
   return {
     meta,

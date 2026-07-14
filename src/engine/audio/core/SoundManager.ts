@@ -148,7 +148,7 @@ export class SoundManager {
       return;
     }
 
-    const context = this.audio.getContext();
+    const context = await this.audio.getContextWhenReady();
     if (!context) {
       return;
     }
@@ -167,7 +167,7 @@ export class SoundManager {
       this.enforceVoiceCap(busName);
     }
 
-    const buffer = await this.loadBuffer(soundId);
+    const buffer = await this.loadBuffer(soundId, context);
     if (!buffer) {
       return;
     }
@@ -274,7 +274,10 @@ export class SoundManager {
     }
   }
 
-  private async loadBuffer(soundId: string): Promise<AudioBuffer | null> {
+  private async loadBuffer(
+    soundId: string,
+    readyContext?: AudioContext,
+  ): Promise<AudioBuffer | null> {
     if (this.buffers.has(soundId)) {
       return this.buffers.get(soundId) ?? null;
     }
@@ -284,7 +287,7 @@ export class SoundManager {
       return null;
     }
 
-    const context = this.audio.getContext();
+    const context = readyContext ?? (await this.audio.getContextWhenReady());
     if (!context) {
       return null;
     }

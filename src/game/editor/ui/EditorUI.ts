@@ -4,7 +4,8 @@ import type { EditorUiBridge, LevelEditor } from '../LevelEditor';
 import type { TransformMode } from '../EditorSelection';
 import { PLAYER_START_EID } from '../EditorScene';
 import { blankDocument, type PropKind } from '../EditorDocument';
-import { createEntity, createProp, type PaletteKind } from '../editorFactory';
+import { createEntity, createLogicEntity, createProp, type PaletteKind } from '../editorFactory';
+import type { LogicEntityKind } from '@game/script/EntityIOTypes';
 import { toLevelDefinition } from '../codegen/toLevelDefinition';
 import { toTypeScript } from '../codegen/toTypeScript';
 import { fromLevelDefinition } from '../codegen/fromLevelDefinition';
@@ -39,6 +40,7 @@ export class EditorUI implements EditorUiBridge, Disposable {
     this.palette = new PaletteView({
       onAdd: (kind) => this.addEntity(kind),
       onAddProp: (prop) => this.addProp(prop),
+      onAddLogic: (logic) => this.addLogic(logic),
     });
     this.outliner = new OutlinerView({
       onSelect: (eid) => this.editor.select(eid),
@@ -72,6 +74,7 @@ export class EditorUI implements EditorUiBridge, Disposable {
       onFocus: () => this.editor.focusSelection(),
       onAdd: (kind) => this.addEntity(kind),
       onAddProp: (prop) => this.addProp(prop),
+      onAddLogic: (logic) => this.addLogic(logic),
       onToggleGrid: (visible) => this.editor.setGridVisible(visible),
       onToggleAxes: (visible) => this.editor.setAxesVisible(visible),
       onSnapChange: (step) => this.editor.setSnap(step),
@@ -152,6 +155,10 @@ export class EditorUI implements EditorUiBridge, Disposable {
 
   private addProp(prop: PropKind): void {
     this.editor.addEntity(createProp(prop, this.editor.getPlacement().point));
+  }
+
+  private addLogic(logic: LogicEntityKind): void {
+    this.editor.addEntity(createLogicEntity(logic, this.editor.getPlacement().point));
   }
 
   /** Cambia el modo de transformacion (gizmo) y lo refleja en el toggle de la barra. */

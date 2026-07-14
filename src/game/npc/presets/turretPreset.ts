@@ -65,6 +65,8 @@ export function buildTurretPreset(): NpcPreset {
 
   return {
     id: "floorTurret",
+    usesCover: false,
+    usesSquad: false,
     perception: {
       visionRange: 28,
       visionConeRadians: (75 * Math.PI) / 180,

@@ -547,83 +547,63 @@ map
   .chargerInRoom('sfw-factory', 1, [9, 7], { id: 'sfw-charger-hev-fac', kind: 'armor' });
 
 // ── Narrativa por radio ──────────────────────────────────────────────────────
+// Cada trigger de zona dispara una línea de radio vía entity I/O.
 map
+  .logic({ kind: 'message', id: 'msg-sfw-intro', name: 'msg-sfw-intro', speaker: 'Radio', text: 'Punto de inserción Boreal activo. Equipate en la consola: Alyx te cubre hasta el checkpoint.', duration: 5 })
+  .logic({ kind: 'message', id: 'msg-sfw-checkpoint', name: 'msg-sfw-checkpoint', speaker: 'Radio', text: 'Checkpoint combine adelante. La torre de vigilancia tiene línea de tiro sobre el camino.', duration: 4 })
+  .logic({ kind: 'message', id: 'msg-sfw-hamlet', name: 'msg-sfw-hamlet', speaker: 'Radio', text: 'El caserío oeste está infestado. Las patrullas combine también lo saben — dejá que se desgasten entre ellos.', duration: 5 })
+  .logic({ kind: 'message', id: 'msg-sfw-factory', name: 'msg-sfw-factory', speaker: 'Radio', text: 'La fábrica es el corazón del complejo. Hay infectados sueltos en la nave y oficinas ocupadas arriba.', duration: 5 })
+  .logic({ kind: 'message', id: 'msg-sfw-admin', name: 'msg-sfw-admin', speaker: 'Radio', text: 'Bloque administrativo: cuatro pisos de resistencia. Arriba guardan equipamiento pesado.', duration: 4 })
+  .logic({ kind: 'message', id: 'msg-sfw-village', name: 'msg-sfw-village', speaker: 'Radio', text: 'Caserío norte en silencio. Demasiado silencio: revisá casa por casa.', duration: 4 })
+  .logic({ kind: 'message', id: 'msg-sfw-comms', name: 'msg-sfw-comms', speaker: 'Radio', text: 'La antena es el objetivo final. Tomá la torre piso por piso y el valle es nuestro.', duration: 5 })
   .trigger({
     id: 'sfw-intro',
     position: [0, BASE_H + 2, 89],
     size: [13, 4, 8],
     once: true,
-    dialogue: {
-      speaker: 'Radio',
-      text: 'Punto de inserción Boreal activo. Equipate en la consola: Alyx te cubre hasta el checkpoint.',
-      duration: 5,
-    },
+    connections: [{ output: 'OnStartTouch', target: 'msg-sfw-intro', input: 'Show' }],
   })
   .trigger({
     id: 'sfw-checkpoint-entry',
     position: [0, CHECK_H + 2, 54],
     size: [20, 4, 6],
     once: true,
-    dialogue: {
-      speaker: 'Radio',
-      text: 'Checkpoint combine adelante. La torre de vigilancia tiene línea de tiro sobre el camino.',
-      duration: 4,
-    },
+    connections: [{ output: 'OnStartTouch', target: 'msg-sfw-checkpoint', input: 'Show' }],
   })
   .trigger({
     id: 'sfw-hamlet-entry',
     position: [-100, 2, 52],
     size: [14, 4, 12],
     once: true,
-    dialogue: {
-      speaker: 'Radio',
-      text: 'El caserío oeste está infestado. Las patrullas combine también lo saben — dejá que se desgasten entre ellos.',
-      duration: 5,
-    },
+    connections: [{ output: 'OnStartTouch', target: 'msg-sfw-hamlet', input: 'Show' }],
   })
   .trigger({
     id: 'sfw-factory-entry',
     position: [0, FACTORY_H + 2.4, -15],
     size: [18, 5, 6],
     once: true,
-    dialogue: {
-      speaker: 'Radio',
-      text: 'La fábrica es el corazón del complejo. Hay infectados sueltos en la nave y oficinas ocupadas arriba.',
-      duration: 5,
-    },
+    connections: [{ output: 'OnStartTouch', target: 'msg-sfw-factory', input: 'Show' }],
   })
   .trigger({
     id: 'sfw-admin-entry',
     position: [118, ADMIN_H + 2.4, -76],
     size: [28, 5, 8],
     once: true,
-    dialogue: {
-      speaker: 'Radio',
-      text: 'Bloque administrativo: cuatro pisos de resistencia. Arriba guardan equipamiento pesado.',
-      duration: 4,
-    },
+    connections: [{ output: 'OnStartTouch', target: 'msg-sfw-admin', input: 'Show' }],
   })
   .trigger({
     id: 'sfw-village-entry',
     position: [0, NORTH_H + 2, -132],
     size: [44, 4, 14],
     once: true,
-    dialogue: {
-      speaker: 'Radio',
-      text: 'Caserío norte en silencio. Demasiado silencio: revisá casa por casa.',
-      duration: 4,
-    },
+    connections: [{ output: 'OnStartTouch', target: 'msg-sfw-village', input: 'Show' }],
   })
   .trigger({
     id: 'sfw-comms-entry',
     position: [150, COMMS_H + 2, 84],
     size: [24, 4, 8],
     once: true,
-    dialogue: {
-      speaker: 'Radio',
-      text: 'La antena es el objetivo final. Tomá la torre piso por piso y el valle es nuestro.',
-      duration: 5,
-    },
+    connections: [{ output: 'OnStartTouch', target: 'msg-sfw-comms', input: 'Show' }],
   });
 
 export const SnowFactoryLevel: LevelDefinition = map.build();

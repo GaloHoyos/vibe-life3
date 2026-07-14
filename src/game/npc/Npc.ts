@@ -1,15 +1,16 @@
 import { Group, Quaternion, Vector3 } from 'three';
 import type { Faction } from '@engine/ai/Faction';
-import { isHostileTo } from '@engine/ai/Faction';
+import { isAlliedWith, isHostileTo } from '@engine/ai/Faction';
 import { Brain } from '@engine/ai/brain/Brain';
-import type { NavSpace } from '@engine/ai/nav/NavSpace';
-import type { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
 import { PerceptionSystem, isTargetVisible } from '@engine/ai/perception/PerceptionSystem';
 import type { PerceptionSnapshot } from '@engine/ai/perception/PerceptionSystem';
 import type { Raycast, RaycastSource } from '@engine/physics/Raycast';
 import type { NpcMotor } from '@engine/physics/character/NpcMotor';
-import { NpcLocomotion } from '@engine/ai/locomotion/NpcLocomotion';
-import type { LocomotionNeighbor, NpcLocomotionDebug } from '@engine/ai/locomotion/NpcLocomotion';
+import { NavigationLocomotion } from '@engine/ai/locomotion/NavigationLocomotion';
+import type { LocomotionNeighbor, NpcLocomotionDebug } from '@engine/ai/locomotion/NavigationLocomotion';
+import type { NavigationService } from '@engine/ai/navigation/NavigationService';
+import type { NavigationRequestQueue } from '@engine/ai/navigation/NavigationRequestQueue';
+import type { NavAgentProfile } from '@engine/ai/navigation/NavigationTypes';
 import type { GameEventBus } from '@game/GameEvents';
 import { Health } from '@game/gameplay/Health';
 import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
@@ -26,21 +27,31 @@ import type {
   NpcBrainContext,
   NpcCombatHandle,
   NpcLocomotionHandle,
+  NpcNavigationQueries,
   NpcSelfSnapshot,
+  NpcSlotHandle,
 } from '@game/npc/brain/NpcBrainContext';
 import { computeNpcConditions } from '@game/npc/brain/NpcSensors';
 import { Cond } from '@game/npc/brain/NpcConditions';
+import type { ConditionMask } from '@engine/ai/brain/Condition';
+import { NO_CONDITIONS, add, has } from '@engine/ai/brain/Condition';
 import { NpcDebugFlags } from '@game/npc/core/NpcDebugFlags';
 import { NpcNoiseSensor } from '@game/npc/brain/NpcNoiseSensor';
 import { NpcCoverSensor } from '@game/npc/brain/NpcCoverSensor';
 import type { TacticalMap } from '@game/npc/ai/TacticalMap';
 import type { SquadDirector, SquadRole } from '@game/npc/ai/SquadDirector';
+import type { SquadSlotBoard } from '@game/npc/ai/SquadSlotBoard';
 import type { NpcPreset } from '@game/npc/presets/NpcPreset';
 import type { DamageType } from '@shared/types/lifecycle';
 import type { DifficultyProvider } from '@game/config/difficulty.config';
+import type { NpcCalloutKind } from '@game/config/audio.config';
+import { navigationProfileForPreset } from '@game/npc/navigation/NavAgentProfiles';
+import type { CharacterId } from '@engine/characters/CharacterDefinition';
+import type { PortalFrame } from '@engine/portals/PortalFrame';
 
 export interface NpcConstructionParams {
   id: string;
+  characterId?: CharacterId;
   faction: Faction;
   position: Vector3;
   visualRoot: Group;
@@ -51,9 +62,9 @@ export interface NpcConstructionParams {
   preset: NpcPreset;
   /** Daño por cuchillazo de contacto (manhack); ×2 contra el player. Default 0 = no corta. */
   sliceDamage?: number;
-  navSpace: NavSpace;
+  navigation: NavigationService;
   buildingRegistry: BuildingRegistry;
-  pathQueue: PathRequestQueue;
+  navigationRequests: NavigationRequestQueue;
   raycast: Raycast;
   /** LOS/threat scoring. Portal-aware si hay portales; default `raycast`. */
   losRaycast?: RaycastSource;
@@ -74,6 +85,14 @@ interface PortalCapableMotor {
   teleport(position: Vector3, velocity: Vector3): void;
   snapYaw(yaw: number): void;
   setPortalExclusions(handles: ReadonlySet<number> | null): void;
+  /** Conserva la rotación 3D de los componentes internos al cruzar. */
+  teleportThroughPortal?(
+    entry: PortalFrame,
+    exit: PortalFrame,
+    position: Vector3,
+    velocity: Vector3,
+    yaw: number,
+  ): boolean;
 }
 
 /** Radio (m) dentro del cual un aliado vivo cuenta para `AlliesNear`. */
@@ -88,6 +107,12 @@ const THREAT_SWITCH_FACTOR = 0.7;
 const THREAT_UNSEEN_PENALTY = 2.5;
 /** Segundos en que quien me daño tiene prioridad de target. */
 const DAMAGE_AGGRO_DURATION = 5.0;
+/** Memoria fresca (s) durante la cual se retiene el slot de ataque sin LOS. */
+const ATTACK_SLOT_MEMORY_GRACE = 1.0;
+/** Histeresis (s) sin querer disparar antes de soltar el slot de ataque. */
+const ATTACK_SLOT_RELEASE_DELAY = 1.0;
+/** Minimo (s) entre voces tacticas de un mismo NPC (no pisarse hablando). */
+const CALLOUT_THROTTLE = 4.0;
 
 /**
  * Runtime unico de NPC: orquesta perception → conditions → brain → locomotion.
@@ -97,14 +122,19 @@ const DAMAGE_AGGRO_DURATION = 5.0;
  */
 export class Npc implements INpc {
   readonly id: string;
+  readonly characterId: CharacterId;
   readonly mesh: Group;
   readonly health: Health;
   readonly faction: Faction;
   readonly position: Vector3;
   readonly radius: number;
+  readonly playerSquadEligible: boolean;
+  readonly companionName: string | null;
 
   private readonly motor: NpcMotor;
-  private readonly locomotion: NpcLocomotion;
+  /** Teleport para secuencias guionadas; undefined si el motor no lo soporta. */
+  private readonly scriptTeleport: ((position: Vector3, yaw: number) => void) | undefined;
+  private readonly locomotion: NavigationLocomotion;
   private readonly perception: PerceptionSystem;
   private readonly brain: Brain<NpcBrainContext>;
   private readonly combatHandle: NpcCombatHandle;
@@ -114,25 +144,37 @@ export class Npc implements INpc {
   private readonly raycast: Raycast;
   private readonly losRaycast: RaycastSource;
   private readonly buildingRegistry: BuildingRegistry;
-  private readonly navSpace: NavSpace;
+  private readonly navigationQueries: NpcNavigationQueries;
+  private readonly navigationProfile: NavAgentProfile;
   private readonly eventBus: GameEventBus;
   private readonly animation: NpcAnimator | null;
   private readonly animationLookTarget = new Vector3();
+  private lastViewerDistance = 0;
   private readonly tmpSliceDir = new Vector3();
 
   private readonly noiseSensor: NpcNoiseSensor;
   private readonly coverSensor: NpcCoverSensor | null;
   private readonly squadDirector: SquadDirector | null;
+  private readonly slotBoard: SquadSlotBoard | null;
+  private readonly slotHandle: NpcSlotHandle | null;
+  private attackSlotUnwantedFor = 0;
+  private grenadeReadyAt = 0;
+  private healReadyAt = 0;
+  private flinchCooldownTimer = 0;
+  private lastScheduleId: string | null = null;
+  private lastCalloutAt = -Infinity;
+  private wasSuspecting = false;
   private readonly patrolRoute: Vector3[] | null;
   private readonly neighborBuffer: LocomotionNeighbor[] = [];
   private readonly height: number;
   private justHitTimer = 0;
   private disposed = false;
-  /** Muerto congelado: sin ragdoll; el visual lo mueve la estatua del ice gun. */
+  /** Congelado sólido por el ice gun: el visual lo mueve la estatua física. */
   private frozenSolid = false;
   private freezeHandle: NpcFreezeHandle | null = null;
-  private lastConditions = 0;
+  private lastConditions: ConditionMask = NO_CONDITIONS;
   private threatLastKnown: Vector3 | null = null;
+  private gaitMultiplier = 1;
   private currentThreat: ActorSnapshot | null = null;
   private readonly threatCandidates: ActorSnapshot[] = [];
   private threatEvalIn = 0;
@@ -144,10 +186,13 @@ export class Npc implements INpc {
 
   constructor(params: NpcConstructionParams) {
     this.id = params.id;
+    this.characterId = params.characterId ?? params.preset.id;
     this.faction = params.faction;
     this.mesh = params.visualRoot;
     this.position = params.position;
     this.radius = params.preset.radius;
+    this.playerSquadEligible = params.preset.playerSquad === true;
+    this.companionName = params.preset.companion?.displayName ?? null;
     this.height = params.height;
     this.difficulty = params.difficulty;
     // La vida enemiga se hornea con el mult de dificultad al spawnear (no cambia
@@ -156,24 +201,28 @@ export class Npc implements INpc {
     const healthMult = this.difficulty?.getModifiers().enemyHealthMult ?? 1;
     this.health = new Health(Math.max(1, Math.round(params.preset.maxHealth * healthMult)));
     this.motor = params.motor;
+    this.scriptTeleport = buildScriptTeleport(this.motor);
     this.preset = params.preset;
+    this.navigationProfile = navigationProfileForPreset(this.preset);
     this.sliceDamage = params.sliceDamage ?? 0;
     this.raycast = params.raycast;
     this.losRaycast = params.losRaycast ?? params.raycast;
     this.buildingRegistry = params.buildingRegistry;
-    this.navSpace = params.navSpace;
+    this.navigationQueries = params.navigation;
     this.eventBus = params.eventBus;
     this.combatHandle = params.combat;
     this.animation = params.animation ?? null;
-    this.locomotion = new NpcLocomotion(this.motor, this.navSpace, params.pathQueue, this.id, {
-      bodyRadius: this.preset.radius,
-      raycast: this.raycast,
-      flying: this.preset.movement.flying,
-      hoverHeight: this.preset.movement.hoverHeight,
-      directGround: this.preset.movement.directGround,
-      // Los flyers (manhack) se choquen y reboten en vez de mantener distancia.
-      separation: !this.preset.movement.flying && !this.preset.movement.directGround,
-    });
+    this.locomotion = new NavigationLocomotion(
+      this.motor,
+      params.navigation,
+      params.navigationRequests,
+      this.id,
+      this.navigationProfile,
+      {
+        hoverHeight: this.preset.movement.hoverHeight,
+        separation: !this.preset.movement.flying && !this.preset.movement.directGround,
+      },
+    );
     this.perception = new PerceptionSystem(this.preset.perception, this.id);
     this.brain = new Brain<NpcBrainContext>(this.preset.schedules);
     this.patrolRoute =
@@ -184,17 +233,40 @@ export class Npc implements INpc {
       hearingRadius: this.preset.perception.hearingRadius,
       getPosition: () => this.motor.getPosition(),
     });
-    this.coverSensor = params.tacticalMap ? new NpcCoverSensor(this.id, params.tacticalMap) : null;
+    this.coverSensor =
+      params.tacticalMap && this.preset.usesCover !== false
+        ? new NpcCoverSensor(this.id, params.tacticalMap)
+        : null;
     this.squadDirector = params.squadDirector ?? null;
+    const board =
+      this.preset.usesSquad === false ? null : (this.squadDirector?.slots ?? null);
+    this.slotBoard = board;
+    this.slotHandle = board
+      ? {
+          claimOverwatch: () => board.tryClaim('overwatch', this.id, this.faction),
+          releaseOverwatch: () => board.release('overwatch', this.id, this.faction),
+          claimGrenade: () => board.tryClaim('grenade', this.id, this.faction),
+          releaseGrenade: (lockoutSeconds = 0) =>
+            board.release('grenade', this.id, this.faction, lockoutSeconds),
+          throwGrenade: (elapsed) => this.throwGrenade(elapsed),
+        }
+      : null;
   }
 
   update(ctx: AiFrameContext): void {
     if (this.disposed) return;
     const delta = ctx.delta;
+    this.lastViewerDistance = ctx.viewerDistance ?? (ctx.aiLod === 'near' ? 0 : ctx.aiLod === 'mid' ? 30 : 65);
     if (this.justHitTimer > 0) this.justHitTimer = Math.max(0, this.justHitTimer - delta);
     if (this.aggroTimer > 0) this.aggroTimer = Math.max(0, this.aggroTimer - delta);
+    if (this.flinchCooldownTimer > 0) {
+      this.flinchCooldownTimer = Math.max(0, this.flinchCooldownTimer - delta);
+    }
 
     if (!this.health.isAlive()) {
+      // La IA no vuelve a tickear schedules después de morir, por lo que la
+      // secuencia debe cerrarse antes del early-return (incluye override AI).
+      ctx.script?.orderFor(this.id)?.notifyDone('canceled');
       if (this.frozenSolid) {
         // La estatua física del ice gun es dueña del visual: no tocarlo.
         return;
@@ -205,6 +277,9 @@ export class Npc implements INpc {
       this.animation?.updateStandalone(delta, { dead: true });
       return;
     }
+    // Congelado por el ice gun: la estatua física es dueña del visual; ni IA,
+    // locomoción, combate ni render vuelven a escribirlo hasta el shatter.
+    if (this.frozenSolid) return;
 
     this.syncMeshFromMotor();
 
@@ -222,6 +297,12 @@ export class Npc implements INpc {
       facing,
       threat: this.currentThreat,
     });
+    this.noiseSensor.tick(delta);
+    const noise = this.noiseSensor.snapshot();
+    // Caliente = acumula deteccion mas rapido (solo presets con `detection`).
+    this.perception.setAlert(
+      noise.combat !== null || this.justHitTimer > 0 || (this.lastPerception?.hasMemory ?? false),
+    );
     const perceptionSnapshot = this.perception.update(
       this.motor.getPosition(),
       facing,
@@ -229,7 +310,7 @@ export class Npc implements INpc {
         ? { id: this.currentThreat.id, position: this.currentThreat.position, isAlive: this.currentThreat.isAlive }
         : null,
       delta,
-      this.losRaycast,
+      this.currentThreat?.portalView ? this.losRaycast : this.raycast,
     );
     this.threatLastKnown = perceptionSnapshot.lastKnownPosition;
     this.lastPerception = perceptionSnapshot;
@@ -255,20 +336,24 @@ export class Npc implements INpc {
         this.locomotion.leap(target, params);
       },
       isLeaping: () => this.locomotion.isLeaping(),
+      teleport: this.scriptTeleport,
     };
 
-    this.noiseSensor.tick(delta);
-    const noise = this.noiseSensor.snapshot();
     this.coverSensor?.update(
       ctx.elapsed,
       this.motor.getPosition(),
       this.currentThreat?.position ?? this.threatLastKnown,
     );
     this.feedNeighbors(ctx);
-    const squadOrder = this.reportToSquad(ctx, perceptionSnapshot.visibleNow);
+    const grenadeReady = this.isGrenadeReady(ctx.elapsed, perceptionSnapshot);
+    const squadOrder = this.reportToSquad(ctx, perceptionSnapshot.visibleNow, grenadeReady);
+    this.tickAttackSlot(delta, perceptionSnapshot);
+
+    const healTarget = ctx.elapsed >= this.healReadyAt ? this.resolveHealTarget(ctx) : null;
 
     const selfSnapshot = this.buildSelfSnapshot();
-    const conditions = computeNpcConditions({
+    let scriptOrder = ctx.script?.orderFor(this.id) ?? null;
+    let conditions = computeNpcConditions({
       self: selfSnapshot,
       threat: this.currentThreat,
       perception: perceptionSnapshot,
@@ -280,6 +365,8 @@ export class Npc implements INpc {
       tooCloseRange: this.preset.tooCloseRange,
       lowHealthRatio: this.preset.lowHealthRatio,
       justHit: this.justHitTimer > 0,
+      flinchReady: this.flinchCooldownTimer <= 0,
+      enemySuspected: perceptionSnapshot.suspicious && (this.currentThreat?.isAlive ?? false),
       tipped: isBodyTipped(this.motor.getRotation()),
       alliesNear: this.countAlliesNear(ctx) > 0,
       anchorFar: this.isAnchorFar(ctx),
@@ -287,26 +374,64 @@ export class Npc implements INpc {
       coverBlown: this.coverSensor?.isCoverBlown() ?? false,
       squadFlankAvailable: squadOrder?.role === 'flanker',
       squadOnPoint: squadOrder?.role === 'leader' || squadOrder?.role === 'assault',
+      hasAttackSlot: this.slotBoard?.holds('attack', this.id, this.faction) ?? false,
+      overwatchFree:
+        this.preset.attackSlot === true &&
+        (this.slotBoard?.canClaim('overwatch', this.id, this.faction) ?? false),
+      grenadeReady,
+      allyNeedsHealing: healTarget !== null,
       selfBuildingId: this.buildingIdOf(this.motor.getPosition()),
       threatBuildingId: this.threatLastKnown ? this.buildingIdOf(this.threatLastKnown) : null,
       selfRoomId: this.roomIdOf(this.motor.getPosition()),
       threatRoomId: this.threatLastKnown ? this.roomIdOf(this.threatLastKnown) : null,
     });
+    // Si el NPC ya estaba en combate/JustHit al recibir Start, el schedule
+    // scripted nunca llega a activarse y por tanto no existe un task que lo
+    // aborte. Cerramos la orden aquí; para una secuencia ya corriendo esto es
+    // idempotente y el interrupt del Brain se ocupa de frenar locomoción.
+    if (
+      scriptOrder &&
+      !scriptOrder.overrideAi &&
+      (has(conditions, Cond.SeeEnemy) || has(conditions, Cond.JustHit))
+    ) {
+      scriptOrder.notifyDone('canceled');
+      scriptOrder = null;
+    }
+    if (scriptOrder) {
+      conditions = add(conditions, Cond.ScriptActive);
+      if (scriptOrder.overrideAi) conditions = add(conditions, Cond.ScriptUninterruptible);
+    }
     this.emitThreatSpottedIfNeeded(ctx, conditions);
+    const suspecting = has(conditions, Cond.EnemySuspected);
+    if (suspecting && !this.wasSuspecting) this.emitCallout(ctx, 'alert');
+    this.wasSuspecting = suspecting;
 
+    const isSquadMember =
+      this.playerSquadEligible && (ctx.playerSquad?.isMember(this.id) ?? false);
     const brainCtx: NpcBrainContext = {
       delta,
       elapsed: ctx.elapsed,
       self: selfSnapshot,
       threat: this.currentThreat,
       threatLastKnown: this.threatLastKnown,
+      threatSuspected: perceptionSnapshot.suspectedPosition,
+      anchorPosition: this.resolveAnchorPosition(ctx),
+      anchorArrivalRadius: ctx.script?.anchorArrivalRadiusFor(this.id) ?? null,
+      anchorOffset: isSquadMember ? (ctx.playerSquad?.formationOffsetFor(this.id) ?? null) : null,
       player: ctx.player,
       patrolRoute: this.patrolRoute,
       noise,
       tactical: this.coverSensor,
       squad: squadOrder ? { role: squadOrder.role, flankSide: squadOrder.flankSide } : null,
+      slots: this.slotHandle,
+      medic: healTarget
+        ? { target: healTarget, heal: (elapsed) => this.performHeal(elapsed, healTarget) }
+        : null,
+      script: scriptOrder,
+      gesture: (id, duration) => this.animation?.playGesture?.(id, duration),
       conditions,
-      navSpace: this.navSpace,
+      navigation: this.navigationQueries,
+      navigationProfile: this.navigationProfile,
       buildingRegistry: this.buildingRegistry,
       locomotion: handle,
       combat: this.combatHandle,
@@ -320,6 +445,7 @@ export class Npc implements INpc {
     const incapacitated = this.motor.isIncapacitated();
     if (!incapacitated) {
       this.brain.update(brainCtx, delta, conditions);
+      this.watchScheduleTransition(ctx);
     }
     if (NpcDebugFlags.freezeMovement) {
       // Frena cualquier goal residual y reencara al threat: el motor se tickea
@@ -380,7 +506,10 @@ export class Npc implements INpc {
       lookTarget,
       balanceIsStumbling: false,
       delta,
+      viewerDistance: this.lastViewerDistance,
+      visible: true,
     });
+    this.animation.setCrouch?.(this.motor.isCrouched?.() ? 1 : 0);
     if (this.currentThreat && this.preset.weaponAim !== 'none') {
       this.animation.setAiming(this.currentThreat.position, this.preset.weaponAim);
     } else {
@@ -398,7 +527,7 @@ export class Npc implements INpc {
     // Solo motores terrestres estándar (CharacterMotor, detectado por
     // capacidades para no importar la clase): flyers/strider tienen
     // locomoción propia y no tiene sentido teleportarlos por el disco.
-    if (!this.health.isAlive()) {
+    if (!this.health.isAlive() || this.frozenSolid) {
       return null;
     }
     const motor = this.motor as typeof this.motor & Partial<PortalCapableMotor>;
@@ -420,6 +549,17 @@ export class Npc implements INpc {
         teleport.call(motor, position, velocity);
         snapYaw.call(motor, yaw);
       },
+      ...(typeof motor.teleportThroughPortal === 'function'
+        ? {
+            teleportThroughPortal: (
+              entry: PortalFrame,
+              exit: PortalFrame,
+              position: Vector3,
+              velocity: Vector3,
+              yaw: number,
+            ) => motor.teleportThroughPortal!(entry, exit, position, velocity, yaw),
+          }
+        : {}),
       setColliderExclusions: (handles) => setPortalExclusions.call(motor, handles),
     };
   }
@@ -436,6 +576,7 @@ export class Npc implements INpc {
         getPosition: () => this.motor.getPosition(),
         isAlive: () => this.isAlive(),
         freezeSolid: () => this.freezeSolid(),
+        shatter: () => this.shatterFrozen(),
       };
     }
     return this.freezeHandle;
@@ -451,6 +592,14 @@ export class Npc implements INpc {
     return this.mesh;
   }
 
+  private shatterFrozen(): void {
+    if (!this.frozenSolid || !this.health.isAlive()) return;
+    this.applyDamage(this.health.max * 10, undefined, undefined, 'player');
+    // La estatua ya es dueña del visual y la retira inmediatamente. Cerrar el
+    // runtime ahora evita jobs, hitboxes o registros vivos hasta reload.
+    this.dispose();
+  }
+
   applyDamage(
     amount: number,
     hitDirection?: Vector3,
@@ -458,10 +607,11 @@ export class Npc implements INpc {
     attackerId?: string,
     hitPoint?: Vector3,
     damageType: DamageType = 'bullet',
+    authoritative = false,
   ): void {
     if (this.disposed || !this.health.isAlive()) return;
     // Daño de salida del jugador escalado por dificultad (no toca daño NPC↔NPC).
-    if (attackerId === 'player') {
+    if (!authoritative && attackerId === 'player') {
       amount *= this.difficulty?.getModifiers().playerWeaponDamageMult ?? 1;
     }
     // Jefes estilo HL2 (gunship/strider): inmunes a todo lo que no sea explosivo,
@@ -501,6 +651,7 @@ export class Npc implements INpc {
         id: this.id,
         characterId: this.preset.id,
         position: this.motor.getPosition().clone(),
+        ...(attackerId ? { attackerId } : {}),
       });
       if (!this.frozenSolid) {
         const deathVelocity = this.motor.getVelocity();
@@ -510,6 +661,7 @@ export class Npc implements INpc {
       this.squadDirector?.unregister(this.id);
       this.locomotion.stop();
       this.motor.disable();
+      this.combatHandle.dispose?.();
     }
   }
 
@@ -546,6 +698,7 @@ export class Npc implements INpc {
         speed: motorSnap.velocity.length(),
         desiredSpeed: motorSnap.desiredVelocity.length(),
         grounded: motorSnap.grounded,
+        crouched: this.motor.isCrouched?.() ?? false,
         distanceToTarget: motorSnap.distanceToTarget,
         yaw: motorSnap.yaw,
         targetYaw: motorSnap.targetYaw,
@@ -577,7 +730,9 @@ export class Npc implements INpc {
     this.noiseSensor.dispose();
     this.coverSensor?.dispose();
     this.squadDirector?.unregister(this.id);
-    this.locomotion.stop();
+    this.locomotion.dispose();
+    this.combatHandle.dispose?.();
+    this.animation?.dispose?.();
     this.motor.disable();
   }
 
@@ -644,7 +799,17 @@ export class Npc implements INpc {
       if (!npc.isAlive || npc.id === this.id) continue;
       // `infighting` ignora la matriz de facciones — hay que excluir el self a
       // mano (antes lo filtraba `isHostileTo(mismaFaccion)` devolviendo false).
-      if (freeForAll || isHostileTo(this.faction, npc.faction)) candidates.push(npc);
+      if (freeForAll || isHostileTo(this.faction, npc.faction)) {
+        candidates.push(npc);
+      }
+    }
+    if (ctx.portalGhosts) {
+      for (const ghost of ctx.portalGhosts) {
+        if (!ghost.isAlive || ghost.id === this.id || ghost.id === ctx.player.id) continue;
+        if (!(freeForAll || isHostileTo(this.faction, ghost.faction))) continue;
+        if (ghost.portalView && !this.isInFrontOfPortalView(ghost.portalView)) continue;
+        candidates.push(ghost);
+      }
     }
     if (candidates.length === 0) return null;
 
@@ -678,7 +843,7 @@ export class Npc implements INpc {
         self,
         facing,
         { id: candidate.id, position: candidate.position, isAlive: candidate.isAlive },
-        this.losRaycast,
+        candidate.portalView ? this.losRaycast : this.raycast,
         this.id,
       );
       if (!visible) score *= THREAT_UNSEEN_PENALTY;
@@ -719,7 +884,7 @@ export class Npc implements INpc {
       const dx = npc.position.x - self.x;
       const dz = npc.position.z - self.z;
       if (dx * dx + dz * dz > 16) continue;
-      this.neighborBuffer.push({ x: npc.position.x, z: npc.position.z, radius: npc.radius });
+      this.neighborBuffer.push({ x: npc.position.x, y: npc.position.y, z: npc.position.z, radius: npc.radius });
     }
     this.locomotion.setNeighbors(this.neighborBuffer);
   }
@@ -727,8 +892,9 @@ export class Npc implements INpc {
   private reportToSquad(
     ctx: AiFrameContext,
     hasLineOfSight: boolean,
+    wantsGrenade: boolean,
   ): { role: SquadRole; flankSide: 1 | -1 } | null {
-    if (!this.squadDirector) return null;
+    if (!this.squadDirector || this.preset.usesSquad === false) return null;
     this.squadDirector.report({
       id: this.id,
       faction: this.faction,
@@ -736,12 +902,164 @@ export class Npc implements INpc {
       health01: this.health.current / this.health.max,
       hasLineOfSight,
       inCover: this.coverSensor?.inCover() ?? false,
-      wantsGrenade: false,
+      wantsGrenade,
       canFlank: this.health.current / this.health.max > 0.4,
       threatPosition: this.threatLastKnown,
     });
     const order = this.squadDirector.getOrder(this.id);
     return { role: order.role, flankSide: order.flankSide };
+  }
+
+  /**
+   * Ventana de granada de flush-out: el target lleva un rato oculto
+   * (`flushAfterMemoryAge` — si esta a la vista se le dispara), la LKP cae en
+   * la banda [minRange, maxRange], el cooldown expiro y el slot de granada de
+   * la squad esta disponible.
+   */
+  private isGrenadeReady(elapsed: number, perception: PerceptionSnapshot): boolean {
+    const profile = this.preset.grenade;
+    if (!profile?.enabled || !this.slotBoard) return false;
+    if (elapsed < this.grenadeReadyAt) return false;
+    const target = perception.lastKnownPosition;
+    if (!target || perception.memoryAge < profile.flushAfterMemoryAge) return false;
+    const self = this.motor.getPosition();
+    const dx = target.x - self.x;
+    const dz = target.z - self.z;
+    const distSq = dx * dx + dz * dz;
+    if (distSq < profile.minRange * profile.minRange) return false;
+    if (distSq > profile.maxRange * profile.maxRange) return false;
+    return this.slotBoard.canClaim('grenade', this.id, this.faction);
+  }
+
+  /**
+   * (medic) Aliado vivo mas herido bajo el umbral dentro del rango: player u
+   * otro NPC del mismo bando. Null sin perfil medic o sin candidatos.
+   */
+  private resolveHealTarget(ctx: AiFrameContext): ActorSnapshot | null {
+    const medic = this.preset.medic;
+    if (!medic) return null;
+    const self = this.motor.getPosition();
+    let best: ActorSnapshot | null = null;
+    let bestHealth = medic.healThreshold;
+    const consider = (actor: ActorSnapshot): void => {
+      if (!actor.isAlive || actor.health01 === undefined) return;
+      if (actor.health01 >= bestHealth) return;
+      const dx = actor.position.x - self.x;
+      const dz = actor.position.z - self.z;
+      if (dx * dx + dz * dz > medic.range * medic.range) return;
+      best = actor;
+      bestHealth = actor.health01;
+    };
+    if (isAlliedWith(this.faction, ctx.player.faction)) consider(ctx.player);
+    for (const npc of ctx.npcs) {
+      if (npc.id === this.id) continue;
+      if (!isAlliedWith(this.faction, npc.faction)) continue;
+      consider(npc);
+    }
+    return best;
+  }
+
+  /** Aplica la curacion via `npc.heal` (Game resuelve el heal real) y arranca el cooldown. */
+  private performHeal(elapsed: number, target: ActorSnapshot): boolean {
+    const medic = this.preset.medic;
+    if (!medic || !target.isAlive) return false;
+    this.healReadyAt = elapsed + medic.cooldown;
+    this.eventBus.emit('npc.heal', {
+      medicId: this.id,
+      characterId: this.preset.id,
+      targetId: target.id,
+      amount: medic.healAmount,
+      position: this.motor.getPosition().clone(),
+    });
+    return true;
+  }
+
+  /** Emite la granada fisica hacia la LKP (arco del perfil) y arranca el cooldown. */
+  private throwGrenade(elapsed: number): boolean {
+    const profile = this.preset.grenade;
+    const target = this.threatLastKnown;
+    if (!profile || !target) return false;
+    const origin = this.motor.getPosition().clone();
+    origin.y += this.preset.perception.eyeHeight;
+    const dx = target.x - origin.x;
+    const dz = target.z - origin.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < 1e-3) return false;
+    const velocity = new Vector3(
+      (dx / dist) * profile.launchSpeed,
+      profile.launchLift,
+      (dz / dist) * profile.launchSpeed,
+    );
+    this.grenadeReadyAt = elapsed + profile.cooldown;
+    this.eventBus.emit('npc.grenade', {
+      id: this.id,
+      characterId: this.preset.id,
+      origin,
+      velocity,
+      damage: profile.damage,
+      radius: profile.radius,
+      impulse: profile.impulse,
+      fuseSeconds: profile.fuseSeconds,
+      sourceFaction: this.faction,
+      now: elapsed,
+    });
+    return true;
+  }
+
+  /**
+   * Detecta la ENTRADA a un schedule (ignorando los pasos por null cuando un
+   * schedule completa y se re-elige el mismo). Alimenta efectos por-schedule:
+   * cooldown de flinch y, mas adelante, callouts de voz.
+   */
+  private watchScheduleTransition(ctx: AiFrameContext): void {
+    const schedule = this.brain.snapshot().schedule;
+    if (schedule === null || schedule === this.lastScheduleId) return;
+    this.lastScheduleId = schedule;
+    if ((schedule === 'hit' || schedule === 'stagger') && this.preset.flinch) {
+      this.flinchCooldownTimer = this.preset.flinch.cooldown;
+    }
+    const calloutKind = this.preset.callouts?.bySchedule?.[schedule];
+    if (calloutKind) this.emitCallout(ctx, calloutKind);
+  }
+
+  /** Voz tactica throttled: un NPC no se pisa hablando (F.E.A.R.-style radio). */
+  private emitCallout(ctx: AiFrameContext, kind: NpcCalloutKind): void {
+    if (!this.preset.callouts) return;
+    if (ctx.elapsed - this.lastCalloutAt < CALLOUT_THROTTLE) return;
+    this.lastCalloutAt = ctx.elapsed;
+    this.eventBus.emit('npc.callout', {
+      id: this.id,
+      characterId: this.preset.id,
+      kind,
+      position: this.motor.getPosition().clone(),
+    });
+  }
+
+  /**
+   * Lifecycle del slot de ataque (estilo HL2): se reclama mientras el NPC
+   * quiere disparar (threat vivo a la vista o con memoria fresca, municion) y
+   * se suelta con histeresis al dejar de quererlo. Solo el dueño libera —
+   * los schedules leen el resultado via `HasAttackSlot`.
+   */
+  private tickAttackSlot(delta: number, perception: PerceptionSnapshot): void {
+    const board = this.slotBoard;
+    if (!board || this.preset.attackSlot !== true) return;
+    const wants =
+      (this.currentThreat?.isAlive ?? false) &&
+      (perception.visibleNow || perception.memoryAge < ATTACK_SLOT_MEMORY_GRACE) &&
+      !this.combatHandle.magazineEmpty() &&
+      !this.combatHandle.isReloading();
+    if (wants) {
+      this.attackSlotUnwantedFor = 0;
+      board.tryClaim('attack', this.id, this.faction);
+      return;
+    }
+    if (!board.holds('attack', this.id, this.faction)) return;
+    this.attackSlotUnwantedFor += delta;
+    if (this.attackSlotUnwantedFor >= ATTACK_SLOT_RELEASE_DELAY) {
+      board.release('attack', this.id, this.faction);
+      this.attackSlotUnwantedFor = 0;
+    }
   }
 
   private countAlliesNear(ctx: AiFrameContext): number {
@@ -756,12 +1074,30 @@ export class Npc implements INpc {
     return count;
   }
 
+  /**
+   * Ancla efectiva del ally: la orden ir-a-punto del squad del jugador si es
+   * miembro y hay una vigente; si no, el player (comportamiento Alyx).
+   */
+  private resolveAnchorPosition(ctx: AiFrameContext): Vector3 | null {
+    if (!this.preset.anchor) return null;
+    // La compañera guionada (wait/escort) pisa el ancla del player/squad.
+    const override = ctx.script?.anchorOverrideFor(this.id) ?? null;
+    if (override) return override;
+    if (this.playerSquadEligible && ctx.playerSquad?.isMember(this.id)) {
+      const order = ctx.playerSquad.orderPosition;
+      if (order) return order;
+    }
+    return ctx.player.isAlive ? ctx.player.position : null;
+  }
+
   private isAnchorFar(ctx: AiFrameContext): boolean {
     const anchor = this.preset.anchor;
-    if (!anchor || !ctx.player.isAlive) return false;
+    if (!anchor) return false;
+    const anchorPos = this.resolveAnchorPosition(ctx);
+    if (!anchorPos) return false;
     const self = this.motor.getPosition();
-    const dx = ctx.player.position.x - self.x;
-    const dz = ctx.player.position.z - self.z;
+    const dx = anchorPos.x - self.x;
+    const dz = anchorPos.z - self.z;
     return dx * dx + dz * dz > anchor.regroupDistance * anchor.regroupDistance;
   }
 
@@ -770,9 +1106,10 @@ export class Npc implements INpc {
    * re-emision throttled mientras mantenga LOS, para sostener la intel de
    * aliados que llegan tarde al combate).
    */
-  private emitThreatSpottedIfNeeded(ctx: AiFrameContext, conditions: number): void {
-    const seeing = (conditions & Cond.SeeEnemy) !== 0;
+  private emitThreatSpottedIfNeeded(ctx: AiFrameContext, conditions: ConditionMask): void {
+    const seeing = has(conditions, Cond.SeeEnemy);
     const risingEdge = seeing && !this.wasSeeingEnemy;
+    if (risingEdge) this.emitCallout(ctx, 'contact');
     const throttleOk = ctx.elapsed - this.lastSpottedEmitAt >= SPOTTED_EMIT_INTERVAL;
     if (seeing && this.currentThreat && (risingEdge || throttleOk)) {
       this.lastSpottedEmitAt = ctx.elapsed;
@@ -798,41 +1135,14 @@ export class Npc implements INpc {
   /** El motor corre a `walkSpeed`; sprint escala via multiplier. */
   private applyGait(gait: 'walk' | 'sprint'): void {
     const profile = this.preset.movement;
-    const multiplier = gait === 'sprint' ? profile.sprintSpeed / profile.walkSpeed : 1;
-    this.motor.setSpeedMultiplier(multiplier);
+    this.gaitMultiplier = gait === 'sprint' ? profile.sprintSpeed / profile.walkSpeed : 1;
+    this.applyMovementSpeedMultiplier();
+  }
+
+  private applyMovementSpeedMultiplier(): void {
+    this.motor.setSpeedMultiplier(this.gaitMultiplier);
   }
 }
-
-const COND_NAMES = [
-  'IsDead',
-  'JustHit',
-  'LowHealth',
-  'SeeEnemy',
-  'LostEnemy',
-  'EnemyDead',
-  'HeardCombat',
-  'HeardSuspicious',
-  'EnemyInMeleeRange',
-  'EnemyTooClose',
-  'LowAmmo',
-  'MagazineEmpty',
-  'ReloadDone',
-  'CoverAvailable',
-  'BetterCoverAvailable',
-  'CoverBlown',
-  'PathBlocked',
-  'Stuck',
-  'DoorBlocking',
-  'EnemyInBuilding',
-  'SelfInBuilding',
-  'SameRoomAsEnemy',
-  'SquadFlankAvailable',
-  'SquadOnPoint',
-  'AlliesNear',
-  'AnchorFar',
-  'EnemyInLeapRange',
-  'Tipped',
-];
 
 /** Candidato con `id` dado más cercano a `position` (desambigua player vs sus ghosts). */
 function nearestWithId(
@@ -866,10 +1176,31 @@ function isBodyTipped(rotation: Quaternion): boolean {
   return tmpUp.y < 0.5;
 }
 
-function conditionMaskToNames(mask: number): string[] {
+/**
+ * Devuelve un teleport para secuencias guionadas si el motor lo soporta
+ * (mismo criterio de capacidades que el traversal de portales), o undefined
+ * para flyers/strider — así el `scriptMove` cae a walk en vez de teleportar.
+ */
+function buildScriptTeleport(
+  motor: NpcMotor,
+): ((position: Vector3, yaw: number) => void) | undefined {
+  const capable = motor as NpcMotor & Partial<PortalCapableMotor>;
+  const { teleport, snapYaw } = capable;
+  if (typeof teleport !== 'function' || typeof snapYaw !== 'function') {
+    return undefined;
+  }
+  const zeroVelocity = new Vector3();
+  return (position, yaw) => {
+    teleport.call(capable, position, zeroVelocity.set(0, 0, 0));
+    snapYaw.call(capable, yaw);
+  };
+}
+
+/** Derivado de `Cond` para que el trace nunca se desincronice del catalogo de bits. */
+function conditionMaskToNames(mask: ConditionMask): string[] {
   const out: string[] = [];
-  for (let i = 0; i < COND_NAMES.length; i += 1) {
-    if ((mask & (1 << i)) !== 0) out.push(COND_NAMES[i]);
+  for (const [name, flag] of Object.entries(Cond)) {
+    if (has(mask, flag)) out.push(name);
   }
   return out;
 }

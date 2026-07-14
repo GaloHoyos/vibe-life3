@@ -26,6 +26,9 @@ export class EnemySoundSystem {
     eventBus.on("npc.alert", ({ id, characterId, position }) =>
       this.playSound(EnemyAudio[characterId]?.alert, position, id),
     );
+    eventBus.on("npc.callout", ({ id, characterId, kind, position }) =>
+      this.playSound(EnemyAudio[characterId]?.callouts?.[kind], position, id),
+    );
     eventBus.on("npc.attack", ({ id, characterId, position }) =>
       this.playSound(EnemyAudio[characterId]?.attack, position, id),
     );

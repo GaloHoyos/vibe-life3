@@ -63,15 +63,28 @@ interface AudioDspRack {
   readonly busSends: Map<AudioBusName, AudioBusDspSends>;
 }
 
+const audioUnlockEvents = [
+  "pointerdown",
+  "touchend",
+  "keydown",
+  "click",
+] as const;
+
 /**
  * Núcleo del audio: posee el `AudioContext`, un set de buses (master/music/
  * ambience/sfx/weapons/...) y persiste los volúmenes en `localStorage`.
  *
- * El contexto se crea lazy en el primer `unlock()` (típicamente disparado
- * por un click del usuario, requisito de los navegadores).
+ * El contexto se crea lazy durante el primer gesto confiable del usuario.
+ * Crear (o reanudar) un `AudioContext` durante el bootstrap activa la política
+ * de autoplay de los navegadores, por eso los getters nunca lo construyen.
  */
 export class AudioSystem {
   private context: AudioContext | null = null;
+  private readonly contextWaiters = new Set<
+    (context: AudioContext | null) => void
+  >();
+  private listeningForUnlock = false;
+  private disposed = false;
   private readonly buses = new Map<AudioBusName, AudioBus>();
   private readonly volumes: Record<AudioBusName, number> = {
     ...defaultVolumes,
@@ -100,21 +113,48 @@ export class AudioSystem {
 
   constructor() {
     this.loadSavedVolumes();
+    this.listenForUserGesture();
   }
 
   getContext(): AudioContext | null {
-    return this.ensureContext();
+    return this.context;
+  }
+
+  /**
+   * Espera al contexto que creará el primer gesto del usuario. Permite que
+   * cargas/loops solicitados durante un boot directo queden pendientes en vez
+   * de crear Web Audio fuera del gesto o perderse silenciosamente.
+   */
+  getContextWhenReady(): Promise<AudioContext | null> {
+    if (this.disposed) {
+      return Promise.resolve(null);
+    }
+    if (this.context) {
+      return Promise.resolve(this.context);
+    }
+
+    if (!this.getAudioContextConstructor()) {
+      this.warnAudioUnavailable();
+      return Promise.resolve(null);
+    }
+
+    return new Promise((resolve) => {
+      this.contextWaiters.add(resolve);
+    });
   }
 
   unlock(): void {
-    const context = this.ensureContext();
+    if (this.disposed) {
+      return;
+    }
+    const context =
+      this.context ??
+      (this.hasActiveUserGesture() ? this.ensureContext() : null);
     if (!context) {
       return;
     }
 
-    if (context.state !== "running") {
-      void context.resume();
-    }
+    this.resumeContext(context);
   }
 
   pause(): void {
@@ -125,9 +165,12 @@ export class AudioSystem {
   }
 
   resume(): void {
-    const context = this.ensureContext();
-    if (context && context.state !== "running") {
-      void context.resume();
+    if (this.disposed) {
+      return;
+    }
+    const context = this.context;
+    if (context) {
+      this.resumeContext(context);
     }
   }
 
@@ -138,6 +181,26 @@ export class AudioSystem {
 
   isMuted(): boolean {
     return this.muted;
+  }
+
+  dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.stopListeningForUserGesture();
+    this.resolveContextWaiters(null);
+
+    const context = this.context;
+    this.context = null;
+    this.buses.clear();
+    this.limiter = null;
+    this.dspRack = null;
+    if (context && context.state !== "closed") {
+      void context.close().catch(() => {
+        // El teardown no debe fallar si el navegador ya cerró el contexto.
+      });
+    }
   }
 
   setVolume(bus: AudioBusName, value: number): void {
@@ -157,7 +220,6 @@ export class AudioSystem {
   }
 
   getBus(bus: AudioBusName): AudioBus | null {
-    this.ensureContext();
     return this.buses.get(bus) ?? null;
   }
 
@@ -166,7 +228,7 @@ export class AudioSystem {
     fadeSeconds = 1,
   ): void {
     this.currentEnvironment = preset;
-    const context = this.ensureContext();
+    const context = this.context;
     const rack = this.dspRack;
     if (!context || !rack) {
       return;
@@ -229,22 +291,99 @@ export class AudioSystem {
   }
 
   private ensureContext(): AudioContext | null {
+    if (this.disposed) {
+      return null;
+    }
     if (this.context) {
       return this.context;
     }
 
-    const AudioContextConstructor =
-      window.AudioContext ||
-      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
+    const AudioContextConstructor = this.getAudioContextConstructor();
     if (!AudioContextConstructor) {
-      console.warn("[AudioSystem] Web Audio API not available.");
+      this.warnAudioUnavailable();
+      this.resolveContextWaiters(null);
       return null;
     }
 
     this.context = new AudioContextConstructor();
     this.createBuses();
+    this.resolveContextWaiters(this.context);
     return this.context;
+  }
+
+  private getAudioContextConstructor(): typeof AudioContext | undefined {
+    return (
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext
+    );
+  }
+
+  private warnAudioUnavailable(): void {
+    console.warn("[AudioSystem] Web Audio API not available.");
+  }
+
+  private listenForUserGesture(): void {
+    if (this.disposed || this.listeningForUnlock) {
+      return;
+    }
+    this.listeningForUnlock = true;
+    audioUnlockEvents.forEach((eventName) => {
+      window.addEventListener(eventName, this.handleUserGesture, {
+        capture: true,
+        passive: true,
+      });
+    });
+  }
+
+  private stopListeningForUserGesture(): void {
+    if (!this.listeningForUnlock) {
+      return;
+    }
+    this.listeningForUnlock = false;
+    audioUnlockEvents.forEach((eventName) => {
+      window.removeEventListener(eventName, this.handleUserGesture, true);
+    });
+  }
+
+  private readonly handleUserGesture = (event: Event): void => {
+    // Eventos sintéticos no conceden activación y volverían a disparar la
+    // advertencia de autoplay aunque hayan pasado por un event handler.
+    if (this.disposed || !event.isTrusted) {
+      return;
+    }
+    const context = this.ensureContext();
+    if (context) {
+      this.resumeContext(context);
+    }
+  };
+
+  private hasActiveUserGesture(): boolean {
+    return window.navigator.userActivation?.isActive === true;
+  }
+
+  private resumeContext(context: AudioContext): void {
+    if (context.state === "running") {
+      this.stopListeningForUserGesture();
+      return;
+    }
+
+    void context
+      .resume()
+      .then(() => {
+        if (context.state === "running") {
+          this.stopListeningForUserGesture();
+        }
+      })
+      .catch(() => {
+        // El navegador puede rechazar el intento si perdió la activación.
+        // Conservamos los listeners para reintentar en el siguiente gesto.
+      });
+  }
+
+  private resolveContextWaiters(context: AudioContext | null): void {
+    this.contextWaiters.forEach((resolve) => resolve(context));
+    this.contextWaiters.clear();
   }
 
   private createBuses(): void {

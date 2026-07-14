@@ -41,6 +41,10 @@ export function getPosition(entity: EditorEntity): VectorTuple {
       const { min, max } = entity.artifact.envelope;
       return [(min[0] + max[0]) / 2, min[1], (min[2] + max[2]) / 2];
     }
+    case 'logic':
+      return [...entity.position];
+    case 'sequence':
+      return [...entity.def.position];
   }
 }
 
@@ -85,6 +89,14 @@ export function translateEntity(entity: EditorEntity, dx: number, dy: number, dz
       return;
     case 'prop':
       translateProp(entity.prop, dx, dy, dz);
+      return;
+    case 'logic':
+      entity.position = add3(entity.position, dx, dy, dz);
+      // El marker lleva su punto en la def (viaja al nivel); sincronizarlo.
+      if (entity.def.kind === 'marker') entity.def.position = [...entity.position];
+      return;
+    case 'sequence':
+      entity.def.position = add3(entity.def.position, dx, dy, dz);
       return;
     case 'prebuiltBuilding': {
       const a = entity.artifact;
@@ -170,6 +182,10 @@ export function getRotation(entity: EditorEntity): VectorTuple {
     case 'prebuiltBuilding':
       // La rotacion se hornea en la geometria (no hay angulo almacenado).
       return [0, 0, 0];
+    case 'sequence':
+      return entity.def.rotation ? [...entity.def.rotation] : [0, 0, 0];
+    case 'logic':
+      return [0, 0, 0];
   }
 }
 
@@ -204,6 +220,11 @@ export function setRotation(entity: EditorEntity, euler: VectorTuple): void {
       return; // AABB sin rotación
     case 'prebuiltBuilding':
       return; // se rota destructivamente via `rotateEntity`
+    case 'sequence':
+      entity.def.rotation = value;
+      return;
+    case 'logic':
+      return; // sin rotación
   }
 }
 

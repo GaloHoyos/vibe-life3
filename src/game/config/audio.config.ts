@@ -339,6 +339,13 @@ export const WeaponAudio: Record<string, WeaponSoundMap> = {
   },
 };
 
+/**
+ * Vocalizaciones tacticas estilo F.E.A.R./HL2, sincronizadas con lo que el
+ * NPC decide: `contact` al detectar, `alert` ante una sospecha, `engaging`
+ * al flanquear/avanzar, `coverme` al recargar/cubrirse.
+ */
+export type NpcCalloutKind = "contact" | "engaging" | "coverme" | "alert";
+
 export interface EnemySoundMap {
   alert?: SoundRef;
   attack?: SoundRef;
@@ -349,7 +356,17 @@ export interface EnemySoundMap {
   footstep?: SoundRef;
   /** Loop de motor/vuelo atado al mesh del NPC mientras vive (e.g. gunship, manhack). */
   flightLoop?: string;
+  /** Voces tacticas por momento (`npc.callout`). Familias sin clips quedan mudas. */
+  callouts?: Partial<Record<NpcCalloutKind, SoundRef>>;
 }
+
+/** La radio combine: los tres presets comparten las mismas voces de squad. */
+const COMBINE_CALLOUTS: Partial<Record<NpcCalloutKind, SoundRef>> = {
+  alert: "enemies.combine.hl2.alert1",
+  contact: "enemies.combine.hl2.alert2",
+  engaging: "enemies.combine.hl2.attack1",
+  coverme: "enemies.combine.hl2.attack2",
+};
 
 /**
  * Sonidos por familia de enemigo, indexados por `CharacterId`. El NPC
@@ -380,6 +397,7 @@ export const EnemyAudio: Record<CharacterId, EnemySoundMap> = {
       "enemies.combine.hl2.die2",
       "enemies.combine.hl2.die3",
     ],
+    callouts: COMBINE_CALLOUTS,
   },
   combineElite: {
     alert: ["enemies.combine.hl2.alert1", "enemies.combine.hl2.alert2"],
@@ -394,6 +412,7 @@ export const EnemyAudio: Record<CharacterId, EnemySoundMap> = {
       "enemies.combine.hl2.die2",
       "enemies.combine.hl2.die3",
     ],
+    callouts: COMBINE_CALLOUTS,
   },
   combineShotgunner: {
     alert: ["enemies.combine.hl2.alert1", "enemies.combine.hl2.alert2"],
@@ -408,6 +427,7 @@ export const EnemyAudio: Record<CharacterId, EnemySoundMap> = {
       "enemies.combine.hl2.die2",
       "enemies.combine.hl2.die3",
     ],
+    callouts: COMBINE_CALLOUTS,
   },
   headcrab: {
     alert: "enemies.headcrab.hl2.alert",

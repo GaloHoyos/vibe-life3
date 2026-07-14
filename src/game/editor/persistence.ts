@@ -1,4 +1,5 @@
 import type { EditorDocument } from './EditorDocument';
+import { migrateDocument } from './migrateDocument';
 
 const DRAFT_KEY = 'vibe.editor.draft';
 const MODE_KEY = 'vibe.editor.mode';
@@ -30,7 +31,7 @@ export function loadDraft(): EditorDocument | null {
     const raw = localStorage.getItem(DRAFT_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    return isEditorDocument(parsed) ? parsed : null;
+    return isEditorDocument(parsed) ? migrateDocument(parsed) : null;
   } catch {
     return null;
   }
@@ -77,7 +78,7 @@ export function pickJsonFile(): Promise<EditorDocument> {
         .text()
         .then((text) => {
           const parsed: unknown = JSON.parse(text);
-          if (isEditorDocument(parsed)) resolve(parsed);
+          if (isEditorDocument(parsed)) resolve(migrateDocument(parsed));
           else reject(new Error('JSON no es un documento de editor valido'));
         })
         .catch((error: unknown) => reject(error instanceof Error ? error : new Error('Error leyendo archivo')));

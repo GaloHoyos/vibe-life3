@@ -1,12 +1,14 @@
 import type { Disposable } from '@shared/types/lifecycle';
 import type { PropKind } from '../EditorDocument';
 import type { PaletteKind } from '../editorFactory';
+import type { LogicEntityKind } from '@game/script/EntityIOTypes';
 import { iconSpan } from './editorIcons';
 import { PALETTE_GROUPS } from './paletteCatalog';
 
 export interface PaletteCallbacks {
   onAdd(kind: PaletteKind): void;
   onAddProp(prop: PropKind): void;
+  onAddLogic(logic: LogicEntityKind): void;
 }
 
 /** Paleta para agregar entidades en el punto enfocado por la camara. */
@@ -50,6 +52,7 @@ export class PaletteView implements Disposable {
         button.append(label);
         button.addEventListener('click', () => {
           if ('prop' in item) callbacks.onAddProp(item.prop);
+          else if ('logic' in item) callbacks.onAddLogic(item.logic);
           else callbacks.onAdd(item.kind);
         });
         items.append(button);

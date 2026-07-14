@@ -1,5 +1,6 @@
 import type { Vector3 } from 'three';
 import type { ConditionMask } from '@engine/ai/brain/Condition';
+import { NO_CONDITIONS, add, has } from '@engine/ai/brain/Condition';
 import type { PerceptionSnapshot } from '@engine/ai/perception/PerceptionSystem';
 import type { ActorSnapshot } from '@game/npc/core/INpc';
 import type { NpcCombatHandle, NpcLocomotionHandle, NpcSelfSnapshot } from './NpcBrainContext';
@@ -19,6 +20,10 @@ export interface SensorInputs {
   tooCloseRange: number;
   lowHealthRatio: number;
   justHit: boolean;
+  /** Cooldown de re-flinch cumplido (presets sin cooldown: siempre true). */
+  flinchReady: boolean;
+  /** El acumulador de deteccion paso el umbral de sospecha sin ver pleno. */
+  enemySuspected: boolean;
   /** Cuerpo volcado de lado (motor dinamico): activa `Tipped`. False en motores cinematicos. */
   tipped: boolean;
   alliesNear: boolean;
@@ -27,6 +32,14 @@ export interface SensorInputs {
   coverBlown: boolean;
   squadFlankAvailable: boolean;
   squadOnPoint: boolean;
+  /** Tiene uno de los slots de ataque limitados de su squad (SquadSlotBoard). */
+  hasAttackSlot: boolean;
+  /** El slot de overwatch de su squad esta libre (o ya es suyo). */
+  overwatchFree: boolean;
+  /** Ventana de granada valida (cooldown + LKP oculta en banda + slot libre). */
+  grenadeReady: boolean;
+  /** (medic) Hay un aliado herido en rango y el cooldown de curacion expiro. */
+  allyNeedsHealing: boolean;
   selfBuildingId: string | null;
   threatBuildingId: string | null;
   threatRoomId: string | null;
@@ -39,60 +52,80 @@ export interface SensorInputs {
  * caller (`Npc.update`) la invoca una vez por tick antes de pasar al brain.
  */
 export function computeNpcConditions(inputs: SensorInputs): ConditionMask {
-  let mask = 0;
+  let mask = NO_CONDITIONS;
   if (!inputs.self.isAlive) {
-    mask |= Cond.IsDead;
-    return mask >>> 0;
+    return add(mask, Cond.IsDead);
   }
   if (inputs.self.health / inputs.self.maxHealth < inputs.lowHealthRatio) {
-    mask |= Cond.LowHealth;
+    mask = add(mask, Cond.LowHealth);
   }
-  if (inputs.justHit) mask |= Cond.JustHit;
-  if (inputs.tipped) mask |= Cond.Tipped;
+  if (inputs.justHit) mask = add(mask, Cond.JustHit);
+  if (inputs.flinchReady) mask = add(mask, Cond.FlinchReady);
+  if (inputs.tipped) mask = add(mask, Cond.Tipped);
 
   if (inputs.perception.visibleNow && inputs.threat?.isAlive) {
-    mask |= Cond.SeeEnemy;
+    mask = add(mask, Cond.SeeEnemy);
   } else if (inputs.perception.hasMemory && inputs.threat?.isAlive) {
-    mask |= Cond.LostEnemy;
+    mask = add(mask, Cond.LostEnemy);
   }
+  if (inputs.enemySuspected) mask = add(mask, Cond.EnemySuspected);
 
   if (inputs.threat && !inputs.threat.isAlive) {
-    mask |= Cond.EnemyDead;
+    mask = add(mask, Cond.EnemyDead);
   }
 
   if (inputs.threat?.isAlive) {
     const dist = planarDistance(inputs.self.position, inputs.threat.position);
-    if (dist <= inputs.meleeRange) mask |= Cond.EnemyInMeleeRange;
-    if (dist > inputs.meleeRange && dist <= inputs.leapRange) mask |= Cond.EnemyInLeapRange;
-    if (dist <= inputs.tooCloseRange) mask |= Cond.EnemyTooClose;
+    // La memoria puede conservar un threat al otro lado de una pared. Sin
+    // visión real no debe congelar al NPC en melee ni habilitar un salto.
+    if (inputs.perception.visibleNow && dist <= inputs.meleeRange) {
+      mask = add(mask, Cond.EnemyInMeleeRange);
+    }
+    if (
+      inputs.perception.visibleNow &&
+      dist > inputs.meleeRange &&
+      dist <= inputs.leapRange
+    ) {
+      mask = add(mask, Cond.EnemyInLeapRange);
+    }
+    if (dist <= inputs.tooCloseRange) mask = add(mask, Cond.EnemyTooClose);
+    // Solo con el enemigo a la vista: fuera del rango util del arma hay que
+    // acercarse (closeDistance), no tirotear al aire.
+    if (has(mask, Cond.SeeEnemy) && dist > inputs.combat.effectiveRange()) {
+      mask = add(mask, Cond.TooFarToShoot);
+    }
   }
 
-  if (inputs.combat.magazineEmpty()) mask |= Cond.MagazineEmpty;
-  if (inputs.locomotion.isStuck()) mask |= Cond.Stuck;
+  if (inputs.combat.magazineEmpty()) mask = add(mask, Cond.MagazineEmpty);
+  if (inputs.locomotion.isStuck()) mask = add(mask, Cond.Stuck);
 
-  if (inputs.noise.combat) mask |= Cond.HeardCombat;
-  if (inputs.noise.suspicious) mask |= Cond.HeardSuspicious;
-  if (inputs.alliesNear) mask |= Cond.AlliesNear;
-  if (inputs.anchorFar) mask |= Cond.AnchorFar;
-  if (inputs.coverAvailable) mask |= Cond.CoverAvailable;
-  if (inputs.coverBlown) mask |= Cond.CoverBlown;
-  if (inputs.squadFlankAvailable) mask |= Cond.SquadFlankAvailable;
-  if (inputs.squadOnPoint) mask |= Cond.SquadOnPoint;
+  if (inputs.noise.combat) mask = add(mask, Cond.HeardCombat);
+  if (inputs.noise.suspicious) mask = add(mask, Cond.HeardSuspicious);
+  if (inputs.alliesNear) mask = add(mask, Cond.AlliesNear);
+  if (inputs.anchorFar) mask = add(mask, Cond.AnchorFar);
+  if (inputs.coverAvailable) mask = add(mask, Cond.CoverAvailable);
+  if (inputs.coverBlown) mask = add(mask, Cond.CoverBlown);
+  if (inputs.squadFlankAvailable) mask = add(mask, Cond.SquadFlankAvailable);
+  if (inputs.squadOnPoint) mask = add(mask, Cond.SquadOnPoint);
+  if (inputs.hasAttackSlot) mask = add(mask, Cond.HasAttackSlot);
+  if (inputs.overwatchFree) mask = add(mask, Cond.OverwatchFree);
+  if (inputs.grenadeReady) mask = add(mask, Cond.GrenadeReady);
+  if (inputs.allyNeedsHealing) mask = add(mask, Cond.AllyNeedsHealing);
 
   if (inputs.threatBuildingId && inputs.threatBuildingId !== inputs.selfBuildingId) {
-    mask |= Cond.EnemyInBuilding;
+    mask = add(mask, Cond.EnemyInBuilding);
   }
-  if (inputs.selfBuildingId) mask |= Cond.SelfInBuilding;
+  if (inputs.selfBuildingId) mask = add(mask, Cond.SelfInBuilding);
   if (
     inputs.threatRoomId &&
     inputs.selfRoomId &&
     inputs.threatRoomId === inputs.selfRoomId &&
     inputs.threatBuildingId === inputs.selfBuildingId
   ) {
-    mask |= Cond.SameRoomAsEnemy;
+    mask = add(mask, Cond.SameRoomAsEnemy);
   }
 
-  return mask >>> 0;
+  return mask;
 }
 
 function planarDistance(a: Vector3, b: Vector3): number {

@@ -27,6 +27,8 @@ export interface TextureSetDefinition {
   };
   /** Repeticiones por eje (mismo valor U y V). */
   tiling: number;
+  /** Tamaño físico de una repetición. Si se omite, conserva el UV histórico. */
+  tileSize?: number;
   /** Intensidad del normal map. 1 = neutral, >1 acentúa, <1 suaviza. */
   normalScale?: number;
   /** Multiplicador de roughness combinado con el mapa. */
@@ -38,6 +40,96 @@ export interface TextureSetDefinition {
 }
 
 export const TextureSets = {
+  cityAsphalt: {
+    maps: {
+      albedo: 'environment/city_asphalt/albedo.png',
+    },
+    tiling: 12,
+    tileSize: 2,
+    roughness: 0.94,
+    metalness: 0,
+  },
+  weatheredConcrete: {
+    maps: {
+      albedo: 'architecture/concrete_floor/albedo.png',
+    },
+    tiling: 4,
+    tileSize: 2,
+    roughness: 0.9,
+    metalness: 0.02,
+  },
+  industrialWall: {
+    maps: {
+      albedo: 'architecture/industrial_wall/albedo.png',
+    },
+    tiling: 3,
+    tileSize: 2,
+    roughness: 0.86,
+    metalness: 0.06,
+  },
+  agedPlaster: {
+    maps: {
+      albedo: 'architecture/aged_plaster/albedo.png',
+    },
+    tiling: 3,
+    tileSize: 2,
+    roughness: 0.94,
+    metalness: 0.01,
+  },
+  paintedMetal: {
+    maps: {
+      albedo: 'architecture/metal_panel/albedo.png',
+    },
+    tiling: 3,
+    tileSize: 2,
+    roughness: 0.64,
+    metalness: 0.08,
+  },
+  rustedMetal: {
+    maps: {
+      albedo: 'architecture/rusted_metal/albedo.png',
+    },
+    tiling: 3,
+    tileSize: 2,
+    roughness: 0.86,
+    metalness: 0.06,
+  },
+  darkWoodPlanks: {
+    maps: {
+      albedo: 'architecture/wood_planks/albedo.png',
+    },
+    tiling: 2,
+    tileSize: 2,
+    roughness: 0.84,
+    metalness: 0.01,
+  },
+  crateWood: {
+    maps: {
+      albedo: 'props/crate_wood/albedo.png',
+    },
+    tiling: 2,
+    tileSize: 1,
+    roughness: 0.86,
+    metalness: 0.01,
+  },
+  controlPanel: {
+    maps: {
+      albedo: 'props/control_panel/albedo.png',
+    },
+    tiling: 1,
+    tileSize: 1,
+    roughness: 0.42,
+    metalness: 0.1,
+  },
+  hazardStripes: {
+    maps: {
+      albedo: 'props/hazard_stripes/albedo.png',
+    },
+    tiling: 2,
+    tileSize: 2,
+    roughness: 0.66,
+    metalness: 0.08,
+  },
   snow: {
     maps: {
       albedo: 'environment/snow/albedo.jpg',

@@ -2,16 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { Group, Quaternion, Vector3 } from "three";
 import { EventBus } from "@engine/core/EventBus";
-import type { NavSpace } from "@engine/ai/nav/NavSpace";
-import type { PathRequestQueue } from "@engine/ai/nav/PathRequestQueue";
-import type { Raycast } from "@engine/physics/Raycast";
+import type { NavigationService } from "@engine/ai/navigation/NavigationService";
+import type { NavigationRequestQueue } from "@engine/ai/navigation/NavigationRequestQueue";
+import type { Raycast, RaycastSource } from "@engine/physics/Raycast";
 import type { NpcMotor } from "@engine/physics/character/NpcMotor";
-import type { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
+import { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
 import type { GameEventMap } from "@game/GameEvents";
 import type { NpcCombatHandle } from "@game/npc/brain/NpcBrainContext";
 import type { NpcPreset } from "@game/npc/presets/NpcPreset";
 import { recordEvents } from "@tests/support/events";
 import { Npc } from "@game/npc/Npc";
+import type { ActorSnapshot, AiFrameContext } from "@game/npc/core/INpc";
+import type { NpcScriptOrder } from "@game/script/NpcScriptOrder";
 
 const preset: NpcPreset = {
   id: "test-npc",
@@ -79,31 +81,67 @@ const combat: NpcCombatHandle = {
   effectiveRange: () => 1,
 };
 
-function createNpc() {
+function createNpc(
+  raycast: Raycast = {} as Raycast,
+  losRaycast?: RaycastSource,
+) {
   const bus = new EventBus<GameEventMap>();
   const position = new Vector3(0, 0, 0);
+  const motor = fakeMotor(position);
   return {
     npc: new Npc({
       id: "npc-1",
+      characterId: "test-npc",
       faction: "zombies",
       position,
       visualRoot: new Group(),
       height: 1.8,
-      motor: fakeMotor(position),
+      motor,
       combat,
       preset,
-      navSpace: {} as NavSpace,
-      buildingRegistry: {} as BuildingRegistry,
-      pathQueue: { cancel: vi.fn() } as unknown as PathRequestQueue,
-      raycast: {} as Raycast,
+      navigation: {
+        createAgent: () => null,
+        releaseAgentReservations: vi.fn(),
+        projectPoint: () => null,
+      } as unknown as NavigationService,
+      buildingRegistry: new BuildingRegistry([]),
+      navigationRequests: { cancel: vi.fn(), enqueue: vi.fn() } as unknown as NavigationRequestQueue,
+      raycast,
+      losRaycast,
       eventBus: bus,
       animation: null,
       patrolRoute: null,
       tacticalMap: null,
       squadDirector: null,
     }),
+    motor,
     damaged: recordEvents(bus, "npc.damaged"),
     killed: recordEvents(bus, "npc.killed"),
+  };
+}
+
+function actor(id: string, position: Vector3, faction: ActorSnapshot["faction"]): ActorSnapshot {
+  return {
+    id,
+    position,
+    faction,
+    entity: { applyDamage: vi.fn(), isAlive: () => true },
+    isAlive: true,
+    radius: 0.4,
+  };
+}
+
+function context(npcs: ActorSnapshot[], portalGhosts?: ActorSnapshot[]): AiFrameContext {
+  return {
+    delta: 1 / 60,
+    elapsed: 0,
+    aiLod: "near",
+    player: { ...actor("player", new Vector3(0, 0, -30), "player"), isAlive: false },
+    npcs,
+    portalGhosts,
+    tacticalMap: null as never,
+    squadDirector: null as never,
+    eventBus: new EventBus<GameEventMap>(),
   };
 }
 
@@ -162,3 +200,109 @@ describe("Npc.applyDamage", () => {
     expect(damaged[0].point).toEqual(point);
   });
 });
+
+describe("Npc scripted sequence lifecycle", () => {
+  it("cancela una secuencia interrumpible si ya estaba en JustHit al comenzar", () => {
+    const { npc } = createNpc();
+    const { order, notifyDone } = fakeScriptOrder(false);
+    npc.applyDamage(1);
+
+    npc.update(contextWithScript(order));
+
+    expect(notifyDone).toHaveBeenCalledOnce();
+    expect(notifyDone).toHaveBeenCalledWith("canceled");
+  });
+
+  it("JustHit no cancela una secuencia override", () => {
+    const { npc } = createNpc();
+    const { order, notifyDone } = fakeScriptOrder(true);
+    npc.applyDamage(1);
+
+    npc.update(contextWithScript(order));
+
+    expect(notifyDone).not.toHaveBeenCalled();
+  });
+
+  it("cancela la secuencia antes del early-return de un NPC muerto", () => {
+    const { npc } = createNpc();
+    const { order, notifyDone } = fakeScriptOrder(true);
+    npc.applyDamage(1000);
+
+    npc.update(contextWithScript(order));
+
+    expect(notifyDone).toHaveBeenCalledOnce();
+    expect(notifyDone).toHaveBeenCalledWith("canceled");
+  });
+});
+
+describe("Npc portal LOS", () => {
+  it("no valida la posicion real de otro NPC con el raycast portal-aware", () => {
+    const directCast = vi.fn(() => ({ metadata: { id: "wall" } } as never));
+    const portalCast = vi.fn(() => ({ metadata: { id: "combine-1" } } as never));
+    const { npc } = createNpc(
+      { cast: directCast } as unknown as Raycast,
+      { cast: portalCast },
+    );
+    const combine = actor("combine-1", new Vector3(0, 0, 10), "combine");
+
+    npc.update(context([combine]));
+
+    expect(npc.getAiDebugSnapshot().brain?.threat.visibleNow).toBe(false);
+    expect(directCast).toHaveBeenCalled();
+    expect(portalCast).not.toHaveBeenCalled();
+  });
+
+  it("usa el raycast portal-aware para el ghost de otro NPC", () => {
+    const directCast = vi.fn(() => ({ metadata: { id: "wall" } } as never));
+    const portalCast = vi.fn(() => ({ metadata: { id: "combine-1" } } as never));
+    const { npc } = createNpc(
+      { cast: directCast } as unknown as Raycast,
+      { cast: portalCast },
+    );
+    const combine = actor("combine-1", new Vector3(0, 0, 10), "combine");
+    const ghost: ActorSnapshot = {
+      ...combine,
+      position: new Vector3(0, 0, 4),
+      navPosition: combine.position,
+      portalView: {
+        position: new Vector3(0, 1, 2),
+        normal: new Vector3(0, 0, -1),
+      },
+    };
+
+    npc.update(context([combine], [ghost]));
+
+    const debug = npc.getAiDebugSnapshot();
+    expect(debug.brain?.threat.visibleNow).toBe(true);
+    expect(debug.threatPosition).toEqual(ghost.position);
+    expect(portalCast).toHaveBeenCalled();
+  });
+});
+
+function contextWithScript(order: NpcScriptOrder): AiFrameContext {
+  return {
+    ...context([]),
+    script: {
+      orderFor: () => order,
+      anchorOverrideFor: () => null,
+      anchorArrivalRadiusFor: () => null,
+    },
+  };
+}
+
+function fakeScriptOrder(overrideAi: boolean) {
+  const notifyDone = vi.fn();
+  const order: NpcScriptOrder = {
+    sequenceName: "test-sequence",
+    moveMode: "none",
+    movePosition: null,
+    faceYaw: null,
+    steps: [],
+    overrideAi,
+    isCuePending: () => false,
+    consumeCue: () => undefined,
+    notifyArrived: () => undefined,
+    notifyDone,
+  };
+  return { order, notifyDone };
+}

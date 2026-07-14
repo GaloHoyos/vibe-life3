@@ -1,8 +1,14 @@
 import { MeshStandardMaterial, Vector2, type MeshStandardMaterialParameters } from 'three';
-import { getTextureSet, type TextureSetId } from './Textures';
+import {
+  getTextureSet,
+  TextureSets,
+  type TextureSetDefinition,
+  type TextureSetId,
+} from './Textures';
 
 export type MaterialKey =
   | 'floor'
+  | 'asphalt'
   | 'wall'
   | 'trim'
   | 'crate'
@@ -20,7 +26,11 @@ export type MaterialKey =
   | 'roof'
   | 'plaster'
   | 'concrete'
-  | 'woodDark';
+  | 'woodDark'
+  | 'metalRusted'
+  | 'lightWarm'
+  | 'signalBlue'
+  | 'signalRed';
 
 interface CommonMaterialDef {
   /**
@@ -30,13 +40,15 @@ interface CommonMaterialDef {
    * que ni el depth buffer logarítmico separa.
    */
   polygonOffset?: boolean;
+  /** Emisión uniforme que se conserva incluso cuando el material usa albedo. */
+  emissive?: number;
+  emissiveIntensity?: number;
 }
 
 interface ColorMaterialDef extends CommonMaterialDef {
   color: number;
   roughness?: number;
   metalness?: number;
-  emissive?: number;
 }
 
 interface PbrMaterialDef extends CommonMaterialDef {
@@ -47,6 +59,8 @@ interface PbrMaterialDef extends CommonMaterialDef {
   roughness?: number;
   /** Override de metalness. Si no, hereda del set. */
   metalness?: number;
+  /** Usa el mismo albedo para conservar detalle dentro de la emisión. */
+  emissiveFromAlbedo?: boolean;
 }
 
 type MaterialDef = ColorMaterialDef | PbrMaterialDef;
@@ -56,25 +70,36 @@ function isPbr(def: MaterialDef): def is PbrMaterialDef {
 }
 
 const definitions: Record<MaterialKey, MaterialDef> = {
-  floor: { color: 0x28323a, roughness: 0.9, metalness: 0.15 },
-  wall: { color: 0x33424a, roughness: 0.82, metalness: 0.2 },
-  trim: { color: 0x668899, roughness: 0.55, metalness: 0.3, polygonOffset: true },
-  crate: { color: 0x56616a, roughness: 0.8, metalness: 0.1 },
-  dynamic: { color: 0x9bb7c2, roughness: 0.65, metalness: 0.15 },
-  door: { color: 0x40525d, roughness: 0.55, metalness: 0.45 },
-  button: { color: 0x25c6da, emissive: 0x07343a, roughness: 0.35 },
+  floor: { textureSet: 'weatheredConcrete', color: 0x66727a, roughness: 0.9, metalness: 0.02 },
+  asphalt: { textureSet: 'cityAsphalt', color: 0x9aa0a2, roughness: 0.94, metalness: 0 },
+  wall: { textureSet: 'industrialWall', color: 0x87969c, roughness: 0.86, metalness: 0.06 },
+  trim: { textureSet: 'paintedMetal', color: 0x8fa6b0, roughness: 0.6, polygonOffset: true },
+  crate: { textureSet: 'crateWood', color: 0xe0d7c9, roughness: 0.86, metalness: 0.01 },
+  dynamic: { textureSet: 'paintedMetal', color: 0xb2c0c5, roughness: 0.68 },
+  door: { textureSet: 'paintedMetal', color: 0x75868e, roughness: 0.62 },
+  button: {
+    textureSet: 'controlPanel',
+    color: 0x54d4df,
+    emissive: 0x07343a,
+    emissiveFromAlbedo: true,
+    roughness: 0.4,
+  },
   npc: { color: 0xd76157, roughness: 0.75, metalness: 0.05 },
   npcDead: { color: 0x34383c, roughness: 0.95, metalness: 0.05 },
-  hazard: { color: 0xf2b84b, roughness: 0.6, metalness: 0.05 },
+  hazard: { textureSet: 'hazardStripes', color: 0xffffff, roughness: 0.66 },
   snow: { textureSet: 'snow' },
   rock: { textureSet: 'rock' },
   grass: { textureSet: 'grass' },
   sand: { textureSet: 'sand' },
   brick: { textureSet: 'brickFactory' },
   roof: { textureSet: 'roofClay' },
-  plaster: { color: 0xc9c0ad, roughness: 0.92, metalness: 0.02 },
-  concrete: { color: 0x8e9296, roughness: 0.88, metalness: 0.05 },
-  woodDark: { color: 0x57422e, roughness: 0.8, metalness: 0.02 },
+  plaster: { textureSet: 'agedPlaster', color: 0xf0eadf, roughness: 0.94, metalness: 0.01 },
+  concrete: { textureSet: 'weatheredConcrete', color: 0xb5b6b3, roughness: 0.9, metalness: 0.02 },
+  woodDark: { textureSet: 'darkWoodPlanks', color: 0x806a56, roughness: 0.84, metalness: 0.01 },
+  metalRusted: { textureSet: 'rustedMetal', color: 0xd2c7bc, roughness: 0.86 },
+  lightWarm: { color: 0xffd7a1, emissive: 0x8a4b18, roughness: 0.32, polygonOffset: true },
+  signalBlue: { color: 0x3f8fa8, emissive: 0x0d3440, roughness: 0.4, metalness: 0.18, polygonOffset: true },
+  signalRed: { color: 0xc64b3c, emissive: 0x46100c, roughness: 0.42, metalness: 0.12, polygonOffset: true },
 };
 
 function buildMaterial(def: MaterialDef): MeshStandardMaterial {
@@ -83,6 +108,7 @@ function buildMaterial(def: MaterialDef): MeshStandardMaterial {
     roughness: def.roughness ?? 1,
     metalness: def.metalness ?? 0,
     emissive: def.emissive ?? 0x000000,
+    emissiveIntensity: def.emissiveIntensity ?? 1,
   });
   if (def.polygonOffset) {
     material.polygonOffset = true;
@@ -99,6 +125,8 @@ function buildPbrMaterial(def: PbrMaterialDef): MeshStandardMaterial {
     color: def.color ?? 0xffffff,
     roughness: def.roughness ?? set.definition.roughness ?? 1,
     metalness: def.metalness ?? set.definition.metalness ?? 0,
+    emissive: def.emissive ?? 0x000000,
+    emissiveIntensity: def.emissiveIntensity ?? 1,
   };
   if (set.normal) {
     params.normalMap = set.normal;
@@ -107,6 +135,7 @@ function buildPbrMaterial(def: PbrMaterialDef): MeshStandardMaterial {
   }
   if (set.roughness) params.roughnessMap = set.roughness;
   if (set.metallic) params.metalnessMap = set.metallic;
+  if (def.emissiveFromAlbedo) params.emissiveMap = set.albedo;
   if (set.ao) {
     params.aoMap = set.ao;
     params.aoMapIntensity = set.definition.aoIntensity ?? 1;
@@ -114,12 +143,17 @@ function buildPbrMaterial(def: PbrMaterialDef): MeshStandardMaterial {
   return new MeshStandardMaterial(params);
 }
 
-const materials: Record<MaterialKey, MeshStandardMaterial> = Object.fromEntries(
-  (Object.keys(definitions) as MaterialKey[]).map((key) => [key, buildMaterial(definitions[key])]),
-) as Record<MaterialKey, MeshStandardMaterial>;
+// Lazy: evita decodificar todos los albedos/PBR al importar el módulo. En mapas
+// grandes sólo se cargan las familias de material realmente usadas.
+const materials = new Map<MaterialKey, MeshStandardMaterial>();
 
 export function getMaterial(key: MaterialKey): MeshStandardMaterial {
-  return materials[key].clone();
+  let material = materials.get(key);
+  if (!material) {
+    material = buildMaterial(definitions[key]);
+    materials.set(key, material);
+  }
+  return material.clone();
 }
 
 /**
@@ -129,5 +163,20 @@ export function getMaterial(key: MaterialKey): MeshStandardMaterial {
  */
 export function materialNeedsUv1(key: MaterialKey): boolean {
   const def = definitions[key];
-  return isPbr(def) && getTextureSet(def.textureSet).ao !== null;
+  if (!isPbr(def)) return false;
+  const textureDef: TextureSetDefinition = TextureSets[def.textureSet];
+  return Boolean(textureDef.maps.ao);
+}
+
+/**
+ * Preescala UV por metro. El `Texture.repeat` del set aplica después `tiling`,
+ * por eso se compensa aquí para que el tamaño final sea exactamente `tileSize`.
+ */
+export function materialUvPreScale(key: MaterialKey): number | null {
+  const def = definitions[key];
+  if (!isPbr(def)) return null;
+  const textureDef: TextureSetDefinition = TextureSets[def.textureSet];
+  return textureDef.tileSize && textureDef.tileSize > 0
+    ? 1 / (textureDef.tileSize * textureDef.tiling)
+    : null;
 }

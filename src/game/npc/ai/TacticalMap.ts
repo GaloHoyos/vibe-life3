@@ -1,6 +1,7 @@
 import { Vector3 } from "three";
-import type { NavSpace } from "@engine/ai/nav/NavSpace";
+import type { NavigationService } from "@engine/ai/navigation/NavigationService";
 import type { Raycast } from "@engine/physics/Raycast";
+import { NavigationProfiles } from "@game/npc/navigation/NavAgentProfiles";
 import type {
   DynamicBoxDefinition,
   LevelDefinition,
@@ -300,17 +301,17 @@ const FIRING_POSITION_STRIDE = 5;
 export class TacticalMapAnalyzer {
   static sharedRaycast: Raycast | null = null;
 
-  analyze(level: LevelDefinition, navSpace: NavSpace, raycast: Raycast): TacticalMap {
+  analyze(level: LevelDefinition, navigation: NavigationService, raycast: Raycast): TacticalMap {
     TacticalMapAnalyzer.sharedRaycast = raycast;
     const cover: TacticalCoverPoint[] = [];
-    const firing = this.collectFiringPositions(navSpace);
-    const chokepoints = this.collectChokepoints(navSpace);
+    const firing = this.collectFiringPositions(navigation);
+    const chokepoints = this.collectChokepoints(level, navigation);
     const occupied = new Set<string>();
     for (const box of level.staticBoxes) {
-      this.addCoverForBox(box, "static", navSpace, raycast, cover, occupied);
+      this.addCoverForBox(box, "static", navigation, raycast, cover, occupied);
     }
     for (const box of level.dynamicBoxes) {
-      this.addCoverForBox(box, "dynamic", navSpace, raycast, cover, occupied);
+      this.addCoverForBox(box, "dynamic", navigation, raycast, cover, occupied);
     }
     console.info("[TacticalMapAnalyzer] tactical map", {
       cover: cover.length,
@@ -320,16 +321,15 @@ export class TacticalMapAnalyzer {
     return new TacticalMap(cover, firing, chokepoints);
   }
 
-  private collectFiringPositions(navSpace: NavSpace): TacticalPoint[] {
+  private collectFiringPositions(navigation: NavigationService): TacticalPoint[] {
     const out: TacticalPoint[] = [];
     let serial = 0;
-    for (const cell of navSpace.getCells()) {
-      if (cell.edgeCount === 0) continue;
+    for (const sample of navigation.getSamples(NavigationProfiles.humanoid.id)) {
       if (serial % FIRING_POSITION_STRIDE === 0) {
         out.push({
-          id: `fire-${cell.index}`,
-          position: new Vector3(cell.center[0], cell.center[1], cell.center[2]),
-          componentId: cell.componentId,
+          id: `fire-${sample.id}`,
+          position: sample.position.clone(),
+          componentId: sample.componentId,
         });
       }
       serial += 1;
@@ -338,17 +338,19 @@ export class TacticalMapAnalyzer {
   }
 
   /** Los portales tipo puerta son los cuellos de botella semanticos del nivel. */
-  private collectChokepoints(navSpace: NavSpace): TacticalPoint[] {
+  private collectChokepoints(level: LevelDefinition, navigation: NavigationService): TacticalPoint[] {
     const out: TacticalPoint[] = [];
-    for (const portal of navSpace.getPortals()) {
-      if (portal.kind !== "door" && portal.kind !== "open") continue;
-      const position = new Vector3(portal.position[0], portal.position[1], portal.position[2]);
-      const cell = navSpace.cellAt(position);
-      out.push({
-        id: `choke-${portal.id}`,
-        position,
-        componentId: cell?.componentId ?? null,
-      });
+    for (const building of level.buildings ?? []) {
+      for (const doorway of building.doorways) {
+        const raw = new Vector3(...doorway.position);
+        const position = navigation.projectPoint(raw, NavigationProfiles.humanoid);
+        if (!position) continue;
+        out.push({
+          id: `choke-${building.id}-${doorway.id}`,
+          position,
+          componentId: navigation.componentAt(position, NavigationProfiles.humanoid),
+        });
+      }
     }
     return out;
   }
@@ -356,7 +358,7 @@ export class TacticalMapAnalyzer {
   private addCoverForBox(
     box: StaticBoxDefinition | DynamicBoxDefinition,
     kind: "static" | "dynamic",
-    navSpace: NavSpace,
+    navigation: NavigationService,
     raycast: Raycast,
     out: TacticalCoverPoint[],
     occupied: Set<string>,
@@ -374,7 +376,7 @@ export class TacticalMapAnalyzer {
     for (const side of sideSpecs) {
       const raw = new Vector3(cx, cy - sy / 2 + 0.2, cz);
       raw.addScaledVector(side.normal, side.offset);
-      const grounded = this.snapToWalkableGround(raw, navSpace, raycast);
+      const grounded = this.snapToWalkableGround(raw, navigation, raycast);
       if (!grounded) continue;
       if (!this.hasCharacterClearance(grounded, raycast)) continue;
       const key = `${Math.round(grounded.x * 2)}:${Math.round(grounded.y * 2)}:${Math.round(grounded.z * 2)}`;
@@ -382,7 +384,7 @@ export class TacticalMapAnalyzer {
       occupied.add(key);
 
       const right = new Vector3(-side.normal.z, 0, side.normal.x);
-      const componentId = this.componentAt(navSpace, grounded);
+      const componentId = this.componentAt(navigation, grounded);
       out.push({
         id: `auto-${kind}-${box.id}-${side.suffix}`,
         sourceId: box.id,
@@ -406,7 +408,7 @@ export class TacticalMapAnalyzer {
 
   private snapToWalkableGround(
     raw: Vector3,
-    navSpace: NavSpace,
+    navigation: NavigationService,
     raycast: Raycast,
   ): Vector3 | null {
     const origin = raw.clone();
@@ -415,11 +417,9 @@ export class TacticalMapAnalyzer {
     if (!hit || hit.metadata?.kind === "door") return null;
     const grounded = hit.point.clone();
     grounded.y += 0.1;
-    const cell = navSpace.cellAt(grounded);
-    if (!cell) return null;
-    // Mantiene el x/z pegado al obstaculo (la celda solo valida navegabilidad
-    // y aporta la altura caminable).
-    return new Vector3(grounded.x, cell.center[1], grounded.z);
+    const projected = navigation.projectPoint(grounded, NavigationProfiles.humanoid);
+    if (!projected || projected.distanceToSquared(grounded) > 2.25) return null;
+    return projected;
   }
 
   private hasCharacterClearance(position: Vector3, raycast: Raycast): boolean {
@@ -429,7 +429,7 @@ export class TacticalMapAnalyzer {
     return !hit || (hit.metadata?.kind !== "static" && hit.metadata?.kind !== "door");
   }
 
-  private componentAt(navSpace: NavSpace, position: Vector3): number | null {
-    return navSpace.cellAt(position)?.componentId ?? null;
+  private componentAt(navigation: NavigationService, position: Vector3): number | null {
+    return navigation.componentAt(position, NavigationProfiles.humanoid);
   }
 }

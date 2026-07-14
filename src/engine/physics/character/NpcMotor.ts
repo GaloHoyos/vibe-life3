@@ -53,6 +53,9 @@ export interface NpcMotor {
   /** Salto balistico (creatures terrestres). No-op en voladores. */
   leapTo(target: Vector3, upSpeed: number, maxForwardSpeed: number): void;
   isLeaping(): boolean;
+  /** Cambia la postura física para atravesar un área de baja altura. */
+  setCrouched?(crouched: boolean): void;
+  isCrouched?(): boolean;
   /**
    * Fuera del control de la IA: aturdido por un impacto fisico o sostenido por
    * la gravity gun. El `Npc` suspende combate/brain mientras dura.

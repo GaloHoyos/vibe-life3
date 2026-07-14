@@ -65,6 +65,21 @@ export const Dialogue = {
     text: `Cargando ${title}.`,
     duration: 2.5,
   }),
+  companionFollow: (name: string): SubtitleLine => ({
+    speaker: name,
+    text: "Listo, te sigo.",
+    duration: 2,
+  }),
+  companionWait: (name: string): SubtitleLine => ({
+    speaker: name,
+    text: "Ok, espero acá.",
+    duration: 2,
+  }),
+  companionEscort: (name: string): SubtitleLine => ({
+    speaker: name,
+    text: "Entendido, seguime.",
+    duration: 2,
+  }),
 } satisfies Record<string, SubtitleLine | ((...args: never[]) => SubtitleLine)>;
 
 export const MenuStrings = {
@@ -127,6 +142,9 @@ export const InteractionStrings = {
 
 export const HudStrings = {
   unarmed: "DESARMADO",
+  squadSize: (size: number, max: number): string => `ESCUADRÓN ${size}/${max}`,
+  squadMove: "escuadrón: a la posición",
+  squadRegroup: "escuadrón: reagruparse",
   weaponPickedUp: (weaponName: string): string => `arma adquirida: ${weaponName}`,
   healthPickedUp: (amount: number): string => `+${amount} vida`,
   armorPickedUp: (amount: number): string => `+${amount} traje`,
