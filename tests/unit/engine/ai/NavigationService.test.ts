@@ -90,6 +90,43 @@ describe("NavigationService", () => {
     expect(path!.actions.some((action) => action.link.kind === "portal")).toBe(true);
   }, 20_000);
 
+  it("keeps asymmetric Blob flow openings on the same world channels when routing in reverse", async () => {
+    const profile = NavigationProfiles.blob;
+    const boxes = [
+      box("left-flow-floor", [-4, -0.25, 0], [5, 0.5, 5]),
+      box("right-flow-floor", [4, -0.25, 0], [5, 0.5, 5]),
+    ];
+    navigation = await NavigationService.create({
+      geometry: buildNavigationGeometry(boxes),
+      groundProfiles: [profile],
+      raycast: new Raycast(physics),
+      physics,
+    });
+    navigation.setSemanticActionLinks([{
+      id: "asymmetric-flow",
+      kind: "flow",
+      start: new Vector3(-2, 0, 0),
+      end: new Vector3(2, 0, 0),
+      bidirectional: true,
+      cost: 1,
+      width: 2,
+      profileIds: [profile.id],
+      flowOpenings: [
+        { offset: -0.65, width: 0.75, bottom: 0, height: 0.8 },
+        { offset: 0.2, width: 0.9, bottom: 0, height: 0.8 },
+      ],
+    }]);
+
+    const path = navigation.requestPath(
+      profile,
+      new Vector3(4, 0, 0),
+      new Vector3(-4, 0, 0),
+    );
+    const reverse = path?.actions.find((action) => action.link.id === "asymmetric-flow-reverse");
+
+    expect(reverse?.link.flowOpenings?.map((opening) => opening.offset)).toEqual([0.65, -0.2]);
+  }, 20_000);
+
   it("propaga el owner que activa un action link de puerta", async () => {
     const profile = testProfile();
     const openDoor = vi.fn();

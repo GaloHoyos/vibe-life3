@@ -19,6 +19,7 @@ const profiles = [
   NavigationProfiles.humanoid,
   NavigationProfiles.humanoidLimited,
   NavigationProfiles.headcrab,
+  NavigationProfiles.blob,
   NavigationProfiles.strider,
 ];
 

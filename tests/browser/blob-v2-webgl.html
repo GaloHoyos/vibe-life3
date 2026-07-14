@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Blob V2 WebGL verification</title>
+  </head>
+  <body>
+    <canvas id="surface" width="128" height="128"></canvas>
+    <script type="module">
+      import {
+        AmbientLight,
+        Color,
+        DirectionalLight,
+        Group,
+        PerspectiveCamera,
+        Scene,
+        Vector3,
+        WebGLRenderer,
+      } from "three";
+      import { BlobSurfaceScheduler } from "/src/engine/blob/BlobSurfaceScheduler.ts";
+      import { BlobV2Presenter } from "/src/game/npc/blob/v2/BlobV2Presenter.ts";
+
+      const CYCLES = 100;
+      const canvas = document.querySelector("#surface");
+
+      try {
+        const result = runVerification(canvas);
+        publish({ ok: true, ...result });
+      } catch (error) {
+        publish({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+      }
+
+      function runVerification(targetCanvas) {
+        const gl = targetCanvas.getContext("webgl2", {
+          alpha: false,
+          antialias: false,
+          depth: true,
+          preserveDrawingBuffer: true,
+        });
+        assert(gl, "A real WebGL2 context was not available");
+        const resources = instrumentResources(gl);
+        const shaderErrors = [];
+        const renderer = new WebGLRenderer({
+          canvas: targetCanvas,
+          context: gl,
+          antialias: false,
+          alpha: false,
+        });
+        renderer.setPixelRatio(1);
+        renderer.setSize(128, 128, false);
+        renderer.setClearColor(0x000000, 1);
+        renderer.debug.checkShaderErrors = true;
+        renderer.debug.onShaderError = (
+          context,
+          program,
+          vertexShader,
+          fragmentShader,
+        ) => {
+          shaderErrors.push({
+            program: context.getProgramInfoLog(program) ?? "",
+            vertex: context.getShaderInfoLog(vertexShader) ?? "",
+            fragment: context.getShaderInfoLog(fragmentShader) ?? "",
+          });
+        };
+
+        const scene = new Scene();
+        scene.background = new Color(0x000000);
+        scene.add(new AmbientLight(0xffffff, 1.35));
+        const key = new DirectionalLight(0xffffff, 2.2);
+        key.position.set(3, 4, 5);
+        scene.add(key);
+        const camera = new PerspectiveCamera(42, 1, 0.05, 20);
+        camera.position.set(0, 0.2, 4);
+        camera.lookAt(0, 0, 0);
+        camera.updateMatrixWorld();
+
+        renderer.render(scene, camera);
+        const baseline = sampleResources(renderer, resources);
+        const compile = compileAndRender(
+          renderer,
+          gl,
+          scene,
+          camera,
+          resources,
+          shaderErrors,
+          baseline,
+        );
+        const soak = runSoak(
+          renderer,
+          scene,
+          camera,
+          resources,
+          baseline,
+          CYCLES,
+        );
+
+        const extension = gl.getExtension("WEBGL_debug_renderer_info");
+        const driver = extension
+          ? gl.getParameter(extension.UNMASKED_RENDERER_WEBGL)
+          : gl.getParameter(gl.RENDERER);
+        const finalResources = sampleResources(renderer, resources);
+        renderer.renderLists.dispose();
+        renderer.dispose();
+
+        return {
+          context: "webgl2",
+          driver,
+          compile,
+          soak,
+          shaderErrors,
+          baseline,
+          finalResources,
+        };
+      }
+
+      function compileAndRender(
+        renderer,
+        gl,
+        scene,
+        camera,
+        resources,
+        shaderErrors,
+        baseline,
+      ) {
+        const root = new Group();
+        scene.add(root);
+        const scheduler = schedulerForSoak();
+        const presenter = presenterForSoak(root, scheduler, "compile");
+        const closedSnapshot = makeSnapshot(1, 1, []);
+        closedSnapshot.islands[0].wounds = [];
+
+        // Render once while meshing is pending. This compiles the instanced
+        // fallback shader and uploads its instanceMatrix buffer.
+        presenter.update(closedSnapshot, view(0));
+        renderer.compile(scene, camera);
+        renderer.render(scene, camera);
+        assert(presenter.fallbackCellCount === 1, "Fallback did not render while queued");
+        const closedCenter = readCenterPixel(gl);
+
+        // Open a front-facing wound without running the scheduler. The shader
+        // mask must reveal the red interior immediately and the tendon layer
+        // must already be present inside that same cavity.
+        const snapshot = makeSnapshot(1, 2, []);
+        snapshot.islands[0].wounds = [{
+          id: "immediate-wound",
+          position: new Vector3(0, 0, 0.58),
+          radius: 0.34,
+          strength: 1,
+        }];
+        snapshot.core.exposure = 1;
+        presenter.update(snapshot, view(0.0005));
+        renderer.render(scene, camera);
+        const openedCenter = readCenterPixel(gl);
+        const centerDifference = Math.hypot(
+          openedCenter[0] - closedCenter[0],
+          openedCenter[1] - closedCenter[1],
+          openedCenter[2] - closedCenter[2],
+        );
+        assert(
+          centerDifference > 30,
+          `Immediate wound mask did not alter the skin pixel: ${closedCenter} -> ${openedCenter}`,
+        );
+        assert(
+          openedCenter[0] > openedCenter[1] + 20,
+          `Immediate wound did not reveal red interior: ${openedCenter}`,
+        );
+        assert(presenter.visibleTendonCount === 3, "Visible wound emitted no tendons");
+        assert(
+          presenter.visibleShedDropletCount === 2,
+          "Overflow shed droplets did not render as instances",
+        );
+        assert(
+          presenter.getSurfaceInfo("main")?.hasBuild === false,
+          "Immediate wound assertion accidentally waited for meshing",
+        );
+
+        scheduler.runFrame();
+        presenter.update(snapshot, view(0.001, false));
+        clearGlErrors(gl);
+        renderer.compile(scene, camera);
+        renderer.render(scene, camera);
+        gl.finish();
+
+        const surface = presenter.getSurfaceInfo("main");
+        assert(surface?.hasBuild === true, "MarchingCubes did not produce a surface");
+        assert(surface.mesh.isMarchingCubes === true, "The rendered mesh is not MarchingCubes");
+        assert(surface.mesh.count > 0, "MarchingCubes emitted no vertices");
+        assert(shaderErrors.length === 0, "The Blob V2 material failed shader compilation");
+
+        const pixels = new Uint8Array(128 * 128 * 4);
+        gl.readPixels(0, 0, 128, 128, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        const glError = gl.getError();
+        let coloredPixels = 0;
+        for (let index = 0; index < pixels.length; index += 4) {
+          if (pixels[index] + pixels[index + 1] + pixels[index + 2] > 24) {
+            coloredPixels += 1;
+          }
+        }
+        const triangles = renderer.info.render.triangles;
+        const uploaded = sampleResources(renderer, resources);
+        assert(glError === gl.NO_ERROR, `WebGL error after Blob render: ${glError}`);
+        assert(triangles > 0, "The compiled Blob produced no rendered triangles");
+        assert(coloredPixels > 20, "The Blob render produced no visible pixels");
+        assert(uploaded.geometries > baseline.geometries, "No geometry reached the GPU");
+        assert(uploaded.buffers > baseline.buffers, "No vertex buffer reached WebGL");
+
+        presenter.dispose();
+        scheduler.dispose();
+        scene.remove(root);
+        renderer.render(scene, camera);
+        const afterDispose = sampleResources(renderer, resources);
+        assertSameResources(afterDispose, baseline, "compile cleanup");
+        return {
+          marchingVertices: surface.mesh.count,
+          triangles,
+          coloredPixels,
+          immediateWound: {
+            closedCenter,
+            openedCenter,
+            centerDifference,
+            tendons: presenter.visibleTendonCount,
+            shedDroplets: presenter.visibleShedDropletCount,
+          },
+          glError,
+          programsCompiled: uploaded.programs,
+          uploaded,
+          afterDispose,
+        };
+      }
+
+      function runSoak(
+        renderer,
+        scene,
+        camera,
+        resources,
+        baseline,
+        cycles,
+      ) {
+        let maxSurfaces = 0;
+        let maxPendingJobs = 0;
+        let maxGeometries = baseline.geometries;
+        let maxBuffers = baseline.buffers;
+        let maxPrograms = baseline.programs;
+
+        for (let cycle = 0; cycle < cycles; cycle += 1) {
+          const root = new Group();
+          scene.add(root);
+          const scheduler = schedulerForSoak();
+          const presenter = presenterForSoak(root, scheduler, `soak-${cycle}`);
+          const generation = cycle + 1;
+          const baseRevision = cycle * 10;
+          const main = makeSnapshot(generation, baseRevision + 1, []);
+          const split = makeSnapshot(
+            generation,
+            baseRevision + 2,
+            Array.from({ length: 6 }, (_, index) => `fragment-${index}`),
+          );
+          const merged = makeSnapshot(generation, baseRevision + 3, []);
+
+          presenter.update(main, view(cycle * 2));
+          maxPendingJobs = Math.max(maxPendingJobs, scheduler.pendingCount);
+          renderer.render(scene, camera);
+          scheduler.runFrame();
+          presenter.update(main, view(cycle * 2 + 0.001, false));
+
+          presenter.update(split, view(cycle * 2 + 0.1));
+          maxPendingJobs = Math.max(maxPendingJobs, scheduler.pendingCount);
+          renderer.render(scene, camera);
+          scheduler.runFrame();
+          presenter.update(split, view(cycle * 2 + 0.101, false));
+          renderer.render(scene, camera);
+          assert(presenter.activeSurfaceCount === 7, "Split did not create 1+6 surfaces");
+          assert(scheduler.pendingCount === 0, "Split jobs did not drain");
+          maxSurfaces = Math.max(maxSurfaces, presenter.activeSurfaceCount);
+
+          const peak = sampleResources(renderer, resources);
+          maxGeometries = Math.max(maxGeometries, peak.geometries);
+          maxBuffers = Math.max(maxBuffers, peak.buffers);
+          maxPrograms = Math.max(maxPrograms, peak.programs);
+
+          presenter.update(merged, view(cycle * 2 + 0.2));
+          scheduler.runFrame();
+          presenter.update(merged, view(cycle * 2 + 0.201, false));
+          renderer.render(scene, camera);
+          assert(presenter.activeSurfaceCount === 1, "Merge retained fragment surfaces");
+
+          // Leave one rebuild queued, then prove freeze cancels it before
+          // disposal. This also protects against callbacks retaining surfaces.
+          presenter.update(
+            makeSnapshot(generation, baseRevision + 4, []),
+            view(cycle * 2 + 0.3),
+          );
+          assert(scheduler.pendingCount === 1, "Expected one pre-freeze job");
+          presenter.freeze();
+          assert(scheduler.pendingCount === 0, "Freeze left a scheduled job behind");
+          presenter.dispose();
+          presenter.dispose();
+          scheduler.dispose();
+          scene.remove(root);
+          renderer.render(scene, camera);
+
+          assert(presenter.activeSurfaceCount === 0, "Dispose retained a surface state");
+          assert(presenter.group.parent === null, "Dispose retained the presenter group");
+          assert(scheduler.pendingCount === 0, "Dispose retained a scheduler job");
+          assertSameResources(
+            sampleResources(renderer, resources),
+            baseline,
+            `soak cycle ${cycle}`,
+          );
+        }
+
+        return {
+          cycles,
+          maxSurfaces,
+          maxPendingJobs,
+          maxGeometries,
+          maxBuffers,
+          maxPrograms,
+          afterDispose: sampleResources(renderer, resources),
+        };
+      }
+
+      function presenterForSoak(root, scheduler, ownerId) {
+        return new BlobV2Presenter(root, {
+          ownerId,
+          scheduler,
+          maxFallbackCells: 16,
+          maxMainPolyCount: 1_200,
+          maxFragmentPolyCount: 600,
+        });
+      }
+
+      function schedulerForSoak() {
+        return new BlobSurfaceScheduler({
+          budgetMs: 100_000,
+          maxHighQualityPerFrame: 16,
+        });
+      }
+
+      function makeSnapshot(generation, geometryRevision, fragmentIds) {
+        const islands = [
+          {
+            id: "main",
+            generation,
+            kind: "main",
+            geometryRevision,
+            cells: [
+              {
+                id: "main-cell",
+                position: new Vector3(0, 0, 0),
+                radius: 0.68,
+                contactNormal: new Vector3(0, 1, 0),
+                contactAmount: 0.15,
+              },
+            ],
+            wounds: [
+              {
+                id: "main-wound",
+                position: new Vector3(0.46, 0, 0),
+                radius: 0.18,
+                strength: 0.35,
+              },
+            ],
+          },
+          ...fragmentIds.map((id, index) => {
+            const angle = (index / Math.max(1, fragmentIds.length)) * Math.PI * 2;
+            return {
+              id,
+              generation,
+              kind: "fragment",
+              geometryRevision,
+              fragmentState: index % 2 === 0 ? "returning" : "withering",
+              witherProgress: index % 2 === 0 ? 0 : 0.45,
+              flowDirection: new Vector3(Math.cos(angle), 0, Math.sin(angle)),
+              cells: [
+                {
+                  id: `${id}-cell`,
+                  position: new Vector3(Math.cos(angle) * 1.1, 0, Math.sin(angle) * 1.1),
+                  radius: 0.28,
+                },
+              ],
+            };
+          }),
+        ];
+        return {
+          sequence: geometryRevision,
+          mainIslandId: "main",
+          core: {
+            position: new Vector3(0, 0, 0),
+            radius: 0.3,
+            exposure: 0.35,
+          },
+          shedDroplets: [
+            {
+              id: `shed-${geometryRevision}-a`,
+              position: new Vector3(-0.45, 0.18, 0.35),
+              velocity: new Vector3(-0.8, 1.2, 0.2),
+              radius: 0.13,
+              witherProgress: 0.25,
+            },
+            {
+              id: `shed-${geometryRevision}-b`,
+              position: new Vector3(0.5, 0.12, 0.25),
+              velocity: new Vector3(0.7, 0.6, -0.1),
+              radius: 0.11,
+              witherProgress: 0.7,
+            },
+          ],
+          islands,
+        };
+      }
+
+      function view(now, forceWake = true) {
+        return {
+          now,
+          viewerDistance: 5,
+          mainViewVisible: true,
+          forceWake,
+        };
+      }
+
+      function instrumentResources(gl) {
+        const liveBuffers = new Set();
+        const livePrograms = new Set();
+        const liveVertexArrays = new Set();
+        wrapResource(gl, "createBuffer", "deleteBuffer", liveBuffers);
+        wrapResource(gl, "createProgram", "deleteProgram", livePrograms);
+        wrapResource(gl, "createVertexArray", "deleteVertexArray", liveVertexArrays);
+        return { liveBuffers, livePrograms, liveVertexArrays };
+      }
+
+      function wrapResource(gl, createName, deleteName, live) {
+        const create = gl[createName].bind(gl);
+        const remove = gl[deleteName].bind(gl);
+        Object.defineProperty(gl, createName, {
+          configurable: true,
+          value: (...args) => {
+            const resource = create(...args);
+            if (resource) live.add(resource);
+            return resource;
+          },
+        });
+        Object.defineProperty(gl, deleteName, {
+          configurable: true,
+          value: (resource) => {
+            if (resource) live.delete(resource);
+            return remove(resource);
+          },
+        });
+      }
+
+      function sampleResources(renderer, resources) {
+        return {
+          geometries: renderer.info.memory.geometries,
+          buffers: resources.liveBuffers.size,
+          programs: resources.livePrograms.size,
+          vertexArrays: resources.liveVertexArrays.size,
+          schedulerJobs: 0,
+        };
+      }
+
+      function assertSameResources(actual, expected, label) {
+        for (const key of ["geometries", "buffers", "programs", "vertexArrays"]) {
+          assert(
+            actual[key] === expected[key],
+            `${label} leaked ${key}: expected ${expected[key]}, got ${actual[key]}`,
+          );
+        }
+      }
+
+      function clearGlErrors(gl) {
+        while (gl.getError() !== gl.NO_ERROR) {
+          // Drain setup errors so the assertion belongs to the Blob render.
+        }
+      }
+
+      function readCenterPixel(gl) {
+        const pixel = new Uint8Array(4);
+        gl.readPixels(64, 64, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+        return Array.from(pixel);
+      }
+
+      function assert(condition, message) {
+        if (!condition) throw new Error(message);
+      }
+
+      function publish(result) {
+        const json = JSON.stringify(result);
+        const encoded = btoa(unescape(encodeURIComponent(json)));
+        document.documentElement.setAttribute("data-blob-v2-result", encoded);
+        document.body.textContent = result.ok ? "blob-v2-webgl-ok" : "blob-v2-webgl-failed";
+      }
+    </script>
+  </body>
+</html>

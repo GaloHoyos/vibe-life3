@@ -1,6 +1,7 @@
 import type RAPIER from "@dimforge/rapier3d-compat";
 import type { Quaternion, Vector3 } from "three";
 import type { Damageable } from "@shared/types/lifecycle";
+import type { NavigationActionLink } from "@engine/ai/navigation/NavigationTypes";
 
 /**
  * Contacto de cuchilla detectado por el sweep del flyer contra un cuerpo vivo
@@ -56,6 +57,12 @@ export interface NpcMotor {
   /** Cambia la postura física para atravesar un área de baja altura. */
   setCrouched?(crouched: boolean): void;
   isCrouched?(): boolean;
+  /** Notifica acciones semánticas que requieren una state machine física propia. */
+  beginNavigationAction?(link: NavigationActionLink): void;
+  /** Congela un actor compuesto sin destruir su jerarquía local. */
+  freezeSolid?(): boolean;
+  /** Invalida todos los componentes de un actor compuesto congelado. */
+  shatterFrozen?(): boolean;
   /**
    * Fuera del control de la IA: aturdido por un impacto fisico o sostenido por
    * la gravity gun. El `Npc` suspende combate/brain mientras dura.

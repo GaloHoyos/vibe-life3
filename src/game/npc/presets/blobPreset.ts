@@ -27,7 +27,7 @@ const BLOB_LEAP: NpcLeapProfile = {
 
 /**
  * Preset del blob (npc_blob de HL2:Ep3): masa amorfa de metaballs que persigue
- * al enemigo y lo envuelve. El daño NO sale de un schedule: `BlobContactCombat`
+ * al enemigo y lo envuelve. El daño NO sale de un schedule: `BlobV2Combat`
  * lo aplica por contacto continuo en su `tick` — `envelop` solo mete el
  * centroide adentro del target y lo mantiene cubierto. Sin `hitSchedule`: una
  * masa amorfa no flinchea (y así no se stun-lockea a tiros).
@@ -79,9 +79,9 @@ export function buildBlobPreset(): NpcPreset {
       memoryTime: 8,
       eyeHeight: 0.35,
     },
-    maxHealth: BlobConfig.core.maxHealth,
+    maxHealth: BlobConfig.v2.coreHealth,
     radius: 0.3,
-    meleeRange: BlobConfig.contact.baseRange,
+    meleeRange: BlobConfig.v2.contact.baseRange,
     leapRange: 6,
     leap: BLOB_LEAP,
     tooCloseRange: 0,

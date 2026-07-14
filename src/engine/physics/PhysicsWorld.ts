@@ -47,6 +47,16 @@ export interface PhysicsMetadata {
   explosionDamageable?: Damageable;
   /** Sólido que el Blob puede atravesar; continúa bloqueando al resto del mundo. */
   blobPermeable?: boolean;
+  /** Metadata geométrica del paso permeable; el motor V2 la consume. */
+  blobFlow?: {
+    openings: ReadonlyArray<{
+      offset: number;
+      width: number;
+      bottom: number;
+      height: number;
+    }>;
+    brainCrossFraction: number;
+  };
   /** Prop dinámico que el Blob puede disolver tras envolverlo. */
   blobConsumable?: { consumeSeconds: number; biomass: number };
   /** Tamaño del blocker temporal para el Tile Cache de navegación. */
@@ -183,6 +193,46 @@ export class PhysicsWorld {
       kind: 'static',
       ...options.metadata,
     });
+    return rigidBody;
+  }
+
+  /**
+   * Crea varias cajas estáticas como colliders locales de un único rigid
+   * body fijo en el origen. Para geometría de nivel esto evita pagar un body
+   * de Rapier por cada detalle sin perder la identidad de cada superficie:
+   * cada collider conserva su propia metadata, traslación y rotación.
+   *
+   * Las poses de `PhysicsBoxOptions` siguen expresadas en world space. Como el
+   * body contenedor queda en el origen y con rotación identidad, se aplican
+   * directamente como transformaciones locales de cada collider.
+   *
+   * Un lote vacío no muta el mundo y devuelve `null`.
+   */
+  createStaticBoxes(options: readonly PhysicsBoxOptions[]): RAPIER.RigidBody | null {
+    if (options.length === 0) return null;
+
+    const rigidBody = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    for (const box of options) {
+      let colliderDesc = createBoxCollider(box.size).setTranslation(
+        box.position.x,
+        box.position.y,
+        box.position.z,
+      );
+      if (box.rotation) {
+        colliderDesc = colliderDesc.setRotation({
+          x: box.rotation.x,
+          y: box.rotation.y,
+          z: box.rotation.z,
+          w: box.rotation.w,
+        });
+      }
+      const collider = this.world.createCollider(colliderDesc, rigidBody);
+      this.registerCollider(collider, {
+        id: box.id,
+        kind: 'static',
+        ...box.metadata,
+      });
+    }
     return rigidBody;
   }
 

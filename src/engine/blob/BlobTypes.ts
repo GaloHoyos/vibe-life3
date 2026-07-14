@@ -113,7 +113,7 @@ export interface BlobStepInput {
    * by the physics motor; pure simulations omit it and stay weightless.
    */
   gravity?: number;
-  /** Optional per-step sphere sweep supplied by BlobMotor/Rapier. */
+  /** Optional per-step sphere sweep supplied by BlobV2Motor/Rapier. */
   motionResolver?: BlobParticleMotionResolver;
 }
 

@@ -30,6 +30,25 @@ export interface StaticBoxDefinition {
   rotation?: RotationTuple;
   /** El perfil de navegación Blob puede fluir a través de este sólido. */
   blobPermeable?: boolean;
+  /**
+   * Canales visibles que el Blob usa al exprimir su masa a través del sólido.
+   * `offset` y `width` viven sobre el eje ancho local de la caja; `base` y
+   * `height` se miden desde su base. `bottom` se acepta como alias legacy. Si
+   * se omite, `blobPermeable` conserva el
+   * comportamiento legacy de una única abertura que ocupa todo el panel.
+   */
+  blobFlow?: {
+    openings: Array<{
+      offset: number;
+      width: number;
+      base?: number;
+      /** @deprecated Usar `base`; se conserva para mapas existentes. */
+      bottom?: number;
+      height: number;
+    }>;
+    /** Fracción adherida que debe haber cruzado antes de mover el cerebro. */
+    brainCrossFraction?: number;
+  };
 }
 
 export interface DynamicBoxDefinition {

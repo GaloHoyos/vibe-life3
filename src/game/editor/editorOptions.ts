@@ -19,8 +19,9 @@ import { getAllLevels } from '@game/levels/LevelRegistry';
 import type { PropKind } from './EditorDocument';
 
 export const MATERIAL_KEYS: readonly MaterialKey[] = [
-  'floor', 'wall', 'trim', 'crate', 'dynamic', 'door', 'button', 'npc', 'npcDead',
+  'floor', 'asphalt', 'wall', 'trim', 'crate', 'dynamic', 'door', 'button', 'npc', 'npcDead',
   'hazard', 'snow', 'rock', 'grass', 'sand', 'brick', 'roof', 'plaster', 'concrete', 'woodDark',
+  'metalRusted', 'lightWarm', 'signalBlue', 'signalRed',
 ];
 
 export const WEAPON_IDS: readonly WeaponId[] = [...WEAPON_ORDER];

@@ -9,11 +9,16 @@ import type { SurfaceType } from "@shared/types/Surface";
  */
 const MaterialSurface: Partial<Record<MaterialKey, SurfaceType>> = {
   floor: "concrete",
+  asphalt: "concrete",
   wall: "concrete",
   concrete: "concrete",
   plaster: "concrete",
   brick: "concrete",
   trim: "metal",
+  metalRusted: "metal",
+  lightWarm: "metal",
+  signalBlue: "metal",
+  signalRed: "metal",
   door: "metal",
   dynamic: "metal",
   hazard: "metal",

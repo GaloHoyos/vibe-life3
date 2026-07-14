@@ -773,7 +773,7 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     type: "creature",
     faction: "zombies",
     aiProfileId: "blobCreature",
-    // Content/grounding height only: BlobMotor still has no solid capsule.
+    // Content/grounding height only: BlobV2Motor still has no solid capsule.
     // A headcrab-sized value placed the brain at 45 cm and let the floor slice
     // through half of the marching-cubes body.
     height: 2,
@@ -783,7 +783,7 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     visualOffset: new Vector3(0, 0, 0),
     // Informativo: la vida/daño runtime de creatures sale de `buildBlobPreset`
     // y `BlobConfig` (no pasan por `applyDefinitionStats`).
-    health: { maxHealth: BlobConfig.core.maxHealth },
+    health: { maxHealth: BlobConfig.v2.coreHealth },
     collider: {
       height: 2,
       radius: 0.3,

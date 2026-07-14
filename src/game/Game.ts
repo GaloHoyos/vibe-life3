@@ -26,6 +26,7 @@ import { installIceConsole } from "@game/debug/IceConsole";
 import { installNpcConsole } from "@game/debug/NpcConsole";
 import { installPlayerConsole } from "@game/debug/PlayerConsole";
 import { installPlayerModelConsole } from "@game/debug/PlayerModelConsole";
+import { installBlobV2Debug } from "@game/debug/BlobV2Debug";
 import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
 import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
 import { NpcsModule } from "@game/ui/overlay/debug/modules/NpcsModule";
@@ -82,6 +83,8 @@ import { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 import type { ActorSnapshot, AiFrameContext, INpc, NpcFreezeHandle, NpcPortalHandle } from "@game/npc/core/INpc";
 import { blobSurfaceScheduler } from '@engine/blob/BlobSurfaceScheduler';
 import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
+import { blobPreyClaims } from "@game/npc/blob/BlobPreyClaimService";
+import { blobV2Runtimes } from "@game/npc/blob/v2/BlobV2RuntimeRegistry";
 import { DialogueSystem } from "@game/narrative/DialogueSystem";
 import { LevelEvents } from "@game/narrative/LevelEvents";
 import { WeaponPickup } from "@game/gameplay/weapons/pickup/WeaponPickup";
@@ -155,6 +158,7 @@ export class Game {
   private uninstallPlayerConsole: (() => void) | null = null;
   private uninstallIceConsole: (() => void) | null = null;
   private uninstallPlayerModelConsole: (() => void) | null = null;
+  private uninstallBlobDebug: (() => void) | null = null;
   private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
@@ -282,6 +286,8 @@ export class Game {
     }
 
     this.npcs.forEach((npc) => npc.dispose());
+    blobPreyClaims.reset();
+    blobV2Runtimes.reset();
     this.npcs = [];
     this.crashingGunships.clear();
     this.collapsingStriders.clear();
@@ -293,6 +299,8 @@ export class Game {
     this.uninstallIceConsole = null;
     this.uninstallPlayerModelConsole?.();
     this.uninstallPlayerModelConsole = null;
+    this.uninstallBlobDebug?.();
+    this.uninstallBlobDebug = null;
 
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
@@ -1216,13 +1224,19 @@ export class Game {
     );
 
     this.uninstallNpcConsole = installNpcConsole(() => this.npcs);
-    this.uninstallPlayerConsole = installPlayerConsole(() => this.player);
+    this.uninstallPlayerConsole = installPlayerConsole(
+      () => this.player,
+      () => s.resolve(EngineTokens.Camera),
+    );
     this.uninstallIceConsole = installIceConsole(() =>
       s.resolve(GameTokens.IceGun),
     );
     this.uninstallPlayerModelConsole = installPlayerModelConsole(
       () => this.playerModel,
     );
+    if (import.meta.env.DEV) {
+      this.uninstallBlobDebug = installBlobV2Debug(() => blobV2Runtimes.debugSources());
+    }
 
     const debugMenu = new DebugMenu(this.root, input, controls, eventBus);
     debugMenu.register(new StatsModule());
@@ -1365,6 +1379,7 @@ export class Game {
     const input = s.resolve(EngineTokens.Input);
     const controls = s.resolve(GameTokens.Controls);
     const camera = s.resolve(EngineTokens.Camera);
+    const lighting = s.resolve(EngineTokens.Lighting);
     const physics = s.resolve(EngineTokens.Physics);
     const raycast = s.resolve(EngineTokens.Raycast);
     const gizmos = s.resolve(EngineTokens.Gizmos);
@@ -1466,6 +1481,10 @@ export class Game {
         radius: npc.radius,
         health01: npc.health.max > 0 ? npc.health.current / npc.health.max : 0,
         ...(npc.blobPrey ? { blobPrey: npc.blobPrey } : {}),
+        ...(npc.consumeByBlob ? { consumeByBlob: (blobId: string) => npc.consumeByBlob?.(blobId) ?? false } : {}),
+        ...(npc.setBlobDigestProgress
+          ? { setBlobDigestProgress: (progress: number) => npc.setBlobDigestProgress?.(progress) }
+          : {}),
       }));
       const npcIndex = new ActorSpatialIndex(npcSnapshots);
       const playerSquad = s.resolve(GameTokens.PlayerSquad);
@@ -1564,6 +1583,7 @@ export class Game {
     if (!this.dying) {
       camera.syncToPosition(player.getEyePosition());
     }
+    lighting.focusAt(camera.camera.position);
     // Update the viewmodel after the camera follows the resolved physics pose.
     player.tickRender(time.delta, camera);
     if (!this.dying) {
@@ -2001,6 +2021,8 @@ export class Game {
     // todos los bodies) → limpiar la escena (preservando las luces) → cargar.
     // En el primer load (menú/boot) todo está vacío, así que es no-op.
     this.npcs.forEach((npc) => npc.dispose());
+    blobPreyClaims.reset();
+    blobV2Runtimes.reset();
     this.crashingGunships.clear();
     this.collapsingStriders.clear();
     this.weaponPickups.forEach((pickup) => pickup.dispose());

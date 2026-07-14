@@ -417,6 +417,8 @@ function scanBlobContent(document: EditorDocument): ValidationResult {
     if (entity.kind === "staticBox") {
       const permeable = optionalBoolean(def.blobPermeable, `${label}: blobPermeable`);
       if (!permeable.ok) return permeable;
+      const flow = validateBlobFlow(def.blobFlow, label);
+      if (!flow.ok) return flow;
       continue;
     }
     if (entity.kind === "dynamicBox") {
@@ -472,6 +474,48 @@ function validateBlobConsumable(value: unknown, label: string): ValidationResult
     (typeof value.biomass !== "number" || !Number.isInteger(value.biomass) || value.biomass < 1 || value.biomass > 58)
   ) {
     return invalid(`${label}: biomass debe ser un entero entre 1 y 58.`);
+  }
+  return { ok: true };
+}
+
+function validateBlobFlow(value: unknown, label: string): ValidationResult {
+  if (value === undefined) return { ok: true };
+  if (!isRecord(value)) return invalid(`${label}: blobFlow debe ser un objeto.`);
+  if (!Array.isArray(value.openings) || value.openings.length < 1 || value.openings.length > 12) {
+    return invalid(`${label}: blobFlow.openings debe contener entre 1 y 12 aberturas.`);
+  }
+  if (
+    value.brainCrossFraction !== undefined
+    && (typeof value.brainCrossFraction !== "number"
+      || !Number.isFinite(value.brainCrossFraction)
+      || value.brainCrossFraction < 0.5
+      || value.brainCrossFraction > 0.95)
+  ) {
+    return invalid(`${label}: brainCrossFraction debe estar entre 0.5 y 0.95.`);
+  }
+  for (let index = 0; index < value.openings.length; index += 1) {
+    const opening = value.openings[index];
+    if (!isRecord(opening)) return invalid(`${label}: abertura ${index} de blobFlow inválida.`);
+    for (const field of ["offset", "width", "height"] as const) {
+      const fieldValue = opening[field];
+      if (typeof fieldValue !== "number" || !Number.isFinite(fieldValue)) {
+        return invalid(`${label}: blobFlow.openings[${index}].${field} debe ser finito.`);
+      }
+    }
+    const base = opening.base ?? opening.bottom;
+    if (typeof base !== "number" || !Number.isFinite(base)) {
+      return invalid(`${label}: blobFlow.openings[${index}].base debe ser finito.`);
+    }
+    if (
+      opening.base !== undefined
+      && opening.bottom !== undefined
+      && opening.base !== opening.bottom
+    ) {
+      return invalid(`${label}: la abertura ${index} no puede declarar base y bottom distintos.`);
+    }
+    if ((opening.width as number) <= 0 || (opening.height as number) <= 0 || base < 0) {
+      return invalid(`${label}: la abertura ${index} requiere width/height positivos y base no negativa.`);
+    }
   }
   return { ok: true };
 }

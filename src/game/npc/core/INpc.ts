@@ -8,6 +8,7 @@ import type { SquadDirector, SquadRole } from "@game/npc/ai/SquadDirector";
 import type { NpcScriptOrder } from "@game/script/NpcScriptOrder";
 import type { NpcBlobControlHandle } from "@game/npc/blob/BlobControl";
 import type { BlobPreyDefinition, CharacterId } from "@engine/characters/CharacterDefinition";
+import type { PortalFrame } from "@engine/portals/PortalFrame";
 
 /**
  * Snapshot ligero de un actor del mundo (player u otro NPC) que cualquier
@@ -25,6 +26,10 @@ export interface ActorSnapshot {
   health01?: number;
   /** Opt-in de presa orgánica copiado desde la definición del personaje. */
   blobPrey?: BlobPreyDefinition;
+  /** Retira de forma idempotente un cadáver absorbido. Ausente en actores no removibles. */
+  consumeByBlob?: (blobId: string) => boolean;
+  /** Visual-only sink while a dead body is being absorbed. */
+  setBlobDigestProgress?: (progress: number) => void;
   /**
    * Posición real NAVEGABLE del actor cuando `position` es una proyección
    * (ghost de portal: `position` queda detrás del disco, correcta para
@@ -212,6 +217,18 @@ export interface NpcPortalHandle {
   getPosition(): Vector3;
   getVelocity(): Vector3;
   teleport(position: Vector3, velocity: Vector3, yaw: number): void;
+  /**
+   * Atomic full-frame traversal for composite organisms. The generic
+   * position/velocity/yaw fallback cannot rotate an internal 3D hierarchy.
+   * Returning false asks the portal system to use the generic fallback.
+   */
+  teleportThroughPortal?(
+    entry: PortalFrame,
+    exit: PortalFrame,
+    position: Vector3,
+    velocity: Vector3,
+    yaw: number,
+  ): boolean;
   setColliderExclusions(handles: ReadonlySet<number> | null): void;
 }
 
@@ -269,6 +286,9 @@ export interface INpc {
     hitPoint?: Vector3,
   ): void;
   isAlive(): boolean;
+  /** Oculta y libera un cadáver orgánico al completar la digestión Blob. */
+  consumeByBlob?(blobId: string): boolean;
+  setBlobDigestProgress?(progress: number): void;
   getState(): string;
   getAiDebugSnapshot(): NpcAiDebugSnapshot;
   /**

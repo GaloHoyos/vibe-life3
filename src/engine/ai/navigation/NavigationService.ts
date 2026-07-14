@@ -959,6 +959,7 @@ function profileAllowsLink(profile: NavAgentProfile, link: NavigationActionLink)
     case "door": return profile.canOpenDoors;
     case "portal": return profile.canUsePortals;
     case "flow": return profile.id === "blob";
+    case "climb": return profile.id === "blob";
   }
 }
 function directedLinkVariants(link: NavigationActionLink): NavigationActionLink[] {
@@ -972,6 +973,17 @@ function directedLinkVariants(link: NavigationActionLink): NavigationActionLink[
       traverseStart: undefined,
       end: link.start,
       bidirectional: false,
+      // `offset` is expressed on the traversal-relative side axis. Reversing
+      // direction flips that axis, so negate offsets to keep every channel at
+      // the same physical hole in an asymmetric grate.
+      ...(link.kind === "flow" && link.flowOpenings
+        ? {
+            flowOpenings: link.flowOpenings.map((opening) => ({
+              ...opening,
+              offset: -opening.offset,
+            })),
+          }
+        : {}),
     },
   ];
 }

@@ -21,11 +21,41 @@ describe("BlobSurfaceScheduler", () => {
     }
 
     const first = scheduler.runFrame();
-    expect(completed).toEqual(["a", "b"]);
-    expect(first.rebuilt).toBe(2);
-    expect(first.deferred).toBe(1);
+    expect(completed).toEqual(["a"]);
+    expect(first.rebuilt).toBe(1);
+    expect(first.deferred).toBe(2);
+    expect(scheduler.runFrame().rebuilt).toBe(1);
     expect(scheduler.runFrame().rebuilt).toBe(1);
     expect(completed).toEqual(["a", "b", "c"]);
+  });
+
+  it("uses deterministic cost estimates to avoid a predictable overshoot", () => {
+    let now = 0;
+    const scheduler = new BlobSurfaceScheduler({
+      budgetMs: 3.5,
+      predictionSafetyFactor: 1,
+      now: () => now,
+    });
+    scheduler.request({
+      id: "learn-main",
+      resolution: 32,
+      rebuild: () => { now += 2.2; },
+    });
+    scheduler.runFrame();
+
+    for (const id of ["main", "fragment-a", "fragment-b", "fragment-c"]) {
+      scheduler.request({
+        id,
+        resolution: id === "main" ? 32 : 24,
+        rebuild: () => { now += id === "main" ? 2.2 : 0.55; },
+      });
+    }
+    const stats = scheduler.runFrame();
+
+    expect(stats.elapsedMs).toBeLessThanOrEqual(3.5);
+    expect(stats.overBudget).toBe(false);
+    expect(stats.rebuilt).toBe(3);
+    expect(stats.deferred).toBe(1);
   });
 
   it("runs at most one high-quality surface but still uses budget for lower LODs", () => {

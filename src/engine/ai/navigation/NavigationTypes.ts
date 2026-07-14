@@ -21,7 +21,17 @@ export type NavigationActionKind =
   | "crouch"
   | "door"
   | "portal"
-  | "flow";
+  | "flow"
+  | "climb";
+
+export interface BlobFlowOpening {
+  /** Offset sobre el eje ancho local de la reja, relativo a su centro. */
+  offset: number;
+  width: number;
+  /** Altura desde la base local del panel. */
+  bottom: number;
+  height: number;
+}
 
 export interface NavAgentProfile {
   id: string;
@@ -67,6 +77,12 @@ export interface NavigationActionLink {
   portalId?: string;
   /** Id del sólido permeable que origina un enlace flow del Blob. */
   permeableId?: string;
+  /** Canales explícitos de un enlace flow, ya sanitizados por el loader. */
+  flowOpenings?: readonly BlobFlowOpening[];
+  /** Masa que debe haber cruzado antes de permitir el cerebro. */
+  brainCrossFraction?: number;
+  /** Altura vertical de una acción climb. */
+  climbHeight?: number;
 }
 
 export type NavigationStatus =

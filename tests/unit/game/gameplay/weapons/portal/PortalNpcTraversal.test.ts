@@ -96,4 +96,28 @@ describe("PortalGunSystem — tránsito de NPCs terrestres", () => {
     system.updateNpcTraversal(1.1, []);
     expect(exclusions.at(-1)).toBeNull();
   });
+
+  it("prefers an atomic full-frame traversal for composite NPCs", () => {
+    const system = makeSystem();
+    const position = new Vector3(0, 1.2, 0.8);
+    const { handle, teleports } = makeHandle(position);
+    const composite = vi.fn((
+      _entry: PortalFrame,
+      _exit: PortalFrame,
+      next: Vector3,
+    ) => {
+      position.copy(next);
+      return true;
+    });
+    handle.teleportThroughPortal = composite;
+
+    system.updateNpcTraversal(1, [handle]);
+    position.z = -0.1;
+    system.updateNpcTraversal(1.1, [handle]);
+
+    expect(composite).toHaveBeenCalledOnce();
+    expect(teleports).toHaveLength(0);
+    expect(composite.mock.calls[0]?.[0]).toBeInstanceOf(Object);
+    expect(composite.mock.calls[0]?.[1]).toBeInstanceOf(Object);
+  });
 });

@@ -6,12 +6,21 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "benchmark:blob-v2": "tsx scripts/blob-v2-benchmark.ts",
+    "evidence:blob-v2": "node scripts/blob-v2-evidence.mjs",
+    "evidence:blob-v2:smoke": "node scripts/blob-v2-evidence.mjs --scenario idle",
+    "evidence:blob-v2:gpu-smoke": "node scripts/blob-v2-evidence.mjs --scenario idle",
+    "evidence:blob-v2:screenshots": "node scripts/blob-v2-evidence.mjs --screenshots-only",
+    "evidence:blob-v2:videos": "node scripts/blob-v2-evidence.mjs --videos-only",
+    "evidence:blob-v2:update-goldens": "node scripts/blob-v2-evidence.mjs --screenshots-only --update-goldens",
+    "evidence:blob-v2:install": "playwright install chromium",
     "nav:bake": "tsx scripts/nav-bake.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:ci": "npm run build && npm run test",
+    "test:blob-v2:webgl": "vitest run tests/integration/engine/blob/v2/BlobV2WebGL.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -20,9 +29,10 @@
     "three": "^0.164.1"
   },
   "devDependencies": {
-    "@types/three": "^0.184.1",
+    "@types/three": "0.164.1",
     "@vitest/coverage-v8": "^4.1.7",
     "happy-dom": "^20.10.6",
+    "playwright": "1.61.1",
     "tsx": "4.20.6",
     "typescript": "^5.4.5",
     "vite": "^5.2.11",

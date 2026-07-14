@@ -123,6 +123,8 @@ export interface NpcCombatHandle {
   magazineEmpty(): boolean;
   /** Distancia maxima a la que tiene sentido encarar combate. */
   effectiveRange(): number;
+  /** Libera claims/listeners propios. */
+  dispose?(): void;
 }
 
 /**

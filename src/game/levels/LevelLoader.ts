@@ -15,7 +15,7 @@ import type { INpc } from '@game/npc/core/INpc';
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import { Raycast } from '@engine/physics/Raycast';
 import { SpawnValidator } from '@engine/physics/character/SpawnValidator';
-import { createBoxMesh } from '@engine/render/PrimitiveFactory';
+import { createBoxMesh, createInstancedBoxMeshes } from '@engine/render/PrimitiveFactory';
 import { createTerrainMesh } from '@engine/render/TerrainMesh';
 import type { MaterialKey } from '@engine/render/material/Materials';
 import { materialToSurface } from './materialSurface';
@@ -120,20 +120,27 @@ export class LevelLoader {
     const buildings = level.buildings ?? [];
     const buildingBoxes = buildings.flatMap((b) => b.boxes);
     const allStaticBoxes = [...level.staticBoxes, ...buildingBoxes];
-    allStaticBoxes.forEach((definition) => {
-      const mesh = createLevelBox(definition.id, definition.position, definition.size, definition.material, definition.rotation);
-      this.scene.add(mesh);
-      this.physics.createStaticBox({
+    this.scene.add(
+      ...createInstancedBoxMeshes({
+        id: `${level.id}-static-boxes`,
+        boxes: allStaticBoxes,
+        castShadow: true,
+        receiveShadow: true,
+      }),
+    );
+    this.physics.createStaticBoxes(
+      allStaticBoxes.map((definition) => ({
         id: definition.id,
         position: tupleToVector3(definition.position),
         size: tupleToVector3(definition.size),
         rotation: definition.rotation ? quatFromEuler(definition.rotation) : undefined,
         metadata: {
           surface: materialToSurface(definition.material),
-          blobPermeable: definition.blobPermeable === true,
+          blobPermeable: definition.blobPermeable === true || definition.blobFlow !== undefined,
+          blobFlow: normalizeBlobFlow(definition),
         },
-      });
-    });
+      })),
+    );
     const buildingRegistry = new BuildingRegistry(buildings);
 
     level.dynamicBoxes.forEach((definition) => {
@@ -261,6 +268,7 @@ export class LevelLoader {
     navigation.setSemanticActionLinks([
       ...buildDoorNavigationLinks(buildings, navigation),
       ...buildBlobFlowNavigationLinks(allStaticBoxes, navigation),
+      ...buildBlobClimbNavigationLinks(allStaticBoxes, navigation),
     ]);
     const navigationRequests = new NavigationRequestQueue(navigation, 3);
     console.info(
@@ -461,7 +469,11 @@ function buildBlobFlowNavigationLinks(
 ): NavigationActionLink[] {
   const links: NavigationActionLink[] = [];
   for (const box of boxes) {
-    if (!box.blobPermeable) continue;
+    if (!box.blobPermeable && !box.blobFlow) continue;
+    const flow = normalizeBlobFlow(box);
+    // Authored blobFlow data must contain at least one usable opening. Only
+    // the legacy blobPermeable flag is allowed to synthesize a full opening.
+    if (!flow) continue;
     const center = tupleToVector3(box.position);
     const size = tupleToVector3(box.size);
     const rotation = box.rotation ? quatFromEuler(box.rotation) : undefined;
@@ -493,7 +505,117 @@ function buildBlobFlowNavigationLinks(
       width: Math.max(size.x, size.z),
       profileIds: [NavigationProfiles.blob.id],
       permeableId: box.id,
+      flowOpenings: flow.openings,
+      brainCrossFraction: flow.brainCrossFraction,
     });
+  }
+  return links;
+}
+
+function normalizeBlobFlow(
+  box: LevelDefinition['staticBoxes'][number],
+): { openings: Array<{ offset: number; width: number; bottom: number; height: number }>; brainCrossFraction: number } | undefined {
+  const size = tupleToVector3(box.size);
+  const gateWidth = Math.max(size.x, size.z);
+  const gateHeight = size.y;
+  const explicit = box.blobFlow?.openings
+    .filter((opening) =>
+      Number.isFinite(opening.offset)
+      && Number.isFinite(opening.width)
+      && Number.isFinite(blobFlowOpeningBase(opening))
+      && Number.isFinite(opening.height)
+      && opening.width > 0
+      && opening.height > 0,
+    )
+    .map((opening) => {
+      const width = Math.min(gateWidth, opening.width);
+      const halfOffsetRange = Math.max(0, (gateWidth - width) * 0.5);
+      const bottom = Math.max(0, Math.min(gateHeight, blobFlowOpeningBase(opening)));
+      return {
+        // Keep the whole channel, not only its center, inside the local panel.
+        offset: Math.max(-halfOffsetRange, Math.min(halfOffsetRange, opening.offset)),
+        width,
+        bottom,
+        height: Math.min(gateHeight - bottom, opening.height),
+      };
+    })
+    .filter((opening) => opening.height > 0);
+
+  if (explicit && explicit.length > 0) {
+    return {
+      openings: explicit,
+      brainCrossFraction: Math.max(0.5, Math.min(0.95, box.blobFlow?.brainCrossFraction ?? 0.6)),
+    };
+  }
+  if (!box.blobPermeable) return undefined;
+  return {
+    openings: [{ offset: 0, width: gateWidth, bottom: 0, height: gateHeight }],
+    brainCrossFraction: 0.6,
+  };
+}
+
+function blobFlowOpeningBase(
+  opening: NonNullable<LevelDefinition['staticBoxes'][number]['blobFlow']>['openings'][number],
+): number {
+  return opening.base ?? opening.bottom ?? Number.NaN;
+}
+
+function buildBlobClimbNavigationLinks(
+  boxes: LevelDefinition['staticBoxes'],
+  navigation: NavigationService,
+): NavigationActionLink[] {
+  const links: NavigationActionLink[] = [];
+  const profile = NavigationProfiles.blob;
+  const minHeight = profile.stepHeight + 0.01;
+  const maxHeight = 1.25;
+  const localNormals = [
+    new Vector3(1, 0, 0),
+    new Vector3(-1, 0, 0),
+    new Vector3(0, 0, 1),
+    new Vector3(0, 0, -1),
+  ];
+
+  for (const box of boxes) {
+    if (links.length >= 128) break;
+    if (box.blobPermeable || box.blobFlow || box.size[1] < minHeight || box.size[1] > maxHeight) continue;
+    if (box.size[0] < profile.radius * 2 || box.size[2] < profile.radius * 2) continue;
+    const center = tupleToVector3(box.position);
+    const size = tupleToVector3(box.size);
+    const rotation = box.rotation ? quatFromEuler(box.rotation) : undefined;
+    const topY = center.y + size.y * 0.5 + 0.04;
+    const baseY = center.y - size.y * 0.5 + 0.04;
+
+    for (let side = 0; side < localNormals.length && links.length < 128; side += 1) {
+      const localNormal = localNormals[side];
+      const normal = localNormal.clone();
+      if (rotation) normal.applyQuaternion(rotation);
+      normal.y = 0;
+      if (normal.lengthSq() < 1e-4) continue;
+      normal.normalize();
+      const halfDepth = Math.abs(localNormal.x) > 0 ? size.x * 0.5 : size.z * 0.5;
+      const approach = halfDepth + profile.radius + 0.16;
+      const inset = Math.max(0.08, halfDepth - profile.radius - 0.08);
+      const rawStart = center.clone().setY(baseY).addScaledVector(normal, approach);
+      const rawEnd = center.clone().setY(topY).addScaledVector(normal, inset);
+      const start = navigation.projectPoint(rawStart, profile);
+      const end = navigation.projectPoint(rawEnd, profile);
+      if (!start || !end) continue;
+      const climbHeight = end.y - start.y;
+      if (climbHeight < minHeight - 0.04 || climbHeight > maxHeight + 0.04) continue;
+      if (start.distanceTo(rawStart) > 1 || end.distanceTo(rawEnd) > 1) continue;
+      links.push({
+        id: `blob-climb-${box.id}-${side}`,
+        kind: 'climb',
+        start,
+        traverseStart: start.clone().addScaledVector(normal, -0.08),
+        end,
+        bidirectional: false,
+        cost: start.distanceTo(end) + 0.45,
+        width: Math.abs(localNormal.x) > 0 ? size.z : size.x,
+        profileIds: [profile.id],
+        climbHeight,
+      });
+    }
   }
   return links;
 }

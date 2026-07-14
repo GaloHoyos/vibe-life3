@@ -80,7 +80,7 @@ export const NavigationProfiles = {
     stepHeight: 0.32,
     maxSpeed: 3.4,
     acceleration: 14,
-    // La masa cruza jump links en balística (BlobMotor.leapTo). Mismos
+    // La masa cruza jump links en balística (BlobV2Motor.leapTo). Mismos
     // parámetros que el headcrab, cuyo dominio smallGround comparte.
     canJump: true,
     canCrouch: false,

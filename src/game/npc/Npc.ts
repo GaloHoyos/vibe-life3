@@ -48,6 +48,7 @@ import type { NpcCalloutKind } from '@game/config/audio.config';
 import { navigationProfileForPreset } from '@game/npc/navigation/NavAgentProfiles';
 import type { BlobPreyDefinition, CharacterId } from '@engine/characters/CharacterDefinition';
 import type { NpcBlobControlHandle } from '@game/npc/blob/BlobControl';
+import type { PortalFrame } from '@engine/portals/PortalFrame';
 
 export interface NpcConstructionParams {
   id: string;
@@ -89,6 +90,14 @@ interface PortalCapableMotor {
   setPortalExclusions(handles: ReadonlySet<number> | null): void;
   /** Operación atómica para motores compuestos (Blob). */
   teleportPose?(position: Vector3, velocity: Vector3, yaw: number): void;
+  /** Conserva la rotación 3D de los componentes internos al cruzar. */
+  teleportThroughPortal?(
+    entry: PortalFrame,
+    exit: PortalFrame,
+    position: Vector3,
+    velocity: Vector3,
+    yaw: number,
+  ): boolean;
 }
 
 /** Radio (m) dentro del cual un aliado vivo cuenta para `AlliesNear`. */
@@ -107,6 +116,8 @@ const DAMAGE_AGGRO_DURATION = 5.0;
 const ATTACK_SLOT_MEMORY_GRACE = 1.0;
 /** Histeresis (s) sin querer disparar antes de soltar el slot de ataque. */
 const ATTACK_SLOT_RELEASE_DELAY = 1.0;
+/** Living prey can still struggle while enveloped, but cannot outrun the mass. */
+const BLOB_ENVELOP_SPEED_MULTIPLIER = 0.35;
 /** Minimo (s) entre voces tacticas de un mismo NPC (no pisarse hablando). */
 const CALLOUT_THROTTLE = 4.0;
 
@@ -167,11 +178,16 @@ export class Npc implements INpc {
   private readonly height: number;
   private justHitTimer = 0;
   private disposed = false;
+  private consumedByBlob = false;
+  private readonly blobDigestBaseScale = new Vector3(1, 1, 1);
+  private blobDigestScaleCaptured = false;
   /** Congelado sólido: el visual lo mueve la estatua; el Blob muere al shatter. */
   private frozenSolid = false;
   private freezeHandle: NpcFreezeHandle | null = null;
   private lastConditions: ConditionMask = NO_CONDITIONS;
   private threatLastKnown: Vector3 | null = null;
+  private readonly blobEnvelopmentOwners = new Set<string>();
+  private gaitMultiplier = 1;
   private currentThreat: ActorSnapshot | null = null;
   private readonly threatCandidates: ActorSnapshot[] = [];
   private threatEvalIn = 0;
@@ -556,6 +572,17 @@ export class Npc implements INpc {
           snapYaw.call(motor, yaw);
         }
       },
+      ...(typeof motor.teleportThroughPortal === 'function'
+        ? {
+            teleportThroughPortal: (
+              entry: PortalFrame,
+              exit: PortalFrame,
+              position: Vector3,
+              velocity: Vector3,
+              yaw: number,
+            ) => motor.teleportThroughPortal!(entry, exit, position, velocity, yaw),
+          }
+        : {}),
       setColliderExclusions: (handles) => setPortalExclusions.call(motor, handles),
     };
   }
@@ -583,7 +610,7 @@ export class Npc implements INpc {
     this.frozenSolid = true;
     if (this.preset.id === 'blob') {
       this.locomotion.stop();
-      this.motor.disable();
+      if (this.motor.freezeSolid?.() !== true) this.motor.disable();
       this.animation?.disable();
       return this.mesh;
     }
@@ -596,7 +623,11 @@ export class Npc implements INpc {
 
   private shatterFrozen(): void {
     if (!this.frozenSolid || !this.health.isAlive()) return;
+    this.motor.shatterFrozen?.();
     this.applyDamage(this.health.max * 10, undefined, 'blob-core', 'player');
+    // La estatua ya es dueña del visual y la retira inmediatamente. Cerrar el
+    // runtime ahora evita jobs, hitboxes, claims o registros vivos hasta reload.
+    this.dispose();
   }
 
   applyDamage(
@@ -606,10 +637,11 @@ export class Npc implements INpc {
     attackerId?: string,
     hitPoint?: Vector3,
     damageType: DamageType = 'bullet',
+    authoritative = false,
   ): void {
     if (this.disposed || !this.health.isAlive()) return;
     // Daño de salida del jugador escalado por dificultad (no toca daño NPC↔NPC).
-    if (attackerId === 'player') {
+    if (!authoritative && attackerId === 'player') {
       amount *= this.difficulty?.getModifiers().playerWeaponDamageMult ?? 1;
     }
     // Jefes estilo HL2 (gunship/strider): inmunes a todo lo que no sea explosivo,
@@ -659,11 +691,67 @@ export class Npc implements INpc {
       this.squadDirector?.unregister(this.id);
       this.locomotion.stop();
       this.motor.disable();
+      this.combatHandle.dispose?.();
     }
+  }
+
+  /**
+   * Aplica una pérdida ya resuelta por otro modelo autoritativo (Blob V2).
+   * Conserva eventos/aggro/muerte del NPC sin volver a escalar por dificultad.
+   */
+  applyAuthoritativeDamage(
+    amount: number,
+    hitDirection?: Vector3,
+    hitPartName?: string,
+    attackerId?: string,
+    hitPoint?: Vector3,
+    damageType: DamageType = 'bullet',
+  ): void {
+    this.applyDamage(
+      amount,
+      hitDirection,
+      hitPartName,
+      attackerId,
+      hitPoint,
+      damageType,
+      true,
+    );
   }
 
   isAlive(): boolean {
     return this.health.isAlive() && !this.disposed;
+  }
+
+  consumeByBlob(_blobId: string): boolean {
+    if (this.consumedByBlob || this.health.isAlive() || !this.blobPrey) return false;
+    this.consumedByBlob = true;
+    this.mesh.visible = false;
+    this.dispose();
+    return true;
+  }
+
+  setBlobDigestProgress(progress: number): void {
+    if (!this.blobPrey || this.consumedByBlob) return;
+    if (!this.blobDigestScaleCaptured) {
+      this.blobDigestBaseScale.copy(this.mesh.scale);
+      this.blobDigestScaleCaptured = true;
+    }
+    const t = Math.max(0, Math.min(1, Number.isFinite(progress) ? progress : 0));
+    const radial = 1 - t * 0.62;
+    const vertical = 1 - t * 0.88;
+    this.mesh.scale.set(
+      this.blobDigestBaseScale.x * radial,
+      this.blobDigestBaseScale.y * vertical,
+      this.blobDigestBaseScale.z * radial,
+    );
+  }
+
+  /** Runtime-only prey hook used by Blob V2; multiple owners remain idempotent. */
+  setBlobEnveloped(blobId: string, active: boolean): void {
+    if (!blobId || this.disposed || !this.blobPrey) return;
+    if (active) this.blobEnvelopmentOwners.add(blobId);
+    else this.blobEnvelopmentOwners.delete(blobId);
+    this.applyMovementSpeedMultiplier();
   }
 
   getState(): string {
@@ -728,6 +816,7 @@ export class Npc implements INpc {
     this.coverSensor?.dispose();
     this.squadDirector?.unregister(this.id);
     this.locomotion.dispose();
+    this.combatHandle.dispose?.();
     this.animation?.dispose?.();
     this.motor.disable();
   }
@@ -775,10 +864,13 @@ export class Npc implements INpc {
     const candidates = this.threatCandidates;
     candidates.length = 0;
     const freeForAll = NpcDebugFlags.infighting;
+    const consumesPrey = this.preset.id === 'blob';
     if (
       !NpcDebugFlags.ignorePlayer &&
       ctx.player.isAlive &&
-      isHostileTo(this.faction, ctx.player.faction)
+      (consumesPrey
+        ? this.canTargetAsBlob(ctx.player, freeForAll)
+        : isHostileTo(this.faction, ctx.player.faction))
     ) {
       candidates.push(ctx.player);
       // Proyecciones del player a través de portales: candidatos extra cuya
@@ -800,10 +892,9 @@ export class Npc implements INpc {
       // `infighting` ignora la matriz de facciones — hay que excluir el self a
       // mano (antes lo filtraba `isHostileTo(mismaFaccion)` devolviendo false).
       if (
-        freeForAll ||
-        (this.preset.id === 'blob'
-          ? this.canConsume(npc)
-          : isHostileTo(this.faction, npc.faction))
+        consumesPrey
+          ? this.canTargetAsBlob(npc, freeForAll)
+          : freeForAll || isHostileTo(this.faction, npc.faction)
       ) {
         candidates.push(npc);
       }
@@ -811,9 +902,9 @@ export class Npc implements INpc {
     if (ctx.portalGhosts) {
       for (const ghost of ctx.portalGhosts) {
         if (!ghost.isAlive || ghost.id === this.id || ghost.id === ctx.player.id) continue;
-        if (!(freeForAll || (this.preset.id === 'blob'
-          ? this.canConsume(ghost)
-          : isHostileTo(this.faction, ghost.faction)))) continue;
+        if (!(consumesPrey
+          ? this.canTargetAsBlob(ghost, freeForAll)
+          : freeForAll || isHostileTo(this.faction, ghost.faction))) continue;
         if (ghost.portalView && !this.isInFrontOfPortalView(ghost.portalView)) continue;
         candidates.push(ghost);
       }
@@ -884,7 +975,22 @@ export class Npc implements INpc {
   }
 
   private canConsume(actor: ActorSnapshot): boolean {
-    return this.preset.id === 'blob' && actor.blobPrey !== undefined;
+    const entity = actor.entity as typeof actor.entity & { characterId?: unknown };
+    return (
+      this.preset.id === 'blob' &&
+      actor.blobPrey != null &&
+      entity.characterId !== 'blob'
+    );
+  }
+
+  private canTargetAsBlob(actor: ActorSnapshot, freeForAll: boolean): boolean {
+    const entity = actor.entity as typeof actor.entity & { characterId?: unknown };
+    if (entity.characterId === 'blob') return false;
+    return (
+      this.canConsume(actor) ||
+      freeForAll ||
+      isHostileTo(this.faction, actor.faction)
+    );
   }
 
   /** Vecinos vivos a < 4 m para la separacion de locomotion. */
@@ -1147,8 +1253,15 @@ export class Npc implements INpc {
   /** El motor corre a `walkSpeed`; sprint escala via multiplier. */
   private applyGait(gait: 'walk' | 'sprint'): void {
     const profile = this.preset.movement;
-    const multiplier = gait === 'sprint' ? profile.sprintSpeed / profile.walkSpeed : 1;
-    this.motor.setSpeedMultiplier(multiplier);
+    this.gaitMultiplier = gait === 'sprint' ? profile.sprintSpeed / profile.walkSpeed : 1;
+    this.applyMovementSpeedMultiplier();
+  }
+
+  private applyMovementSpeedMultiplier(): void {
+    const envelopScale = this.blobEnvelopmentOwners.size > 0
+      ? BLOB_ENVELOP_SPEED_MULTIPLIER
+      : 1;
+    this.motor.setSpeedMultiplier(this.gaitMultiplier * envelopScale);
   }
 }
 

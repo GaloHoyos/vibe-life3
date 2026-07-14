@@ -515,7 +515,19 @@ export class PortalGunSystem implements Disposable {
     }
     const yaw = Math.atan2(yawX, yawZ);
 
-    handle.teleport(TMP_EXIT_POS.clone(), TMP_VELOCITY.clone(), yaw);
+    const exitPosition = TMP_EXIT_POS.clone();
+    const exitVelocity = TMP_VELOCITY.clone();
+    const traversedComposite =
+      handle.teleportThroughPortal?.(
+        entry,
+        exit,
+        exitPosition,
+        exitVelocity,
+        yaw,
+      ) === true;
+    if (!traversedComposite) {
+      handle.teleport(exitPosition, exitVelocity, yaw);
+    }
     this.eventBus.emit("portal.teleported", {
       entityKind: "npc",
       entityId: handle.id,

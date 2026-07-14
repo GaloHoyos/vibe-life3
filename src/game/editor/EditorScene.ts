@@ -9,7 +9,7 @@ import {
   type Scene,
   Vector3,
 } from 'three';
-import { createBoxMesh } from '@engine/render/PrimitiveFactory';
+import { applyMaterialUvsToCylinder, createBoxMesh } from '@engine/render/PrimitiveFactory';
 import { getMaterial } from '@engine/render/material/Materials';
 import { createTerrainMesh } from '@engine/render/TerrainMesh';
 import { generateHeightField } from '@shared/math/HeightField';
@@ -279,7 +279,11 @@ function triggerMesh(id: string, position: VectorTuple, size: VectorTuple, rotat
 function barrelMesh(id: string, position: VectorTuple, rotation?: VectorTuple): Mesh {
   const radius = 0.28;
   const height = 0.95;
-  const mesh = new Mesh(new CylinderGeometry(radius, radius, height, 16), getMaterial('hazard'));
+  const geometry = applyMaterialUvsToCylinder(
+    new CylinderGeometry(radius, radius, height, 16),
+    'hazard',
+  );
+  const mesh = new Mesh(geometry, getMaterial('hazard'));
   mesh.name = id;
   mesh.position.set(position[0], position[1] + height / 2, position[2]);
   if (rotation) mesh.rotation.set(rotation[0], rotation[1], rotation[2]);

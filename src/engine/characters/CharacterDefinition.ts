@@ -74,6 +74,8 @@ export interface CharacterHealthConfig {
 /** Opt-in explícito para que el Blob pueda seleccionar y consumir al actor. */
 export interface BlobPreyDefinition {
   biomass: number;
+  /** Tiempo que el cadáver debe permanecer envuelto antes de conceder biomasa. */
+  consumeSeconds?: number;
 }
 
 export type BoneAxis = "x" | "y" | "z";

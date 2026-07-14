@@ -11,8 +11,8 @@ import { effectiveName } from "@game/script/EntityIOTypes";
 
 /**
  * Wiring de punta a punta (trigger → puente → I/O → hooks de mundo) sobre los
- * datos reales del Nivel demo 1: valida que cruzar los volúmenes encadena
- * mensajes, spawners y el changelevel migrados a entity I/O.
+ * datos reales del nuevo Demo 1: valida el combate del mercado, el arranque
+ * guionado de la transmisión y la salida final migrados a entity I/O.
  */
 function harness() {
   const bus = new EventBus<GameEventMap>();
@@ -64,35 +64,54 @@ function harness() {
     npcSource: () => null,
   });
 
-  return { calls, io, triggers };
+  return { bus, calls, io, triggers };
 }
 
-describe("entity I/O wiring (Demo 1 — Plaza)", () => {
-  it("cruzar el patio dispara el mensaje de emboscada y la primera oleada", () => {
-    const { calls, io, triggers } = harness();
-    // El trigger `ambush-trigger` está centrado en [0, 1.2, 14] con tamaño [46, 3, 3].
-    triggers.update(new Vector3(0, 1.2, 14), 0.016);
-    io.update(0.016);
+describe("entity I/O wiring (Demo 1 — Frecuencia muerta)", () => {
+  it("cruzar el mercado dispara la advertencia y el encuentro", () => {
+    const { calls, triggers } = harness();
+    // `d1-market-trigger` está centrado en [-35, 1.2, 101].
+    triggers.update(new Vector3(-35, 1.2, 101), 0.016);
 
-    expect(calls.dialogue).toContain("¡Emboscada! Combine entrando al patio.");
-    expect(calls.spawners).toContain("spawn-wave1");
-    // Las oleadas 2 y 3 tienen delay: todavía no dispararon.
-    expect(calls.spawners).not.toContain("spawn-wave2");
-
-    io.update(4.1);
-    expect(calls.spawners).toContain("spawn-wave2");
+    expect(calls.dialogue).toContain(
+      "Nos marcaron. Usá los puestos: cortales la línea de tiro y rodealos.",
+    );
+    expect(calls.spawners).toContain("d1-spawn-market");
   });
 
-  it("el trigger de salida encadena el changelevel con su delay", () => {
-    const { calls, io, triggers } = harness();
-    // `exit-trigger` arranca deshabilitado (se habilita al despejar el patio).
-    triggers.setEnabled("exit-trigger", true);
-    // Centrado en [0, 1.2, -100], tamaño [88, 3, 3]; el changelevel tiene delay 1s.
-    triggers.update(new Vector3(0, 1.2, -100), 0.016);
-    io.update(0.016);
-    expect(calls.endLevel).toBe(0); // Todavía no venció el delay.
+  it("abrir el transmisor inicia el broadcast y sus oleadas demoradas", () => {
+    const { bus, calls, io } = harness();
 
-    io.update(1.1);
+    bus.emit("door.opened", { id: "d1-door-transmitter-switch", open: true });
+
+    expect(calls.dialogue).toContain(
+      "Portadora estable. Estoy enviando el código... noventa segundos. No dejen que corten la antena.",
+    );
+    expect(calls.spawners).not.toContain("d1-spawn-final-a");
+    expect(calls.spawners).not.toContain("d1-spawn-final-b");
+
+    io.update(1.49);
+    expect(calls.spawners).not.toContain("d1-spawn-final-a");
+    io.update(0.02);
+    expect(calls.spawners).toContain("d1-spawn-final-a");
+    expect(calls.spawners).not.toContain("d1-spawn-final-b");
+
+    io.update(8.48);
+    expect(calls.spawners).not.toContain("d1-spawn-final-b");
+    io.update(0.02);
+    expect(calls.spawners).toContain("d1-spawn-final-b");
+  });
+
+  it("el acceso oeste encadena el changelevel tras su demora", () => {
+    const { calls, io, triggers } = harness();
+    // Arranca deshabilitado hasta que termina la transmisión.
+    triggers.setEnabled("d1-exit-trigger", true);
+    triggers.update(new Vector3(-96, 1.2, 40), 0.016);
+
+    expect(calls.endLevel).toBe(0);
+    io.update(1.19);
+    expect(calls.endLevel).toBe(0);
+    io.update(0.02);
     expect(calls.endLevel).toBe(1);
   });
 });
