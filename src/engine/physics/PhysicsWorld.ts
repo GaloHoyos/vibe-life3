@@ -68,6 +68,14 @@ export interface PhysicsBoxOptions {
   metadata?: Partial<PhysicsMetadata>;
 }
 
+export interface PhysicsSphereOptions {
+  id: string;
+  position: Vector3;
+  radius: number;
+  mass?: number;
+  metadata?: Partial<PhysicsMetadata>;
+}
+
 export interface PhysicsTrimeshOptions {
   id: string;
   /** Vertices en world space (el body queda en el origen, sin rotación). */
@@ -237,6 +245,31 @@ export class PhysicsWorld {
       id: options.id,
       kind: 'dynamic',
       navigationObstacleSize: [options.size.x, options.size.y, options.size.z],
+      ...options.metadata,
+    });
+    return rigidBody;
+  }
+
+  createDynamicSphere(options: PhysicsSphereOptions, mesh: Object3D): RAPIER.RigidBody {
+    const rigidBody = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(
+        options.position.x,
+        options.position.y,
+        options.position.z,
+      ),
+    );
+    const volume = Math.max((4 / 3) * Math.PI * options.radius ** 3, 0.001);
+    const density = (options.mass ?? 1) / volume;
+    const collider = this.world.createCollider(
+      RAPIER.ColliderDesc.ball(options.radius).setDensity(density),
+      rigidBody,
+    );
+    const diameter = options.radius * 2;
+    this.bindings.push({ mesh, rigidBody });
+    this.registerCollider(collider, {
+      id: options.id,
+      kind: 'dynamic',
+      navigationObstacleSize: [diameter, diameter, diameter],
       ...options.metadata,
     });
     return rigidBody;

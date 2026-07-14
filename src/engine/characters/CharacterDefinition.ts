@@ -25,6 +25,7 @@ export type CharacterAIProfileId =
   | "headcrabMelee"
   | "manhackFlyer"
   | "floorTurret"
+  | "blobArmor"
   | "gunshipBoss"
   | "striderBoss";
 

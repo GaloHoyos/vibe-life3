@@ -734,6 +734,7 @@ export class Npc implements INpc {
     this.combatHandle.dispose?.();
     this.animation?.dispose?.();
     this.motor.disable();
+    this.motor.dispose?.();
   }
 
   private syncMeshFromMotor(): void {

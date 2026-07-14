@@ -12,6 +12,7 @@ import type { NpcCombatHandle } from "@game/npc/brain/NpcBrainContext";
 import type { NpcPreset } from "@game/npc/presets/NpcPreset";
 import { recordEvents } from "@tests/support/events";
 import { Npc } from "@game/npc/Npc";
+import type { NpcAnimator } from "@game/npc/animation/NpcAnimator";
 import type { ActorSnapshot, AiFrameContext } from "@game/npc/core/INpc";
 import type { NpcScriptOrder } from "@game/script/NpcScriptOrder";
 
@@ -84,6 +85,7 @@ const combat: NpcCombatHandle = {
 function createNpc(
   raycast: Raycast = {} as Raycast,
   losRaycast?: RaycastSource,
+  animation: NpcAnimator | null = null,
 ) {
   const bus = new EventBus<GameEventMap>();
   const position = new Vector3(0, 0, 0);
@@ -109,7 +111,7 @@ function createNpc(
       raycast,
       losRaycast,
       eventBus: bus,
-      animation: null,
+      animation,
       patrolRoute: null,
       tacticalMap: null,
       squadDirector: null,
@@ -198,6 +200,28 @@ describe("Npc.applyDamage", () => {
     expect(damaged[0].direction).toEqual(new Vector3(1, 0, 0));
     expect(damaged[0].point).not.toBe(point);
     expect(damaged[0].point).toEqual(point);
+  });
+});
+
+describe("Npc.dispose", () => {
+  it("dispone la animacion antes de deshabilitar y liberar el motor", () => {
+    const order: string[] = [];
+    const disposeAnimation = vi.fn(() => order.push("animation"));
+    const { npc, motor } = createNpc(
+      {} as Raycast,
+      undefined,
+      { dispose: disposeAnimation } as unknown as NpcAnimator,
+    );
+    motor.disable = vi.fn(() => order.push("disable-motor"));
+    motor.dispose = vi.fn(() => order.push("dispose-motor"));
+
+    npc.dispose();
+    npc.dispose();
+
+    expect(order).toEqual(["animation", "disable-motor", "dispose-motor"]);
+    expect(disposeAnimation).toHaveBeenCalledOnce();
+    expect(motor.disable).toHaveBeenCalledOnce();
+    expect(motor.dispose).toHaveBeenCalledOnce();
   });
 });
 

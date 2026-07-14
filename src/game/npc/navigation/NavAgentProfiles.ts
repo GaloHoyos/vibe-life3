@@ -159,6 +159,7 @@ export function navigationProfileForPreset(preset: NpcPreset): NavAgentProfile {
     case "strider":
       return NavigationProfiles.strider;
     case "floorTurret":
+    case "blob":
       return NavigationProfiles.stationary;
     case "headcrab":
       return NavigationProfiles.headcrab;

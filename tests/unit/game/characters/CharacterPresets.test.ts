@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AssetManifest } from "@engine/assets/AssetManifest";
 import { CharacterPresets, isFlyingCharacter } from "@game/characters/CharacterPresets";
+import { BlobConfig } from "@game/config/blob.config";
 import { WeaponDefinitions } from "@game/config/weapons.config";
 
 describe("CharacterPresets", () => {
@@ -70,5 +71,22 @@ describe("CharacterPresets", () => {
     expect(strider.collider.mass).toBeGreaterThan(1000);
     expect(strider.ragdoll.enabled).toBe(false);
     expect(strider.perception.viewDistance).toBeGreaterThanOrEqual(85);
+  });
+
+  it("registers blob as a passive procedural creature with aggregate bounds", () => {
+    const blob = CharacterPresets.blob;
+    const aggregateRadius =
+      BlobConfig.armor.orbitRadius + BlobConfig.armor.maxRadius;
+
+    expect(blob).toBeDefined();
+    expect(blob.modelId).toBeUndefined();
+    expect(blob.type).toBe("creature");
+    expect(blob.faction).toBe("zombies");
+    expect(blob.aiProfileId).toBe("blobArmor");
+    expect(blob.health.maxHealth).toBe(BlobConfig.core.maxHealth);
+    expect(blob.collider.radius).toBe(aggregateRadius);
+    expect(blob.collider.height).toBe(aggregateRadius * 2);
+    expect(blob.attack.enabled).toBe(false);
+    expect(blob.ragdoll.enabled).toBe(false);
   });
 });

@@ -4,16 +4,28 @@ import { createBoxCollider } from "@engine/physics/Colliders";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { CharacterMotorSnapshot, NpcMotor, SliceHit } from "./NpcMotor";
 
-export interface StationaryDynamicConfig {
+interface StationaryDynamicBaseConfig {
   id: string;
   position: Vector3;
-  /** Tamaño del collider box (ancho, alto, profundidad). */
-  size: Vector3;
   mass: number;
   /** Yaw de montaje inicial (rad): hacia donde "mira" el cuerpo al spawnear. */
   mountYaw: number;
   metadata: PhysicsMetadata;
 }
+
+export type StationaryDynamicColliderConfig =
+  | { shape: "box"; size: Vector3 }
+  | { shape: "sphere"; radius: number };
+
+/**
+ * La variante `size` se conserva para las torretas existentes. Los nuevos
+ * consumidores deben declarar el collider discriminado de forma explicita.
+ */
+export type StationaryDynamicConfig = StationaryDynamicBaseConfig &
+  (
+    | { collider: StationaryDynamicColliderConfig; size?: never }
+    | { collider?: undefined; size: Vector3 }
+  );
 
 const Y_AXIS = new Vector3(0, 1, 0);
 
@@ -41,6 +53,7 @@ export class StationaryDynamicMotor implements NpcMotor {
   readonly collider: RAPIER.Collider;
 
   private enabled = true;
+  private disposed = false;
   private yaw: number;
 
   private readonly tmpQuat = new Quaternion();
@@ -60,9 +73,9 @@ export class StationaryDynamicMotor implements NpcMotor {
         .setAngularDamping(ANGULAR_DAMPING)
         .setCcdEnabled(true),
     );
-    const volume = Math.max(config.size.x * config.size.y * config.size.z, 0.001);
+    const { desc, volume } = buildCollider(config);
     this.collider = physics.world.createCollider(
-      createBoxCollider(config.size).setDensity(config.mass / volume).setFriction(0.9),
+      desc.setDensity(config.mass / volume).setFriction(0.9),
       this.body,
     );
     physics.registerCollider(this.collider, config.metadata);
@@ -142,10 +155,51 @@ export class StationaryDynamicMotor implements NpcMotor {
     this.enabled = false;
   }
 
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.enabled = false;
+    this.physics.removeBody(this.body);
+  }
+
   private syncYawFromBody(): void {
     const r = this.body.rotation();
     this.tmpQuat.set(r.x, r.y, r.z, r.w);
     this.tmpEuler.setFromQuaternion(this.tmpQuat);
     this.yaw = this.tmpEuler.y;
   }
+}
+
+function buildCollider(config: StationaryDynamicConfig): {
+  desc: RAPIER.ColliderDesc;
+  volume: number;
+} {
+  if (hasExplicitCollider(config)) {
+    if (config.collider.shape === "sphere") {
+      return {
+        desc: RAPIER.ColliderDesc.ball(config.collider.radius),
+        volume: Math.max((4 / 3) * Math.PI * config.collider.radius ** 3, 0.001),
+      };
+    }
+    const size = config.collider.size;
+    return {
+      desc: createBoxCollider(size),
+      volume: Math.max(size.x * size.y * size.z, 0.001),
+    };
+  }
+
+  const size = config.size;
+  return {
+    desc: createBoxCollider(size),
+    volume: Math.max(size.x * size.y * size.z, 0.001),
+  };
+}
+
+function hasExplicitCollider(
+  config: StationaryDynamicConfig,
+): config is StationaryDynamicBaseConfig & {
+  collider: StationaryDynamicColliderConfig;
+  size?: never;
+} {
+  return config.collider !== undefined;
 }

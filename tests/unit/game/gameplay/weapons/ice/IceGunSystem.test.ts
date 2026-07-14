@@ -357,45 +357,58 @@ describe("IceGunSystem (blobulator)", () => {
     expect(removeBody).toHaveBeenCalledTimes(1);
   });
 
-  it('notifica el shatter a handles con congelamiento no letal (Blob)', () => {
-    const { system, bus, setHit } = setupMocked();
-    const handle = freezeHandle('blob-1');
-    handle.freezeSolid = () => {
-      handle.freezeSolidCalls.count += 1;
-      const visual = new Group();
-      visual.position.set(0, 1, -2);
-      return visual;
-    };
-    handle.shatter = vi.fn(() => {
-      handle.alive.value = false;
-    });
+  it("applies direct cold damage to Blob shell and core without creating a statue", () => {
+    const { system, bus, setHit, createDynamicBox } = setupMocked();
+    const handle = freezeHandle("blob-1");
+    const frozenEvents: string[] = [];
+    bus.on("ice.frozen", ({ targetId }) => frozenEvents.push(targetId));
+    const shellDamage = vi.fn();
+    const coreDamage = vi.fn();
+
+    system.update(1 / 60, 0, [handle]);
     setHit(
       npcHit({
-        id: 'blob-mass',
-        ownerId: 'blob-1',
-        kind: 'npc',
-        characterId: 'blob',
-        damageable: { applyDamage: vi.fn(), isAlive: () => handle.alive.value },
+        id: "blob-1-shell-3",
+        ownerId: "blob-1",
+        kind: "npc",
+        characterId: "blob",
+        bodyPart: { name: "shell-3", damageMultiplier: 1 },
+        damageable: { applyDamage: shellDamage, isAlive: () => true },
       }),
     );
-    system.update(1 / 60, 0, [handle]);
-    for (let i = 0; i < 8; i++) fire(system, i * 0.06);
-    expect(handle.alive.value).toBe(true);
-    expect(system.isFrozen('blob-1')).toBe(true);
+    fire(system, 0);
 
-    bus.emit('weapon.hit', {
-      weaponName: 'Shotgun',
-      targetId: 'ice-statue-blob-1',
-      surfaceKind: 'dynamic',
-      point: new Vector3(0, 1, -2),
-      normal: new Vector3(0, 0, 1),
-      damage: 25,
-      sourceId: 'player',
-    });
+    setHit(
+      npcHit({
+        id: "blob-1-core",
+        ownerId: "blob-1",
+        kind: "npc",
+        characterId: "blob",
+        bodyPart: { name: "core", damageMultiplier: 1 },
+        damageable: { applyDamage: coreDamage, isAlive: () => true },
+      }),
+    );
+    fire(system, 0.06);
 
-    expect(handle.shatter).toHaveBeenCalledTimes(1);
-    expect(handle.alive.value).toBe(false);
-    expect(system.isFrozen('blob-1')).toBe(false);
+    expect(shellDamage).toHaveBeenCalledWith(
+      IceConfig.freeze.bossColdDamage,
+      expect.any(Vector3),
+      "shell-3",
+      "player",
+      expect.any(Vector3),
+    );
+    expect(coreDamage).toHaveBeenCalledWith(
+      IceConfig.freeze.bossColdDamage,
+      expect.any(Vector3),
+      "core",
+      "player",
+      expect.any(Vector3),
+    );
+    expect(system.getFreezeAmount("blob-1")).toBe(0);
+    expect(handle.freezeSolidCalls.count).toBe(0);
+    expect(system.isFrozen("blob-1")).toBe(false);
+    expect(frozenEvents).toHaveLength(0);
+    expect(createDynamicBox).not.toHaveBeenCalled();
   });
 
   it("targets without a freeze handle die of cold at threshold (fallback)", () => {

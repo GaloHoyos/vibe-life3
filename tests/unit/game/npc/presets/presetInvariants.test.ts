@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { NpcPreset } from "@game/npc/presets/NpcPreset";
 import { buildAlyxPreset } from "@game/npc/presets/alyxPreset";
+import { buildBlobPreset } from "@game/npc/presets/blobPreset";
 import { buildCombinePreset } from "@game/npc/presets/combinePreset";
 import { buildGunshipPreset } from "@game/npc/presets/gunshipPreset";
 import { buildHeadcrabPreset } from "@game/npc/presets/headcrabPreset";
@@ -10,9 +11,11 @@ import { buildRebelPreset } from "@game/npc/presets/rebelPreset";
 import { buildStriderPreset } from "@game/npc/presets/striderPreset";
 import { buildTurretPreset } from "@game/npc/presets/turretPreset";
 import { buildZombiePreset } from "@game/npc/presets/zombiePreset";
+import { navigationProfileForPreset } from "@game/npc/navigation/NavAgentProfiles";
 
 const builders: Array<[string, () => NpcPreset]> = [
   ["alyx", () => buildAlyxPreset()],
+  ["blob", () => buildBlobPreset()],
   ["combine", () => buildCombinePreset()],
   ["combine+patrol", () => buildCombinePreset({ hasPatrol: true })],
   ["gunship", () => buildGunshipPreset()],
@@ -29,6 +32,10 @@ const builders: Array<[string, () => NpcPreset]> = [
 ];
 
 describe("preset invariants", () => {
+  it("keeps the blob on the stationary navigation domain", () => {
+    expect(navigationProfileForPreset(buildBlobPreset()).domain).toBe("stationary");
+  });
+
   it.each(builders)("%s: schedules con ids unicos, prioridades validas y tasks", (_name, build) => {
     const preset = build();
     expect(preset.schedules.length).toBeGreaterThan(0);

@@ -56,6 +56,48 @@ describe("PhysicsWorld.removeDynamicBody", () => {
   });
 });
 
+describe("PhysicsWorld.createDynamicSphere", () => {
+  it("crea un Ball con la masa pedida, metadata y binding sincronizado", async () => {
+    const physics = new PhysicsWorld();
+    await physics.init();
+
+    const mesh = new Object3D();
+    const body = physics.createDynamicSphere(
+      {
+        id: "blob-part-3",
+        position: new Vector3(1, 4, -2),
+        radius: 0.25,
+        mass: 0.45,
+        metadata: {
+          ownerId: "blob-1",
+          kind: "npc",
+          characterId: "blob",
+          bodyPart: { name: "armor-3", damageMultiplier: 1 },
+        },
+      },
+      mesh,
+    );
+    const collider = body.collider(0);
+
+    expect(collider.shape.type).toBe(RAPIER.ShapeType.Ball);
+    expect((collider.shape as RAPIER.Ball).radius).toBeCloseTo(0.25, 6);
+    expect(body.mass()).toBeCloseTo(0.45, 5);
+    expect(physics.getColliderMetadata(collider)).toMatchObject({
+      id: "blob-part-3",
+      ownerId: "blob-1",
+      kind: "npc",
+      characterId: "blob",
+      navigationObstacleSize: [0.5, 0.5, 0.5],
+      bodyPart: { name: "armor-3", damageMultiplier: 1 },
+    });
+    expect(physics.getBoundMesh(body)).toBe(mesh);
+
+    body.setTranslation({ x: 3, y: 7, z: 1 }, true);
+    physics.step(0);
+    expect(mesh.position).toEqual(new Vector3(3, 7, 1));
+  });
+});
+
 describe("PhysicsWorld.createStaticBoxes", () => {
   it("crea un solo body y conserva pose y metadata por collider", async () => {
     const physics = new PhysicsWorld();

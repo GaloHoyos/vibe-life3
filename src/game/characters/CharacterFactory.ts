@@ -14,6 +14,7 @@ import { createManhackVisual } from '@game/characters/visuals/ManhackVisual';
 import { createTurretVisual } from '@game/characters/visuals/TurretVisual';
 import { createGunshipVisual } from '@game/characters/visuals/GunshipVisual';
 import { createStriderVisual } from '@game/characters/visuals/StriderVisual';
+import { createBlobCoreVisual } from '@game/characters/visuals/BlobVisual';
 import { buildAlyxPreset } from '@game/npc/presets/alyxPreset';
 import { buildCombinePreset } from '@game/npc/presets/combinePreset';
 import { buildPassivePreset } from '@game/npc/presets/passivePreset';
@@ -24,6 +25,7 @@ import { buildManhackPreset } from '@game/npc/presets/manhackPreset';
 import { buildTurretPreset } from '@game/npc/presets/turretPreset';
 import { buildGunshipPreset } from '@game/npc/presets/gunshipPreset';
 import { buildStriderPreset } from '@game/npc/presets/striderPreset';
+import { buildBlobPreset } from '@game/npc/presets/blobPreset';
 import type { NpcPreset, NpcPresetOptions } from '@game/npc/presets/NpcPreset';
 import { NpcCombat } from '@game/npc/combat/NpcCombat';
 import { NpcMeleeCombat } from '@game/npc/combat/NpcMeleeCombat';
@@ -43,6 +45,8 @@ import { DynamicFlyerMotor } from '@engine/physics/character/DynamicFlyerMotor';
 import { KinematicFlyerMotor } from '@engine/physics/character/KinematicFlyerMotor';
 import { StriderWalkerMotor } from '@engine/physics/character/StriderWalkerMotor';
 import { StationaryDynamicMotor } from '@engine/physics/character/StationaryDynamicMotor';
+import { BlobArmorAnimator } from '@game/npc/blob/BlobArmorAnimator';
+import { BlobConfig } from '@game/config/blob.config';
 import type { NpcMotor } from '@engine/physics/character/NpcMotor';
 import type { PortalPairState } from '@engine/portals/PortalFrame';
 import type { NavigationService } from '@engine/ai/navigation/NavigationService';
@@ -153,6 +157,7 @@ export class CharacterFactory {
       ...(definition.flinch ? { flinch: definition.flinch } : {}),
     });
     const visualGroup = wrapVisualRoot(visualRoot);
+    const isBlob = definition.aiProfileId === 'blobArmor';
     const ownerProxy: Damageable = {
       applyDamage: () => {},
       isAlive: () => true,
@@ -163,6 +168,13 @@ export class CharacterFactory {
       damageable: ownerProxy,
       characterId: definition.id,
       faction: definition.faction,
+      ...(isBlob
+        ? {
+            ownerId: instanceId,
+            selfPortalTraversal: true,
+            bodyPart: { name: 'blob-core', damageMultiplier: 1 },
+          }
+        : {}),
     };
     // Torreta de piso = cuerpo dinamico estacionario (no navega; se la tumba). El
     // `aimState` se comparte entre su combat (lo escribe) y su animator (lo lee).
@@ -186,6 +198,15 @@ export class CharacterFactory {
           mass: definition.collider.mass,
           // El primer punto de `patrol` define hacia donde mira (direccion de montaje).
           mountYaw: computeMountYaw(position, patrolPoints),
+          metadata,
+        })
+      : isBlob
+      ? new StationaryDynamicMotor(this.physics, {
+          id: instanceId,
+          position,
+          collider: { shape: 'sphere', radius: BlobConfig.core.radius },
+          mass: BlobConfig.core.mass,
+          mountYaw: 0,
           metadata,
         })
       : isGunship
@@ -260,6 +281,16 @@ export class CharacterFactory {
         ? new GunshipAnimator(visualRoot)
         : striderAnimator
         ? striderAnimator
+        : isBlob
+        ? new BlobArmorAnimator({
+            id: instanceId,
+            faction: definition.faction,
+            visualGroup,
+            coreBody: motor.body,
+            position,
+            physics: this.physics,
+            owner: ownerProxy,
+          })
         : definition.type === 'humanoid'
         ? new NpcAnimationBridge(instanceId, definition, visualRoot, this.physics, ownerProxy)
         : new CreatureAnimator(
@@ -385,6 +416,8 @@ function resolvePresetFor(definition: CharacterDefinition, options: NpcPresetOpt
       return buildGunshipPreset(options);
     case 'striderBoss':
       return buildStriderPreset(options);
+    case 'blobArmor':
+      return buildBlobPreset();
     case 'combineSoldier':
     default:
       return applyDefinitionStats(buildCombinePreset(options), definition);
@@ -406,6 +439,7 @@ const proceduralVisuals: Record<string, () => Object3D> = {
   floorTurret: createTurretVisual,
   gunship: createGunshipVisual,
   strider: createStriderVisual,
+  blob: createBlobCoreVisual,
 };
 
 /**
