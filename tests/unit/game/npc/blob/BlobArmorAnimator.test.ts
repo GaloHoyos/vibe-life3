@@ -1,10 +1,16 @@
 import RAPIER from "@dimforge/rapier3d-compat";
-import { Group, Scene, Vector3 } from "three";
+import { Group, Quaternion, Scene, Vector3 } from "three";
 import { describe, expect, it, vi } from "vitest";
-import { PhysicsWorld, type PhysicsMetadata } from "@engine/physics/PhysicsWorld";
+import {
+  PhysicsWorld,
+  type PhysicsMetadata,
+} from "@engine/physics/PhysicsWorld";
 import { Raycast } from "@engine/physics/Raycast";
+import { PhysicsGrabController } from "@engine/physics/grab/PhysicsGrabController";
 import type { CharacterMotorSnapshot } from "@engine/physics/character/CharacterMotor";
 import { BlobConfig } from "@game/config/blob.config";
+import { GravityGunConfig } from "@game/config/gravitygun.config";
+import { WeaponDefinitions } from "@game/config/weapons.config";
 import {
   BlobArmorAnimator,
   type BlobArmorDebugSnapshot,
@@ -19,153 +25,907 @@ interface ArmorRecord {
 }
 
 describe("BlobArmorAnimator", () => {
-  it("crea 16 cuerpos Ball, resortes sin contacto y metadata dañable individual", async () => {
+  it("construye un gel 3D grande de 36 blobs chicos con sólo la capa interna anclada al cerebro", async () => {
     const harness = await createHarness();
     const snapshot = harness.animator.getDebugSnapshot();
     const armor = armorRecords(harness.physics);
 
     expect(snapshot.totalCount).toBe(BlobConfig.armor.count);
     expect(snapshot.attachedCount).toBe(BlobConfig.armor.count);
-    expect(new Set(snapshot.bodyHandles).size).toBe(BlobConfig.armor.count);
-    expect(harness.physics.getBodyCount()).toBe(BlobConfig.armor.count + 1);
-    expect(harness.physics.world.impulseJoints.len()).toBe(BlobConfig.armor.count);
-    expect(armor).toHaveLength(BlobConfig.armor.count);
-    expect(harness.scene.children).toHaveLength(BlobConfig.armor.count + 1);
+    expect(snapshot.attachedIndices).toEqual(
+      Array.from({ length: BlobConfig.armor.count }, (_, index) => index),
+    );
+    expect(snapshot.coreJointCount).toBe(BlobConfig.armor.coreAnchorCount);
+    expect(snapshot.coreAnchoredIndices).toHaveLength(
+      BlobConfig.armor.coreAnchorCount,
+    );
+    expect(layerHistogram(snapshot)).toEqual([...BlobConfig.armor.layerCounts]);
+    expect(
+      snapshot.coreAnchoredIndices.every(
+        (index) => snapshot.layers[index] === 0,
+      ),
+    ).toBe(true);
 
-    const metadataIds = new Set<string>();
+    const keys = snapshot.cohesionPairs.map(([from, to]) =>
+      pairKey(from, to),
+    );
+    expect(snapshot.cohesionBondCount).toBeGreaterThanOrEqual(
+      BlobConfig.armor.count - BlobConfig.armor.coreAnchorCount,
+    );
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(snapshot.cohesionPairs.some(([from, to]) => {
+      return snapshot.layers[from] !== snapshot.layers[to];
+    })).toBe(true);
+    for (const [from, to] of snapshot.cohesionPairs) {
+      expect(from).toBeLessThan(to);
+      expect(Math.abs(snapshot.layers[from] - snapshot.layers[to])).toBeLessThanOrEqual(1);
+      expect(bodyDistance(armor[from].body, armor[to].body)).toBeLessThanOrEqual(
+        BlobConfig.armor.cohesionAttachMaxDistance + 1e-5,
+      );
+    }
+    const degrees = graphDegrees(snapshot);
+    expect(Math.min(...degrees)).toBeGreaterThanOrEqual(
+      BlobConfig.armor.cohesionNeighborCount,
+    );
+    const sameLayerDegrees = snapshot.layers.map((layer, index) =>
+      snapshot.cohesionPairs.filter(
+        ([from, to]) =>
+          (from === index || to === index) &&
+          snapshot.layers[from] === layer &&
+          snapshot.layers[to] === layer,
+      ).length,
+    );
+    expect(Math.min(...sameLayerDegrees)).toBeGreaterThanOrEqual(
+      BlobConfig.armor.cohesionLayerNeighborCount,
+    );
+    expectMainGraphConsistent(snapshot);
+
+    expect(harness.coreBody.mass()).toBeCloseTo(BlobConfig.core.mass, 4);
+    expect(harness.physics.getBodyCount()).toBe(BlobConfig.armor.count + 1);
+    expect(harness.scene.children).toHaveLength(BlobConfig.armor.count + 1);
+    expect(new Set(snapshot.bodyHandles).size).toBe(BlobConfig.armor.count);
+    expect(armor).toHaveLength(BlobConfig.armor.count);
+
+    let coreJoints = 0;
+    let gelJoints = 0;
+    const armorHandles = new Set(snapshot.bodyHandles);
+    harness.physics.world.impulseJoints.forEach((joint) => {
+      const handles = [joint.body1().handle, joint.body2().handle];
+      if (handles.includes(harness.coreBody.handle)) {
+        coreJoints += 1;
+        expect(joint.contactsEnabled()).toBe(false);
+        expect(handles.some((handle) => armorHandles.has(handle))).toBe(true);
+      } else {
+        gelJoints += 1;
+        expect(joint.contactsEnabled()).toBe(true);
+        expect(handles.every((handle) => armorHandles.has(handle))).toBe(true);
+      }
+    });
+    expect(coreJoints).toBe(BlobConfig.armor.coreAnchorCount);
+    expect(gelJoints).toBe(snapshot.cohesionBondCount);
+    expect(harness.physics.world.impulseJoints.len()).toBe(
+      snapshot.coreJointCount + snapshot.cohesionBondCount,
+    );
+
+    let maximumExtent = 0;
     for (const [index, record] of armor.entries()) {
-      metadataIds.add(record.metadata.id);
+      const radius = ballRadius(record.collider);
+      maximumExtent = Math.max(
+        maximumExtent,
+        bodyDistance(harness.coreBody, record.body) + radius,
+      );
       expect(record.collider.shape.type).toBe(RAPIER.ShapeType.Ball);
+      expect(radius).toBeGreaterThanOrEqual(BlobConfig.armor.minRadius);
+      expect(radius).toBeLessThanOrEqual(BlobConfig.armor.maxRadius);
       expect(record.body.mass()).toBeCloseTo(BlobConfig.armor.mass, 5);
+      expect(record.body.gravityScale()).toBeCloseTo(
+        BlobConfig.armor.attachedGravityScale,
+        6,
+      );
       expect(record.metadata).toMatchObject({
+        id: `${harness.id}-blob-${index}`,
         ownerId: harness.id,
         kind: "npc",
         characterId: "blob",
         faction: "zombies",
-        selfPortalTraversal: true,
-        bodyPart: {
-          name: `blob-armor-${index}`,
-          damageMultiplier: 1,
-        },
+        bodyPart: { name: `blob-armor-${index}`, damageMultiplier: 1 },
       });
       expect(record.metadata.damageable?.isAlive()).toBe(true);
     }
-    expect(metadataIds.size).toBe(BlobConfig.armor.count);
+    expect(maximumExtent).toBeGreaterThan(1.15);
+    expect(maximumExtent).toBeLessThanOrEqual(
+      BlobConfig.armor.aggregateRadius + 1e-3,
+    );
 
-    harness.physics.world.impulseJoints.forEach((joint) => {
-      expect(joint.body1().handle).toBe(harness.coreBody.handle);
-      expect(snapshot.bodyHandles).toContain(joint.body2().handle);
-      expect(joint.contactsEnabled()).toBe(false);
-    });
-
-    // Desde afuera, la primera esfera de la cubierta debe interceptar el rayo
-    // antes de que pueda alcanzar el collider del cerebro.
-    const firstAnchor = snapshot.anchors[0].clone();
+    const outer = armor[layerIndices(snapshot, maximumLayer(snapshot))[0]];
+    const outward = vectorFromRapier(outer.body.translation())
+      .sub(vectorFromRapier(harness.coreBody.translation()))
+      .normalize();
     harness.physics.updateQueryPipeline();
     const hit = new Raycast(harness.physics).cast(
-      harness.position.clone().add(firstAnchor.clone().normalize().multiplyScalar(2)),
-      firstAnchor.clone().normalize().negate(),
-      3,
+      vectorFromRapier(outer.body.translation()).addScaledVector(outward, 1),
+      outward.clone().negate(),
+      2,
     );
     expect(hit?.metadata?.bodyPart?.name).toMatch(/^blob-armor-/);
 
     harness.dispose();
   });
 
-  it("desprende una sola esfera de forma idempotente conservando body e impulso", async () => {
+  it("mantiene el grafo gel persistente y conectado aunque no haya impactos", async () => {
     const harness = await createHarness();
-    const target = armorRecords(harness.physics)[0];
-    const damageable = target.metadata.damageable!;
-    const bodyHandle = target.body.handle;
-    const colliderHandle = target.collider.handle;
+    const armor = armorRecords(harness.physics);
+    const initial = harness.animator.getDebugSnapshot();
+    const initialPairs = normalizedPairKeys(initial.cohesionPairs);
 
-    damageable.applyDamage(0, new Vector3(1, 0, 0));
-    expect(harness.animator.getDebugSnapshot().attachedCount).toBe(16);
+    advanceSimulation(harness, 3);
 
-    damageable.applyDamage(1, new Vector3(1, 0, 0));
-
-    expect(harness.animator.getDebugSnapshot().attachedCount).toBe(15);
-    expect(harness.physics.world.impulseJoints.len()).toBe(15);
-    expect(harness.physics.getBodyCount()).toBe(17);
-    expect(harness.physics.world.getRigidBody(bodyHandle)).toBe(target.body);
-    expect(target.body.linvel().x).toBeGreaterThan(0);
-    expect(harness.ownerApplyDamage).not.toHaveBeenCalled();
-    expect(damageable.isAlive()).toBe(false);
-
-    const detachedMetadata = harness.physics.getColliderMetadata(
-      harness.physics.world.getCollider(colliderHandle),
+    const settled = harness.animator.getDebugSnapshot();
+    expect(normalizedPairKeys(settled.cohesionPairs)).toEqual(initialPairs);
+    expect(settled.attachedCount).toBe(BlobConfig.armor.count);
+    expect(settled.coreJointCount).toBe(BlobConfig.armor.coreAnchorCount);
+    expectMainGraphConsistent(settled);
+    for (const record of armorRecords(harness.physics)) {
+      const position = record.body.translation();
+      expect([position.x, position.y, position.z].every(Number.isFinite)).toBe(
+        true,
+      );
+    }
+    expect(shellShapeAspect(harness, armor)).toBeLessThan(1.35);
+    expect(maximumCoreRadius(harness, armor)).toBeLessThanOrEqual(
+      BlobConfig.armor.aggregateRadius + 0.05,
     );
-    expect(detachedMetadata).toEqual({
-      id: `${harness.id}-chunk-0`,
-      kind: "dynamic",
-    });
-
-    const velocityAfterFirstHit = vectorFromRapier(target.body.linvel());
-    damageable.applyDamage(10, new Vector3(1, 0, 0));
-    expect(harness.animator.getDebugSnapshot().attachedCount).toBe(15);
-    expect(harness.physics.world.impulseJoints.len()).toBe(15);
-    expect(vectorFromRapier(target.body.linvel())).toEqual(velocityAfterFirstHit);
-
-    const stillAttached = armorRecords(harness.physics);
-    expect(stillAttached).toHaveLength(15);
-    expect(stillAttached.every((record) => record.metadata.kind === "npc")).toBe(true);
 
     harness.dispose();
   });
 
-  it("mantiene el hueco 0.5 s y redistribuye gradualmente durante 1.5 s", async () => {
+  it("opone resistencia antes de cortar el último camino de un blob exterior", async () => {
     const harness = await createHarness();
-    armorRecords(harness.physics)[0].metadata.damageable!.applyDamage(1);
+    const armor = armorRecords(harness.physics);
     const initial = harness.animator.getDebugSnapshot();
+    const targetIndex = layerIndices(initial, maximumLayer(initial))[0];
+    const target = armor[targetIndex];
+    const incidentPairs = initial.cohesionPairs.filter(
+      ([from, to]) => from === targetIndex || to === targetIndex,
+    );
 
-    harness.animator.updateFromMotor(animationFrame(0.49));
+    target.metadata.damageable!.applyDamage(1, new Vector3(1, 0, 0));
+    const yielding = harness.animator.getDebugSnapshot();
+    expect(yielding.attachedIndices).toContain(targetIndex);
+    expect(yielding.attachedCount).toBe(BlobConfig.armor.count);
+    expect(yielding.coreJointCount).toBe(BlobConfig.armor.coreAnchorCount);
+    expect(currentMetadata(harness, target).kind).toBe("npc");
+    expect(target.metadata.damageable!.isAlive()).toBe(true);
+    expectMainGraphConsistent(yielding);
+
+    // Incluso un frame muy largo no saltea el solve físico de resistencia.
+    harness.animator.updateFromMotor(
+      animationFrame(BlobConfig.armor.detachResistanceSeconds * 2),
+    );
+    expect(
+      incidentPairs.every(([from, to]) =>
+        hasPair(harness.animator.getDebugSnapshot(), from, to),
+      ),
+    ).toBe(true);
+    harness.physics.step(1 / 30);
+
+    expect(
+      advanceUntil(
+        harness,
+        () => currentMetadata(harness, target).kind === "dynamic",
+        BlobConfig.armor.detachResistanceSeconds +
+          BlobConfig.armor.cohesionShellFatigueSeconds +
+          0.5,
+      ),
+    ).toBe(true);
+    const released = harness.animator.getDebugSnapshot();
+    expect(released.attachedIndices).not.toContain(targetIndex);
+    expect(released.attachedCount).toBe(BlobConfig.armor.count - 1);
+    expect(
+      released.cohesionPairs.some(
+        ([from, to]) => from === targetIndex || to === targetIndex,
+      ),
+    ).toBe(false);
+    expect(currentMetadata(harness, target)).toMatchObject({
+      id: `${harness.id}-chunk-${targetIndex}`,
+      impactOwnerId: harness.id,
+      kind: "dynamic",
+    });
+    expect(target.body.gravityScale()).toBeCloseTo(1, 6);
+    expect(target.metadata.damageable!.isAlive()).toBe(true);
+    expectMainGraphConsistent(released);
+
+    harness.dispose();
+  });
+
+  it("desprende dos vecinos como mini-blob y permite romperlos otra vez", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    const initial = harness.animator.getDebugSnapshot();
+    const [firstIndex, secondIndex] = findBondedOuterPair(initial);
+    const first = armor[firstIndex];
+    const second = armor[secondIndex];
+
+    first.metadata.damageable!.applyDamage(1);
+    second.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          currentMetadata(harness, first).kind === "dynamic" &&
+          currentMetadata(harness, second).kind === "dynamic",
+        1,
+      ),
+    ).toBe(true);
+
+    const cluster = harness.animator.getDebugSnapshot();
+    expect(cluster.attachedIndices).not.toContain(firstIndex);
+    expect(cluster.attachedIndices).not.toContain(secondIndex);
+    expect(hasPair(cluster, firstIndex, secondIndex)).toBe(true);
+    expectMainGraphConsistent(cluster);
+
+    const away = vectorFromRapier(first.body.translation())
+      .sub(vectorFromRapier(second.body.translation()))
+      .normalize();
+    first.body.applyImpulse(
+      away.clone().multiplyScalar(WeaponDefinitions.revolver.impulse),
+      true,
+    );
+    first.metadata.damageable!.applyDamage(
+      WeaponDefinitions.revolver.damage,
+      away,
+    );
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          !hasPair(
+            harness.animator.getDebugSnapshot(),
+            firstIndex,
+            secondIndex,
+          ),
+        0.25,
+      ),
+    ).toBe(true);
+    expect(
+      reachableWithin(
+        firstIndex,
+        harness.animator.getDebugSnapshot().cohesionPairs,
+        [firstIndex, secondIndex],
+      ),
+    ).toEqual(new Set([firstIndex]));
+    expect(currentMetadata(harness, first).kind).toBe("dynamic");
+    expect(currentMetadata(harness, second).kind).toBe("dynamic");
+
+    harness.dispose();
+  });
+
+  it("conserva resultados dinámicos: un golpe suave puede sacar uno y una pistola un racimo", async () => {
+    const gentle = await createHarness();
+    const gentleArmor = armorRecords(gentle.physics);
+    const gentleSnapshot = gentle.animator.getDebugSnapshot();
+    const targetIndex = layerIndices(
+      gentleSnapshot,
+      maximumLayer(gentleSnapshot),
+    )[0];
+    gentleArmor[targetIndex].metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        gentle,
+        () => currentMetadata(gentle, gentleArmor[targetIndex]).kind === "dynamic",
+        1,
+      ),
+    ).toBe(true);
+    expect(releasedArmorIndices(gentle, gentleArmor)).toEqual([targetIndex]);
+    gentle.dispose();
+
+    const strong = await createHarness();
+    const strongArmor = armorRecords(strong.physics);
+    const strongSnapshot = strong.animator.getDebugSnapshot();
+    const strongIndex = layerIndices(
+      strongSnapshot,
+      maximumLayer(strongSnapshot),
+    )[0];
+    const strongTarget = strongArmor[strongIndex];
+    const inward = vectorFromRapier(strong.coreBody.translation())
+      .sub(vectorFromRapier(strongTarget.body.translation()))
+      .normalize();
+    strongTarget.body.applyImpulse(
+      inward.clone().multiplyScalar(WeaponDefinitions.pistol.impulse),
+      true,
+    );
+    strongTarget.metadata.damageable!.applyDamage(
+      WeaponDefinitions.pistol.damage,
+      inward,
+    );
+    advanceSimulation(strong, 0.8);
+
+    const released = releasedArmorIndices(strong, strongArmor);
+    const result = strong.animator.getDebugSnapshot();
+    expect(released).toContain(strongIndex);
+    expect(released.length).toBeGreaterThan(1);
+    expect(reachableWithin(released[0], result.cohesionPairs, released)).toEqual(
+      new Set(released),
+    );
+    expectMainGraphConsistent(result);
+    strong.dispose();
+  });
+
+  it("atrae tres fragmentos externos y forma un único mini-racimo después del cooldown", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    const initial = harness.animator.getDebugSnapshot();
+    const indices = findMutuallyNonBondedOuterIndices(initial, 3);
+    const records = indices.map((index) => armor[index]);
+
+    for (const record of records) {
+      record.metadata.damageable!.applyDamage(1);
+    }
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          records.every(
+            (record) => currentMetadata(harness, record).kind === "dynamic",
+          ),
+        1,
+      ),
+    ).toBe(true);
+    for (const [offset, record] of records.entries()) {
+      placeBody(record.body, new Vector3(8 + offset * 0.92, 6, 0));
+    }
+    const initialDistance = bodyDistance(records[0].body, records[1].body);
+
+    advanceSimulation(harness, BlobConfig.armor.reassemblyDelaySeconds * 0.6);
+    expect(
+      reachableWithin(
+        indices[0],
+        harness.animator.getDebugSnapshot().cohesionPairs,
+        indices,
+      ),
+    ).toEqual(new Set([indices[0]]));
+    expect(bodyDistance(records[0].body, records[1].body)).toBeCloseTo(
+      initialDistance,
+      3,
+    );
+
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          reachableWithin(
+            indices[0],
+            harness.animator.getDebugSnapshot().cohesionPairs,
+            indices,
+          ).size === indices.length,
+        2.5,
+      ),
+    ).toBe(true);
+    expect(bodyDistance(records[0].body, records[1].body)).toBeLessThan(
+      initialDistance,
+    );
+    expect(harness.animator.getDebugSnapshot().attachedCount).toBe(
+      BlobConfig.armor.count - indices.length,
+    );
+
+    harness.dispose();
+  });
+
+  it("no une fragmentos a través de paredes", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    const initial = harness.animator.getDebugSnapshot();
+    const [firstIndex, secondIndex] = findNonBondedOuterPair(initial);
+    const first = armor[firstIndex];
+    const second = armor[secondIndex];
+
+    first.metadata.damageable!.applyDamage(1);
+    second.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          currentMetadata(harness, first).kind === "dynamic" &&
+          currentMetadata(harness, second).kind === "dynamic",
+        1,
+      ),
+    ).toBe(true);
+    placeBody(first.body, new Vector3(8, 6, 0));
+    placeBody(second.body, new Vector3(9.1, 6, 0));
+    const initialFirstX = first.body.translation().x;
+    const initialSecondX = second.body.translation().x;
+    harness.physics.createStaticBox({
+      id: "reassembly-wall",
+      position: new Vector3(8.55, -40, 0),
+      size: new Vector3(0.12, 100, 20),
+    });
+    harness.physics.updateQueryPipeline();
+
+    advanceSimulation(
+      harness,
+      BlobConfig.armor.reassemblyDelaySeconds + 1.5,
+    );
+    expect(
+      hasPair(
+        harness.animator.getDebugSnapshot(),
+        firstIndex,
+        secondIndex,
+      ),
+    ).toBe(false);
+    expect(first.body.translation().x).toBeCloseTo(initialFirstX, 3);
+    expect(second.body.translation().x).toBeCloseTo(initialSecondX, 3);
+
+    harness.dispose();
+  });
+
+  it("reintegra un mini-racimo completo al tocar cualquier blob exterior del cuerpo", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    const initial = harness.animator.getDebugSnapshot();
+    const [firstIndex, secondIndex] = findBondedOuterPair(initial);
+    const first = armor[firstIndex];
+    const second = armor[secondIndex];
+    const rootsBefore = [...initial.coreAnchoredIndices];
+
+    first.metadata.damageable!.applyDamage(1);
+    second.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          currentMetadata(harness, first).kind === "dynamic" &&
+          currentMetadata(harness, second).kind === "dynamic",
+        1,
+      ),
+    ).toBe(true);
+    const internalDistance = bodyDistance(first.body, second.body);
+    placeBody(first.body, new Vector3(8, 6, 0));
+    placeBody(second.body, new Vector3(8 + internalDistance, 6, 0));
+    advanceSimulation(
+      harness,
+      BlobConfig.armor.reassemblyDelaySeconds + 0.1,
+    );
+    expect(
+      hasPair(
+        harness.animator.getDebugSnapshot(),
+        firstIndex,
+        secondIndex,
+      ),
+    ).toBe(true);
+
+    stopBody(harness.coreBody);
+    for (const record of armor) stopBody(record.body);
+    const beforeDock = harness.animator.getDebugSnapshot();
+    const hostIndex = layerIndices(beforeDock, maximumLayer(beforeDock)).find(
+      (index) => index !== firstIndex && index !== secondIndex,
+    )!;
+    const host = armor[hostIndex];
+    const outward = vectorFromRapier(host.body.translation())
+      .sub(vectorFromRapier(harness.coreBody.translation()))
+      .normalize();
+    const capture = vectorFromRapier(host.body.translation()).addScaledVector(
+      outward,
+      ballRadius(host.collider) +
+        ballRadius(first.collider) +
+        BlobConfig.armor.reassemblyJoinPadding * 0.5,
+    );
+    placeBody(first.body, capture);
+    placeBody(
+      second.body,
+      capture.clone().addScaledVector(outward, internalDistance),
+    );
+    const mainBefore = new Set(beforeDock.attachedIndices);
+
+    harness.animator.updateFromMotor(animationFrame(1 / 60));
+    const restored = harness.animator.getDebugSnapshot();
+    expect(restored.attachedCount).toBe(BlobConfig.armor.count);
+    expect(restored.attachedIndices).toContain(firstIndex);
+    expect(restored.attachedIndices).toContain(secondIndex);
+    expect(restored.coreAnchoredIndices).toEqual(rootsBefore);
+    expect(hasPair(restored, firstIndex, secondIndex)).toBe(true);
+    expect(
+      restored.cohesionPairs.some(
+        ([from, to]) =>
+          ([firstIndex, secondIndex].includes(from) && mainBefore.has(to)) ||
+          ([firstIndex, secondIndex].includes(to) && mainBefore.has(from)),
+      ),
+    ).toBe(true);
+    expect(currentMetadata(harness, first).kind).toBe("npc");
+    expect(currentMetadata(harness, second).kind).toBe("npc");
+    expectMainGraphConsistent(restored);
+
+    harness.dispose();
+  });
+
+  it("pliega una fila de cinco fragmentos hasta formar un mini-racimo compacto", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    const indices = findMutuallyNonBondedOuterIndices(
+      harness.animator.getDebugSnapshot(),
+      5,
+    );
+    const records = indices.map((index) => armor[index]);
+
+    for (const record of records) {
+      record.metadata.damageable!.applyDamage(1);
+    }
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          records.every(
+            (record) => currentMetadata(harness, record).kind === "dynamic",
+          ),
+        1,
+      ),
+    ).toBe(true);
+    placeRecordsInLine(records, new Vector3(8, 6, 0), new Vector3(1, 0, 0));
+    const line = clusterShapeMetrics(records);
+
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          reachableWithin(
+            indices[0],
+            harness.animator.getDebugSnapshot().cohesionPairs,
+            indices,
+          ).size === indices.length,
+        BlobConfig.armor.reassemblyDelaySeconds + 1.5,
+      ),
+    ).toBe(true);
+    advanceSimulation(harness, 3);
+
+    const compact = clusterShapeMetrics(records);
+    expect(compact.normalizedDiameter).toBeLessThan(2.6);
+    expect(compact.normalizedDiameter).toBeLessThan(
+      line.normalizedDiameter * 0.72,
+    );
+    expect(compact.axisAspect).toBeLessThan(1.8);
+    expect(compact.normalizedRadialDeviation).toBeLessThan(0.5);
+    expect(
+      reachableWithin(
+        indices[0],
+        harness.animator.getDebugSnapshot().cohesionPairs,
+        indices,
+      ),
+    ).toEqual(new Set(indices));
+
+    harness.dispose();
+  });
+
+  it("dobla una cola reintegrada y vuelve a cubrir el cerebro con una masa uniforme", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    const initial = harness.animator.getDebugSnapshot();
+    const intactCoverageHole = sphericalCoverageHole(harness, armor);
+    const indices = findMutuallyNonBondedOuterIndices(initial, 5);
+    const records = indices.map((index) => armor[index]);
+
+    for (const record of records) {
+      record.metadata.damageable!.applyDamage(1);
+    }
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          records.every(
+            (record) => currentMetadata(harness, record).kind === "dynamic",
+          ),
+        1,
+      ),
+    ).toBe(true);
+    placeRecordsInLine(records, new Vector3(8, 6, 0), new Vector3(1, 0, 0));
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          reachableWithin(
+            indices[0],
+            harness.animator.getDebugSnapshot().cohesionPairs,
+            indices,
+          ).size === indices.length,
+        BlobConfig.armor.reassemblyDelaySeconds + 1.5,
+      ),
+    ).toBe(true);
+
+    stopBody(harness.coreBody);
+    for (const record of armor) stopBody(record.body);
+    const hostIndex = layerIndices(initial, maximumLayer(initial)).find(
+      (index) => !indices.includes(index),
+    )!;
+    const host = armor[hostIndex];
+    const outward = vectorFromRapier(host.body.translation())
+      .sub(vectorFromRapier(harness.coreBody.translation()))
+      .normalize();
+    const start = vectorFromRapier(host.body.translation()).addScaledVector(
+      outward,
+      ballRadius(host.collider) +
+        ballRadius(records[0].collider) +
+        BlobConfig.armor.reassemblyJoinPadding * 0.5,
+    );
+    placeRecordsInLine(records, start, outward);
+
+    harness.animator.updateFromMotor(animationFrame(1 / 60));
+    const docked = harness.animator.getDebugSnapshot();
+    expect(docked.attachedCount).toBe(BlobConfig.armor.count);
+    const tailMaximumRadius = maximumCoreRadius(harness, records);
+    const tailAspect = shellShapeAspect(harness, armor);
+    const tailCoverageHole = sphericalCoverageHole(harness, armor);
+
+    advanceSimulation(harness, 3.5);
+
+    const uniformMaximumRadius = maximumCoreRadius(harness, records);
+    const uniformAspect = shellShapeAspect(harness, armor);
+    const uniformCoverageHole = sphericalCoverageHole(harness, armor);
+    expect(uniformMaximumRadius).toBeLessThan(tailMaximumRadius * 0.8);
+    expect(uniformMaximumRadius).toBeLessThanOrEqual(
+      BlobConfig.armor.aggregateRadius + 0.1,
+    );
+    expect(uniformAspect).toBeLessThan(1.5);
+    expect(uniformAspect).toBeLessThan(tailAspect * 0.8);
+    expect(uniformCoverageHole).toBeLessThan(tailCoverageHole - 0.03);
+    expect(uniformCoverageHole).toBeLessThanOrEqual(
+      intactCoverageHole + 0.1,
+    );
+    expectMainGraphConsistent(harness.animator.getDebugSnapshot());
+
+    harness.dispose();
+  });
+
+  it("recupera todos los roots internos de un mini-racimo al volver a la cubierta", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    const initial = harness.animator.getDebugSnapshot();
+    const [firstIndex, secondIndex] = findBondedRootPair(initial);
+    const first = armor[firstIndex];
+    const second = armor[secondIndex];
+    const anchors = new Map(
+      initial.coreAnchoredIndices.map((index, slot) => [
+        index,
+        initial.anchors[slot].clone(),
+      ]),
+    );
+
+    first.metadata.damageable!.applyDamage(1);
+    second.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          currentMetadata(harness, first).kind === "dynamic" &&
+          currentMetadata(harness, second).kind === "dynamic",
+        1,
+      ),
+    ).toBe(true);
+    const internalDistance = bodyDistance(first.body, second.body);
+    placeBody(first.body, new Vector3(8, 6, 0));
+    placeBody(second.body, new Vector3(8 + internalDistance, 6, 0));
+    advanceSimulation(
+      harness,
+      BlobConfig.armor.reassemblyDelaySeconds + 0.1,
+    );
+
+    stopBody(harness.coreBody);
+    for (const record of armor) stopBody(record.body);
+    placeBody(
+      first.body,
+      vectorFromRapier(harness.coreBody.translation()).add(
+        anchors.get(firstIndex)!,
+      ),
+    );
+    placeBody(
+      second.body,
+      vectorFromRapier(harness.coreBody.translation()).add(
+        anchors.get(secondIndex)!,
+      ),
+    );
+    harness.animator.updateFromMotor(animationFrame(1 / 60));
+
+    const restored = harness.animator.getDebugSnapshot();
+    expect(restored.attachedCount).toBe(BlobConfig.armor.count);
+    expect(restored.coreJointCount).toBe(BlobConfig.armor.coreAnchorCount);
+    expect(restored.coreAnchoredIndices).toContain(firstIndex);
+    expect(restored.coreAnchoredIndices).toContain(secondIndex);
+    expect(currentMetadata(harness, first).kind).toBe("npc");
+    expect(currentMetadata(harness, second).kind).toBe("npc");
+    expectMainGraphConsistent(restored);
+
+    harness.dispose();
+  });
+
+  it("permite reintegrar lateralmente una pieza sostenida por la Gravity Gun", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    const initial = harness.animator.getDebugSnapshot();
+    const outer = layerIndices(initial, maximumLayer(initial));
+    const targetIndex = outer[0];
+    const hostIndex = outer.find((index) => index !== targetIndex)!;
+    const target = armor[targetIndex];
+    const host = armor[hostIndex];
+    const rootsBefore = [...initial.coreAnchoredIndices];
+
+    target.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () => currentMetadata(harness, target).kind === "dynamic",
+        1,
+      ),
+    ).toBe(true);
+    placeBody(target.body, new Vector3(8, 6, 0));
+    advanceSimulation(
+      harness,
+      BlobConfig.armor.reassemblyDelaySeconds + 0.1,
+    );
+
+    stopBody(harness.coreBody);
+    for (const record of armor) stopBody(record.body);
+    const outward = vectorFromRapier(host.body.translation())
+      .sub(vectorFromRapier(harness.coreBody.translation()))
+      .normalize();
+    const initialCapture = vectorFromRapier(host.body.translation()).addScaledVector(
+      outward,
+      ballRadius(host.collider) +
+        ballRadius(target.collider) +
+        BlobConfig.armor.reassemblyJoinPadding * 0.5,
+    );
+    placeBody(
+      target.body,
+      initialCapture.clone().addScaledVector(outward, 0.35),
+    );
+
+    const grab = new PhysicsGrabController(
+      harness.physics,
+      new Raycast(harness.physics),
+      GravityGunConfig.hold,
+    );
+    const cameraQuaternion = new Quaternion();
+    const cameraDirection = outward.clone();
+    const cameraPosition = new Vector3();
+    grab.grab(target.body, cameraQuaternion);
+
+    for (
+      let frame = 0;
+      frame < 120 &&
+      !harness.animator
+        .getDebugSnapshot()
+        .attachedIndices.includes(targetIndex);
+      frame += 1
+    ) {
+      cameraDirection
+        .copy(vectorFromRapier(host.body.translation()))
+        .sub(vectorFromRapier(harness.coreBody.translation()))
+        .normalize();
+      const capture = vectorFromRapier(host.body.translation()).addScaledVector(
+        cameraDirection,
+        ballRadius(host.collider) +
+          ballRadius(target.collider) +
+          BlobConfig.armor.reassemblyJoinPadding * 0.5,
+      );
+      cameraPosition
+        .copy(capture)
+        .addScaledVector(
+          cameraDirection,
+          -GravityGunConfig.hold.holdDistance,
+        );
+      grab.update(
+        1 / 60,
+        cameraPosition,
+        cameraDirection,
+        cameraQuaternion,
+      );
+      harness.animator.updateFromMotor(animationFrame(1 / 60));
+      harness.physics.step(1 / 60);
+    }
+
+    const restored = harness.animator.getDebugSnapshot();
+    expect(restored.attachedIndices).toContain(targetIndex);
+    expect(restored.attachedCount).toBe(BlobConfig.armor.count);
+    expect(restored.coreAnchoredIndices).toEqual(rootsBefore);
+    expect(restored.coreAnchoredIndices).not.toContain(targetIndex);
+    expect(grab.getHeldBody()).toBe(target.body);
+    expect(harness.physics.isHeldBody(target.body.handle)).toBe(true);
+    expect(currentMetadata(harness, target).kind).toBe("npc");
+    expectMainGraphConsistent(restored);
+
+    grab.release(new Vector3());
+    harness.animator.updateFromMotor(animationFrame(1 / 60));
+    expect(target.body.gravityScale()).toBeCloseTo(
+      BlobConfig.armor.attachedGravityScale,
+      6,
+    );
+    harness.dispose();
+  });
+
+  it("hace reflow sólo de los roots internos y conserva conectado el cuerpo", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    const initial = harness.animator.getDebugSnapshot();
+    const outerIndex = layerIndices(initial, maximumLayer(initial))[0];
+    armor[outerIndex].metadata.damageable!.applyDamage(1);
+
+    harness.animator.updateFromMotor(
+      animationFrame(BlobConfig.armor.reflowDelay - 0.01),
+    );
     expectAnchorsClose(harness.animator.getDebugSnapshot(), initial);
-
     harness.animator.updateFromMotor(animationFrame(0.01));
     expectAnchorsClose(harness.animator.getDebugSnapshot(), initial);
 
-    harness.animator.updateFromMotor(animationFrame(0.75));
+    harness.animator.updateFromMotor(
+      animationFrame(BlobConfig.armor.reflowDuration * 0.5),
+    );
     const halfway = harness.animator.getDebugSnapshot();
-    harness.animator.updateFromMotor(animationFrame(0.75));
+    harness.animator.updateFromMotor(
+      animationFrame(BlobConfig.armor.reflowDuration * 0.5),
+    );
     const completed = harness.animator.getDebugSnapshot();
 
-    const movedIndices = completed.anchors
-      .map((anchor, index) => anchor.distanceTo(initial.anchors[index]))
-      .map((distance, index) => ({ distance, index }))
+    expect(completed.coreAnchoredIndices).toEqual(initial.coreAnchoredIndices);
+    expect(
+      completed.coreAnchoredIndices.every(
+        (index) => completed.layers[index] === 0,
+      ),
+    ).toBe(true);
+    const moved = completed.anchors
+      .map((anchor, index) => ({
+        index,
+        distance: anchor.distanceTo(initial.anchors[index]),
+      }))
       .filter(({ distance }) => distance > 1e-5);
-    expect(movedIndices.length).toBeGreaterThan(0);
-
-    for (const { index } of movedIndices) {
-      const expectedHalfway = initial.anchors[index]
+    expect(moved.length).toBeGreaterThan(0);
+    for (const { index } of moved) {
+      const expected = initial.anchors[index]
         .clone()
         .lerp(completed.anchors[index], 0.5);
-      expect(halfway.anchors[index].distanceTo(expectedHalfway)).toBeLessThan(1e-5);
+      expect(halfway.anchors[index].distanceTo(expected)).toBeLessThan(1e-5);
     }
-
-    harness.animator.updateFromMotor(animationFrame(0.25));
-    expectAnchorsClose(harness.animator.getDebugSnapshot(), completed);
+    expectMainGraphConsistent(completed);
 
     harness.dispose();
   });
 
-  it("la muerte libera toda la cubierta y dispose elimina cuerpos, bindings, joints y meshes", async () => {
+  it("la muerte libera la red completa y dispose elimina cuerpos, bindings, joints y meshes", async () => {
     const harness = await createHarness();
-    const shellBodies = armorRecords(harness.physics).map((record) => record.body);
-    const shellColliders = armorRecords(harness.physics).map((record) => record.collider);
+    const armor = armorRecords(harness.physics);
+    const shellBodies = armor.map((record) => record.body);
+    const shellColliders = armor.map((record) => record.collider);
+    const grab = new PhysicsGrabController(
+      harness.physics,
+      new Raycast(harness.physics),
+      GravityGunConfig.hold,
+    );
+    grab.grab(shellBodies[0], new Quaternion());
+    expect(harness.physics.isHeldBody(shellBodies[0].handle)).toBe(true);
 
     harness.animator.notifyDeath();
-
-    expect(harness.animator.getDebugSnapshot().attachedCount).toBe(0);
+    grab.release();
+    expect(harness.animator.getDebugSnapshot()).toMatchObject({
+      attachedCount: 0,
+      coreJointCount: 0,
+      cohesionBondCount: 0,
+    });
     expect(harness.physics.world.impulseJoints.len()).toBe(0);
-    expect(harness.physics.getBodyCount()).toBe(17);
+    expect(harness.coreBody.gravityScale()).toBeCloseTo(1, 6);
+    expect(shellBodies[0].gravityScale()).toBeCloseTo(1, 6);
+    expect(harness.physics.isHeldBody(shellBodies[0].handle)).toBe(false);
+    expect(harness.physics.getBodyCount()).toBe(BlobConfig.armor.count + 1);
     expect(
       shellColliders.every(
         (collider) => harness.physics.getColliderMetadata(collider)?.kind === "dynamic",
       ),
     ).toBe(true);
 
-    harness.animator.dispose();
+    placeBody(
+      shellBodies[0],
+      vectorFromRapier(harness.coreBody.translation()).add(
+        new Vector3(BlobConfig.armor.coreAnchorRadius, 0, 0),
+      ),
+    );
+    harness.animator.updateFromMotor(animationFrame(2));
+    expect(harness.animator.getDebugSnapshot().attachedCount).toBe(0);
 
+    harness.animator.dispose();
     expect(harness.physics.world.impulseJoints.len()).toBe(0);
     expect(harness.physics.getBodyCount()).toBe(1);
     expect(harness.scene.children).toEqual([harness.visualGroup]);
@@ -198,12 +958,20 @@ async function createHarness() {
     isAlive: () => true,
   };
   const coreBody = physics.world.createRigidBody(
-    RAPIER.RigidBodyDesc.dynamic().setTranslation(position.x, position.y, position.z),
+    RAPIER.RigidBodyDesc.dynamic().setTranslation(
+      position.x,
+      position.y,
+      position.z,
+    ),
   );
   const coreCollider = physics.world.createCollider(
-    RAPIER.ColliderDesc.ball(BlobConfig.core.radius),
+    RAPIER.ColliderDesc.ball(BlobConfig.core.radius).setDensity(
+      BlobConfig.core.mass /
+        ((4 / 3) * Math.PI * BlobConfig.core.radius ** 3),
+    ),
     coreBody,
   );
+  coreBody.setGravityScale(BlobConfig.core.gravityScale, true);
   physics.registerCollider(coreCollider, {
     id,
     ownerId: id,
@@ -249,6 +1017,443 @@ async function createHarness() {
   };
 }
 
+type BlobHarness = Awaited<ReturnType<typeof createHarness>>;
+
+function advanceSimulation(
+  harness: BlobHarness,
+  seconds: number,
+  delta = 1 / 60,
+): void {
+  const steps = Math.ceil(Math.max(0, seconds) / delta);
+  for (let step = 0; step < steps; step += 1) {
+    harness.animator.updateFromMotor(animationFrame(delta));
+    harness.physics.step(delta);
+  }
+}
+
+function advanceUntil(
+  harness: BlobHarness,
+  predicate: () => boolean,
+  maxSeconds: number,
+  delta = 1 / 60,
+): boolean {
+  if (predicate()) return true;
+  const steps = Math.ceil(Math.max(0, maxSeconds) / delta);
+  for (let step = 0; step < steps; step += 1) {
+    harness.animator.updateFromMotor(animationFrame(delta));
+    harness.physics.step(delta);
+    if (predicate()) return true;
+  }
+  return predicate();
+}
+
+function expectMainGraphConsistent(snapshot: BlobArmorDebugSnapshot): void {
+  const allowed = new Set(snapshot.attachedIndices);
+  const reached = new Set(
+    snapshot.coreAnchoredIndices.filter((index) => allowed.has(index)),
+  );
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [from, to] of snapshot.cohesionPairs) {
+      if (!allowed.has(from) || !allowed.has(to)) continue;
+      if (reached.has(from) && !reached.has(to)) {
+        reached.add(to);
+        changed = true;
+      } else if (reached.has(to) && !reached.has(from)) {
+        reached.add(from);
+        changed = true;
+      }
+    }
+  }
+  expect([...reached].sort((a, b) => a - b)).toEqual(
+    [...allowed].sort((a, b) => a - b),
+  );
+}
+
+function reachableWithin(
+  start: number,
+  pairs: Array<[number, number]>,
+  allowedIndices: number[],
+): Set<number> {
+  const allowed = new Set(allowedIndices);
+  const reached = new Set<number>(allowed.has(start) ? [start] : []);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [from, to] of pairs) {
+      if (!allowed.has(from) || !allowed.has(to)) continue;
+      if (reached.has(from) && !reached.has(to)) {
+        reached.add(to);
+        changed = true;
+      } else if (reached.has(to) && !reached.has(from)) {
+        reached.add(from);
+        changed = true;
+      }
+    }
+  }
+  return reached;
+}
+
+function maximumLayer(snapshot: BlobArmorDebugSnapshot): number {
+  return Math.max(...snapshot.layers);
+}
+
+function layerIndices(
+  snapshot: BlobArmorDebugSnapshot,
+  layer: number,
+): number[] {
+  return snapshot.layers.flatMap((value, index) =>
+    value === layer ? [index] : [],
+  );
+}
+
+function layerHistogram(snapshot: BlobArmorDebugSnapshot): number[] {
+  return Array.from({ length: maximumLayer(snapshot) + 1 }, (_, layer) =>
+    snapshot.layers.filter((value) => value === layer).length,
+  );
+}
+
+function graphDegrees(snapshot: BlobArmorDebugSnapshot): number[] {
+  const degrees = Array.from({ length: snapshot.totalCount }, () => 0);
+  for (const [from, to] of snapshot.cohesionPairs) {
+    degrees[from] += 1;
+    degrees[to] += 1;
+  }
+  return degrees;
+}
+
+function findBondedOuterPair(
+  snapshot: BlobArmorDebugSnapshot,
+): [number, number] {
+  const layer = maximumLayer(snapshot);
+  const pair = snapshot.cohesionPairs.find(
+    ([from, to]) =>
+      snapshot.layers[from] === layer && snapshot.layers[to] === layer,
+  );
+  if (!pair) throw new Error("El gel necesita al menos un enlace exterior");
+  return pair;
+}
+
+function findBondedRootPair(
+  snapshot: BlobArmorDebugSnapshot,
+): [number, number] {
+  const roots = new Set(snapshot.coreAnchoredIndices);
+  const pair = snapshot.cohesionPairs.find(
+    ([from, to]) => roots.has(from) && roots.has(to),
+  );
+  if (!pair) throw new Error("El gel necesita un enlace entre roots internos");
+  return pair;
+}
+
+function findNonBondedOuterPair(
+  snapshot: BlobArmorDebugSnapshot,
+): [number, number] {
+  const outer = layerIndices(snapshot, maximumLayer(snapshot));
+  for (let from = 0; from < outer.length; from += 1) {
+    for (let to = from + 1; to < outer.length; to += 1) {
+      if (!hasPair(snapshot, outer[from], outer[to])) {
+        return [outer[from], outer[to]];
+      }
+    }
+  }
+  throw new Error("El gel exterior no tiene dos nodos sin enlace directo");
+}
+
+function findMutuallyNonBondedOuterIndices(
+  snapshot: BlobArmorDebugSnapshot,
+  count: number,
+): number[] {
+  const selected: number[] = [];
+  for (const index of layerIndices(snapshot, maximumLayer(snapshot))) {
+    if (selected.every((other) => !hasPair(snapshot, index, other))) {
+      selected.push(index);
+      if (selected.length === count) return selected;
+    }
+  }
+  throw new Error(`El gel exterior no tiene ${count} nodos independientes`);
+}
+
+function hasPair(
+  snapshot: BlobArmorDebugSnapshot,
+  from: number,
+  to: number,
+): boolean {
+  const key = pairKey(from, to);
+  return snapshot.cohesionPairs.some(
+    ([pairFrom, pairTo]) => pairKey(pairFrom, pairTo) === key,
+  );
+}
+
+function normalizedPairKeys(pairs: Array<[number, number]>): string[] {
+  return pairs.map(([from, to]) => pairKey(from, to)).sort();
+}
+
+function pairKey(from: number, to: number): string {
+  return `${Math.min(from, to)}:${Math.max(from, to)}`;
+}
+
+function releasedArmorIndices(
+  harness: BlobHarness,
+  armor: ArmorRecord[],
+): number[] {
+  return armor.flatMap((record) =>
+    currentMetadata(harness, record).kind === "dynamic"
+      ? [armorIndex(record.metadata)]
+      : [],
+  );
+}
+
+function currentMetadata(
+  harness: BlobHarness,
+  record: ArmorRecord,
+): PhysicsMetadata {
+  const metadata = harness.physics.getColliderMetadata(record.collider);
+  if (!metadata) throw new Error("Collider de armor sin metadata");
+  return metadata;
+}
+
+function placeBody(body: RAPIER.RigidBody, position: Vector3): void {
+  body.setTranslation(position, true);
+  stopBody(body);
+}
+
+function placeRecordsInLine(
+  records: ArmorRecord[],
+  start: Vector3,
+  direction: Vector3,
+): void {
+  const axis = direction.clone().normalize();
+  let offset = 0;
+  for (let index = 0; index < records.length; index += 1) {
+    if (index > 0) {
+      offset +=
+        ballRadius(records[index - 1].collider) +
+        ballRadius(records[index].collider) +
+        BlobConfig.armor.reassemblyJoinPadding * 0.5;
+    }
+    placeBody(records[index].body, start.clone().addScaledVector(axis, offset));
+  }
+}
+
+function clusterShapeMetrics(records: ArmorRecord[]): {
+  normalizedDiameter: number;
+  axisAspect: number;
+  normalizedRadialDeviation: number;
+} {
+  const positions = records.map((record) =>
+    vectorFromRapier(record.body.translation()),
+  );
+  const center = positions
+    .reduce((sum, position) => sum.add(position), new Vector3())
+    .multiplyScalar(1 / positions.length);
+  const meanDiameter =
+    records.reduce(
+      (sum, record) => sum + ballRadius(record.collider) * 2,
+      0,
+    ) / records.length;
+  let diameter = 0;
+  for (let from = 0; from < positions.length; from += 1) {
+    for (let to = from + 1; to < positions.length; to += 1) {
+      diameter = Math.max(diameter, positions[from].distanceTo(positions[to]));
+    }
+  }
+  const covariance = symmetricSecondMoment(
+    positions.map((position) => position.clone().sub(center)),
+  );
+  const eigenvalues = symmetricEigenvalues(covariance);
+  const radiusRegularizer =
+    records.reduce(
+      (sum, record) => sum + ballRadius(record.collider) ** 2,
+      0,
+    ) /
+    records.length /
+    5;
+  const distances = positions.map((position) => position.distanceTo(center));
+  const meanDistance =
+    distances.reduce((sum, distance) => sum + distance, 0) /
+    distances.length;
+  const radialDeviation = Math.sqrt(
+    distances.reduce(
+      (sum, distance) => sum + (distance - meanDistance) ** 2,
+      0,
+    ) / distances.length,
+  );
+  return {
+    normalizedDiameter: diameter / meanDiameter,
+    axisAspect: Math.sqrt(
+      (eigenvalues[0] + radiusRegularizer) /
+        (eigenvalues[1] + radiusRegularizer),
+    ),
+    normalizedRadialDeviation: radialDeviation / meanDiameter,
+  };
+}
+
+function maximumCoreRadius(
+  harness: BlobHarness,
+  records: ArmorRecord[],
+): number {
+  const core = vectorFromRapier(harness.coreBody.translation());
+  return Math.max(
+    ...records.map(
+      (record) =>
+        vectorFromRapier(record.body.translation()).distanceTo(core) +
+        ballRadius(record.collider),
+    ),
+  );
+}
+
+function shellShapeAspect(
+  harness: BlobHarness,
+  records: ArmorRecord[],
+): number {
+  const core = vectorFromRapier(harness.coreBody.translation());
+  const offsets = records.map((record) =>
+    vectorFromRapier(record.body.translation()).sub(core),
+  );
+  const eigenvalues = symmetricEigenvalues(symmetricSecondMoment(offsets));
+  const radiusRegularizer =
+    records.reduce(
+      (sum, record) => sum + ballRadius(record.collider) ** 2,
+      0,
+    ) /
+    records.length /
+    5;
+  return Math.sqrt(
+    (eigenvalues[0] + radiusRegularizer) /
+      (eigenvalues[2] + radiusRegularizer),
+  );
+}
+
+function sphericalCoverageHole(
+  harness: BlobHarness,
+  records: ArmorRecord[],
+): number {
+  const core = vectorFromRapier(harness.coreBody.translation());
+  const occupiedDirections = records.map((record) =>
+    vectorFromRapier(record.body.translation()).sub(core).normalize(),
+  );
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  let maximumHole = 0;
+  for (let index = 0; index < 256; index += 1) {
+    const y = 1 - (2 * (index + 0.5)) / 256;
+    const horizontal = Math.sqrt(Math.max(0, 1 - y * y));
+    const angle = index * goldenAngle;
+    const sample = new Vector3(
+      Math.cos(angle) * horizontal,
+      y,
+      Math.sin(angle) * horizontal,
+    );
+    let nearestAngle = Math.PI;
+    for (const occupied of occupiedDirections) {
+      nearestAngle = Math.min(
+        nearestAngle,
+        Math.acos(Math.max(-1, Math.min(1, sample.dot(occupied)))),
+      );
+    }
+    maximumHole = Math.max(maximumHole, nearestAngle);
+  }
+  return maximumHole;
+}
+
+function symmetricSecondMoment(points: Vector3[]): number[][] {
+  const matrix = [
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ];
+  for (const point of points) {
+    matrix[0][0] += point.x * point.x;
+    matrix[0][1] += point.x * point.y;
+    matrix[0][2] += point.x * point.z;
+    matrix[1][1] += point.y * point.y;
+    matrix[1][2] += point.y * point.z;
+    matrix[2][2] += point.z * point.z;
+  }
+  const scale = 1 / Math.max(1, points.length);
+  matrix[1][0] = matrix[0][1];
+  matrix[2][0] = matrix[0][2];
+  matrix[2][1] = matrix[1][2];
+  for (let row = 0; row < 3; row += 1) {
+    for (let column = 0; column < 3; column += 1) {
+      matrix[row][column] *= scale;
+    }
+  }
+  return matrix;
+}
+
+function symmetricEigenvalues(source: number[][]): number[] {
+  const matrix = source.map((row) => [...row]);
+  for (let iteration = 0; iteration < 12; iteration += 1) {
+    let row = 0;
+    let column = 1;
+    for (const [candidateRow, candidateColumn] of [
+      [0, 1],
+      [0, 2],
+      [1, 2],
+    ]) {
+      if (
+        Math.abs(matrix[candidateRow][candidateColumn]) >
+        Math.abs(matrix[row][column])
+      ) {
+        row = candidateRow;
+        column = candidateColumn;
+      }
+    }
+    if (Math.abs(matrix[row][column]) < 1e-10) break;
+    const angle =
+      0.5 *
+      Math.atan2(
+        2 * matrix[row][column],
+        matrix[column][column] - matrix[row][row],
+      );
+    const cosine = Math.cos(angle);
+    const sine = Math.sin(angle);
+    const rowDiagonal = matrix[row][row];
+    const columnDiagonal = matrix[column][column];
+    const offDiagonal = matrix[row][column];
+    matrix[row][row] =
+      cosine ** 2 * rowDiagonal -
+      2 * sine * cosine * offDiagonal +
+      sine ** 2 * columnDiagonal;
+    matrix[column][column] =
+      sine ** 2 * rowDiagonal +
+      2 * sine * cosine * offDiagonal +
+      cosine ** 2 * columnDiagonal;
+    matrix[row][column] = 0;
+    matrix[column][row] = 0;
+    for (let other = 0; other < 3; other += 1) {
+      if (other === row || other === column) continue;
+      const rowValue = matrix[row][other];
+      const columnValue = matrix[column][other];
+      matrix[row][other] = cosine * rowValue - sine * columnValue;
+      matrix[other][row] = matrix[row][other];
+      matrix[column][other] = sine * rowValue + cosine * columnValue;
+      matrix[other][column] = matrix[column][other];
+    }
+  }
+  return [matrix[0][0], matrix[1][1], matrix[2][2]].sort((a, b) => b - a);
+}
+
+function stopBody(body: RAPIER.RigidBody): void {
+  body.setGravityScale(0, true);
+  body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+  body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+}
+
+function bodyDistance(
+  first: RAPIER.RigidBody,
+  second: RAPIER.RigidBody,
+): number {
+  return vectorFromRapier(first.translation()).distanceTo(
+    vectorFromRapier(second.translation()),
+  );
+}
+
+function ballRadius(collider: RAPIER.Collider): number {
+  return (collider.shape as RAPIER.Ball).radius;
+}
+
 function armorRecords(physics: PhysicsWorld): ArmorRecord[] {
   const result: ArmorRecord[] = [];
   physics.world.colliders.forEach((collider) => {
@@ -291,7 +1496,9 @@ function expectAnchorsClose(
 ): void {
   expect(actual.anchors).toHaveLength(expected.anchors.length);
   for (let index = 0; index < actual.anchors.length; index += 1) {
-    expect(actual.anchors[index].distanceTo(expected.anchors[index])).toBeLessThan(1e-6);
+    expect(actual.anchors[index].distanceTo(expected.anchors[index])).toBeLessThan(
+      1e-6,
+    );
   }
 }
 

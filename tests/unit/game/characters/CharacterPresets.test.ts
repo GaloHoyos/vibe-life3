@@ -75,8 +75,7 @@ describe("CharacterPresets", () => {
 
   it("registers blob as a passive procedural creature with aggregate bounds", () => {
     const blob = CharacterPresets.blob;
-    const aggregateRadius =
-      BlobConfig.armor.orbitRadius + BlobConfig.armor.maxRadius;
+    const aggregateRadius = BlobConfig.armor.aggregateRadius;
 
     expect(blob).toBeDefined();
     expect(blob.modelId).toBeUndefined();

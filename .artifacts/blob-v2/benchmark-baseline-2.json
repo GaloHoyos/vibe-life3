@@ -1,0 +1,236 @@
+{
+  "runner": "win32/x64 node v20.20.2",
+  "seconds": 5,
+  "warmupSeconds": 1,
+  "warmupDrainFrames": 1,
+  "finalDrainFrames": 1,
+  "meshingBudgetMs": 3.25,
+  "frames": 300,
+  "blobs": 2,
+  "requestedBiomassPerBlob": 250,
+  "initialLivingFragments": 12,
+  "livingFragmentsAtEnd": 12,
+  "simulationMs": {
+    "average": 1.932,
+    "p95": 3.826,
+    "maximum": 8.286
+  },
+  "meshingMs": {
+    "average": 3.022,
+    "p95": 3.254,
+    "maximum": 4.384
+  },
+  "meshingJobsMs": {
+    "average": 0.744,
+    "p95": 2.255,
+    "maximum": 3.47
+  },
+  "meshingJobsByResolution": {
+    "24": {
+      "average": 0.448,
+      "p95": 0.492,
+      "maximum": 1.795
+    },
+    "32": {
+      "average": 2.118,
+      "p95": 2.886,
+      "maximum": 3.47
+    }
+  },
+  "polygonizationMs": {
+    "average": 0.453,
+    "p95": 1.008,
+    "maximum": 2.143
+  },
+  "fieldAndSetupMs": {
+    "average": 0.292,
+    "p95": 1.253,
+    "maximum": 1.827
+  },
+  "meshingJobsOver8Ms": 0,
+  "slowestMeshingJobs": [
+    {
+      "resolution": 32,
+      "durationMs": 3.47,
+      "polygonizationMs": 2.143,
+      "polygonizationVertices": 10788,
+      "fieldAndSetupMs": 1.327
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.341,
+      "polygonizationMs": 1.918,
+      "polygonizationVertices": 11184,
+      "fieldAndSetupMs": 1.423
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.317,
+      "polygonizationMs": 1.735,
+      "polygonizationVertices": 10296,
+      "fieldAndSetupMs": 1.582
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.311,
+      "polygonizationMs": 1.484,
+      "polygonizationVertices": 10524,
+      "fieldAndSetupMs": 1.827
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.203,
+      "polygonizationMs": 1.95,
+      "polygonizationVertices": 9360,
+      "fieldAndSetupMs": 1.254
+    }
+  ],
+  "surfaceVerticesByResolution": {
+    "24": {
+      "maximum": 3204,
+      "average": 2934
+    },
+    "32": {
+      "maximum": 10764,
+      "average": 9972
+    }
+  },
+  "combinedFrameMs": {
+    "average": 5.811,
+    "p95": 7.792,
+    "maximum": 12.671
+  },
+  "pendingVisualJobs": 0,
+  "telemetry": [
+    {
+      "simulation": {
+        "samples": 300,
+        "averageMs": 0.5568346666666613,
+        "p95Ms": 1.179399999999987,
+        "maximumMs": 2.241800000000012
+      },
+      "meshing": {
+        "samples": 641,
+        "averageMs": 0.7083151326053095,
+        "p95Ms": 1.8829000000000633,
+        "maximumMs": 3.203399999999874
+      },
+      "presentation": {
+        "samples": 300,
+        "averageMs": 0.09300500000000132,
+        "p95Ms": 0.17529999999987922,
+        "maximumMs": 0.24249999999994998
+      },
+      "visualJobWait": {
+        "samples": 641,
+        "averageMs": 1.8237143525740984,
+        "p95Ms": 3.1733999999999014,
+        "maximumMs": 4.414099999999962
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 5881952,
+        "estimatedGpuBytes": 2642016
+      }
+    },
+    {
+      "simulation": {
+        "samples": 300,
+        "averageMs": 0.5520283333333229,
+        "p95Ms": 1.2402999999999338,
+        "maximumMs": 2.7329999999999472
+      },
+      "meshing": {
+        "samples": 565,
+        "averageMs": 0.7854005309734631,
+        "p95Ms": 2.3599999999999,
+        "maximumMs": 3.470100000000002
+      },
+      "presentation": {
+        "samples": 300,
+        "averageMs": 0.07418300000000802,
+        "p95Ms": 0.12339999999994689,
+        "maximumMs": 0.261600000000044
+      },
+      "visualJobWait": {
+        "samples": 565,
+        "averageMs": 1.5290964601769872,
+        "p95Ms": 2.727999999999838,
+        "maximumMs": 3.9002999999997883
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 5881952,
+        "estimatedGpuBytes": 2642016
+      }
+    }
+  ],
+  "heapUsedMb": 38.24,
+  "acceptance": {
+    "passed": true,
+    "criteria": [
+      {
+        "name": "two complete Blobs",
+        "expected": 2,
+        "actual": 2,
+        "passed": true
+      },
+      {
+        "name": "twelve autonomous fragments",
+        "expected": 12,
+        "actual": 12,
+        "passed": true
+      },
+      {
+        "name": "combined frame p95",
+        "expected": "<= 16.7 ms",
+        "actual": 7.792,
+        "passed": true
+      },
+      {
+        "name": "combined simulation p95 at biomass 250",
+        "expected": "<= 7 ms",
+        "actual": 3.826,
+        "passed": true
+      },
+      {
+        "name": "global meshing frame p95",
+        "expected": "<= 3.5 ms",
+        "actual": 3.254,
+        "passed": true
+      },
+      {
+        "name": "individual meshing stall",
+        "expected": "<= 8 ms",
+        "actual": 3.47,
+        "passed": true
+      },
+      {
+        "name": "visual job wait",
+        "expected": "< 250 ms",
+        "actual": 4.414099999999962,
+        "passed": true
+      },
+      {
+        "name": "CPU memory per fully split Blob",
+        "expected": "< 12582912 bytes",
+        "actual": 5881952,
+        "passed": true
+      },
+      {
+        "name": "GPU memory per fully split Blob",
+        "expected": "< 8388608 bytes",
+        "actual": 2642016,
+        "passed": true
+      },
+      {
+        "name": "orphaned visual jobs",
+        "expected": 0,
+        "actual": 0,
+        "passed": true
+      }
+    ]
+  }
+}

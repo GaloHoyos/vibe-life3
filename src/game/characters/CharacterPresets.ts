@@ -7,8 +7,7 @@ import type {
 } from "@engine/characters/CharacterDefinition";
 import { BlobConfig } from "@game/config/blob.config";
 
-const BLOB_AGGREGATE_RADIUS =
-  BlobConfig.armor.orbitRadius + BlobConfig.armor.maxRadius;
+const BLOB_AGGREGATE_RADIUS = BlobConfig.armor.aggregateRadius;
 
 const baseHumanoid = {
   type: "humanoid",

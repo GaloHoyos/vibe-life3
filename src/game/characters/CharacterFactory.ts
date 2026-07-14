@@ -272,6 +272,9 @@ export class CharacterFactory {
           debug: definition.debug,
           metadata,
         });
+    if (isBlob) {
+      motor.body.setGravityScale(BlobConfig.core.gravityScale, true);
+    }
     const striderAnimator =
       isStrider && striderMotor ? new StriderAnimator(visualRoot, striderMotor) : null;
     const animation: NpcAnimator =

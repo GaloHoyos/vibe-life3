@@ -41,12 +41,13 @@ describe("CharacterFactory: blob", () => {
     expect(npc.characterId).toBe("blob");
     expect(npc.health.current).toBe(BlobConfig.core.maxHealth);
     expect(npc.health.max).toBe(BlobConfig.core.maxHealth);
-    expect(npc.radius).toBe(
-      BlobConfig.armor.orbitRadius + BlobConfig.armor.maxRadius,
-    );
+    expect(npc.radius).toBe(BlobConfig.armor.aggregateRadius);
     expect(assets.instantiateModel).not.toHaveBeenCalled();
     expect(physics.getBodyCount()).toBe(BlobConfig.armor.count + 1);
-    expect(physics.world.impulseJoints.len()).toBe(BlobConfig.armor.count);
+    // Los roots internos van al cerebro y el resto se sostiene con el grafo gel.
+    expect(physics.world.impulseJoints.len()).toBeGreaterThan(
+      BlobConfig.armor.count,
+    );
 
     const records = colliderRecords(physics);
     const core = records.find(({ metadata }) => metadata.id === "blob-factory");
@@ -68,6 +69,10 @@ describe("CharacterFactory: blob", () => {
       6,
     );
     expect(core?.body.mass()).toBeCloseTo(BlobConfig.core.mass, 4);
+    expect(core?.body.gravityScale()).toBeCloseTo(
+      BlobConfig.core.gravityScale,
+      6,
+    );
     expect(armor).toHaveLength(BlobConfig.armor.count);
 
     npc.dispose();

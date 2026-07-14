@@ -165,7 +165,13 @@ export class PhysicsGrabController {
       rotationOffset,
       restoreGravityScale: body.gravityScale(),
       restoreCcd: body.isCcdEnabled(),
-      excludeOwnerId: metadata ? metadata.ownerId ?? metadata.id : undefined,
+      // Los fragmentos desprendidos dejan de ser NPCs, pero conservan el
+      // `impactOwnerId` de su cuerpo original. Tratarlo como owner durante el
+      // hold permite acercarlos otra vez a ese cuerpo sin que el ray-clamp de
+      // la Gravity Gun los frene contra su propia cubierta.
+      excludeOwnerId: metadata
+        ? metadata.ownerId ?? metadata.impactOwnerId ?? metadata.id
+        : undefined,
       errorTime: 0,
       lastErrorDistance: Number.POSITIVE_INFINITY,
       graceRemaining: 0,
@@ -296,10 +302,15 @@ export class PhysicsGrabController {
     this.held = null;
     const body = held.body;
     if (!body.isValid()) {
+      this.physics.takeHeldRestoreGravityScale(body.handle);
       this.physics.markHeld(body, false);
       return null;
     }
-    body.setGravityScale(held.restoreGravityScale, true);
+    body.setGravityScale(
+      this.physics.takeHeldRestoreGravityScale(body.handle) ??
+        held.restoreGravityScale,
+      true,
+    );
     body.enableCcd(held.restoreCcd);
     this.physics.markHeld(body, false);
     if (velocity) {

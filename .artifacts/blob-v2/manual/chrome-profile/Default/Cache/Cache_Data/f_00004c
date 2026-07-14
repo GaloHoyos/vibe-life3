@@ -1,0 +1,208 @@
+export const BlobConfig = {
+  /** Migración controlada: conserva el runtime anterior como rollback hasta retirar código muerto. */
+  v2: {
+    enabled: true,
+    initialBiomass: 192,
+    maximumBiomass: 250,
+    particleRadius: 0.16,
+    maxFragments: 6,
+    fixedStep: 1 / 30,
+    maxSubsteps: 2,
+    cohesionThreshold: 36,
+    cohesionDecayPerSecond: 12,
+    cohesionDecayDelay: 0.75,
+    fragmentReturnSeconds: 10,
+    fragmentWitherSeconds: 1.5,
+    fragmentReattachSeconds: 0.6,
+    fragmentReturnSpeed: 2.3,
+    fragmentReattachDistance: 0.45,
+    redistributionDelaySeconds: 3,
+    redistributionSeconds: 2,
+    climb: { normalStep: 0.32, maximumHeight: 1.25 },
+    flow: { brainCrossFraction: 0.6 },
+    consumeSeconds: 1.5,
+    coreHealth: 150,
+    coreRadius: 0.35,
+    coreDamageMultiplier: 2.5
+  },
+  swarm: {
+    // Muchos elementos muy solapados y hundidos: el campo se funde en un manto
+    // ancho y bajo (la referencia de Ep3 es una masa continua, no bolitas).
+    baseElements: 192,
+    maxElements: 250,
+    elementRadius: 0.28,
+    speedBase: 3.4,
+    speedWaveAmplitude: 0.35,
+    waveFrequency: 5.5,
+    separationScale: 0.58,
+    groundRaycastsPerFrame: 20,
+    groundSink: 0.2,
+    baseRadius: 1.6,
+    /** Escala visual del campo: solapa la carne para formar una piel continua. */
+    surfaceFieldRadiusScale: 2.05,
+    /** Ignora unos pocos splats extremos al dimensionar la superficie principal. */
+    surfaceDomainPercentile: 0.96,
+    surfaceMaxDomain: 8,
+    surfaceResolution: 40,
+    maxPolyCount: 4e4,
+    gravity: 18,
+    /** Ooze de trepado contra paredes (presión de líquido). */
+    climbSpeed: 2.4,
+    maxClimb: 1.3,
+    stackRide: 0.8,
+    /** Escalón que el flujo vierte de una (trace elevado estilo npc_blob). */
+    stepUpHeight: 0.26,
+    /** Chunks volados por disparos: gracia balística y crawl de regreso. */
+    detachReturnDelay: 0.55,
+    crawlReturnSpeed: 2.3,
+    /** Peso del líquido al saltar: la carne baja despega hasta este retraso. */
+    leapStagger: 0.22,
+    /** Alcance de vínculo gel-a-gel (× cohesión/contacto) que define pertenencia. */
+    strandLinkScale: 1,
+    /** Segundos colgando fuera de alcance antes de separarse por gravedad. */
+    strandSeconds: 0.45,
+    /** Mini-salto del chunk que vuelve cuando su crawl queda bloqueado. */
+    chunkHopUpSpeed: 4.6,
+    chunkHopForwardSpeed: 3.4,
+    chunkHopBlockedSeconds: 0.55,
+    /** Altura del domo al envolver una víctima (pies a cabeza). */
+    envelopHeight: 1.7,
+    /** Flujo del manto sobre la víctima al envolverla. */
+    envelopFlowSpeed: 2.9,
+    /** Fracción de la carne que abandona el montículo para envolver. */
+    envelopFraction: 0.62,
+    /** Deriva angular del manto (rad/s): la piel sigue fluyendo al matar. */
+    envelopSwirlSpeed: 0.55
+  },
+  /** Hitboxes y reacción física por elemento. */
+  physics: {
+    /** Vida individual: con suficiente daño el elemento revienta (pop). */
+    elementHealth: 20,
+    // Doce esferas sobre el hull dan una cobertura jugable de la piel sin
+    // volver a crear un sensor por partícula. Los centros se eligen mediante
+    // farthest-point sampling determinista; no son promedios del volumen.
+    elementHitboxRadius: 0.8,
+    clusterHitboxCount: 12,
+    coreHitboxRadius: 0.42,
+    /** El núcleo es el punto débil: multiplica el daño al pool total. */
+    coreDamageMult: 2.5,
+    knockSpeedPerDamage: 0.25,
+    knockMaxSpeed: 7.5,
+    knockUpSpeed: 2.8,
+    /** Apertura local que permite que un rayo repetido alcance el cerebro. */
+    localOpeningRadius: 1.05,
+    localOpeningSeconds: 1.15,
+    localOpeningBaseStrength: 0.45,
+    localOpeningStrengthPerDamage: 0.02,
+    localOpeningDisableThreshold: 0.52,
+    localOpeningMinimumRadiusScale: 0.2,
+    /** Sacudida radial de toda la masa ante golpes fuertes (explosiones). */
+    shockwaveSpeed: 5.5,
+    shockwaveUpSpeed: 2.2,
+    /**
+     * Daño acumulado en la misma zona (ventana `localOpeningSeconds`) que
+     * desprende un chunk de masa; todo explosivo desprende siempre.
+     */
+    detachDamageThreshold: 12,
+    detachRadiusBase: 0.6,
+    detachRadiusPerDamage: 8e-3,
+    detachSpeedBase: 4.6,
+    detachSpeedPerDamage: 0.09,
+    detachMaxSpeed: 8,
+    /** Tope de Δv/s al empujar props; debe ganarle a la fricción (µ·g ≈ 10). */
+    propPushMaxDeltaV: 14
+  },
+  /** Núcleo/"cerebro" emisivo visible a través de la masa translúcida. */
+  core: {
+    /** Metaball extra en el centro: levanta una joroba sobre el núcleo. */
+    fieldRadius: 0.62,
+    visualRadius: 0.3,
+    glowRadius: 0.48,
+    /** Altura del núcleo sobre el centroide de los elementos. */
+    heightOffset: 0.3,
+    maxHealth: 150,
+    minimumExposure: 0.35
+  },
+  contact: {
+    damage: 6,
+    interval: 0.35,
+    baseRange: 1.7,
+    rangePerGrowth: 0.15,
+    attackSoundInterval: 1
+  },
+  growth: {
+    maxKills: 5,
+    elementsPerKill: 12,
+    radiusPerKill: 0.08,
+    damageMultPerKill: 0,
+    healPerKill: 30,
+    propElements: 4,
+    propHeal: 10,
+    propConsumeSeconds: 2
+  },
+  shrink: {
+    /** Con vida 0 el enjambre conserva esta fracción de elementos visibles. */
+    minVisibleFraction: 0.3,
+    minElements: 10
+  },
+  death: {
+    dispersalSeconds: 1.4
+  },
+  organism: {
+    fixedStep: 1 / 30,
+    maxSubsteps: 2,
+    structureParticles: 24,
+    footParticles: 40,
+    armParticles: 16,
+    maxComponents: 6,
+    automaticSplitComponents: 3,
+    splitLifetime: 3.5,
+    spatialCellSize: 0.62,
+    constraintIterations: 3
+  },
+  surfaceLod: {
+    nearDistance: 18,
+    midDistance: 45,
+    farDistance: 90,
+    hysteresisDistance: 3,
+    hysteresisSeconds: 0.5,
+    hiddenDelay: 0.75,
+    frameBudgetMs: 3.5,
+    nearResolution: 40,
+    midResolution: 32,
+    farResolution: 24,
+    // Cerca la superficie se repolygoniza a frame-rate: la topología vieja
+    // trasladada era la principal fuente de "nado"/jitter visible.
+    nearUpdateHz: 60,
+    midUpdateHz: 15,
+    farUpdateHz: 5,
+    /** Primer build de una superficie recién nacida (split/chunk): inmediato. */
+    spawnResolution: 32
+  },
+  /** Piel de gel translúcido (referencia npc_blob Ep3: masa lechosa con el cerebro brillando a través). */
+  visual: {
+    surfaceColor: 13425103,
+    roughness: 0.22,
+    clearcoat: 0.85,
+    clearcoatRoughness: 0.32,
+    /** Alpha en el centro de una cara vista de frente; el fresnel densifica bordes. */
+    opacityCenter: 0.82,
+    opacityEdge: 0.985,
+    /** Amplitud de la onda superficial en metros de mundo. */
+    waveAmplitude: 0.025,
+    /** Resplandor del cerebro a través de la masa. */
+    glowColor: 16734758,
+    glowRadius: 1.45,
+    glowStrengthBase: 0.34,
+    glowStrengthExposure: 0.55,
+    glowPulse: 0.12,
+    /** Venas radiales alrededor del cerebro, bajo la piel. */
+    veinColor: 16726806,
+    veinStrength: 0.42,
+    veinReach: 1.7,
+    /** Los grupos de superficie se funden cuando sus masas se solapan (× radio). */
+    mergeOverlapScale: 0.85
+  }
+};
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImJsb2IuY29uZmlnLnRzIl0sInNvdXJjZXNDb250ZW50IjpbIi8qKlxyXG4gKiBUdW5pbmcgZGVsIE5QQyBibG9iIChucGNfYmxvYiBkZSBITDI6RXAzKTogZW5qYW1icmUgZGUgbWV0YWJhbGxzIHF1ZVxyXG4gKiBwZXJzaWd1ZSwgZW52dWVsdmUgeSBjb25zdW1lLiBSZWZlcmVuY2lhIG9yaWdpbmFsOiB+MjAgZWxlbWVudG9zLCB2ZWxvY2lkYWRcclxuICogY2xhbXBlYWRhIDUwJS4uMTUwJSB5IGRhw7FvIGRlIGNvbnRhY3RvIGNvbnRpbnVvICgyMDAgRFBTIGVuIEhMMiDigJQgYWPDoSB+MTdcclxuICogRFBTIHBhcmEgcXVlIHNlYSBqdWdhYmxlKS5cclxuICovXHJcbmV4cG9ydCBjb25zdCBCbG9iQ29uZmlnID0ge1xuICAvKiogTWlncmFjacOzbiBjb250cm9sYWRhOiBjb25zZXJ2YSBlbCBydW50aW1lIGFudGVyaW9yIGNvbW8gcm9sbGJhY2sgaGFzdGEgcmV0aXJhciBjw7NkaWdvIG11ZXJ0by4gKi9cbiAgdjI6IHtcbiAgICBlbmFibGVkOiB0cnVlLFxuICAgIGluaXRpYWxCaW9tYXNzOiAxOTIsXG4gICAgbWF4aW11bUJpb21hc3M6IDI1MCxcbiAgICBwYXJ0aWNsZVJhZGl1czogMC4xNixcbiAgICBtYXhGcmFnbWVudHM6IDYsXG4gICAgZml4ZWRTdGVwOiAxIC8gMzAsXG4gICAgbWF4U3Vic3RlcHM6IDIsXG4gICAgY29oZXNpb25UaHJlc2hvbGQ6IDM2LFxuICAgIGNvaGVzaW9uRGVjYXlQZXJTZWNvbmQ6IDEyLFxuICAgIGNvaGVzaW9uRGVjYXlEZWxheTogMC43NSxcbiAgICBmcmFnbWVudFJldHVyblNlY29uZHM6IDEwLFxuICAgIGZyYWdtZW50V2l0aGVyU2Vjb25kczogMS41LFxuICAgIGZyYWdtZW50UmVhdHRhY2hTZWNvbmRzOiAwLjYsXG4gICAgZnJhZ21lbnRSZXR1cm5TcGVlZDogMi4zLFxuICAgIGZyYWdtZW50UmVhdHRhY2hEaXN0YW5jZTogMC40NSxcbiAgICByZWRpc3RyaWJ1dGlvbkRlbGF5U2Vjb25kczogMyxcbiAgICByZWRpc3RyaWJ1dGlvblNlY29uZHM6IDIsXG4gICAgY2xpbWI6IHsgbm9ybWFsU3RlcDogMC4zMiwgbWF4aW11bUhlaWdodDogMS4yNSB9LFxuICAgIGZsb3c6IHsgYnJhaW5Dcm9zc0ZyYWN0aW9uOiAwLjYgfSxcbiAgICBjb25zdW1lU2Vjb25kczogMS41LFxuICAgIGNvcmVIZWFsdGg6IDE1MCxcbiAgICBjb3JlUmFkaXVzOiAwLjM1LFxuICAgIGNvcmVEYW1hZ2VNdWx0aXBsaWVyOiAyLjUsXG4gIH0sXG4gIHN3YXJtOiB7XG4gICAgLy8gTXVjaG9zIGVsZW1lbnRvcyBtdXkgc29sYXBhZG9zIHkgaHVuZGlkb3M6IGVsIGNhbXBvIHNlIGZ1bmRlIGVuIHVuIG1hbnRvXHJcbiAgICAvLyBhbmNobyB5IGJham8gKGxhIHJlZmVyZW5jaWEgZGUgRXAzIGVzIHVuYSBtYXNhIGNvbnRpbnVhLCBubyBib2xpdGFzKS5cclxuICAgIGJhc2VFbGVtZW50czogMTkyLFxyXG4gICAgbWF4RWxlbWVudHM6IDI1MCxcclxuICAgIGVsZW1lbnRSYWRpdXM6IDAuMjgsXHJcbiAgICBzcGVlZEJhc2U6IDMuNCxcclxuICAgIHNwZWVkV2F2ZUFtcGxpdHVkZTogMC4zNSxcclxuICAgIHdhdmVGcmVxdWVuY3k6IDUuNSxcclxuICAgIHNlcGFyYXRpb25TY2FsZTogMC41OCxcclxuICAgIGdyb3VuZFJheWNhc3RzUGVyRnJhbWU6IDIwLFxyXG4gICAgZ3JvdW5kU2luazogMC4yLFxyXG4gICAgYmFzZVJhZGl1czogMS42LFxyXG4gICAgLyoqIEVzY2FsYSB2aXN1YWwgZGVsIGNhbXBvOiBzb2xhcGEgbGEgY2FybmUgcGFyYSBmb3JtYXIgdW5hIHBpZWwgY29udGludWEuICovXHJcbiAgICBzdXJmYWNlRmllbGRSYWRpdXNTY2FsZTogMi4wNSxcclxuICAgIC8qKiBJZ25vcmEgdW5vcyBwb2NvcyBzcGxhdHMgZXh0cmVtb3MgYWwgZGltZW5zaW9uYXIgbGEgc3VwZXJmaWNpZSBwcmluY2lwYWwuICovXHJcbiAgICBzdXJmYWNlRG9tYWluUGVyY2VudGlsZTogMC45NixcclxuICAgIHN1cmZhY2VNYXhEb21haW46IDgsXHJcbiAgICBzdXJmYWNlUmVzb2x1dGlvbjogNDAsXHJcbiAgICBtYXhQb2x5Q291bnQ6IDQwMDAwLFxyXG4gICAgZ3Jhdml0eTogMTgsXHJcbiAgICAvKiogT296ZSBkZSB0cmVwYWRvIGNvbnRyYSBwYXJlZGVzIChwcmVzacOzbiBkZSBsw61xdWlkbykuICovXHJcbiAgICBjbGltYlNwZWVkOiAyLjQsXHJcbiAgICBtYXhDbGltYjogMS4zLFxyXG4gICAgc3RhY2tSaWRlOiAwLjgsXHJcbiAgICAvKiogRXNjYWzDs24gcXVlIGVsIGZsdWpvIHZpZXJ0ZSBkZSB1bmEgKHRyYWNlIGVsZXZhZG8gZXN0aWxvIG5wY19ibG9iKS4gKi9cclxuICAgIHN0ZXBVcEhlaWdodDogMC4yNixcclxuICAgIC8qKiBDaHVua3Mgdm9sYWRvcyBwb3IgZGlzcGFyb3M6IGdyYWNpYSBiYWzDrXN0aWNhIHkgY3Jhd2wgZGUgcmVncmVzby4gKi9cclxuICAgIGRldGFjaFJldHVybkRlbGF5OiAwLjU1LFxyXG4gICAgY3Jhd2xSZXR1cm5TcGVlZDogMi4zLFxyXG4gICAgLyoqIFBlc28gZGVsIGzDrXF1aWRvIGFsIHNhbHRhcjogbGEgY2FybmUgYmFqYSBkZXNwZWdhIGhhc3RhIGVzdGUgcmV0cmFzby4gKi9cclxuICAgIGxlYXBTdGFnZ2VyOiAwLjIyLFxyXG4gICAgLyoqIEFsY2FuY2UgZGUgdsOtbmN1bG8gZ2VsLWEtZ2VsICjDlyBjb2hlc2nDs24vY29udGFjdG8pIHF1ZSBkZWZpbmUgcGVydGVuZW5jaWEuICovXHJcbiAgICBzdHJhbmRMaW5rU2NhbGU6IDEsXHJcbiAgICAvKiogU2VndW5kb3MgY29sZ2FuZG8gZnVlcmEgZGUgYWxjYW5jZSBhbnRlcyBkZSBzZXBhcmFyc2UgcG9yIGdyYXZlZGFkLiAqL1xyXG4gICAgc3RyYW5kU2Vjb25kczogMC40NSxcclxuICAgIC8qKiBNaW5pLXNhbHRvIGRlbCBjaHVuayBxdWUgdnVlbHZlIGN1YW5kbyBzdSBjcmF3bCBxdWVkYSBibG9xdWVhZG8uICovXHJcbiAgICBjaHVua0hvcFVwU3BlZWQ6IDQuNixcclxuICAgIGNodW5rSG9wRm9yd2FyZFNwZWVkOiAzLjQsXHJcbiAgICBjaHVua0hvcEJsb2NrZWRTZWNvbmRzOiAwLjU1LFxyXG4gICAgLyoqIEFsdHVyYSBkZWwgZG9tbyBhbCBlbnZvbHZlciB1bmEgdsOtY3RpbWEgKHBpZXMgYSBjYWJlemEpLiAqL1xyXG4gICAgZW52ZWxvcEhlaWdodDogMS43LFxyXG4gICAgLyoqIEZsdWpvIGRlbCBtYW50byBzb2JyZSBsYSB2w61jdGltYSBhbCBlbnZvbHZlcmxhLiAqL1xyXG4gICAgZW52ZWxvcEZsb3dTcGVlZDogMi45LFxyXG4gICAgLyoqIEZyYWNjacOzbiBkZSBsYSBjYXJuZSBxdWUgYWJhbmRvbmEgZWwgbW9udMOtY3VsbyBwYXJhIGVudm9sdmVyLiAqL1xyXG4gICAgZW52ZWxvcEZyYWN0aW9uOiAwLjYyLFxyXG4gICAgLyoqIERlcml2YSBhbmd1bGFyIGRlbCBtYW50byAocmFkL3MpOiBsYSBwaWVsIHNpZ3VlIGZsdXllbmRvIGFsIG1hdGFyLiAqL1xyXG4gICAgZW52ZWxvcFN3aXJsU3BlZWQ6IDAuNTUsXHJcbiAgfSxcclxuICAvKiogSGl0Ym94ZXMgeSByZWFjY2nDs24gZsOtc2ljYSBwb3IgZWxlbWVudG8uICovXHJcbiAgcGh5c2ljczoge1xyXG4gICAgLyoqIFZpZGEgaW5kaXZpZHVhbDogY29uIHN1ZmljaWVudGUgZGHDsW8gZWwgZWxlbWVudG8gcmV2aWVudGEgKHBvcCkuICovXHJcbiAgICBlbGVtZW50SGVhbHRoOiAyMCxcclxuICAgIC8vIERvY2UgZXNmZXJhcyBzb2JyZSBlbCBodWxsIGRhbiB1bmEgY29iZXJ0dXJhIGp1Z2FibGUgZGUgbGEgcGllbCBzaW5cclxuICAgIC8vIHZvbHZlciBhIGNyZWFyIHVuIHNlbnNvciBwb3IgcGFydMOtY3VsYS4gTG9zIGNlbnRyb3Mgc2UgZWxpZ2VuIG1lZGlhbnRlXHJcbiAgICAvLyBmYXJ0aGVzdC1wb2ludCBzYW1wbGluZyBkZXRlcm1pbmlzdGE7IG5vIHNvbiBwcm9tZWRpb3MgZGVsIHZvbHVtZW4uXHJcbiAgICBlbGVtZW50SGl0Ym94UmFkaXVzOiAwLjgsXHJcbiAgICBjbHVzdGVySGl0Ym94Q291bnQ6IDEyLFxyXG4gICAgY29yZUhpdGJveFJhZGl1czogMC40MixcclxuICAgIC8qKiBFbCBuw7pjbGVvIGVzIGVsIHB1bnRvIGTDqWJpbDogbXVsdGlwbGljYSBlbCBkYcOxbyBhbCBwb29sIHRvdGFsLiAqL1xyXG4gICAgY29yZURhbWFnZU11bHQ6IDIuNSxcclxuICAgIGtub2NrU3BlZWRQZXJEYW1hZ2U6IDAuMjUsXHJcbiAgICBrbm9ja01heFNwZWVkOiA3LjUsXHJcbiAgICBrbm9ja1VwU3BlZWQ6IDIuOCxcclxuICAgIC8qKiBBcGVydHVyYSBsb2NhbCBxdWUgcGVybWl0ZSBxdWUgdW4gcmF5byByZXBldGlkbyBhbGNhbmNlIGVsIGNlcmVicm8uICovXHJcbiAgICBsb2NhbE9wZW5pbmdSYWRpdXM6IDEuMDUsXHJcbiAgICBsb2NhbE9wZW5pbmdTZWNvbmRzOiAxLjE1LFxyXG4gICAgbG9jYWxPcGVuaW5nQmFzZVN0cmVuZ3RoOiAwLjQ1LFxyXG4gICAgbG9jYWxPcGVuaW5nU3RyZW5ndGhQZXJEYW1hZ2U6IDAuMDIsXHJcbiAgICBsb2NhbE9wZW5pbmdEaXNhYmxlVGhyZXNob2xkOiAwLjUyLFxyXG4gICAgbG9jYWxPcGVuaW5nTWluaW11bVJhZGl1c1NjYWxlOiAwLjIsXHJcbiAgICAvKiogU2FjdWRpZGEgcmFkaWFsIGRlIHRvZGEgbGEgbWFzYSBhbnRlIGdvbHBlcyBmdWVydGVzIChleHBsb3Npb25lcykuICovXHJcbiAgICBzaG9ja3dhdmVTcGVlZDogNS41LFxyXG4gICAgc2hvY2t3YXZlVXBTcGVlZDogMi4yLFxyXG4gICAgLyoqXHJcbiAgICAgKiBEYcOxbyBhY3VtdWxhZG8gZW4gbGEgbWlzbWEgem9uYSAodmVudGFuYSBgbG9jYWxPcGVuaW5nU2Vjb25kc2ApIHF1ZVxyXG4gICAgICogZGVzcHJlbmRlIHVuIGNodW5rIGRlIG1hc2E7IHRvZG8gZXhwbG9zaXZvIGRlc3ByZW5kZSBzaWVtcHJlLlxyXG4gICAgICovXHJcbiAgICBkZXRhY2hEYW1hZ2VUaHJlc2hvbGQ6IDEyLFxyXG4gICAgZGV0YWNoUmFkaXVzQmFzZTogMC42LFxyXG4gICAgZGV0YWNoUmFkaXVzUGVyRGFtYWdlOiAwLjAwOCxcclxuICAgIGRldGFjaFNwZWVkQmFzZTogNC42LFxyXG4gICAgZGV0YWNoU3BlZWRQZXJEYW1hZ2U6IDAuMDksXHJcbiAgICBkZXRhY2hNYXhTcGVlZDogOCxcclxuICAgIC8qKiBUb3BlIGRlIM6Udi9zIGFsIGVtcHVqYXIgcHJvcHM7IGRlYmUgZ2FuYXJsZSBhIGxhIGZyaWNjacOzbiAowrXCt2cg4omIIDEwKS4gKi9cclxuICAgIHByb3BQdXNoTWF4RGVsdGFWOiAxNCxcclxuICB9LFxyXG4gIC8qKiBOw7pjbGVvL1wiY2VyZWJyb1wiIGVtaXNpdm8gdmlzaWJsZSBhIHRyYXbDqXMgZGUgbGEgbWFzYSB0cmFuc2zDumNpZGEuICovXHJcbiAgY29yZToge1xyXG4gICAgLyoqIE1ldGFiYWxsIGV4dHJhIGVuIGVsIGNlbnRybzogbGV2YW50YSB1bmEgam9yb2JhIHNvYnJlIGVsIG7DumNsZW8uICovXHJcbiAgICBmaWVsZFJhZGl1czogMC42MixcclxuICAgIHZpc3VhbFJhZGl1czogMC4zLFxyXG4gICAgZ2xvd1JhZGl1czogMC40OCxcclxuICAgIC8qKiBBbHR1cmEgZGVsIG7DumNsZW8gc29icmUgZWwgY2VudHJvaWRlIGRlIGxvcyBlbGVtZW50b3MuICovXHJcbiAgICBoZWlnaHRPZmZzZXQ6IDAuMyxcclxuICAgIG1heEhlYWx0aDogMTUwLFxyXG4gICAgbWluaW11bUV4cG9zdXJlOiAwLjM1LFxyXG4gIH0sXHJcbiAgY29udGFjdDoge1xyXG4gICAgZGFtYWdlOiA2LFxyXG4gICAgaW50ZXJ2YWw6IDAuMzUsXHJcbiAgICBiYXNlUmFuZ2U6IDEuNyxcclxuICAgIHJhbmdlUGVyR3Jvd3RoOiAwLjE1LFxyXG4gICAgYXR0YWNrU291bmRJbnRlcnZhbDogMS4wLFxyXG4gIH0sXHJcbiAgZ3Jvd3RoOiB7XHJcbiAgICBtYXhLaWxsczogNSxcclxuICAgIGVsZW1lbnRzUGVyS2lsbDogMTIsXHJcbiAgICByYWRpdXNQZXJLaWxsOiAwLjA4LFxyXG4gICAgZGFtYWdlTXVsdFBlcktpbGw6IDAsXHJcbiAgICBoZWFsUGVyS2lsbDogMzAsXHJcbiAgICBwcm9wRWxlbWVudHM6IDQsXHJcbiAgICBwcm9wSGVhbDogMTAsXHJcbiAgICBwcm9wQ29uc3VtZVNlY29uZHM6IDIsXHJcbiAgfSxcclxuICBzaHJpbms6IHtcclxuICAgIC8qKiBDb24gdmlkYSAwIGVsIGVuamFtYnJlIGNvbnNlcnZhIGVzdGEgZnJhY2Npw7NuIGRlIGVsZW1lbnRvcyB2aXNpYmxlcy4gKi9cclxuICAgIG1pblZpc2libGVGcmFjdGlvbjogMC4zLFxyXG4gICAgbWluRWxlbWVudHM6IDEwLFxyXG4gIH0sXHJcbiAgZGVhdGg6IHtcclxuICAgIGRpc3BlcnNhbFNlY29uZHM6IDEuNCxcclxuICB9LFxyXG4gIG9yZ2FuaXNtOiB7XHJcbiAgICBmaXhlZFN0ZXA6IDEgLyAzMCxcclxuICAgIG1heFN1YnN0ZXBzOiAyLFxyXG4gICAgc3RydWN0dXJlUGFydGljbGVzOiAyNCxcclxuICAgIGZvb3RQYXJ0aWNsZXM6IDQwLFxyXG4gICAgYXJtUGFydGljbGVzOiAxNixcclxuICAgIG1heENvbXBvbmVudHM6IDYsXHJcbiAgICBhdXRvbWF0aWNTcGxpdENvbXBvbmVudHM6IDMsXHJcbiAgICBzcGxpdExpZmV0aW1lOiAzLjUsXHJcbiAgICBzcGF0aWFsQ2VsbFNpemU6IDAuNjIsXHJcbiAgICBjb25zdHJhaW50SXRlcmF0aW9uczogMyxcclxuICB9LFxyXG4gIHN1cmZhY2VMb2Q6IHtcclxuICAgIG5lYXJEaXN0YW5jZTogMTgsXHJcbiAgICBtaWREaXN0YW5jZTogNDUsXHJcbiAgICBmYXJEaXN0YW5jZTogOTAsXHJcbiAgICBoeXN0ZXJlc2lzRGlzdGFuY2U6IDMsXHJcbiAgICBoeXN0ZXJlc2lzU2Vjb25kczogMC41LFxyXG4gICAgaGlkZGVuRGVsYXk6IDAuNzUsXHJcbiAgICBmcmFtZUJ1ZGdldE1zOiAzLjUsXHJcbiAgICBuZWFyUmVzb2x1dGlvbjogNDAsXHJcbiAgICBtaWRSZXNvbHV0aW9uOiAzMixcclxuICAgIGZhclJlc29sdXRpb246IDI0LFxyXG4gICAgLy8gQ2VyY2EgbGEgc3VwZXJmaWNpZSBzZSByZXBvbHlnb25pemEgYSBmcmFtZS1yYXRlOiBsYSB0b3BvbG9nw61hIHZpZWphXHJcbiAgICAvLyB0cmFzbGFkYWRhIGVyYSBsYSBwcmluY2lwYWwgZnVlbnRlIGRlIFwibmFkb1wiL2ppdHRlciB2aXNpYmxlLlxyXG4gICAgbmVhclVwZGF0ZUh6OiA2MCxcclxuICAgIG1pZFVwZGF0ZUh6OiAxNSxcclxuICAgIGZhclVwZGF0ZUh6OiA1LFxyXG4gICAgLyoqIFByaW1lciBidWlsZCBkZSB1bmEgc3VwZXJmaWNpZSByZWNpw6luIG5hY2lkYSAoc3BsaXQvY2h1bmspOiBpbm1lZGlhdG8uICovXHJcbiAgICBzcGF3blJlc29sdXRpb246IDMyLFxyXG4gIH0sXHJcbiAgLyoqIFBpZWwgZGUgZ2VsIHRyYW5zbMO6Y2lkbyAocmVmZXJlbmNpYSBucGNfYmxvYiBFcDM6IG1hc2EgbGVjaG9zYSBjb24gZWwgY2VyZWJybyBicmlsbGFuZG8gYSB0cmF2w6lzKS4gKi9cclxuICB2aXN1YWw6IHtcclxuICAgIHN1cmZhY2VDb2xvcjogMHhjY2Q5Y2YsXHJcbiAgICByb3VnaG5lc3M6IDAuMjIsXHJcbiAgICBjbGVhcmNvYXQ6IDAuODUsXHJcbiAgICBjbGVhcmNvYXRSb3VnaG5lc3M6IDAuMzIsXHJcbiAgICAvKiogQWxwaGEgZW4gZWwgY2VudHJvIGRlIHVuYSBjYXJhIHZpc3RhIGRlIGZyZW50ZTsgZWwgZnJlc25lbCBkZW5zaWZpY2EgYm9yZGVzLiAqL1xyXG4gICAgb3BhY2l0eUNlbnRlcjogMC44MixcclxuICAgIG9wYWNpdHlFZGdlOiAwLjk4NSxcclxuICAgIC8qKiBBbXBsaXR1ZCBkZSBsYSBvbmRhIHN1cGVyZmljaWFsIGVuIG1ldHJvcyBkZSBtdW5kby4gKi9cclxuICAgIHdhdmVBbXBsaXR1ZGU6IDAuMDI1LFxyXG4gICAgLyoqIFJlc3BsYW5kb3IgZGVsIGNlcmVicm8gYSB0cmF2w6lzIGRlIGxhIG1hc2EuICovXHJcbiAgICBnbG93Q29sb3I6IDB4ZmY1YTI2LFxyXG4gICAgZ2xvd1JhZGl1czogMS40NSxcclxuICAgIGdsb3dTdHJlbmd0aEJhc2U6IDAuMzQsXHJcbiAgICBnbG93U3RyZW5ndGhFeHBvc3VyZTogMC41NSxcclxuICAgIGdsb3dQdWxzZTogMC4xMixcclxuICAgIC8qKiBWZW5hcyByYWRpYWxlcyBhbHJlZGVkb3IgZGVsIGNlcmVicm8sIGJham8gbGEgcGllbC4gKi9cclxuICAgIHZlaW5Db2xvcjogMHhmZjNiMTYsXHJcbiAgICB2ZWluU3RyZW5ndGg6IDAuNDIsXHJcbiAgICB2ZWluUmVhY2g6IDEuNyxcclxuICAgIC8qKiBMb3MgZ3J1cG9zIGRlIHN1cGVyZmljaWUgc2UgZnVuZGVuIGN1YW5kbyBzdXMgbWFzYXMgc2Ugc29sYXBhbiAow5cgcmFkaW8pLiAqL1xyXG4gICAgbWVyZ2VPdmVybGFwU2NhbGU6IDAuODUsXHJcbiAgfSxcclxufSBhcyBjb25zdDtcclxuIl0sIm1hcHBpbmdzIjoiQUFNTyxhQUFNLGFBQWE7QUFBQTtBQUFBLEVBRXhCLElBQUk7QUFBQSxJQUNGLFNBQVM7QUFBQSxJQUNULGdCQUFnQjtBQUFBLElBQ2hCLGdCQUFnQjtBQUFBLElBQ2hCLGdCQUFnQjtBQUFBLElBQ2hCLGNBQWM7QUFBQSxJQUNkLFdBQVcsSUFBSTtBQUFBLElBQ2YsYUFBYTtBQUFBLElBQ2IsbUJBQW1CO0FBQUEsSUFDbkIsd0JBQXdCO0FB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

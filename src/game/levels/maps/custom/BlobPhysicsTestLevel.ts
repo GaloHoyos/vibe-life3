@@ -1,4 +1,5 @@
 import type { LevelDefinition } from "@game/levels/LevelDefinition";
+import { BlobConfig } from "@game/config/blob.config";
 
 /** Arena cerrada y despejada para validar la física y el daño por partes del blob. */
 export const BlobPhysicsTestLevel: LevelDefinition = {
@@ -45,7 +46,7 @@ export const BlobPhysicsTestLevel: LevelDefinition = {
   npcs: [
     {
       id: "blob-test-01",
-      position: [0, 0.93, -5],
+      position: [0, BlobConfig.armor.aggregateRadius, -5],
       characterId: "blob",
     },
   ],

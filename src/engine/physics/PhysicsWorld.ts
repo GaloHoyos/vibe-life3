@@ -18,6 +18,12 @@ export interface PhysicsMetadata {
    * del propio NPC) para no chocar con el cuerpo propio. Default = `id`.
    */
   ownerId?: string;
+  /**
+   * Actor al que este prop desprendido no debe aplicar daño por impacto.
+   * Es independiente de ownerId: el fragmento sigue siendo debris para LOS,
+   * raycasts y targeting, no otra hitbox del actor original.
+   */
+  impactOwnerId?: string;
   kind: 'static' | 'dynamic' | 'door' | 'npc' | 'player' | 'ragdoll' | 'weaponPickup';
   damageable?: Damageable;
   /** Character preset id for actor-owned colliders. Used by hit effects. */
@@ -131,6 +137,8 @@ export class PhysicsWorld {
    * cuerpo figure acá no deben escribirle velocidades.
    */
   private readonly heldBodyHandles = new Set<number>();
+  /** Gravedad que debe recuperar un body si su dueño cambia mientras está held. */
+  private readonly heldRestoreGravityScales = new Map<number, number>();
   private initialized = false;
   private hooks: RAPIER.PhysicsHooks | null = null;
   // Rapier-compat solo aplica hooks via `stepWithEvents`, que exige una
@@ -160,18 +168,33 @@ export class PhysicsWorld {
     this.metadataByCollider.clear();
     this.bodyVisuals.clear();
     this.heldBodyHandles.clear();
+    this.heldRestoreGravityScales.clear();
   }
 
   markHeld(body: RAPIER.RigidBody, held: boolean): void {
     if (held) {
+      this.heldRestoreGravityScales.delete(body.handle);
       this.heldBodyHandles.add(body.handle);
     } else {
       this.heldBodyHandles.delete(body.handle);
+      this.heldRestoreGravityScales.delete(body.handle);
     }
   }
 
   isHeldBody(handle: number): boolean {
     return this.heldBodyHandles.has(handle);
+  }
+
+  setHeldRestoreGravityScale(handle: number, gravityScale: number): void {
+    if (this.heldBodyHandles.has(handle)) {
+      this.heldRestoreGravityScales.set(handle, gravityScale);
+    }
+  }
+
+  takeHeldRestoreGravityScale(handle: number): number | undefined {
+    const gravityScale = this.heldRestoreGravityScales.get(handle);
+    this.heldRestoreGravityScales.delete(handle);
+    return gravityScale;
   }
 
   createStaticBox(options: PhysicsBoxOptions): RAPIER.RigidBody {
@@ -446,6 +469,8 @@ export class PhysicsWorld {
       this.bindings.splice(index, 1);
     }
     this.bodyVisuals.delete(body.handle);
+    this.heldBodyHandles.delete(body.handle);
+    this.heldRestoreGravityScales.delete(body.handle);
     for (let i = 0; i < body.numColliders(); i += 1) {
       this.metadataByCollider.delete(body.collider(i).handle);
     }

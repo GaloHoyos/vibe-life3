@@ -27,7 +27,7 @@ export function buildBlobPreset(): NpcPreset {
       eyeHeight: 0,
     },
     maxHealth: BlobConfig.core.maxHealth,
-    radius: BlobConfig.armor.orbitRadius + BlobConfig.armor.maxRadius,
+    radius: BlobConfig.armor.aggregateRadius,
     meleeRange: 0,
     tooCloseRange: 0,
     lowHealthRatio: 0,
