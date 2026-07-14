@@ -547,8 +547,15 @@ describe("PortalTravellerSystem — dual-body clone", () => {
 
     const dt = 1 / 60;
     let maxChildren = 0;
+    let sawScaleSync = false;
     for (let i = 0; i < 240; i += 1) {
       traveller.update(i * dt, dt);
+      if (!sawScaleSync && scene.children.length >= 2) {
+        visual.scale.set(0.72, 0.81, 0.9);
+        traveller.update(i * dt, 0);
+        const clone = scene.children.find((child) => child !== visual);
+        sawScaleSync = clone?.scale.equals(visual.scale) ?? false;
+      }
       physics.step(dt);
       const t = body.translation();
       visual.position.set(t.x, t.y, t.z); // pickup syncs its own mesh
@@ -557,6 +564,7 @@ describe("PortalTravellerSystem — dual-body clone", () => {
 
     // The clone visual was added alongside the original during the crossing…
     expect(maxChildren).toBeGreaterThanOrEqual(2);
+    expect(sawScaleSync).toBe(true);
     // …and removed on collapse (only the original remains).
     expect(scene.children.length).toBe(1);
 

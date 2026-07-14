@@ -295,6 +295,8 @@ export class CharacterFactory {
             position,
             physics: this.physics,
             owner: ownerProxy,
+            navigation: services.navigation,
+            navigationRequests: services.navigationRequests,
           })
         : definition.type === 'humanoid'
         ? new NpcAnimationBridge(instanceId, definition, visualRoot, this.physics, ownerProxy)

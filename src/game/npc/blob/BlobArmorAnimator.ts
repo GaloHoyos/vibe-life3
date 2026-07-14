@@ -9,6 +9,8 @@ import {
   type Group,
 } from "three";
 import type { Faction } from "@engine/ai/Faction";
+import type { NavigationService } from "@engine/ai/navigation/NavigationService";
+import type { NavigationRequestQueue } from "@engine/ai/navigation/NavigationRequestQueue";
 import {
   type PhysicsMetadata,
   type PhysicsWorld,
@@ -20,16 +22,17 @@ import type {
   NpcAnimator,
 } from "@game/npc/animation/NpcAnimator";
 import { BlobConfig } from "@game/config/blob.config";
+import { BlobChunkNavigator } from "@game/npc/blob/BlobChunkNavigator";
 
-// `released` sigue siendo una pieza pasiva. La recomposición de este archivo
-// sólo actúa a corta distancia; una futura IA puede navegar/mover el mismo body
-// sin mezclar decisiones de pathfinding con este estado físico.
+// `released` conserva el mismo body físico. BlobChunkNavigator decide la ruta
+// del racimo; este archivo mantiene cohesión, magnetismo y reintegración.
 type BlobArmorPartState = "attached" | "yielding" | "released";
 
 interface BlobArmorPart {
   index: number;
   layer: number;
   coreAnchorEligible: boolean;
+  radius: number;
   mesh: Mesh<SphereGeometry, MeshStandardMaterial>;
   body: RAPIER.RigidBody;
   collider: RAPIER.Collider;
@@ -99,6 +102,8 @@ export interface BlobArmorAnimatorOptions {
   position: Vector3;
   physics: PhysicsWorld;
   owner: Damageable;
+  navigation?: NavigationService;
+  navigationRequests?: NavigationRequestQueue;
 }
 
 export interface BlobArmorDebugSnapshot {
@@ -116,6 +121,9 @@ export interface BlobArmorDebugSnapshot {
 
 const ZERO_ANCHOR = { x: 0, y: 0, z: 0 } as const;
 const ARMOR_COLOR = new Color(0x55bfc2);
+const ARMOR_ROUGHNESS = 0.24;
+const ARMOR_METALNESS = 0.04;
+const WITHER_COLOR = new Color(BlobConfig.armor.detachedWitherColor);
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
 /**
@@ -125,13 +133,10 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
  */
 export class BlobArmorAnimator implements NpcAnimator {
   private readonly geometry = new SphereGeometry(1, 18, 14);
-  private readonly material = new MeshStandardMaterial({
-    color: ARMOR_COLOR,
-    roughness: 0.24,
-    metalness: 0.04,
-  });
+  private readonly materials = new Set<MeshStandardMaterial>();
   private readonly parts: BlobArmorPart[] = [];
   private readonly raycast: Raycast;
+  private readonly chunkNavigator: BlobChunkNavigator | null;
   private cohesionBonds: BlobCohesionBond[] = [];
   private currentCohesionWaveId = 0;
   private impactWaveOpen = false;
@@ -165,6 +170,15 @@ export class BlobArmorAnimator implements NpcAnimator {
 
   constructor(private readonly options: BlobArmorAnimatorOptions) {
     this.raycast = new Raycast(options.physics);
+    this.chunkNavigator =
+      options.navigation && options.navigationRequests
+        ? new BlobChunkNavigator({
+            ownerId: options.id,
+            navigation: options.navigation,
+            requests: options.navigationRequests,
+            physics: options.physics,
+          })
+        : null;
     this.buildArmor();
     this.rebuildMainShapeAssignments();
   }
@@ -174,7 +188,9 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.ensureMeshesInScene();
     if (!this.enabled || this.dead) return;
     this.updateDetachment(frame.delta);
+    this.updateReleasedLifetime(frame.delta);
     this.updateReassembly(frame.delta);
+    this.updateChunkNavigation(frame.delta);
     this.updateReflow(frame.delta);
     this.updateShapeRelaxation(frame.delta);
     this.updateShapeHealing(frame.delta);
@@ -182,9 +198,11 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.closeImpactWave();
   }
 
-  updateStandalone(): void {
+  updateStandalone(delta: number, opts: { dead?: boolean } = {}): void {
     if (this.disposed) return;
     this.ensureMeshesInScene();
+    if (opts.dead && !this.dead) this.notifyDeath();
+    if (this.dead) this.updateReleasedLifetime(delta);
   }
 
   notifyDeath(): void {
@@ -209,6 +227,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     if (this.disposed) return;
     this.disposed = true;
 
+    this.chunkNavigator?.dispose();
     this.removeAllCohesionBonds();
     for (const part of this.parts) {
       this.removeCoreJoint(part);
@@ -223,13 +242,19 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.mainShapeAssignments.clear();
     this.fragmentShapeAssignments.clear();
     this.geometry.dispose();
-    this.material.dispose();
+    for (const material of this.materials) material.dispose();
+    this.materials.clear();
   }
 
   getDebugSnapshot(): BlobArmorDebugSnapshot {
     const activeBonds = this.cohesionBonds.filter(
       (bond) => bond.joint?.isValid(),
     );
+    const layers = Array.from(
+      { length: BlobConfig.armor.count },
+      () => -1,
+    );
+    for (const part of this.parts) layers[part.index] = part.layer;
     return {
       attachedCount: this.parts.filter((part) => part.state !== "released")
         .length,
@@ -241,7 +266,7 @@ export class BlobArmorAnimator implements NpcAnimator {
       coreAnchoredIndices: this.parts
         .filter((part) => part.joint?.isValid())
         .map((part) => part.index),
-      layers: this.parts.map((part) => part.layer),
+      layers,
       cohesionBondCount: activeBonds.length,
       cohesionPairs: activeBonds.map((bond) => [
         bond.partA.index,
@@ -281,7 +306,13 @@ export class BlobArmorAnimator implements NpcAnimator {
       const placement = placements[index];
       const anchor = placement.anchor;
       const radius = radiusForIndex(index, config.minRadius, config.maxRadius);
-      const mesh = new Mesh(this.geometry, this.material);
+      const material = new MeshStandardMaterial({
+        color: ARMOR_COLOR,
+        roughness: ARMOR_ROUGHNESS,
+        metalness: ARMOR_METALNESS,
+      });
+      this.materials.add(material);
+      const mesh = new Mesh(this.geometry, material);
       mesh.name = `${this.options.id}-blob-${index}`;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -296,6 +327,7 @@ export class BlobArmorAnimator implements NpcAnimator {
             this.dead ||
             !this.enabled ||
             this.disposed ||
+            !part.body.isValid() ||
             !this.options.owner.isAlive()
           ) {
             return;
@@ -343,6 +375,7 @@ export class BlobArmorAnimator implements NpcAnimator {
         index,
         layer: placement.layer,
         coreAnchorEligible: placement.coreAnchored,
+        radius,
         mesh,
         body,
         collider,
@@ -500,6 +533,7 @@ export class BlobArmorAnimator implements NpcAnimator {
   }
 
   private releaseAll(): void {
+    this.chunkNavigator?.clear();
     for (const part of this.parts) {
       this.removeCoreJoint(part);
     }
@@ -545,8 +579,13 @@ export class BlobArmorAnimator implements NpcAnimator {
     part: BlobArmorPart,
     cooldown: number = BlobConfig.armor.reassemblyDelaySeconds,
   ): void {
+    const firstRelease = part.state !== "released";
     this.removeCoreJoint(part);
     part.state = "released";
+    if (firstRelease) {
+      part.detachedElapsed = 0;
+      this.restorePartVitalityVisual(part);
+    }
     part.yieldFinalized = true;
     part.hangingLoadFatigue = 0;
     part.reassemblyCooldownRemaining = Math.max(
@@ -590,6 +629,7 @@ export class BlobArmorAnimator implements NpcAnimator {
         0,
         part.reassemblyCooldownRemaining - elapsed,
       );
+      if (part.state === "released") continue;
       if (part.resistanceFramesRemaining > 0) {
         part.resistanceFramesRemaining -= 1;
         continue;
@@ -741,6 +781,86 @@ export class BlobArmorAnimator implements NpcAnimator {
       (bond) => bond.joint?.isValid(),
     );
     this.reconcileMainBodyConnectivity();
+  }
+
+  private updateReleasedLifetime(delta: number): void {
+    const elapsed = finitePhysicsElapsed(delta);
+    if (elapsed <= 0) return;
+    const config = BlobConfig.armor;
+    const lifetime = Math.max(0, config.detachedLifetimeSeconds);
+    const witherDuration = Math.max(
+      1e-4,
+      Math.min(lifetime, config.detachedWitherSeconds),
+    );
+    const witherStart = Math.max(0, lifetime - witherDuration);
+    const doomed: BlobArmorPart[] = [];
+
+    for (const part of this.parts) {
+      if (part.state !== "released") continue;
+      if (!part.body.isValid()) {
+        doomed.push(part);
+        continue;
+      }
+      part.detachedElapsed += elapsed;
+      const progress = clamp(
+        (part.detachedElapsed - witherStart) / witherDuration,
+        0,
+        1,
+      );
+      if (progress > 0) this.applyPartWitherVisual(part, progress);
+      if (part.detachedElapsed >= lifetime) doomed.push(part);
+    }
+
+    if (doomed.length > 0) this.removeWitheredParts(doomed);
+  }
+
+  private applyPartWitherVisual(
+    part: BlobArmorPart,
+    progress: number,
+  ): void {
+    const eased = progress * progress * (3 - 2 * progress);
+    const minimumScale = BlobConfig.armor.detachedWitherMinimumScale;
+    const visualScale = 1 - (1 - minimumScale) * eased;
+    part.mesh.scale.setScalar(part.radius * visualScale);
+    part.mesh.material.color.lerpColors(ARMOR_COLOR, WITHER_COLOR, eased);
+    part.mesh.material.roughness =
+      ARMOR_ROUGHNESS +
+      (BlobConfig.armor.detachedWitherRoughness - ARMOR_ROUGHNESS) * eased;
+    part.mesh.material.metalness = ARMOR_METALNESS * (1 - eased);
+  }
+
+  private restorePartVitalityVisual(part: BlobArmorPart): void {
+    part.mesh.scale.setScalar(part.radius);
+    part.mesh.material.color.copy(ARMOR_COLOR);
+    part.mesh.material.roughness = ARMOR_ROUGHNESS;
+    part.mesh.material.metalness = ARMOR_METALNESS;
+  }
+
+  private removeWitheredParts(doomed: BlobArmorPart[]): void {
+    const doomedSet = new Set(doomed);
+    for (const bond of [...this.cohesionBonds]) {
+      if (doomedSet.has(bond.partA) || doomedSet.has(bond.partB)) {
+        this.removeCohesionBond(bond);
+      }
+    }
+    this.cohesionBonds = this.cohesionBonds.filter(
+      (bond) => bond.joint?.isValid(),
+    );
+
+    for (const part of doomed) {
+      this.removeCoreJoint(part);
+      this.previousHeldVelocities.delete(part.body.handle);
+      this.passiveLoadShedIndices.delete(part.index);
+      this.mainShapeAssignments.delete(part.index);
+      part.mesh.removeFromParent();
+      if (part.body.isValid()) this.options.physics.removeBody(part.body);
+    }
+    for (let index = this.parts.length - 1; index >= 0; index -= 1) {
+      if (doomedSet.has(this.parts[index])) this.parts.splice(index, 1);
+    }
+    // Las firmas de los racimos incluyen sus indices. La siguiente pasada
+    // reconstruye tanto su forma como su ruta desde los sobrevivientes.
+    this.fragmentShapeAssignments.clear();
   }
 
   private updateHeldBodyManeuverAcceleration(elapsed: number): void {
@@ -1423,6 +1543,60 @@ export class BlobArmorAnimator implements NpcAnimator {
     const recoveredCoreAnchors = this.recoverNearbyCoreAnchors();
     if (reattached || recoveredCoreAnchors) this.scheduleReflow();
     this.updateFragmentReassembly(elapsed);
+  }
+
+  private updateChunkNavigation(delta: number): void {
+    if (!this.chunkNavigator || !this.options.coreBody.isValid()) return;
+    const elapsed = finitePhysicsElapsed(delta);
+    if (elapsed <= 0) return;
+    const mainParts = this.parts.filter(
+      (part) => part.state === "attached" && part.body.isValid(),
+    );
+    const components = [
+      ...releasedComponentGraph(
+        this.parts,
+        this.cohesionBonds,
+      ).components.values(),
+    ]
+      .filter((component) =>
+        component.every(
+          (part) =>
+            part.body.isValid() &&
+            part.reassemblyCooldownRemaining <= 0,
+        ),
+      )
+      // Dentro del rango de acople, updateReassembly ya aplicó el impulso de
+      // gel. El follower se retira para no sumar dos locomociones distintas.
+      .filter(
+        (component) =>
+          closestBodyDockCandidate(
+            component,
+            mainParts,
+            BlobConfig.armor.reassemblyAttractionRadius,
+            (part, target) => this.hasClearWorldPath(part, target),
+          ) === null &&
+          closestCoreDockCandidate(
+            component,
+            this.options.coreBody,
+            (part, target) => this.hasClearWorldPath(part, target),
+          ) === null,
+      )
+      .map((component) =>
+        component.map((part) => ({
+          index: part.index,
+          body: part.body,
+          supported: this.hasExternalSupportBelow(
+            part.body,
+            partRadius(part) +
+              BlobConfig.armor.chunkNavigationSupportProbe,
+          ),
+        })),
+      );
+    this.chunkNavigator.update(
+      elapsed,
+      components,
+      vectorFromRapier(this.options.coreBody.translation()),
+    );
   }
 
   private updateFragmentReassembly(elapsed: number): void {
@@ -2277,6 +2451,7 @@ export class BlobArmorAnimator implements NpcAnimator {
       part.reassemblyCooldownRemaining = 0;
       part.yieldFinalized = false;
       part.hangingLoadFatigue = 0;
+      this.restorePartVitalityVisual(part);
       this.options.physics.registerCollider(
         part.collider,
         this.attachedMetadata(part.index, part.damageable),
@@ -3408,7 +3583,7 @@ function finitePhysicsElapsed(delta: number): number {
 }
 
 function partRadius(part: BlobArmorPart): number {
-  return part.mesh.scale.x;
+  return part.radius;
 }
 
 function clamp(value: number, min: number, max: number): number {

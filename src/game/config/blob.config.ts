@@ -73,6 +73,25 @@ export const BlobConfig = {
     hangingLoadMaxPatchSize: 3,
     /** Espera antes de que un fragmento vuelva a buscar otros blobs o el core. */
     reassemblyDelaySeconds: 0.75,
+    /** Vida fuera del cuerpo; los últimos segundos son el marchitado visible. */
+    detachedLifetimeSeconds: 20,
+    detachedWitherSeconds: 4,
+    detachedWitherMinimumScale: 0.78,
+    detachedWitherColor: 0x34443f,
+    detachedWitherRoughness: 0.92,
+    /** Pathing pesado por racimo; el magnetismo local resuelve el contacto final. */
+    chunkNavigationMaxSpeed: 2,
+    chunkNavigationMinimumSpeed: 0.45,
+    chunkNavigationAcceleration: 6,
+    chunkNavigationPositionGain: 2.6,
+    chunkNavigationWaypointReachRadius: 0.42,
+    chunkNavigationSupportProbe: 0.16,
+    chunkNavigationRepathDistance: 0.9,
+    /** Desplazamiento externo que invalida el corredor calculado desde el origen. */
+    chunkNavigationOriginRepathDistance: 0.75,
+    chunkNavigationRetrySeconds: 0.7,
+    chunkNavigationMinimumProgressSpeed: 0.08,
+    chunkNavigationStuckSeconds: 1,
     /** Magnetismo local entre componentes desprendidos; no es navegación. */
     reassemblyAttractionRadius: 1.25,
     reassemblyAttractionAcceleration: 12,

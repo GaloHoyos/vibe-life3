@@ -1,6 +1,19 @@
 import RAPIER from "@dimforge/rapier3d-compat";
-import { Group, Quaternion, Scene, Vector3 } from "three";
+import {
+  Group,
+  Mesh,
+  MeshStandardMaterial,
+  Quaternion,
+  Scene,
+  Vector3,
+  type BufferGeometry,
+} from "three";
 import { describe, expect, it, vi } from "vitest";
+import type { NavigationService } from "@engine/ai/navigation/NavigationService";
+import type {
+  NavigationRequest,
+  NavigationRequestQueue,
+} from "@engine/ai/navigation/NavigationRequestQueue";
 import {
   PhysicsWorld,
   type PhysicsMetadata,
@@ -464,6 +477,509 @@ describe("BlobArmorAnimator", () => {
     expect(releasedArmorIndices(harness, armor)).toEqual([targetIndex]);
 
     grab.release();
+    harness.dispose();
+  });
+
+  it("espera, rodea una pared como racimo y vuelve a integrarse al cuerpo", async () => {
+    const route = deferredChunkRoute();
+    const harness = await createHarness({
+      navigation: route.navigation,
+      navigationRequests: route.requests,
+    });
+    const armor = armorRecords(harness.physics);
+    harness.physics.createStaticBox({
+      id: "chunk-nav-floor",
+      position: new Vector3(2, -0.25, 0),
+      size: new Vector3(12, 0.5, 10),
+    });
+    harness.physics.createStaticBox({
+      id: "chunk-nav-wall",
+      position: new Vector3(2, 1.25, 0),
+      size: new Vector3(0.5, 2.5, 2.6),
+    });
+    translateWholeBlob(harness, armor, new Vector3(0, 1.2, 0));
+    harness.coreBody.setBodyType(
+      RAPIER.RigidBodyType.KinematicPositionBased,
+      true,
+    );
+    harness.physics.updateQueryPipeline();
+
+    const initial = harness.animator.getDebugSnapshot();
+    const indices = findBondedOuterPair(initial);
+    const records = indices.map((index) => armor[index]);
+    const internalDistance = bodyDistance(records[0].body, records[1].body);
+    for (const record of records) {
+      record.metadata.damageable!.applyDamage(1);
+    }
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          records.every(
+            (record) => currentMetadata(harness, record).kind === "dynamic",
+          ),
+        0.6,
+      ),
+    ).toBe(true);
+
+    const groundY = Math.max(
+      ballRadius(records[0].collider),
+      ballRadius(records[1].collider),
+    ) + 0.03;
+    placeBody(records[0].body, new Vector3(4, groundY, 0));
+    placeBody(
+      records[1].body,
+      new Vector3(4, groundY, internalDistance),
+    );
+    for (const record of records) {
+      record.body.setGravityScale(1, true);
+    }
+    // Un segundo impacto ya desprendido reinicia la espera del racimo entero.
+    records[0].metadata.damageable!.applyDamage(1);
+    const waitingCenter = recordsCenter(records);
+    const waitingFrames = Math.floor(
+      (BlobConfig.armor.reassemblyDelaySeconds - 0.12) * 60,
+    );
+    for (let frame = 0; frame < waitingFrames; frame += 1) {
+      route.processOne();
+      harness.animator.updateFromMotor(animationFrame(1 / 60));
+      harness.physics.step(1 / 60);
+    }
+    expect(route.enqueued).toBe(0);
+    expect(planarDistance(recordsCenter(records), waitingCenter)).toBeLessThan(
+      0.12,
+    );
+
+    let maximumDetour = 0;
+    let crossedWall = false;
+    let remainedConnected = true;
+    for (let frame = 0; frame < 720; frame += 1) {
+      route.processOne();
+      harness.animator.updateFromMotor(animationFrame(1 / 60));
+      harness.physics.step(1 / 60);
+      const snapshot = harness.animator.getDebugSnapshot();
+      if (indices.every((index) => snapshot.attachedIndices.includes(index))) {
+        break;
+      }
+      const center = recordsCenter(records);
+      if (!crossedWall) maximumDetour = Math.max(maximumDetour, Math.abs(center.z));
+      if (center.x < 1.5) crossedWall = true;
+      remainedConnected &&= reachableWithin(
+        indices[0],
+        snapshot.cohesionPairs,
+        indices,
+      ).size === indices.length;
+    }
+
+    const restored = harness.animator.getDebugSnapshot();
+    expect(route.enqueued).toBeGreaterThan(0);
+    expect(crossedWall).toBe(true);
+    expect(maximumDetour).toBeGreaterThan(1.45);
+    expect(remainedConnected).toBe(true);
+    expect(restored.attachedCount).toBe(BlobConfig.armor.count);
+    expect(indices.every((index) => restored.attachedIndices.includes(index))).toBe(
+      true,
+    );
+    expect(
+      records.every((record) => currentMetadata(harness, record).kind === "npc"),
+    ).toBe(true);
+    expect(route.pending()).toBe(0);
+    expectMainGraphConsistent(restored);
+
+    harness.dispose();
+  });
+
+  it("no planifica ni se propulsa horizontalmente mientras está en el aire", async () => {
+    const route = deferredChunkRoute();
+    const harness = await createHarness({
+      navigation: route.navigation,
+      navigationRequests: route.requests,
+    });
+    const armor = armorRecords(harness.physics);
+    const initial = harness.animator.getDebugSnapshot();
+    const index = layerIndices(initial, maximumLayer(initial))[0];
+    const record = armor[index];
+
+    record.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () => currentMetadata(harness, record).kind === "dynamic",
+        0.6,
+      ),
+    ).toBe(true);
+    placeBody(record.body, new Vector3(4, 6, 0));
+    record.body.setGravityScale(1, true);
+    record.metadata.damageable!.applyDamage(1);
+    const start = vectorFromRapier(record.body.translation());
+
+    for (let frame = 0; frame < 100; frame += 1) {
+      route.processOne();
+      harness.animator.updateFromMotor(animationFrame(1 / 60));
+      harness.physics.step(1 / 60);
+    }
+
+    const end = vectorFromRapier(record.body.translation());
+    expect(route.enqueued).toBe(0);
+    expect(planarDistance(start, end)).toBeLessThan(0.08);
+    expect(end.y).toBeLessThan(start.y - 4);
+    expect(currentMetadata(harness, record).kind).toBe("dynamic");
+
+    harness.dispose();
+  });
+
+  it("recalcula la ruta desde donde se suelta un racimo movido externamente", async () => {
+    const route = deferredChunkRoute();
+    const harness = await createHarness({
+      navigation: route.navigation,
+      navigationRequests: route.requests,
+    });
+    const armor = armorRecords(harness.physics);
+    harness.physics.createStaticBox({
+      id: "chunk-nav-carry-floor",
+      position: new Vector3(0, -0.25, 0),
+      size: new Vector3(14, 0.5, 10),
+    });
+    translateWholeBlob(harness, armor, new Vector3(0, 1.2, 0));
+    harness.coreBody.setBodyType(
+      RAPIER.RigidBodyType.KinematicPositionBased,
+      true,
+    );
+    harness.physics.updateQueryPipeline();
+
+    const initial = harness.animator.getDebugSnapshot();
+    const index = layerIndices(initial, maximumLayer(initial))[0];
+    const record = armor[index];
+    record.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () => currentMetadata(harness, record).kind === "dynamic",
+        0.6,
+      ),
+    ).toBe(true);
+    const groundY = ballRadius(record.collider) + 0.03;
+    placeBody(record.body, new Vector3(4, groundY, 0));
+    record.body.setGravityScale(1, true);
+    record.metadata.damageable!.applyDamage(1);
+    advanceSimulation(
+      harness,
+      BlobConfig.armor.reassemblyDelaySeconds + 0.1,
+    );
+    expect(route.pending()).toBe(1);
+    expect(route.origins()[0].x).toBeCloseTo(4, 1);
+
+    route.processOne();
+    harness.physics.markHeld(record.body, true);
+    placeBody(record.body, new Vector3(-4, groundY, 0));
+    harness.physics.updateQueryPipeline();
+    harness.animator.updateFromMotor(animationFrame(1 / 60));
+    expect(route.pending()).toBe(0);
+
+    harness.physics.markHeld(record.body, false);
+    harness.animator.updateFromMotor(animationFrame(1 / 60));
+    expect(route.enqueued).toBe(2);
+    expect(route.origins()[1].x).toBeCloseTo(-4, 1);
+
+    harness.dispose();
+  });
+
+  it("vuelve a pedir una ruta si el racimo queda trabado", async () => {
+    const route = deferredChunkRoute({ direct: true });
+    const harness = await createHarness({
+      navigation: route.navigation,
+      navigationRequests: route.requests,
+    });
+    const armor = armorRecords(harness.physics);
+    harness.physics.createStaticBox({
+      id: "chunk-nav-stuck-floor",
+      position: new Vector3(2, -0.25, 0),
+      size: new Vector3(12, 0.5, 12),
+    });
+    harness.physics.createStaticBox({
+      id: "chunk-nav-stuck-wall",
+      position: new Vector3(2, 1.25, 0),
+      size: new Vector3(0.5, 2.5, 10),
+    });
+    translateWholeBlob(harness, armor, new Vector3(0, 1.2, 0));
+    harness.coreBody.setBodyType(
+      RAPIER.RigidBodyType.KinematicPositionBased,
+      true,
+    );
+    harness.physics.updateQueryPipeline();
+
+    const initial = harness.animator.getDebugSnapshot();
+    const index = layerIndices(initial, maximumLayer(initial))[0];
+    const record = armor[index];
+    record.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () => currentMetadata(harness, record).kind === "dynamic",
+        0.6,
+      ),
+    ).toBe(true);
+    placeBody(
+      record.body,
+      new Vector3(4, ballRadius(record.collider) + 0.03, 0),
+    );
+    record.body.setGravityScale(1, true);
+    record.metadata.damageable!.applyDamage(1);
+    advanceSimulation(
+      harness,
+      BlobConfig.armor.reassemblyDelaySeconds + 0.1,
+    );
+
+    for (let frame = 0; frame < 300; frame += 1) {
+      route.processOne();
+      harness.animator.updateFromMotor(animationFrame(1 / 60));
+      harness.physics.step(1 / 60);
+    }
+
+    expect(route.enqueued).toBeGreaterThan(1);
+    expect(record.body.translation().x).toBeGreaterThan(2.2);
+    expect(currentMetadata(harness, record).kind).toBe("dynamic");
+
+    harness.dispose();
+  });
+
+  it("cancela una ruta pendiente si el Blob se destruye", async () => {
+    const route = deferredChunkRoute();
+    const harness = await createHarness({
+      navigation: route.navigation,
+      navigationRequests: route.requests,
+    });
+    const armor = armorRecords(harness.physics);
+    harness.physics.createStaticBox({
+      id: "chunk-nav-dispose-floor",
+      position: new Vector3(5, -0.25, 0),
+      size: new Vector3(4, 0.5, 4),
+    });
+    harness.physics.updateQueryPipeline();
+    const initial = harness.animator.getDebugSnapshot();
+    const index = layerIndices(initial, maximumLayer(initial))[0];
+    const record = armor[index];
+
+    record.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () => currentMetadata(harness, record).kind === "dynamic",
+        0.6,
+      ),
+    ).toBe(true);
+    placeBody(
+      record.body,
+      new Vector3(5, ballRadius(record.collider) + 0.03, 0),
+    );
+    record.body.setGravityScale(1, true);
+    record.metadata.damageable!.applyDamage(1);
+    advanceSimulation(
+      harness,
+      BlobConfig.armor.reassemblyDelaySeconds + 0.1,
+    );
+    expect(route.pending()).toBe(1);
+
+    harness.animator.dispose();
+    expect(route.pending()).toBe(0);
+    route.processOne();
+    expect(() => harness.physics.step(1 / 60)).not.toThrow();
+
+    harness.disposeCore();
+  });
+
+  it("marchita y mata un mini-racimo que pasa demasiado tiempo separado", async () => {
+    const route = deferredChunkRoute();
+    const harness = await createHarness({
+      navigation: route.navigation,
+      navigationRequests: route.requests,
+    });
+    harness.physics.world.gravity = { x: 0, y: 0, z: 0 };
+    harness.physics.createStaticBox({
+      id: "chunk-lifetime-floor",
+      position: new Vector3(8, -0.25, 0),
+      size: new Vector3(5, 0.5, 5),
+    });
+    harness.physics.updateQueryPipeline();
+    const armor = armorRecords(harness.physics);
+    const initial = harness.animator.getDebugSnapshot();
+    const indices = findBondedOuterPair(initial);
+    const records = indices.map((index) => armor[index]);
+    const internalDistance = bodyDistance(records[0].body, records[1].body);
+    const survivingIndex = layerIndices(initial, maximumLayer(initial)).find(
+      (index) => !indices.includes(index),
+    )!;
+    const targetMesh = blobMesh(harness, indices[0]);
+    const secondMesh = blobMesh(harness, indices[1]);
+    const survivingMesh = blobMesh(harness, survivingIndex);
+    const targetMaterial = targetMesh.material;
+    const survivingMaterial = survivingMesh.material;
+    const baseScale = targetMesh.scale.x;
+    const secondBaseScale = secondMesh.scale.x;
+    const baseColor = targetMaterial.color.getHex();
+    const baseRoughness = targetMaterial.roughness;
+    const survivingColor = survivingMaterial.color.getHex();
+    const survivingScale = survivingMesh.scale.x;
+    const colliderRadii = records.map((record) => ballRadius(record.collider));
+    const bodyCountBefore = harness.physics.getBodyCount();
+
+    for (const record of records) record.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          records.every(
+            (record) => currentMetadata(harness, record).kind === "dynamic",
+          ),
+        0.7,
+      ),
+    ).toBe(true);
+    const groundY = Math.max(...colliderRadii) + 0.03;
+    placeBody(records[0].body, new Vector3(8, groundY, 0));
+    placeBody(
+      records[1].body,
+      new Vector3(8, groundY, internalDistance),
+    );
+    harness.physics.updateQueryPipeline();
+
+    const healthySeconds =
+      BlobConfig.armor.detachedLifetimeSeconds -
+      BlobConfig.armor.detachedWitherSeconds;
+    advanceSimulation(harness, healthySeconds - 0.3, 1 / 20);
+    expect(route.pending()).toBe(1);
+    expect(targetMesh.scale.x).toBeCloseTo(baseScale, 5);
+    expect(targetMaterial.color.getHex()).toBe(baseColor);
+
+    advanceSimulation(harness, 0.7, 1 / 20);
+    expect(targetMesh.scale.x).toBeLessThan(baseScale);
+    expect(secondMesh.scale.x).toBeLessThan(secondBaseScale);
+    expect(targetMaterial.color.getHex()).not.toBe(baseColor);
+    expect(targetMaterial.roughness).toBeGreaterThan(baseRoughness);
+    expect(ballRadius(records[0].collider)).toBeCloseTo(colliderRadii[0], 6);
+    expect(survivingMesh.scale.x).toBeCloseTo(survivingScale, 6);
+    expect(survivingMaterial.color.getHex()).toBe(survivingColor);
+    expect(survivingMaterial.roughness).toBeCloseTo(baseRoughness, 6);
+
+    advanceSimulation(
+      harness,
+      BlobConfig.armor.detachedWitherSeconds + 0.2,
+      1 / 20,
+    );
+    const withered = harness.animator.getDebugSnapshot();
+    expect(withered.totalCount).toBe(BlobConfig.armor.count - indices.length);
+    expect(withered.attachedCount).toBe(
+      BlobConfig.armor.count - indices.length,
+    );
+    expect(indices.every((index) => withered.layers[index] === -1)).toBe(true);
+    expect(withered.layers[survivingIndex]).toBe(initial.layers[survivingIndex]);
+    expect(
+      withered.cohesionPairs.every(
+        ([from, to]) => !indices.includes(from) && !indices.includes(to),
+      ),
+    ).toBe(true);
+    expect(records.every((record) => !record.body.isValid())).toBe(true);
+    expect(records.every((record) => !record.collider.isValid())).toBe(true);
+    expect(
+      records.every(
+        (record) => harness.physics.getColliderMetadata(record.collider) === undefined,
+      ),
+    ).toBe(true);
+    expect(targetMesh.parent).toBeNull();
+    expect(secondMesh.parent).toBeNull();
+    expect(harness.physics.getBodyCount()).toBe(
+      bodyCountBefore - indices.length,
+    );
+    expect(route.pending()).toBe(0);
+    expectMainGraphConsistent(withered);
+    expect(records[0].metadata.damageable!.isAlive()).toBe(false);
+    expect(() => records[0].metadata.damageable!.applyDamage(1)).not.toThrow();
+    expect(() => harness.physics.step(1 / 60)).not.toThrow();
+
+    harness.dispose();
+  });
+
+  it("revive por completo al reintegrarse y reinicia su tiempo de vida", async () => {
+    const harness = await createHarness();
+    harness.physics.world.gravity = { x: 0, y: 0, z: 0 };
+    const armor = armorRecords(harness.physics);
+    const initial = harness.animator.getDebugSnapshot();
+    const outer = layerIndices(initial, maximumLayer(initial));
+    const targetIndex = outer[0];
+    const hostIndex = outer.find((index) => index !== targetIndex)!;
+    const target = armor[targetIndex];
+    const host = armor[hostIndex];
+    const mesh = blobMesh(harness, targetIndex);
+    const material = mesh.material;
+    const baseScale = mesh.scale.x;
+    const baseColor = material.color.getHex();
+    const baseRoughness = material.roughness;
+    const baseMetalness = material.metalness;
+
+    target.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () => currentMetadata(harness, target).kind === "dynamic",
+        0.7,
+      ),
+    ).toBe(true);
+    placeBody(target.body, new Vector3(8, 6, 0));
+    advanceSimulation(
+      harness,
+      BlobConfig.armor.detachedLifetimeSeconds -
+        BlobConfig.armor.detachedWitherSeconds * 0.5,
+      1 / 20,
+    );
+    expect(mesh.scale.x).toBeLessThan(baseScale);
+
+    stopBody(harness.coreBody);
+    for (const record of armor) {
+      if (record.body.isValid()) stopBody(record.body);
+    }
+    const outward = vectorFromRapier(host.body.translation())
+      .sub(vectorFromRapier(harness.coreBody.translation()))
+      .normalize();
+    const capture = vectorFromRapier(host.body.translation()).addScaledVector(
+      outward,
+      ballRadius(host.collider) +
+        ballRadius(target.collider) +
+        BlobConfig.armor.reassemblyJoinPadding * 0.5,
+    );
+    placeBody(target.body, capture);
+    harness.animator.updateFromMotor(animationFrame(1 / 60));
+
+    expect(
+      harness.animator.getDebugSnapshot().attachedIndices,
+    ).toContain(targetIndex);
+    expect(currentMetadata(harness, target).kind).toBe("npc");
+    expect(mesh.scale.x).toBeCloseTo(baseScale, 6);
+    expect(material.color.getHex()).toBe(baseColor);
+    expect(material.roughness).toBeCloseTo(baseRoughness, 6);
+    expect(material.metalness).toBeCloseTo(baseMetalness, 6);
+
+    advanceSimulation(
+      harness,
+      BlobConfig.armor.detachedWitherSeconds * 0.75,
+      1 / 20,
+    );
+    expect(target.body.isValid()).toBe(true);
+    target.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () => currentMetadata(harness, target).kind === "dynamic",
+        0.7,
+      ),
+    ).toBe(true);
+    placeBody(target.body, new Vector3(8, 6, 0));
+    advanceSimulation(
+      harness,
+      BlobConfig.armor.detachedWitherSeconds * 0.75,
+      1 / 20,
+    );
+    expect(target.body.isValid()).toBe(true);
+    expect(mesh.scale.x).toBeCloseTo(baseScale, 6);
+
     harness.dispose();
   });
 
@@ -1343,6 +1859,18 @@ describe("BlobArmorAnimator", () => {
     harness.animator.updateFromMotor(animationFrame(2));
     expect(harness.animator.getDebugSnapshot().attachedCount).toBe(0);
 
+    harness.physics.world.gravity = { x: 0, y: 0, z: 0 };
+    const corpseSteps = Math.ceil(
+      (BlobConfig.armor.detachedLifetimeSeconds + 0.1) * 20,
+    );
+    for (let step = 0; step < corpseSteps; step += 1) {
+      harness.animator.updateStandalone(1 / 20, { dead: true });
+      harness.physics.step(1 / 20);
+    }
+    expect(harness.animator.getDebugSnapshot().totalCount).toBe(0);
+    expect(harness.physics.getBodyCount()).toBe(1);
+    expect(shellBodies.every((body) => !body.isValid())).toBe(true);
+
     harness.animator.dispose();
     expect(harness.physics.world.impulseJoints.len()).toBe(0);
     expect(harness.physics.getBodyCount()).toBe(1);
@@ -1365,7 +1893,10 @@ describe("BlobArmorAnimator", () => {
   });
 });
 
-async function createHarness() {
+async function createHarness(options: {
+  navigation?: NavigationService;
+  navigationRequests?: NavigationRequestQueue;
+} = {}) {
   const physics = new PhysicsWorld();
   await physics.init();
   const id = "blob-test";
@@ -1411,6 +1942,8 @@ async function createHarness() {
     position,
     physics,
     owner,
+    navigation: options.navigation,
+    navigationRequests: options.navigationRequests,
   });
   animator.updateFromMotor(animationFrame(0));
 
@@ -1436,6 +1969,73 @@ async function createHarness() {
 }
 
 type BlobHarness = Awaited<ReturnType<typeof createHarness>>;
+
+function deferredChunkRoute(options: { direct?: boolean } = {}): {
+  navigation: NavigationService;
+  requests: NavigationRequestQueue;
+  readonly enqueued: number;
+  processOne(): void;
+  pending(): number;
+  origins(): Vector3[];
+} {
+  const queued = new Map<string, NavigationRequest>();
+  const origins: Vector3[] = [];
+  let enqueued = 0;
+  const navigation = {
+    projectPoint: (position: Vector3) => position.clone(),
+  } as unknown as NavigationService;
+  const requests = {
+    enqueue: (request: NavigationRequest) => {
+      queued.set(request.ownerId, request);
+      origins.push(request.from.clone());
+      enqueued += 1;
+    },
+    cancel: (ownerId: string) => {
+      queued.delete(ownerId);
+    },
+  } as unknown as NavigationRequestQueue;
+  return {
+    navigation,
+    requests,
+    get enqueued() {
+      return enqueued;
+    },
+    processOne: () => {
+      const next = queued.entries().next();
+      if (next.done) return;
+      const [ownerId, request] = next.value;
+      queued.delete(ownerId);
+      const points = options.direct
+        ? [request.to.clone()]
+        : detourRoutePoints(request);
+      let length = 0;
+      let previous = request.from;
+      for (const point of points) {
+        length += previous.distanceTo(point);
+        previous = point;
+      }
+      request.onResolve({
+        points,
+        actions: [],
+        length,
+        partial: false,
+      });
+    },
+    pending: () => queued.size,
+    origins: () => origins.map((origin) => origin.clone()),
+  };
+}
+
+function detourRoutePoints(request: NavigationRequest): Vector3[] {
+  const middleX = (request.from.x + request.to.x) * 0.5;
+  const direction = request.from.x >= request.to.x ? 1 : -1;
+  const detourZ = request.from.z <= 0.5 ? 2 : -2;
+  return [
+    new Vector3(middleX + direction * 0.8, request.from.y, detourZ),
+    new Vector3(middleX - direction * 0.8, request.to.y, detourZ),
+    request.to.clone(),
+  ];
+}
 
 function advanceSimulation(
   harness: BlobHarness,
@@ -1540,7 +2140,7 @@ function attachedLayerHistogram(snapshot: BlobArmorDebugSnapshot): number[] {
 }
 
 function graphDegrees(snapshot: BlobArmorDebugSnapshot): number[] {
-  const degrees = Array.from({ length: snapshot.totalCount }, () => 0);
+  const degrees = Array.from({ length: snapshot.layers.length }, () => 0);
   for (const [from, to] of snapshot.cohesionPairs) {
     degrees[from] += 1;
     degrees[to] += 1;
@@ -1941,6 +2541,34 @@ function bodyDistance(
   return vectorFromRapier(first.translation()).distanceTo(
     vectorFromRapier(second.translation()),
   );
+}
+
+function recordsCenter(records: ArmorRecord[]): Vector3 {
+  return records
+    .reduce(
+      (center, record) =>
+        center.add(vectorFromRapier(record.body.translation())),
+      new Vector3(),
+    )
+    .multiplyScalar(1 / Math.max(1, records.length));
+}
+
+function blobMesh(
+  harness: BlobHarness,
+  index: number,
+): Mesh<BufferGeometry, MeshStandardMaterial> {
+  const object = harness.scene.getObjectByName(`${harness.id}-blob-${index}`);
+  if (
+    !(object instanceof Mesh) ||
+    !(object.material instanceof MeshStandardMaterial)
+  ) {
+    throw new Error(`Mesh del blob ${index} no encontrado`);
+  }
+  return object;
+}
+
+function planarDistance(first: Vector3, second: Vector3): number {
+  return Math.hypot(first.x - second.x, first.z - second.z);
 }
 
 function ballRadius(collider: RAPIER.Collider): number {

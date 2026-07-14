@@ -51,6 +51,32 @@ describe("NavigationService", () => {
     expect(navigation.getDebugMeshGeometry("missing-profile")).toBeNull();
   }, 20_000);
 
+  it("routes Blob fragments on the small-ground mesh without traversal actions", async () => {
+    const boxes = [
+      box("blob-floor", [0, -0.25, 0], [12, 0.5, 12]),
+      box("blob-wall", [0, 1, 0], [1.2, 2, 7]),
+    ];
+    navigation = await NavigationService.create({
+      geometry: buildNavigationGeometry(boxes),
+      groundProfiles: [NavigationProfiles.headcrab],
+      raycast: new Raycast(physics),
+      physics,
+    });
+
+    const profile = NavigationProfiles.blobFragment;
+    const start = navigation.projectPoint(new Vector3(-4, 0.2, 0), profile);
+    const goal = navigation.projectPoint(new Vector3(4, 0.2, 0), profile);
+    expect(start).not.toBeNull();
+    expect(goal).not.toBeNull();
+    const path = navigation.requestPath(profile, start!, goal!);
+
+    expect(path).not.toBeNull();
+    expect(path?.partial).toBe(false);
+    expect(path?.actions).toEqual([]);
+    expect(path!.length).toBeGreaterThan(start!.distanceTo(goal!) + 2);
+    expect(path!.points.some((point) => Math.abs(point.z) > 3.5)).toBe(true);
+  }, 20_000);
+
   it("uses a deliberate portal action link between disconnected islands", async () => {
     const profile = testProfile();
     const boxes = [

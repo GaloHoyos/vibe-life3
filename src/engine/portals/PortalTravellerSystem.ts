@@ -51,6 +51,7 @@ export interface PortalTravellerOptions {
 interface CloneRecord {
   entrySlot: PortalSlot;
   cloneBody: RAPIER.RigidBody;
+  sourceMesh: Object3D | null;
   cloneMesh: Object3D | null;
   boundingRadius: number;
 }
@@ -475,13 +476,19 @@ export class PortalTravellerSystem {
     // straddle de UN solo frame (prop rápido) colapsa al clon antes de su
     // primer mirrorState y el primary hereda una pose con velocidad cero.
     this.mirrorState(body, cloneBody, entry, exit);
-    const sourceMesh = this.physics.getBoundMesh(body);
+    const sourceMesh = this.physics.getBoundMesh(body) ?? null;
     let cloneMesh: Object3D | null = null;
     if (sourceMesh) {
       cloneMesh = sourceMesh.clone();
       this.scene.add(cloneMesh);
     }
-    return { entrySlot, cloneBody, cloneMesh, boundingRadius };
+    return {
+      entrySlot,
+      cloneBody,
+      sourceMesh,
+      cloneMesh,
+      boundingRadius,
+    };
   }
 
   private destroyClone(handle: number): void {
@@ -537,6 +544,9 @@ export class PortalTravellerSystem {
     record.cloneMesh.position.set(p.x, p.y, p.z);
     const r = record.cloneBody.rotation();
     record.cloneMesh.quaternion.set(r.x, r.y, r.z, r.w);
+    if (record.sourceMesh) {
+      record.cloneMesh.scale.copy(record.sourceMesh.scale);
+    }
   }
 
   private bodyBoundingRadius(body: RAPIER.RigidBody): number {

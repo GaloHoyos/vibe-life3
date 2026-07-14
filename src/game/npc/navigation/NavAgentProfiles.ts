@@ -70,6 +70,30 @@ export const NavigationProfiles = {
     safeDropHeight: 4,
     maxTraversalLinks: 96,
   }),
+  /**
+   * Los racimos usan el clearance ya bakeado de headcrab, pero no heredan
+   * links de salto/caída: su follower conserva gravedad y sólo camina.
+   */
+  blobFragment: profile({
+    id: "blob-fragment",
+    domain: "smallGround",
+    radius: 0.3,
+    standingHeight: 0.55,
+    navigationHeight: 0.55,
+    maxSlopeDegrees: 50,
+    stepHeight: 0.25,
+    maxSpeed: 2,
+    acceleration: 6,
+    canJump: false,
+    canCrouch: false,
+    canDrop: false,
+    canOpenDoors: false,
+    canUsePortals: false,
+    jumpSpeed: 0,
+    maxJumpDistance: 0,
+    safeDropHeight: 0,
+    fallbackProfileId: "headcrab",
+  }),
   manhack: profile({
     id: "manhack",
     domain: "air",
