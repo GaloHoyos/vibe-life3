@@ -23,7 +23,6 @@ export type CharacterAIProfileId =
   | "rebelMedic"
   | "passiveHumanoid"
   | "headcrabMelee"
-  | "blobCreature"
   | "manhackFlyer"
   | "floorTurret"
   | "gunshipBoss"
@@ -69,13 +68,6 @@ export interface CharacterColliderConfig {
  */
 export interface CharacterHealthConfig {
   maxHealth: number;
-}
-
-/** Opt-in explícito para que el Blob pueda seleccionar y consumir al actor. */
-export interface BlobPreyDefinition {
-  biomass: number;
-  /** Tiempo que el cadáver debe permanecer envuelto antes de conceder biomasa. */
-  consumeSeconds?: number;
 }
 
 export type BoneAxis = "x" | "y" | "z";
@@ -208,8 +200,6 @@ export interface CharacterDefinition {
   type: CharacterType;
   /** Bando lÃ³gico â€” controla quiÃ©n ataca a quiÃ©n. */
   faction: Faction;
-  /** Opt-in como presa orgánica del Blob. Ausente excluye al actor. */
-  blobPrey?: BlobPreyDefinition;
   /** Familia de comportamiento — la factory lo mapea a un preset v2. */
   aiProfileId: CharacterAIProfileId;
   height: number;

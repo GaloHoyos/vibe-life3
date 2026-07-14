@@ -1,7 +1,6 @@
 ﻿import { Bone, BoxGeometry, Group, Mesh, MeshStandardMaterial, Object3D, SphereGeometry, Vector3 } from 'three';
-import { Quaternion } from 'three';
 import type { AssetManager } from '@engine/assets/AssetManager';
-import type { ActorSnapshot, INpc } from '@game/npc/core/INpc';
+import type { INpc } from '@game/npc/core/INpc';
 import { attachWeaponToHand } from '@game/npc/combat/NpcWeaponAttachment';
 import { Npc } from '@game/npc/Npc';
 import { NpcAnimationBridge } from '@game/npc/animation/NpcAnimationBridge';
@@ -21,7 +20,6 @@ import { buildPassivePreset } from '@game/npc/presets/passivePreset';
 import { buildRebelPreset } from '@game/npc/presets/rebelPreset';
 import { buildZombiePreset } from '@game/npc/presets/zombiePreset';
 import { buildHeadcrabPreset } from '@game/npc/presets/headcrabPreset';
-import { buildBlobPreset } from '@game/npc/presets/blobPreset';
 import { buildManhackPreset } from '@game/npc/presets/manhackPreset';
 import { buildTurretPreset } from '@game/npc/presets/turretPreset';
 import { buildGunshipPreset } from '@game/npc/presets/gunshipPreset';
@@ -35,24 +33,12 @@ import { TurretCombat } from '@game/npc/combat/TurretCombat';
 import { TurretAimState } from '@game/npc/combat/TurretAimState';
 import { GunshipCannonCombat } from '@game/npc/combat/GunshipCannonCombat';
 import { StriderCombat } from '@game/npc/combat/StriderCombat';
-import {
-  BlobOrganismController,
-  type BlobOrganismEvent,
-} from '@engine/blob/v2';
-import { BlobV2Animator } from '@game/npc/blob/v2/BlobV2Animator';
-import { BlobV2Audio } from '@game/npc/blob/v2/BlobV2Audio';
-import { BlobV2Combat } from '@game/npc/blob/v2/BlobV2Combat';
-import { BlobV2Control } from '@game/npc/blob/v2/BlobV2Control';
-import { BlobV2Hitboxes } from '@game/npc/blob/v2/BlobV2Hitboxes';
-import { BlobV2PropConsumption } from '@game/npc/blob/v2/BlobV2PropConsumption';
-import { blobV2Runtimes } from '@game/npc/blob/v2/BlobV2RuntimeRegistry';
 import type { NpcCombatHandle } from '@game/npc/brain/NpcBrainContext';
 import type { ModelAssetId } from '@engine/assets/AssetManifest';
 import type { GameEventBus } from "@game/GameEvents";
 import type { PhysicsMetadata, PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import { Raycast, type RaycastSource } from '@engine/physics/Raycast';
 import { CharacterMotor } from '@engine/physics/character/CharacterMotor';
-import { BlobV2Motor } from '@engine/physics/character/BlobV2Motor';
 import { DynamicFlyerMotor } from '@engine/physics/character/DynamicFlyerMotor';
 import { KinematicFlyerMotor } from '@engine/physics/character/KinematicFlyerMotor';
 import { StriderWalkerMotor } from '@engine/physics/character/StriderWalkerMotor';
@@ -61,7 +47,6 @@ import type { NpcMotor } from '@engine/physics/character/NpcMotor';
 import type { PortalPairState } from '@engine/portals/PortalFrame';
 import type { NavigationService } from '@engine/ai/navigation/NavigationService';
 import type { NavigationRequestQueue } from '@engine/ai/navigation/NavigationRequestQueue';
-import type { NavigationActionLink } from '@engine/ai/navigation/NavigationTypes';
 import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
 import { navigationProfileForPreset } from '@game/npc/navigation/NavAgentProfiles';
 import type { TacticalMap } from '@game/npc/ai/TacticalMap';
@@ -72,7 +57,6 @@ import { applyDefinitionStats } from './CharacterStats';
 import type { CharacterDefinition, CharacterId } from '@engine/characters/CharacterDefinition';
 import type { DifficultyProvider } from '@game/config/difficulty.config';
 import type { Damageable } from '@shared/types/lifecycle';
-import { BlobConfig } from '@game/config/blob.config';
 
 export interface NpcRuntimeServices {
   navigation: NavigationService;
@@ -185,76 +169,7 @@ export class CharacterFactory {
     const isTurret = definition.aiProfileId === 'floorTurret';
     const isGunship = definition.aiProfileId === 'gunshipBoss';
     const isStrider = definition.aiProfileId === 'striderBoss';
-    const isBlob = definition.aiProfileId === 'blobCreature';
-    const blobSpawnPosition = position.clone();
     const turretAim = isTurret ? new TurretAimState() : null;
-    const blobV2Events: BlobOrganismEvent[] = [];
-    const blobV2Controller = isBlob
-      ? new BlobOrganismController({
-          center: position,
-          initialBiomass: BlobConfig.v2.initialBiomass,
-          maximumBiomass: BlobConfig.v2.maximumBiomass,
-          particleRadius: BlobConfig.v2.particleRadius,
-          coreHealth: BlobConfig.v2.coreHealth,
-          coreRadius: BlobConfig.v2.coreRadius,
-          fragmentReturnSpeed: BlobConfig.v2.fragmentReturnSpeed,
-          fragmentReattachDistance: BlobConfig.v2.fragmentReattachDistance,
-        })
-      : null;
-    const blobV2Control = blobV2Controller
-      ? new BlobV2Control({
-          controller: blobV2Controller,
-          onEvents: (events) => {
-            blobV2Events.push(...events);
-            if (blobV2Events.length > 256) {
-              blobV2Events.splice(0, blobV2Events.length - 256);
-            }
-            for (const event of events) {
-              this.eventBus.emit('blob.event', { id: instanceId, event });
-            }
-          },
-        })
-      : null;
-    let blobNpcForFeedback: Npc | null = null;
-    let unregisterBlobV2Runtime = () => {};
-    const blobV2EnvelopedProps = new Set<string>();
-    const blobV2Audio = blobV2Controller
-      ? new BlobV2Audio({
-          ownerId: instanceId,
-          characterId: definition.id,
-          eventBus: this.eventBus,
-        })
-      : null;
-    const blobV2PropConsumption = blobV2Controller
-      ? new BlobV2PropConsumption(blobV2Controller, this.physics, {
-          ownerId: instanceId,
-          fallbackConsumeSeconds: BlobConfig.v2.consumeSeconds,
-          fallbackBiomass: 4,
-          onProgress: ({ propId }) => {
-            if (blobV2EnvelopedProps.has(propId)) return;
-            blobV2EnvelopedProps.add(propId);
-            blobV2Controller.recordPreyEnveloped(propId);
-          },
-          onConsumed: ({ propId, position: consumedAt, biomass, result }) => {
-            blobV2Controller.recordPreyConsumed(propId, biomass);
-            blobNpcForFeedback?.health.set(blobV2Controller.core.health);
-            this.eventBus.emit('blob.prey.consumed', {
-              id: instanceId,
-              preyId: propId,
-              biomass,
-            });
-            if (result.coreHealing > 0) {
-              this.eventBus.emit('npc.heal', {
-                medicId: instanceId,
-                characterId: definition.id,
-                targetId: instanceId,
-                amount: result.coreHealing,
-                position: new Vector3(consumedAt.x, consumedAt.y, consumedAt.z),
-              });
-            }
-          },
-        })
-      : null;
     const navigationProfile = navigationProfileForPreset(preset);
     let striderMotor: StriderWalkerMotor | null = null;
     // Voladores (manhack) = rigid body dinamico real: lo agarra la gravity gun,
@@ -298,37 +213,6 @@ export class CharacterFactory {
           metadata,
           raycast: services.raycast,
         }))
-      : blobV2Controller
-      ? new BlobV2Motor(this.physics, blobV2Controller, {
-          id: instanceId,
-          maxSpeed: preset.movement.walkSpeed,
-          acceleration: preset.movement.acceleration,
-          turnSpeed: preset.movement.turnSpeed,
-          metadata: { ...metadata, selfPortalTraversal: true },
-          gravity: BlobConfig.v2.gravity,
-          stepUpHeight: BlobConfig.v2.climb.normalStep,
-          climbSpeed: BlobConfig.v2.climb.speed,
-          flowSpeed: BlobConfig.v2.flow.speed,
-          fragmentReturnSpeed: BlobConfig.v2.fragmentReturnSpeed,
-          propPushMaxDeltaV: BlobConfig.v2.propPushMaxDeltaV,
-          portals: services.portals,
-          navigationRequests: services.navigationRequests,
-          navigationProfile,
-          particleTargetProvider: (deltaSeconds) => {
-            const pose = blobV2Control?.update(deltaSeconds);
-            return pose
-              ? {
-                  particleTargets: pose.targets,
-                  particleTargetStrength:
-                    pose.strength * BlobConfig.v2.poseStrength,
-                }
-              : {};
-          },
-          onAfterStep: (deltaSeconds, snapshot) => {
-            blobV2Audio?.tick(deltaSeconds, snapshot);
-            blobV2PropConsumption?.tick(deltaSeconds, snapshot);
-          },
-        })
       : preset.movement.flying
       ? new DynamicFlyerMotor(this.physics, {
           id: instanceId,
@@ -369,59 +253,8 @@ export class CharacterFactory {
         });
     const striderAnimator =
       isStrider && striderMotor ? new StriderAnimator(visualRoot, striderMotor) : null;
-    const blobV2Hitboxes = blobV2Controller
-      ? new BlobV2Hitboxes({
-          physics: this.physics,
-          ownerId: instanceId,
-          controller: blobV2Controller,
-          characterId: definition.id,
-          faction: definition.faction,
-          isAlive: () => blobNpcForFeedback?.isAlive() ?? true,
-          onMassImpact: (impact) => {
-            blobNpcForFeedback?.applyAuthoritativeDamage(
-              0,
-              impact.direction,
-              'blob-mass',
-              impact.attackerId,
-              impact.point,
-              impact.damageType,
-            );
-          },
-          onCoreDamage: (impact) => {
-            blobNpcForFeedback?.applyAuthoritativeDamage(
-              impact.coreDamage,
-              impact.direction,
-              'blob-core',
-              impact.attackerId,
-              impact.point,
-              impact.damageType,
-            );
-            blobNpcForFeedback?.health.set(blobV2Controller.core.health);
-          },
-        })
-      : null;
-    const blobV2Animator = blobV2Controller
-      ? new BlobV2Animator(visualRoot, {
-          ownerId: instanceId,
-          snapshotProvider: () => blobV2Controller.snapshot(),
-          telemetry: blobV2Controller.telemetry,
-          onSnapshot: (snapshot) => blobV2Hitboxes?.sync(snapshot),
-          onDisable: () => {
-            blobV2Audio?.dispose();
-            blobV2Hitboxes?.remove();
-            blobV2PropConsumption?.dispose();
-          },
-          onDispose: () => {
-            blobV2Audio?.dispose();
-            blobV2Hitboxes?.dispose();
-            blobV2PropConsumption?.dispose();
-            unregisterBlobV2Runtime();
-          },
-        })
-      : null;
-    const animation: NpcAnimator = blobV2Animator
-      ? blobV2Animator
-      : isTurret && turretAim
+    const animation: NpcAnimator =
+      isTurret && turretAim
         ? new TurretAnimator(visualRoot, turretAim)
         : isGunship
         ? new GunshipAnimator(visualRoot)
@@ -434,73 +267,6 @@ export class CharacterFactory {
             creatureAnimConfigs[definition.id] ?? DEFAULT_CREATURE_ANIM,
           );
     const ranged = definition.attack.ranged;
-    let blobV2ClaimedPrey: ActorSnapshot | null = null;
-    const blobV2Combat = blobV2Controller
-      ? new BlobV2Combat({
-          id: instanceId,
-          controller: blobV2Controller,
-          raycast: services.losRaycast,
-          eventBus: this.eventBus,
-          characterId: definition.id,
-          eyeHeight: definition.perception.eyeHeight,
-          onPreyClaimed: (prey) => {
-            blobV2ClaimedPrey = prey;
-            prey.setBlobDigestProgress?.(0);
-            blobV2Control?.setGameplayEnvelope(
-              prey.id,
-              prey.position,
-              prey.radius,
-            );
-          },
-          onEnveloping: (prey) => {
-            blobV2Control?.setGameplayEnvelope(
-              prey.id,
-              prey.position,
-              prey.radius,
-            );
-          },
-          onPreyEnveloped: (prey) => {
-            const biomass = prey.blobPrey?.biomass ?? 12;
-            blobV2Controller.recordPreyEnveloped(prey.id);
-            this.eventBus.emit('blob.prey.enveloped', {
-              id: instanceId,
-              preyId: prey.id,
-              biomass,
-            });
-          },
-          onPreyReleased: (prey) => {
-            blobV2Control?.resetGameplayEnvelope(prey.id);
-            prey.setBlobDigestProgress?.(0);
-            if (blobV2ClaimedPrey?.id === prey.id) blobV2ClaimedPrey = null;
-          },
-          onDigestProgress: ({ preyId, progress }) => {
-            if (blobV2ClaimedPrey?.id === preyId) {
-              blobV2ClaimedPrey.setBlobDigestProgress?.(progress);
-            }
-          },
-          onPreyConsumed: (prey, biomass, result) => {
-            blobV2Control?.resetGameplayEnvelope(prey.id);
-            prey.setBlobDigestProgress?.(1);
-            blobV2Controller.recordPreyConsumed(prey.id, biomass);
-            blobNpcForFeedback?.health.set(blobV2Controller.core.health);
-            this.eventBus.emit('blob.prey.consumed', {
-              id: instanceId,
-              preyId: prey.id,
-              biomass,
-            });
-            if (result.coreHealing > 0) {
-              this.eventBus.emit('npc.heal', {
-                medicId: instanceId,
-                characterId: definition.id,
-                targetId: instanceId,
-                amount: result.coreHealing,
-                position: prey.position.clone(),
-              });
-            }
-            if (blobV2ClaimedPrey?.id === prey.id) blobV2ClaimedPrey = null;
-          },
-        })
-      : null;
     let combat: NpcCombatHandle;
     if (isTurret && turretAim) {
       combat = new TurretCombat({
@@ -541,8 +307,6 @@ export class CharacterFactory {
         onCannonShot: () => striderAnimator?.notifyCannonShot(),
         onStomp: () => animation.notifyAttack(),
       });
-    } else if (blobV2Combat) {
-      combat = blobV2Combat;
     } else if (ranged) {
       const losRaycast = services.losRaycast;
       const realCombat = new NpcRangedCombat(
@@ -573,7 +337,6 @@ export class CharacterFactory {
     const npc = new Npc({
       id: instanceId,
       characterId: definition.id,
-      blobPrey: definition.blobPrey ?? null,
       faction: definition.faction,
       position,
       visualRoot: visualGroup,
@@ -590,332 +353,14 @@ export class CharacterFactory {
       eventBus: this.eventBus,
       difficulty: this.difficulty,
       animation,
-      blobControl: blobV2Control,
       patrolRoute: patrolPoints,
       tacticalMap: services.tacticalMap,
       squadDirector: services.squadDirector,
     });
-    blobNpcForFeedback = npc;
     ownerProxy.applyDamage = npc.applyDamage.bind(npc);
     ownerProxy.isAlive = npc.isAlive.bind(npc);
-    if (blobV2Controller) {
-      const debugMotor = motor instanceof BlobV2Motor ? motor : null;
-      const debugMotion: BlobV2DebugMotion = { target: null, wantsMove: false };
-      unregisterBlobV2Runtime = blobV2Runtimes.register({
-        id: instanceId,
-        controller: blobV2Controller,
-        events: blobV2Events,
-        diagnostics: () => ({
-          motion: {
-            target: debugMotion.target?.toArray() ?? null,
-            wantsMove: debugMotion.wantsMove,
-          },
-          traversal: debugMotor?.getTraversalDebugSnapshot() ?? null,
-          pose: blobV2Control?.getDebugSnapshot() ?? null,
-          presentation: blobV2Animator
-            ? {
-                frozen: blobV2Animator.presenter.isFrozen,
-                disposed: blobV2Animator.presenter.isDisposed,
-                activeSurfaceCount: blobV2Animator.presenter.activeSurfaceCount,
-                fallbackCellCount: blobV2Animator.presenter.fallbackCellCount,
-                visibleTendonCount: blobV2Animator.presenter.visibleTendonCount,
-                surfaces: blobV2Controller.snapshot().islands.map((island) => ({
-                  islandId: island.id,
-                  ...blobV2Animator.presenter.getSurfaceInfo(island.id),
-                  mesh: undefined,
-                })),
-              }
-            : null,
-        }),
-        fixedStep: (steps) => {
-          debugMotor?.setDeterministicEvidenceStepping(true);
-          try {
-            for (let index = 0; index < steps; index += 1) {
-              if (debugMotor) {
-                debugMotor.update(
-                  BlobConfig.v2.fixedStep,
-                  debugMotion.target,
-                  debugMotion.wantsMove,
-                  debugMotion.target,
-                );
-              } else {
-                blobV2Controller.step(BlobConfig.v2.fixedStep);
-              }
-            }
-          } finally {
-            debugMotor?.setDeterministicEvidenceStepping(false);
-          }
-          const snapshot = blobV2Controller.snapshot();
-          blobV2Hitboxes?.sync(snapshot);
-          return snapshot;
-        },
-        scenario: (name) => runBlobV2DebugScenario(
-          blobV2Controller,
-          name,
-          debugMotion,
-          debugMotor,
-          blobV2Control,
-          blobV2Animator,
-        ),
-        prepareEvidence: () => {
-          debugMotor?.prepareDeterministicEvidenceAction();
-          return blobV2Animator?.prepareDeterministicEvidenceFrame();
-        },
-        resetEvidence: () => {
-          blobV2Events.length = 0;
-          blobV2Control?.resetPose();
-          debugMotion.target = null;
-          debugMotion.wantsMove = false;
-          return debugMotor
-            ? debugMotor.resetForEvidence(blobSpawnPosition)
-            : blobV2Controller.resetForEvidence(blobSpawnPosition);
-        },
-      });
-    }
     return npc;
   }
-}
-
-interface BlobV2DebugMotion {
-  target: Vector3 | null;
-  wantsMove: boolean;
-}
-
-function runBlobV2DebugScenario(
-  controller: BlobOrganismController,
-  name: string,
-  motion: BlobV2DebugMotion,
-  motor: BlobV2Motor | null,
-  control: BlobV2Control | null,
-  animator: BlobV2Animator | null,
-): unknown {
-  const snapshot = controller.snapshot();
-  const core = new Vector3(
-    snapshot.core.position.x,
-    snapshot.core.position.y,
-    snapshot.core.position.z,
-  );
-  motion.target = null;
-  motion.wantsMove = false;
-  switch (name) {
-    case 'idle':
-      controller.setOrganismState('Idle');
-      controller.setTraversalState('Ground');
-      return controller.snapshot();
-    case 'hunt':
-    case 'movement':
-      controller.setOrganismState('Hunt');
-      controller.setTraversalState('Ground');
-      if (name === 'movement') {
-        motion.target = core.clone().add(new Vector3(0, 0, 2.4));
-        motion.wantsMove = true;
-      }
-      return controller.snapshot();
-    case 'climb': {
-      const end = core.clone().add(new Vector3(0, 1.25, 1.4));
-      const link: NavigationActionLink = {
-        id: 'blob-debug-climb',
-        kind: 'climb',
-        start: core.clone(),
-        end,
-        bidirectional: true,
-        cost: 1,
-        width: 3,
-        profileIds: ['blob'],
-        climbHeight: 1.25,
-      };
-      motor?.beginNavigationAction(link);
-      motion.target = end;
-      motion.wantsMove = true;
-      return controller.snapshot();
-    }
-    case 'flow': {
-      const end = core.clone().add(new Vector3(0, 0, 2.4));
-      motor?.beginNavigationAction({
-        id: 'blob-debug-flow',
-        kind: 'flow',
-        start: core.clone(),
-        end,
-        bidirectional: true,
-        cost: 1,
-        width: 3.4,
-        profileIds: ['blob'],
-        flowOpenings: [
-          { offset: -1.05, width: 0.72, bottom: -0.28, height: 0.82 },
-          { offset: 0, width: 1.12, bottom: -0.18, height: 1.05 },
-          { offset: 1.08, width: 0.78, bottom: -0.25, height: 0.9 },
-        ],
-        brainCrossFraction: 0.6,
-      });
-      motion.target = end;
-      motion.wantsMove = true;
-      return controller.snapshot();
-    }
-    case 'digest':
-      controller.setOrganismState('Digest');
-      control?.setPose({
-        id: 'blob-debug-digest',
-        kind: 'hemisphere',
-        center: core,
-        target: core.clone().add(new Vector3(0, 1.8, 0)),
-        radius: 1.65,
-        height: 2.1,
-        duration: 0.45,
-      });
-      return controller.snapshot();
-    case 'growth':
-      controller.consumeBiomass(58);
-      controller.setOrganismState('Idle');
-      return controller.snapshot();
-    case 'breach':
-      return detachDebugFragment(controller, 16, { x: 5, y: 1.5, z: 0 });
-    case 'core-exposed': {
-      const opening = detachDebugFragment(controller, 16, { x: -4, y: 1.2, z: 0 });
-      if (opening.fragmentId !== null) {
-        controller.applyImpact({
-          point: { x: core.x + snapshot.core.radius, y: core.y, z: core.z },
-          direction: { x: -1, y: 0, z: 0 },
-          damage: 120,
-          fragmentId: opening.fragmentId,
-        });
-      }
-      return controller.snapshot();
-    }
-    case 'split-return':
-      return detachDebugFragment(controller, 16, { x: 7.5, y: 3.2, z: 0 });
-    case 'reattach': {
-      const opening = detachDebugFragment(controller, 12, { x: -2, y: 0.3, z: 0 });
-      const fragment = controller.snapshot().fragments.find(
-        (candidate) => candidate.id === opening.fragmentId,
-      );
-      if (fragment) {
-        const target = core.clone().add(new Vector3(snapshot.core.radius * 0.6, 0, 0));
-        controller.transformIsland(fragment.islandId, {
-          rotation: { x: 0, y: 0, z: 0, w: 1 },
-          translation: {
-            x: target.x - fragment.position.x,
-            y: target.y - fragment.position.y,
-            z: target.z - fragment.position.z,
-          },
-        });
-        controller.setIslandVelocity(fragment.islandId, { x: -0.5, y: 0, z: 0 });
-      }
-      return controller.snapshot();
-    }
-    case 'split-wither': {
-      const opening = detachDebugFragment(controller, 12, { x: 0, y: 2, z: -6 });
-      const fragment = controller.snapshot().fragments.find(
-        (candidate) => candidate.id === opening.fragmentId,
-      );
-      if (fragment) {
-        const pocket = new Vector3(26.5, 1, -13);
-        controller.transformIsland(fragment.islandId, {
-          rotation: { x: 0, y: 0, z: 0, w: 1 },
-          translation: {
-            x: pocket.x - fragment.position.x,
-            y: pocket.y - fragment.position.y,
-            z: pocket.z - fragment.position.z,
-          },
-        });
-        controller.setIslandVelocity(fragment.islandId, { x: 0, y: 0, z: 0 });
-      }
-      return controller.snapshot();
-    }
-    case 'portal': {
-      const rotation = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI * 0.5);
-      const rotatedCore = core.clone().applyQuaternion(rotation);
-      controller.transformIsland(controller.topology.mainIslandId, {
-        rotation,
-        translation: core.clone().sub(rotatedCore),
-      });
-      controller.setTraversalState('PortalTraverse');
-      control?.setPose({
-        id: 'blob-debug-portal',
-        kind: 'tendril',
-        center: core.clone().add(new Vector3(0, 0, -1.2)),
-        target: core.clone().add(new Vector3(0, 0, 1.2)),
-        length: 2.4,
-        radius: 0.55,
-        duration: 0.35,
-      });
-      return controller.snapshot();
-    }
-    case 'pose':
-      control?.setPose({
-        id: 'blob-debug-pose',
-        kind: 'column',
-        center: core,
-        target: core.clone().add(new Vector3(0, 3.4, 0)),
-        radius: 0.9,
-        height: 3.4,
-        duration: 0.45,
-      });
-      return controller.snapshot();
-    case 'freeze':
-      controller.setOverrideState('Frozen');
-      return controller.snapshot();
-    case 'death':
-      {
-        const detached = detachDebugFragment(
-          controller,
-          16,
-          { x: 4, y: 1.4, z: 0 },
-        );
-        // The death presentation owns a single continuous skin. Remove the
-        // combat island through the normal damage path before stopping the
-        // simulation, otherwise an unscheduled newborn fallback would remain.
-        if (detached.fragmentId !== null) {
-          controller.applyImpact({
-            point: { x: core.x + snapshot.core.radius, y: core.y, z: core.z },
-            direction: { x: -1, y: 0, z: 0 },
-            damage: 1_000,
-            fragmentId: detached.fragmentId,
-          });
-        }
-      }
-      {
-        const opened = controller.snapshot().wounds.find(
-          (wound) => wound.state === 'Breached' || wound.state === 'Exposed',
-        );
-        if (opened) {
-          controller.applyImpact({
-            point: opened.point,
-            direction: {
-              x: -opened.normal.x,
-              y: -opened.normal.y,
-              z: -opened.normal.z,
-            },
-            damage: controller.core.maximumHealth,
-          });
-        }
-      }
-      animator?.notifyDeath(undefined, new Vector3(), 'blob-core');
-      controller.setOverrideState('Dead');
-      return controller.snapshot();
-    default:
-      throw new Error(`Unknown Blob V2 debug scenario '${name}'`);
-  }
-}
-
-function detachDebugFragment(
-  controller: BlobOrganismController,
-  biomass: number,
-  impulse: { x: number; y: number; z: number },
-) {
-  const snapshot = controller.snapshot();
-  return controller.applyImpact({
-    point: {
-      x: snapshot.core.position.x + snapshot.core.radius,
-      y: snapshot.core.position.y,
-      z: snapshot.core.position.z,
-    },
-    direction: { x: -1, y: 0, z: 0 },
-    normal: { x: 1, y: 0, z: 0 },
-    impulse,
-    damage: 40,
-    cohesionEnergy: 40,
-    detachBiomass: biomass,
-  });
 }
 
 function resolvePresetFor(definition: CharacterDefinition, options: NpcPresetOptions): NpcPreset {
@@ -932,8 +377,6 @@ function resolvePresetFor(definition: CharacterDefinition, options: NpcPresetOpt
       return applyDefinitionStats(buildPassivePreset(), definition);
     case 'headcrabMelee':
       return buildHeadcrabPreset();
-    case 'blobCreature':
-      return buildBlobPreset();
     case 'manhackFlyer':
       return buildManhackPreset();
     case 'floorTurret':
@@ -959,12 +402,6 @@ function computeMountYaw(position: Vector3, patrol: Vector3[]): number {
 
 /** Visuales procedurales para NPCs sin GLB (registrar uno nuevo = una entrada). */
 const proceduralVisuals: Record<string, () => Object3D> = {
-  // El grupo lo puebla `BlobV2Animator` con su isosuperficie programada.
-  blob: () => {
-    const group = new Group();
-    group.name = 'blob-root';
-    return group;
-  },
   manhack: createManhackVisual,
   floorTurret: createTurretVisual,
   gunship: createGunshipVisual,

@@ -43,22 +43,8 @@ export interface PhysicsMetadata {
    * sin que una explosión aplique daño una vez por collider.
    */
   explosionGroupId?: string;
-  /** Damageable canónico del grupo explosivo (por ejemplo, el cerebro del Blob). */
+  /** Damageable canónico del grupo explosivo (por ejemplo, el núcleo de un jefe). */
   explosionDamageable?: Damageable;
-  /** Sólido que el Blob puede atravesar; continúa bloqueando al resto del mundo. */
-  blobPermeable?: boolean;
-  /** Metadata geométrica del paso permeable; el motor V2 la consume. */
-  blobFlow?: {
-    openings: ReadonlyArray<{
-      offset: number;
-      width: number;
-      bottom: number;
-      height: number;
-    }>;
-    brainCrossFraction: number;
-  };
-  /** Prop dinámico que el Blob puede disolver tras envolverlo. */
-  blobConsumable?: { consumeSeconds: number; biomass: number };
   /** Tamaño del blocker temporal para el Tile Cache de navegación. */
   navigationObstacleSize?: [number, number, number];
   bodyPart?: {

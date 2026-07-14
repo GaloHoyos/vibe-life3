@@ -10,7 +10,6 @@ import type { ChargerKind } from "@game/config/items.config";
 import type { DifficultyLevel } from "@game/config/difficulty.config";
 import type { DamageType } from "@shared/types/lifecycle";
 import type { ActivatorRef } from "@game/script/ActivatorRef";
-import type { BlobOrganismEvent } from "@engine/blob/v2";
 
 export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
 export type CombatEventSourceKind = "player" | "npc" | "system";
@@ -31,21 +30,6 @@ export interface WeaponSelectorState {
 }
 
 export interface GameEventMap {
-  /** Evento autoritativo del organismo; `event.type` conserva el contrato V2. */
-  "blob.event": {
-    id: string;
-    event: BlobOrganismEvent;
-  };
-  "blob.prey.enveloped": {
-    id: string;
-    preyId: string;
-    biomass: number;
-  };
-  "blob.prey.consumed": {
-    id: string;
-    preyId: string;
-    biomass: number;
-  };
   "weapon.fired": {
     weaponName: string;
     weaponType: WeaponType;

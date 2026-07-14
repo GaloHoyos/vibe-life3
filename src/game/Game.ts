@@ -26,7 +26,6 @@ import { installIceConsole } from "@game/debug/IceConsole";
 import { installNpcConsole } from "@game/debug/NpcConsole";
 import { installPlayerConsole } from "@game/debug/PlayerConsole";
 import { installPlayerModelConsole } from "@game/debug/PlayerModelConsole";
-import { installBlobV2Debug } from "@game/debug/BlobV2Debug";
 import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
 import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
 import { NpcsModule } from "@game/ui/overlay/debug/modules/NpcsModule";
@@ -81,10 +80,7 @@ import { HazardVolumeSystem } from "@game/levels/HazardVolumeSystem";
 import { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
 import { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 import type { ActorSnapshot, AiFrameContext, INpc, NpcFreezeHandle, NpcPortalHandle } from "@game/npc/core/INpc";
-import { blobSurfaceScheduler } from '@engine/blob/BlobSurfaceScheduler';
 import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
-import { blobPreyClaims } from "@game/npc/blob/BlobPreyClaimService";
-import { blobV2Runtimes } from "@game/npc/blob/v2/BlobV2RuntimeRegistry";
 import { DialogueSystem } from "@game/narrative/DialogueSystem";
 import { LevelEvents } from "@game/narrative/LevelEvents";
 import { WeaponPickup } from "@game/gameplay/weapons/pickup/WeaponPickup";
@@ -158,7 +154,6 @@ export class Game {
   private uninstallPlayerConsole: (() => void) | null = null;
   private uninstallIceConsole: (() => void) | null = null;
   private uninstallPlayerModelConsole: (() => void) | null = null;
-  private uninstallBlobDebug: (() => void) | null = null;
   private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
@@ -286,8 +281,6 @@ export class Game {
     }
 
     this.npcs.forEach((npc) => npc.dispose());
-    blobPreyClaims.reset();
-    blobV2Runtimes.reset();
     this.npcs = [];
     this.crashingGunships.clear();
     this.collapsingStriders.clear();
@@ -299,8 +292,6 @@ export class Game {
     this.uninstallIceConsole = null;
     this.uninstallPlayerModelConsole?.();
     this.uninstallPlayerModelConsole = null;
-    this.uninstallBlobDebug?.();
-    this.uninstallBlobDebug = null;
 
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
@@ -1234,9 +1225,6 @@ export class Game {
     this.uninstallPlayerModelConsole = installPlayerModelConsole(
       () => this.playerModel,
     );
-    if (import.meta.env.DEV) {
-      this.uninstallBlobDebug = installBlobV2Debug(() => blobV2Runtimes.debugSources());
-    }
 
     const debugMenu = new DebugMenu(this.root, input, controls, eventBus);
     debugMenu.register(new StatsModule());
@@ -1470,7 +1458,6 @@ export class Game {
         isAlive: player.isAlive(),
         radius: 0.35,
         health01: player.health.max > 0 ? player.health.current / player.health.max : 0,
-        blobPrey: { biomass: 12 },
       };
       const npcSnapshots: ActorSnapshot[] = this.npcs.map((npc) => ({
         id: npc.id,
@@ -1480,11 +1467,6 @@ export class Game {
         isAlive: npc.isAlive(),
         radius: npc.radius,
         health01: npc.health.max > 0 ? npc.health.current / npc.health.max : 0,
-        ...(npc.blobPrey ? { blobPrey: npc.blobPrey } : {}),
-        ...(npc.consumeByBlob ? { consumeByBlob: (blobId: string) => npc.consumeByBlob?.(blobId) ?? false } : {}),
-        ...(npc.setBlobDigestProgress
-          ? { setBlobDigestProgress: (progress: number) => npc.setBlobDigestProgress?.(progress) }
-          : {}),
       }));
       const npcIndex = new ActorSpatialIndex(npcSnapshots);
       const playerSquad = s.resolve(GameTokens.PlayerSquad);
@@ -1547,7 +1529,6 @@ export class Game {
         ctx.npcs = npcIndex.query(npc.position, this.npcContextRadius, npc.id);
         npc.update(ctx);
       });
-      blobSurfaceScheduler.runFrame();
       this.squadDirector.tickAssignments(time.elapsed, null);
     }
     this.doors.forEach((door) => door.update(time.delta));
@@ -1758,7 +1739,7 @@ export class Game {
    */
   private enterCapture(): void {
     const input = this.engine.services.resolve(EngineTokens.Input);
-    input.requestPointerLock();
+    void input.requestPointerLock();
     input.lockKeyboard();
   }
 
@@ -2021,8 +2002,6 @@ export class Game {
     // todos los bodies) → limpiar la escena (preservando las luces) → cargar.
     // En el primer load (menú/boot) todo está vacío, así que es no-op.
     this.npcs.forEach((npc) => npc.dispose());
-    blobPreyClaims.reset();
-    blobV2Runtimes.reset();
     this.crashingGunships.clear();
     this.collapsingStriders.clear();
     this.weaponPickups.forEach((pickup) => pickup.dispose());

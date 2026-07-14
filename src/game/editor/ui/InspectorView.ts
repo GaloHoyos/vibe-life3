@@ -11,12 +11,7 @@ import type {
 } from '@game/levels/builders/BuildingBuilder';
 import type { HouseSpec } from '@game/levels/builders/HouseBuilder';
 import type { RampSpec } from '@game/levels/builders/RampBuilder';
-import type { NPCDefinition, TriggerDefinition } from '@game/levels/LevelDefinition';
-import {
-  BLOB_POSE_KINDS,
-  type BlobPoseDefinition,
-  type BlobPoseKind,
-} from '@game/npc/blob/BlobControl';
+import type { TriggerDefinition } from '@game/levels/LevelDefinition';
 import type { EntityConnection, IOEntityFields, LogicEntityDefinition } from '@game/script/EntityIOTypes';
 import type { ScriptedSequenceDefinition, SequenceStep } from '@game/script/ScriptedSequenceTypes';
 import {
@@ -230,10 +225,6 @@ export class InspectorView implements Disposable {
           entity.def.material = v as typeof entity.def.material;
           this.commit();
         }));
-        this.append(checkboxField('Permeable para Blob', entity.def.blobPermeable ?? false, (v) => {
-          entity.def.blobPermeable = v || undefined;
-          this.commit();
-        }));
         return;
       case 'dynamicBox':
         this.append(selectField('Material', entity.def.material, MATERIAL_KEYS, (v) => {
@@ -244,20 +235,6 @@ export class InspectorView implements Disposable {
           entity.def.mass = v;
           this.commit();
         }, 1));
-        this.append(checkboxField('Consumible por Blob', entity.def.blobConsumable !== undefined, (v) => {
-          entity.def.blobConsumable = v ? (entity.def.blobConsumable ?? {}) : undefined;
-          this.commitAndRerender();
-        }));
-        if (entity.def.blobConsumable) {
-          this.append(numberField('Absorción (s)', entity.def.blobConsumable.consumeSeconds ?? 2, (v) => {
-            entity.def.blobConsumable = { ...entity.def.blobConsumable, consumeSeconds: clamp(v, 0.1, 30) };
-            this.commit();
-          }, 0.1));
-          this.append(numberField('Biomasa', entity.def.blobConsumable.biomass ?? 4, (v) => {
-            entity.def.blobConsumable = { ...entity.def.blobConsumable, biomass: Math.round(clamp(v, 1, 58)) };
-            this.commit();
-          }, 1));
-        }
         return;
       case 'door':
         this.append(selectField('Material', entity.def.material, MATERIAL_KEYS, (v) => {
@@ -295,10 +272,8 @@ export class InspectorView implements Disposable {
       case 'npc':
         this.append(selectField('Personaje', entity.def.characterId, CHARACTER_IDS, (v) => {
           entity.def.characterId = v;
-          if (v !== 'blob') entity.def.blobPoses = undefined;
           this.commitAndRerender();
         }));
-        if (entity.def.characterId === 'blob') this.blobPoseList(entity.def);
         this.connectionsEditor(entity.def, 'npc');
         return;
       case 'weaponPickup':
@@ -569,97 +544,6 @@ export class InspectorView implements Disposable {
     );
   }
 
-  private blobPoseList(def: NPCDefinition): void {
-    this.body.append(subheading('Poses del Blob'));
-    const poses = (def.blobPoses ??= []);
-    poses.forEach((pose, poseIndex) => {
-      const item = document.createElement('div');
-      item.className = 'editor-subitem';
-      item.append(
-        subitemHeader(`Pose ${poseIndex}`, () => {
-          poses.splice(poseIndex, 1);
-          this.commitAndRerender();
-        }),
-        textField('ID', pose.id ?? '', (v) => {
-          pose.id = v;
-          this.commitAndRerender();
-        }).element,
-        selectField('Forma', pose.kind, BLOB_POSE_KINDS, (v) => {
-          pose.kind = v as BlobPoseKind;
-          this.commitAndRerender();
-        }).element,
-        numberField('Transición (s)', pose.duration ?? 0.8, (v) => {
-          pose.duration = clamp(v, 0.05, 30);
-          this.commit();
-        }, 0.05).element,
-        numberField('Radio', pose.radius ?? defaultBlobPoseDimension(pose.kind, 'radius'), (v) => {
-          pose.radius = clamp(v, 0.1, 50);
-          this.commit();
-        }, 0.1).element,
-        numberField('Alto', pose.height ?? defaultBlobPoseDimension(pose.kind, 'height'), (v) => {
-          pose.height = clamp(v, 0.1, 50);
-          this.commit();
-        }, 0.1).element,
-        numberField('Ancho', pose.width ?? defaultBlobPoseDimension(pose.kind, 'width'), (v) => {
-          pose.width = clamp(v, 0.1, 50);
-          this.commit();
-        }, 0.1).element,
-        numberField('Espesor', pose.depth ?? defaultBlobPoseDimension(pose.kind, 'depth'), (v) => {
-          pose.depth = clamp(v, 0.05, 20);
-          this.commit();
-        }, 0.05).element,
-      );
-      item.append(selectField(
-        'Marker origen',
-        pose.marker ?? '',
-        this.docParamTargetNames(pose.marker ?? ''),
-        (v) => {
-          pose.marker = v || undefined;
-          this.commitAndRerender();
-        },
-      ).element);
-      if (blobPoseNeedsTarget(pose.kind)) {
-        item.append(selectField(
-          'Marker destino',
-          pose.targetMarker ?? '',
-          this.docParamTargetNames(pose.targetMarker ?? ''),
-          (v) => {
-            pose.targetMarker = v || undefined;
-            this.commitAndRerender();
-          },
-        ).element);
-      }
-
-      if (!pose.id) {
-        item.append(connectionWarning('La pose necesita un ID.'));
-      } else if (poses.some((candidate, index) => index !== poseIndex && candidate.id === pose.id)) {
-        item.append(connectionWarning(`El ID de pose "${pose.id}" está duplicado.`));
-      }
-      if (!pose.marker) item.append(connectionWarning(`${pose.kind} requiere un marker de origen.`));
-      else if (!this.docIoTargets().some((target) => target.classId === 'marker' && target.name === pose.marker)) {
-        item.append(connectionWarning(`El marker "${pose.marker}" no existe.`));
-      }
-      if (blobPoseNeedsTarget(pose.kind) && !pose.targetMarker) {
-        item.append(connectionWarning(`${pose.kind} requiere un marker de destino.`));
-      } else if (
-        pose.targetMarker &&
-        !this.docIoTargets().some((target) => target.classId === 'marker' && target.name === pose.targetMarker)
-      ) {
-        item.append(connectionWarning(`El marker "${pose.targetMarker}" no existe.`));
-      }
-      this.body.append(item);
-    });
-    this.body.append(miniButton('+ Pose Blob', () => {
-      poses.push({
-        id: uniqueBlobPoseId(poses),
-        kind: 'mound',
-        duration: 0.8,
-        marker: this.docParamTargetNames('')[0] || undefined,
-      });
-      this.commitAndRerender();
-    }));
-  }
-
   private ioNameField(entity: IOEntityFields & { id: string }): void {
     this.body.append(subheading('Nombre I/O (targetname)'));
     this.append(textField('Nombre', entity.name ?? '', (v) => {
@@ -853,13 +737,6 @@ export class InspectorView implements Disposable {
         }).element;
       }
       case 'string':
-        if (conn.input === 'SetBlobPose') {
-          const current = typeof conn.param === 'string' ? conn.param : '';
-          return selectField('Pose del Blob', current, this.docBlobPoseIds(conn.target, current), (v) => {
-            conn.param = v === '' ? undefined : v;
-            this.commit();
-          }).element;
-        }
         return textField('Parametro', typeof conn.param === 'string' ? conn.param : '', (v) => {
           conn.param = v === '' ? undefined : v;
           this.commit();
@@ -870,24 +747,6 @@ export class InspectorView implements Disposable {
           this.commit();
         }).element;
     }
-  }
-
-  private docBlobPoseIds(target: string, current: string): string[] {
-    const ids = new Set<string>();
-    const addNpc = (name: string, npc: NPCDefinition): void => {
-      const matches = target === '!self' || target === '!caller'
-        ? this.entity?.kind === 'npc' && this.entity.def === npc
-        : targetNameMatches(target, name);
-      if (!matches) return;
-      for (const pose of npc.blobPoses ?? []) if (pose.id) ids.add(pose.id);
-    };
-    for (const entity of this.callbacks.getDocument().entities) {
-      if (entity.kind === 'npc') addNpc(entity.def.name ?? entity.def.id, entity.def);
-      if (entity.kind === 'logic' && entity.def.kind === 'npcSpawner') {
-        for (const npc of entity.def.npcs) addNpc(npc.name ?? npc.id, npc);
-      }
-    }
-    return withCurrent([...ids].filter(Boolean).sort(), current);
   }
 
   private storyEditor(spec: BuildingSpec, story: BuildingStorySpec, index: number): HTMLElement {
@@ -1194,33 +1053,7 @@ function connectionWarning(message: string): HTMLParagraphElement {
 
 function defaultNumberParam(input: string): number {
   if (input === 'Add' || input === 'Subtract') return 1;
-  if (input === 'SplitBlob') return 3;
   return 0;
-}
-
-function blobPoseNeedsTarget(kind: BlobPoseKind): boolean {
-  return kind === 'tendril' || kind === 'bridge' || kind === 'wall';
-}
-
-function defaultBlobPoseDimension(
-  kind: BlobPoseKind,
-  field: 'radius' | 'height' | 'width' | 'depth',
-): number {
-  if (field === 'depth') return kind === 'wall' || kind === 'bridge' ? 0.8 : 1.2;
-  if (field === 'height') return kind === 'column' || kind === 'wall' ? 4 : 2;
-  if (field === 'width') return kind === 'wall' || kind === 'bridge' ? 5 : 2.5;
-  return kind === 'tendril' ? 0.7 : 2;
-}
-
-function uniqueBlobPoseId(poses: readonly BlobPoseDefinition[]): string {
-  const occupied = new Set(poses.map((pose) => pose.id));
-  let index = poses.length + 1;
-  while (occupied.has(`pose-${index}`)) index += 1;
-  return `pose-${index}`;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
 
 function targetNameMatches(pattern: string, name: string): boolean {

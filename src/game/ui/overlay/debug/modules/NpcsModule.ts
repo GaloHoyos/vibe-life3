@@ -154,14 +154,6 @@ export class NpcsModule implements DebugModule {
         this.listenerAbort.signal,
       ),
     );
-    section.appendChild(
-      buildCheckbox(
-        "Ver partículas del blob",
-        () => NpcDebugFlags.showBlobParticles,
-        (v) => (NpcDebugFlags.showBlobParticles = v),
-        this.listenerAbort.signal,
-      ),
-    );
 
     const wrap = document.createElement("div");
     wrap.className = "debug-row";

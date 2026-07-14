@@ -24,7 +24,6 @@ import { DEMO2_DETAIL_ARTIFACT } from './Demo2RavenholmGeometry';
  *
  * Contratos importantes:
  * - El ID permanece estable porque Demo 1 encadena a `demo-02-ravenholm`.
- * - No hay NPC Blob en carga inicial ni en spawners.
  * - El puzzle de portal no depende de eventos `portal.*`: un trigger confirma
  *   la llegada al balcón y el botón físico de la puerta completa la acción.
  * - Los contadores de combates críticos tienen fallback ante fallos de spawn;

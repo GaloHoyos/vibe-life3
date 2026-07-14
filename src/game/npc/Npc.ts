@@ -46,14 +46,12 @@ import type { DamageType } from '@shared/types/lifecycle';
 import type { DifficultyProvider } from '@game/config/difficulty.config';
 import type { NpcCalloutKind } from '@game/config/audio.config';
 import { navigationProfileForPreset } from '@game/npc/navigation/NavAgentProfiles';
-import type { BlobPreyDefinition, CharacterId } from '@engine/characters/CharacterDefinition';
-import type { NpcBlobControlHandle } from '@game/npc/blob/BlobControl';
+import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { PortalFrame } from '@engine/portals/PortalFrame';
 
 export interface NpcConstructionParams {
   id: string;
   characterId?: CharacterId;
-  blobPrey?: BlobPreyDefinition | null;
   faction: Faction;
   position: Vector3;
   visualRoot: Group;
@@ -74,7 +72,6 @@ export interface NpcConstructionParams {
   /** Multiplicadores de dificultad; ausente = sin escalado (tests, normal). */
   difficulty?: DifficultyProvider;
   animation?: NpcAnimator | null;
-  blobControl?: NpcBlobControlHandle | null;
   patrolRoute?: Vector3[] | null;
   tacticalMap?: TacticalMap | null;
   squadDirector?: SquadDirector | null;
@@ -88,8 +85,6 @@ interface PortalCapableMotor {
   teleport(position: Vector3, velocity: Vector3): void;
   snapYaw(yaw: number): void;
   setPortalExclusions(handles: ReadonlySet<number> | null): void;
-  /** Operación atómica para motores compuestos (Blob). */
-  teleportPose?(position: Vector3, velocity: Vector3, yaw: number): void;
   /** Conserva la rotación 3D de los componentes internos al cruzar. */
   teleportThroughPortal?(
     entry: PortalFrame,
@@ -116,8 +111,6 @@ const DAMAGE_AGGRO_DURATION = 5.0;
 const ATTACK_SLOT_MEMORY_GRACE = 1.0;
 /** Histeresis (s) sin querer disparar antes de soltar el slot de ataque. */
 const ATTACK_SLOT_RELEASE_DELAY = 1.0;
-/** Living prey can still struggle while enveloped, but cannot outrun the mass. */
-const BLOB_ENVELOP_SPEED_MULTIPLIER = 0.35;
 /** Minimo (s) entre voces tacticas de un mismo NPC (no pisarse hablando). */
 const CALLOUT_THROTTLE = 4.0;
 
@@ -130,7 +123,6 @@ const CALLOUT_THROTTLE = 4.0;
 export class Npc implements INpc {
   readonly id: string;
   readonly characterId: CharacterId;
-  readonly blobPrey: BlobPreyDefinition | null;
   readonly mesh: Group;
   readonly health: Health;
   readonly faction: Faction;
@@ -156,7 +148,6 @@ export class Npc implements INpc {
   private readonly navigationProfile: NavAgentProfile;
   private readonly eventBus: GameEventBus;
   private readonly animation: NpcAnimator | null;
-  private readonly blobControl: NpcBlobControlHandle | null;
   private readonly animationLookTarget = new Vector3();
   private lastViewerDistance = 0;
   private readonly tmpSliceDir = new Vector3();
@@ -178,15 +169,11 @@ export class Npc implements INpc {
   private readonly height: number;
   private justHitTimer = 0;
   private disposed = false;
-  private consumedByBlob = false;
-  private readonly blobDigestBaseScale = new Vector3(1, 1, 1);
-  private blobDigestScaleCaptured = false;
-  /** Congelado sólido: el visual lo mueve la estatua; el Blob muere al shatter. */
+  /** Congelado sólido por el ice gun: el visual lo mueve la estatua física. */
   private frozenSolid = false;
   private freezeHandle: NpcFreezeHandle | null = null;
   private lastConditions: ConditionMask = NO_CONDITIONS;
   private threatLastKnown: Vector3 | null = null;
-  private readonly blobEnvelopmentOwners = new Set<string>();
   private gaitMultiplier = 1;
   private currentThreat: ActorSnapshot | null = null;
   private readonly threatCandidates: ActorSnapshot[] = [];
@@ -200,7 +187,6 @@ export class Npc implements INpc {
   constructor(params: NpcConstructionParams) {
     this.id = params.id;
     this.characterId = params.characterId ?? params.preset.id;
-    this.blobPrey = params.blobPrey ?? null;
     this.faction = params.faction;
     this.mesh = params.visualRoot;
     this.position = params.position;
@@ -226,7 +212,6 @@ export class Npc implements INpc {
     this.eventBus = params.eventBus;
     this.combatHandle = params.combat;
     this.animation = params.animation ?? null;
-    this.blobControl = params.blobControl ?? null;
     this.locomotion = new NavigationLocomotion(
       this.motor,
       params.navigation,
@@ -238,11 +223,7 @@ export class Npc implements INpc {
         separation: !this.preset.movement.flying && !this.preset.movement.directGround,
       },
     );
-    this.perception = new PerceptionSystem(
-      this.preset.perception,
-      this.id,
-      this.preset.id === 'blob' ? (metadata) => metadata?.blobPermeable !== true : undefined,
-    );
+    this.perception = new PerceptionSystem(this.preset.perception, this.id);
     this.brain = new Brain<NpcBrainContext>(this.preset.schedules);
     this.patrolRoute =
       params.patrolRoute && params.patrolRoute.length > 0 ? params.patrolRoute : null;
@@ -296,8 +277,8 @@ export class Npc implements INpc {
       this.animation?.updateStandalone(delta, { dead: true });
       return;
     }
-    // El Blob congelado conserva el cerebro vivo hasta que se rompa la estatua,
-    // pero ni IA, locomoción, combate ni render vuelven a escribir su visual.
+    // Congelado por el ice gun: la estatua física es dueña del visual; ni IA,
+    // locomoción, combate ni render vuelven a escribirlo hasta el shatter.
     if (this.frozenSolid) return;
 
     this.syncMeshFromMotor();
@@ -565,12 +546,8 @@ export class Npc implements INpc {
       getPosition: () => motor.getPosition(),
       getVelocity: () => getVelocity.call(motor),
       teleport: (position, velocity, yaw) => {
-        if (typeof motor.teleportPose === 'function') {
-          motor.teleportPose(position, velocity, yaw);
-        } else {
-          teleport.call(motor, position, velocity);
-          snapYaw.call(motor, yaw);
-        }
+        teleport.call(motor, position, velocity);
+        snapYaw.call(motor, yaw);
       },
       ...(typeof motor.teleportThroughPortal === 'function'
         ? {
@@ -608,12 +585,6 @@ export class Npc implements INpc {
   private freezeSolid(): Group | null {
     if (this.disposed || !this.health.isAlive()) return null;
     this.frozenSolid = true;
-    if (this.preset.id === 'blob') {
-      this.locomotion.stop();
-      if (this.motor.freezeSolid?.() !== true) this.motor.disable();
-      this.animation?.disable();
-      return this.mesh;
-    }
     // La muerte pasa por applyDamage (eventos, squad, motor.disable), pero con
     // `frozenSolid` se omite el ragdoll: la pose queda rígida tal como está.
     this.applyDamage(this.health.max * 10, undefined, undefined, 'player');
@@ -623,10 +594,9 @@ export class Npc implements INpc {
 
   private shatterFrozen(): void {
     if (!this.frozenSolid || !this.health.isAlive()) return;
-    this.motor.shatterFrozen?.();
-    this.applyDamage(this.health.max * 10, undefined, 'blob-core', 'player');
+    this.applyDamage(this.health.max * 10, undefined, undefined, 'player');
     // La estatua ya es dueña del visual y la retira inmediatamente. Cerrar el
-    // runtime ahora evita jobs, hitboxes, claims o registros vivos hasta reload.
+    // runtime ahora evita jobs, hitboxes o registros vivos hasta reload.
     this.dispose();
   }
 
@@ -695,63 +665,8 @@ export class Npc implements INpc {
     }
   }
 
-  /**
-   * Aplica una pérdida ya resuelta por otro modelo autoritativo (Blob V2).
-   * Conserva eventos/aggro/muerte del NPC sin volver a escalar por dificultad.
-   */
-  applyAuthoritativeDamage(
-    amount: number,
-    hitDirection?: Vector3,
-    hitPartName?: string,
-    attackerId?: string,
-    hitPoint?: Vector3,
-    damageType: DamageType = 'bullet',
-  ): void {
-    this.applyDamage(
-      amount,
-      hitDirection,
-      hitPartName,
-      attackerId,
-      hitPoint,
-      damageType,
-      true,
-    );
-  }
-
   isAlive(): boolean {
     return this.health.isAlive() && !this.disposed;
-  }
-
-  consumeByBlob(_blobId: string): boolean {
-    if (this.consumedByBlob || this.health.isAlive() || !this.blobPrey) return false;
-    this.consumedByBlob = true;
-    this.mesh.visible = false;
-    this.dispose();
-    return true;
-  }
-
-  setBlobDigestProgress(progress: number): void {
-    if (!this.blobPrey || this.consumedByBlob) return;
-    if (!this.blobDigestScaleCaptured) {
-      this.blobDigestBaseScale.copy(this.mesh.scale);
-      this.blobDigestScaleCaptured = true;
-    }
-    const t = Math.max(0, Math.min(1, Number.isFinite(progress) ? progress : 0));
-    const radial = 1 - t * 0.62;
-    const vertical = 1 - t * 0.88;
-    this.mesh.scale.set(
-      this.blobDigestBaseScale.x * radial,
-      this.blobDigestBaseScale.y * vertical,
-      this.blobDigestBaseScale.z * radial,
-    );
-  }
-
-  /** Runtime-only prey hook used by Blob V2; multiple owners remain idempotent. */
-  setBlobEnveloped(blobId: string, active: boolean): void {
-    if (!blobId || this.disposed || !this.blobPrey) return;
-    if (active) this.blobEnvelopmentOwners.add(blobId);
-    else this.blobEnvelopmentOwners.delete(blobId);
-    this.applyMovementSpeedMultiplier();
   }
 
   getState(): string {
@@ -821,10 +736,6 @@ export class Npc implements INpc {
     this.motor.disable();
   }
 
-  getBlobControlHandle(): NpcBlobControlHandle | null {
-    return this.health.isAlive() && !this.disposed ? this.blobControl : null;
-  }
-
   private syncMeshFromMotor(): void {
     const pos = this.motor.getPosition();
     this.mesh.position.copy(pos);
@@ -864,13 +775,10 @@ export class Npc implements INpc {
     const candidates = this.threatCandidates;
     candidates.length = 0;
     const freeForAll = NpcDebugFlags.infighting;
-    const consumesPrey = this.preset.id === 'blob';
     if (
       !NpcDebugFlags.ignorePlayer &&
       ctx.player.isAlive &&
-      (consumesPrey
-        ? this.canTargetAsBlob(ctx.player, freeForAll)
-        : isHostileTo(this.faction, ctx.player.faction))
+      isHostileTo(this.faction, ctx.player.faction)
     ) {
       candidates.push(ctx.player);
       // Proyecciones del player a través de portales: candidatos extra cuya
@@ -891,20 +799,14 @@ export class Npc implements INpc {
       if (!npc.isAlive || npc.id === this.id) continue;
       // `infighting` ignora la matriz de facciones — hay que excluir el self a
       // mano (antes lo filtraba `isHostileTo(mismaFaccion)` devolviendo false).
-      if (
-        consumesPrey
-          ? this.canTargetAsBlob(npc, freeForAll)
-          : freeForAll || isHostileTo(this.faction, npc.faction)
-      ) {
+      if (freeForAll || isHostileTo(this.faction, npc.faction)) {
         candidates.push(npc);
       }
     }
     if (ctx.portalGhosts) {
       for (const ghost of ctx.portalGhosts) {
         if (!ghost.isAlive || ghost.id === this.id || ghost.id === ctx.player.id) continue;
-        if (!(consumesPrey
-          ? this.canTargetAsBlob(ghost, freeForAll)
-          : freeForAll || isHostileTo(this.faction, ghost.faction))) continue;
+        if (!(freeForAll || isHostileTo(this.faction, ghost.faction))) continue;
         if (ghost.portalView && !this.isInFrontOfPortalView(ghost.portalView)) continue;
         candidates.push(ghost);
       }
@@ -943,7 +845,6 @@ export class Npc implements INpc {
         { id: candidate.id, position: candidate.position, isAlive: candidate.isAlive },
         candidate.portalView ? this.losRaycast : this.raycast,
         this.id,
-        this.preset.id === 'blob' ? (metadata) => metadata?.blobPermeable !== true : undefined,
       );
       if (!visible) score *= THREAT_UNSEEN_PENALTY;
       if (candidate === current) currentScore = score;
@@ -972,25 +873,6 @@ export class Npc implements INpc {
     const dy = self.y + this.preset.perception.eyeHeight - view.position.y;
     const dz = self.z - view.position.z;
     return dx * view.normal.x + dy * view.normal.y + dz * view.normal.z > 0;
-  }
-
-  private canConsume(actor: ActorSnapshot): boolean {
-    const entity = actor.entity as typeof actor.entity & { characterId?: unknown };
-    return (
-      this.preset.id === 'blob' &&
-      actor.blobPrey != null &&
-      entity.characterId !== 'blob'
-    );
-  }
-
-  private canTargetAsBlob(actor: ActorSnapshot, freeForAll: boolean): boolean {
-    const entity = actor.entity as typeof actor.entity & { characterId?: unknown };
-    if (entity.characterId === 'blob') return false;
-    return (
-      this.canConsume(actor) ||
-      freeForAll ||
-      isHostileTo(this.faction, actor.faction)
-    );
   }
 
   /** Vecinos vivos a < 4 m para la separacion de locomotion. */
@@ -1258,10 +1140,7 @@ export class Npc implements INpc {
   }
 
   private applyMovementSpeedMultiplier(): void {
-    const envelopScale = this.blobEnvelopmentOwners.size > 0
-      ? BLOB_ENVELOP_SPEED_MULTIPLIER
-      : 1;
-    this.motor.setSpeedMultiplier(this.gaitMultiplier * envelopScale);
+    this.motor.setSpeedMultiplier(this.gaitMultiplier);
   }
 }
 
@@ -1312,12 +1191,8 @@ function buildScriptTeleport(
   }
   const zeroVelocity = new Vector3();
   return (position, yaw) => {
-    if (typeof capable.teleportPose === 'function') {
-      capable.teleportPose(position, zeroVelocity.set(0, 0, 0), yaw);
-    } else {
-      teleport.call(capable, position, zeroVelocity.set(0, 0, 0));
-      snapYaw.call(capable, yaw);
-    }
+    teleport.call(capable, position, zeroVelocity.set(0, 0, 0));
+    snapYaw.call(capable, yaw);
   };
 }
 

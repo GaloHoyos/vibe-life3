@@ -18,8 +18,6 @@ declare global {
       }>;
       /** Mata un NPC (por id o el primero vivo) con dirección de golpe y body part opcionales. */
       kill: (id?: string, dx?: number, dy?: number, dz?: number, partName?: string) => string;
-      /** Comandos mínimos para smoke tests visuales del organismo compuesto. */
-      blob: (id: string, command: "split" | "merge" | "reset", components?: number) => string;
     };
   }
 }
@@ -52,19 +50,6 @@ export function installNpcConsole(getNpcs: () => readonly INpc[]): () => void {
       const direction = new Vector3(dx ?? 0, dy ?? 0.15, dz ?? 1);
       npc.applyDamage(99999, direction, partName, "debug-console");
       return `${npc.id} muerto`;
-    },
-    blob: (id, command, components) => {
-      const npc = getNpcs().find((candidate) => candidate.id === id);
-      const control = npc?.getBlobControlHandle?.();
-      if (!npc || !control) return "blob no encontrado";
-      if (command === "split") {
-        control.split(components ?? 3);
-      } else if (command === "merge") {
-        control.merge();
-      } else {
-        control.resetPose();
-      }
-      return `${id}: ${command}`;
     },
   };
   window.__npcs = api;

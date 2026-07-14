@@ -7,7 +7,6 @@ import {
   type EntityInputDescriptor,
   type InputParamKind,
 } from "@game/script/EntityCatalog";
-import { BLOB_POSE_KINDS } from "@game/npc/blob/BlobControl";
 
 export type SanitizeResult =
   | { ok: true; document: EditorDocument }
@@ -57,9 +56,6 @@ export function sanitizeDocument(value: unknown): SanitizeResult {
   const entityIoScan = scanEntityIO(value);
   if (!entityIoScan.ok) return entityIoScan;
 
-  const blobContentScan = scanBlobContent(value);
-  if (!blobContentScan.ok) return blobContentScan;
-
   return { ok: true, document: value };
 }
 
@@ -92,8 +88,6 @@ const LOGIC_KINDS = new Set([
 
 const MOVE_MODES = new Set(["walk", "run", "teleport", "none"]);
 const GESTURE_IDS = new Set(["point", "wave", "talk", "crouch"]);
-const BLOB_POSES = new Set<string>(BLOB_POSE_KINDS);
-const MAX_BLOB_POSES = 32;
 
 /**
  * Valida el grafo I/O sin intentar sustituir el schema completo del backend.
@@ -386,222 +380,6 @@ function validateNpcShape(def: Record<string, unknown>, label: string): Validati
     return invalid(`${label}: characterId inválido.`);
   }
   return validateVector(def.position, `${label}: position`);
-}
-
-function scanBlobContent(document: EditorDocument): ValidationResult {
-  const markerNames = new Set<string>();
-  const npcsByName = new Map<string, Record<string, unknown>[]>();
-
-  const addNpc = (npc: Record<string, unknown>, label: string): ValidationResult => {
-    const poses = validateBlobPoses(npc, label);
-    if (!poses.ok) return poses;
-    const name = typeof npc.name === "string" && npc.name.length > 0 ? npc.name : npc.id;
-    if (typeof name === "string" && name.length > 0) {
-      const matches = npcsByName.get(name);
-      if (matches) matches.push(npc);
-      else npcsByName.set(name, [npc]);
-    }
-    return { ok: true };
-  };
-
-  for (let index = 0; index < document.entities.length; index += 1) {
-    const entity = document.entities[index] as unknown;
-    if (!isRecord(entity) || !isRecord(entity.def)) continue;
-    const def = entity.def;
-    const label = entityLabel(def, index);
-
-    if (entity.kind === "logic" && def.kind === "marker") {
-      if (typeof def.name === "string" && def.name.length > 0) markerNames.add(def.name);
-      continue;
-    }
-    if (entity.kind === "staticBox") {
-      const permeable = optionalBoolean(def.blobPermeable, `${label}: blobPermeable`);
-      if (!permeable.ok) return permeable;
-      const flow = validateBlobFlow(def.blobFlow, label);
-      if (!flow.ok) return flow;
-      continue;
-    }
-    if (entity.kind === "dynamicBox") {
-      const consumable = validateBlobConsumable(def.blobConsumable, label);
-      if (!consumable.ok) return consumable;
-      continue;
-    }
-    if (entity.kind === "npc") {
-      const result = addNpc(def, label);
-      if (!result.ok) return result;
-      continue;
-    }
-    if (entity.kind === "logic" && def.kind === "npcSpawner" && Array.isArray(def.npcs)) {
-      for (let npcIndex = 0; npcIndex < def.npcs.length; npcIndex += 1) {
-        const npc = def.npcs[npcIndex];
-        if (!isRecord(npc)) continue; // scanEntityIO ya informa la forma inválida.
-        const result = addNpc(npc, `${label}, NPC ${npcIndex}`);
-        if (!result.ok) return result;
-      }
-    }
-  }
-
-  for (const [name, npcs] of npcsByName) {
-    for (const npc of npcs) {
-      const poses = Array.isArray(npc.blobPoses) ? npc.blobPoses : [];
-      for (let poseIndex = 0; poseIndex < poses.length; poseIndex += 1) {
-        const pose = poses[poseIndex];
-        if (!isRecord(pose)) continue;
-        for (const marker of [pose.marker, pose.targetMarker]) {
-          if (marker === undefined) continue;
-          if (typeof marker !== "string" || !markerNames.has(marker)) {
-            return invalid(`NPC "${name}", pose ${poseIndex}: marker "${String(marker)}" no existe.`);
-          }
-        }
-      }
-    }
-  }
-
-  return validateBlobPoseConnections(document, npcsByName);
-}
-
-function validateBlobConsumable(value: unknown, label: string): ValidationResult {
-  if (value === undefined) return { ok: true };
-  if (!isRecord(value)) return invalid(`${label}: blobConsumable debe ser un objeto.`);
-  if (
-    value.consumeSeconds !== undefined &&
-    (typeof value.consumeSeconds !== "number" || value.consumeSeconds < 0.1 || value.consumeSeconds > 30)
-  ) {
-    return invalid(`${label}: consumeSeconds debe estar entre 0.1 y 30.`);
-  }
-  if (
-    value.biomass !== undefined &&
-    (typeof value.biomass !== "number" || !Number.isInteger(value.biomass) || value.biomass < 1 || value.biomass > 58)
-  ) {
-    return invalid(`${label}: biomass debe ser un entero entre 1 y 58.`);
-  }
-  return { ok: true };
-}
-
-function validateBlobFlow(value: unknown, label: string): ValidationResult {
-  if (value === undefined) return { ok: true };
-  if (!isRecord(value)) return invalid(`${label}: blobFlow debe ser un objeto.`);
-  if (!Array.isArray(value.openings) || value.openings.length < 1 || value.openings.length > 12) {
-    return invalid(`${label}: blobFlow.openings debe contener entre 1 y 12 aberturas.`);
-  }
-  if (
-    value.brainCrossFraction !== undefined
-    && (typeof value.brainCrossFraction !== "number"
-      || !Number.isFinite(value.brainCrossFraction)
-      || value.brainCrossFraction < 0.5
-      || value.brainCrossFraction > 0.95)
-  ) {
-    return invalid(`${label}: brainCrossFraction debe estar entre 0.5 y 0.95.`);
-  }
-  for (let index = 0; index < value.openings.length; index += 1) {
-    const opening = value.openings[index];
-    if (!isRecord(opening)) return invalid(`${label}: abertura ${index} de blobFlow inválida.`);
-    for (const field of ["offset", "width", "height"] as const) {
-      const fieldValue = opening[field];
-      if (typeof fieldValue !== "number" || !Number.isFinite(fieldValue)) {
-        return invalid(`${label}: blobFlow.openings[${index}].${field} debe ser finito.`);
-      }
-    }
-    const base = opening.base ?? opening.bottom;
-    if (typeof base !== "number" || !Number.isFinite(base)) {
-      return invalid(`${label}: blobFlow.openings[${index}].base debe ser finito.`);
-    }
-    if (
-      opening.base !== undefined
-      && opening.bottom !== undefined
-      && opening.base !== opening.bottom
-    ) {
-      return invalid(`${label}: la abertura ${index} no puede declarar base y bottom distintos.`);
-    }
-    if ((opening.width as number) <= 0 || (opening.height as number) <= 0 || base < 0) {
-      return invalid(`${label}: la abertura ${index} requiere width/height positivos y base no negativa.`);
-    }
-  }
-  return { ok: true };
-}
-
-function validateBlobPoses(npc: Record<string, unknown>, label: string): ValidationResult {
-  if (npc.blobPoses === undefined) return { ok: true };
-  if (npc.characterId !== "blob") return invalid(`${label}: blobPoses sólo es válido para characterId "blob".`);
-  if (!Array.isArray(npc.blobPoses)) return invalid(`${label}: blobPoses debe ser una lista.`);
-  if (npc.blobPoses.length > MAX_BLOB_POSES) {
-    return invalid(`${label}: demasiadas poses Blob (${npc.blobPoses.length} > ${MAX_BLOB_POSES}).`);
-  }
-  const ids = new Set<string>();
-  for (let index = 0; index < npc.blobPoses.length; index += 1) {
-    const pose = npc.blobPoses[index];
-    const prefix = `${label}, pose Blob ${index}`;
-    if (!isRecord(pose)) return invalid(`${prefix}: definición inválida.`);
-    if (typeof pose.id !== "string" || pose.id.length === 0) return invalid(`${prefix}: id vacío o inválido.`);
-    if (ids.has(pose.id)) return invalid(`${prefix}: id "${pose.id}" duplicado.`);
-    ids.add(pose.id);
-    if (typeof pose.kind !== "string" || !BLOB_POSES.has(pose.kind)) {
-      return invalid(`${prefix}: forma "${String(pose.kind)}" desconocida.`);
-    }
-    if (typeof pose.marker !== "string" || pose.marker.length === 0) {
-      return invalid(`${prefix}: marker debe ser un targetname.`);
-    }
-    if (
-      blobPoseNeedsTarget(pose.kind) &&
-      (typeof pose.targetMarker !== "string" || pose.targetMarker.length === 0)
-    ) {
-      return invalid(`${prefix}: ${pose.kind} requiere targetMarker.`);
-    }
-    if (
-      pose.duration !== undefined &&
-      (typeof pose.duration !== "number" || pose.duration < 0.05 || pose.duration > 30)
-    ) {
-      return invalid(`${prefix}: duration debe estar entre 0.05 y 30.`);
-    }
-    for (const field of ["radius", "height", "width", "depth", "length"] as const) {
-      const value = pose[field];
-      const max = field === "depth" ? 20 : 50;
-      if (value !== undefined && (typeof value !== "number" || value <= 0 || value > max)) {
-        return invalid(`${prefix}: ${field} debe ser mayor a cero y no superar ${max}.`);
-      }
-    }
-    if (pose.direction !== undefined) {
-      const direction = validateVector(pose.direction, `${prefix}: direction`);
-      if (!direction.ok) return direction;
-    }
-  }
-  return { ok: true };
-}
-
-function blobPoseNeedsTarget(kind: string): boolean {
-  return kind === "tendril" || kind === "bridge" || kind === "wall";
-}
-
-function validateBlobPoseConnections(
-  document: EditorDocument,
-  npcsByName: ReadonlyMap<string, readonly Record<string, unknown>[]>,
-): ValidationResult {
-  for (let entityIndex = 0; entityIndex < document.entities.length; entityIndex += 1) {
-    const entity = document.entities[entityIndex] as unknown;
-    if (!isRecord(entity) || !isRecord(entity.def)) continue;
-    const connections = entity.def.connections;
-    if (!Array.isArray(connections)) continue;
-    for (let connectionIndex = 0; connectionIndex < connections.length; connectionIndex += 1) {
-      const connection = connections[connectionIndex];
-      if (!isRecord(connection) || connection.input !== "SetBlobPose") continue;
-      const prefix = `${entityLabel(entity.def, entityIndex)}, conexión ${connectionIndex}`;
-      if (typeof connection.param !== "string" || connection.param.length === 0) {
-        return invalid(`${prefix}: SetBlobPose requiere un id de pose.`);
-      }
-      if (typeof connection.target !== "string" || connection.target.startsWith("!")) continue;
-      const targets: Record<string, unknown>[] = [];
-      for (const [name, npcs] of npcsByName) {
-        if (targetNameMatches(connection.target, name)) targets.push(...npcs);
-      }
-      for (const target of targets) {
-        const poses = Array.isArray(target.blobPoses) ? target.blobPoses : [];
-        if (!poses.some((pose) => isRecord(pose) && pose.id === connection.param)) {
-          return invalid(`${prefix}: la pose Blob "${connection.param}" no existe en el target.`);
-        }
-      }
-    }
-  }
-  return { ok: true };
 }
 
 function validateSequenceShape(def: Record<string, unknown>, label: string): ValidationResult {

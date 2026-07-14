@@ -444,18 +444,6 @@ export const EnemyAudio: Record<CharacterId, EnemySoundMap> = {
     ],
     killed: ["enemies.headcrab.hl2.die1", "enemies.headcrab.hl2.die2"],
   },
-  blob: {
-    alert: ["footsteps.hl2.slosh1", "footsteps.hl2.slosh2"],
-    attack: ["weapons.crowbar.hitFlesh", "footsteps.hl2.mud3"],
-    damaged: ["footsteps.hl2.mud1", "footsteps.hl2.mud2"],
-    killed: ["footsteps.hl2.slosh3", "footsteps.hl2.slosh4"],
-    footstep: [
-      "footsteps.hl2.slosh1",
-      "footsteps.hl2.slosh2",
-      "footsteps.hl2.slosh3",
-      "footsteps.hl2.slosh4",
-    ],
-  },
   manhack: {
     alert: "enemies.manhack.hl2.alert",
     attack: [

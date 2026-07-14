@@ -70,29 +70,6 @@ export const NavigationProfiles = {
     safeDropHeight: 4,
     maxTraversalLinks: 96,
   }),
-  blob: profile({
-    id: "blob",
-    domain: "smallGround",
-    radius: 0.22,
-    standingHeight: 0.45,
-    navigationHeight: 0.45,
-    maxSlopeDegrees: 55,
-    stepHeight: 0.32,
-    maxSpeed: 3.4,
-    acceleration: 14,
-    // La masa cruza jump links en balística (BlobV2Motor.leapTo). Mismos
-    // parámetros que el headcrab, cuyo dominio smallGround comparte.
-    canJump: true,
-    canCrouch: false,
-    canDrop: true,
-    canOpenDoors: false,
-    canUsePortals: true,
-    jumpSpeed: 7.5,
-    maxJumpDistance: 4,
-    safeDropHeight: 4,
-    fallbackProfileId: "headcrab",
-    maxTraversalLinks: 96,
-  }),
   manhack: profile({
     id: "manhack",
     domain: "air",
@@ -185,8 +162,6 @@ export function navigationProfileForPreset(preset: NpcPreset): NavAgentProfile {
       return NavigationProfiles.stationary;
     case "headcrab":
       return NavigationProfiles.headcrab;
-    case "blob":
-      return NavigationProfiles.blob;
     case "zombie":
     case "passive":
       return NavigationProfiles.humanoidLimited;

@@ -14,7 +14,6 @@ import { recordEvents } from "@tests/support/events";
 import { Npc } from "@game/npc/Npc";
 import type { ActorSnapshot, AiFrameContext } from "@game/npc/core/INpc";
 import type { NpcScriptOrder } from "@game/script/NpcScriptOrder";
-import { NpcDebugFlags } from "@game/npc/core/NpcDebugFlags";
 
 const preset: NpcPreset = {
   id: "test-npc",
@@ -85,8 +84,6 @@ const combat: NpcCombatHandle = {
 function createNpc(
   raycast: Raycast = {} as Raycast,
   losRaycast?: RaycastSource,
-  blobPrey = false,
-  asBlob = false,
 ) {
   const bus = new EventBus<GameEventMap>();
   const position = new Vector3(0, 0, 0);
@@ -94,14 +91,14 @@ function createNpc(
   return {
     npc: new Npc({
       id: "npc-1",
-      characterId: asBlob ? "blob" : "test-npc",
+      characterId: "test-npc",
       faction: "zombies",
       position,
       visualRoot: new Group(),
       height: 1.8,
       motor,
       combat,
-      preset: asBlob ? { ...preset, id: "blob" } : preset,
+      preset,
       navigation: {
         createAgent: () => null,
         releaseAgentReservations: vi.fn(),
@@ -116,7 +113,6 @@ function createNpc(
       patrolRoute: null,
       tacticalMap: null,
       squadDirector: null,
-      ...(blobPrey ? { blobPrey: { biomass: 12 } } : {}),
     }),
     motor,
     damaged: recordEvents(bus, "npc.damaged"),
@@ -148,86 +144,6 @@ function context(npcs: ActorSnapshot[], portalGhosts?: ActorSnapshot[]): AiFrame
     eventBus: new EventBus<GameEventMap>(),
   };
 }
-
-describe("Npc Blob envelopment", () => {
-  it("reduces prey movement while claimed and restores its current gait on release", () => {
-    const { npc, motor } = createNpc({} as Raycast, undefined, true);
-
-    npc.setBlobEnveloped("blob-a", true);
-    expect(motor.setSpeedMultiplier).toHaveBeenLastCalledWith(0.35);
-
-    npc.setBlobEnveloped("blob-b", true);
-    npc.setBlobEnveloped("blob-a", false);
-    expect(motor.setSpeedMultiplier).toHaveBeenLastCalledWith(0.35);
-
-    npc.setBlobEnveloped("blob-b", false);
-    expect(motor.setSpeedMultiplier).toHaveBeenLastCalledWith(1);
-  });
-
-  it("selects marked allied prey while excluding another marked Blob", () => {
-    const { npc } = createNpc(
-      { cast: vi.fn(() => null) } as unknown as Raycast,
-      undefined,
-      false,
-      true,
-    );
-    const unmarked = actor("unmarked", new Vector3(0, 0, 1), "zombies");
-    const otherBlob = {
-      ...actor("other-blob", new Vector3(0, 0, 2), "zombies"),
-      blobPrey: { biomass: 12 },
-      entity: {
-        characterId: "blob",
-        applyDamage: vi.fn(),
-        isAlive: () => true,
-      } as ActorSnapshot["entity"] & { characterId: "blob" },
-    } satisfies ActorSnapshot;
-    const marked = {
-      ...actor("marked", new Vector3(0, 0, 3), "zombies"),
-      blobPrey: { biomass: 12 },
-    } satisfies ActorSnapshot;
-
-    const picked = (npc as unknown as {
-      pickThreat(ctx: AiFrameContext): ActorSnapshot | null;
-    }).pickThreat(context([unmarked, otherBlob, marked]));
-    expect(picked?.id).toBe("marked");
-  });
-
-  it("still targets an unmarked hostile player but never another Blob under infighting", () => {
-    const { npc } = createNpc(
-      { cast: vi.fn(() => null) } as unknown as Raycast,
-      undefined,
-      false,
-      true,
-    );
-    const hostilePlayer = {
-      ...actor("player", new Vector3(0, 0, 3), "player"),
-      blobPrey: undefined,
-    } satisfies ActorSnapshot;
-    const otherBlob = {
-      ...actor("other-blob", new Vector3(0, 0, 1), "zombies"),
-      blobPrey: { biomass: 12 },
-      entity: {
-        characterId: "blob",
-        applyDamage: vi.fn(),
-        isAlive: () => true,
-      } as ActorSnapshot["entity"] & { characterId: "blob" },
-    } satisfies ActorSnapshot;
-    const hostileContext = {
-      ...context([otherBlob]),
-      player: hostilePlayer,
-    };
-
-    NpcDebugFlags.infighting = true;
-    try {
-      const picked = (npc as unknown as {
-        pickThreat(ctx: AiFrameContext): ActorSnapshot | null;
-      }).pickThreat(hostileContext);
-      expect(picked?.id).toBe("player");
-    } finally {
-      NpcDebugFlags.infighting = false;
-    }
-  });
-});
 
 describe("Npc.applyDamage", () => {
   it("emite dano y muerte una sola vez", () => {

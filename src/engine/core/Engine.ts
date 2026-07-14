@@ -69,6 +69,7 @@ export class Engine {
   dispose(): void {
     this.loop.stop();
     this.services.resolve(EngineTokens.Input).dispose();
+    this.services.resolve(EngineTokens.Audio).dispose();
     this.services.resolve(EngineTokens.Vfx).dispose();
     this.services.resolve(EngineTokens.Environment).dispose();
     this.services.resolve(EngineTokens.Renderer).dispose();

@@ -26,11 +26,11 @@ describe("GrenadeSystem", () => {
         body,
       );
       physics.registerCollider(collider, {
-        id: `blob-mass-${index}`,
-        ownerId: 'blob-1',
+        id: `boss-part-${index}`,
+        ownerId: 'boss-1',
         kind: 'npc',
         damageable: skin,
-        explosionGroupId: 'blob-1',
+        explosionGroupId: 'boss-1',
         explosionDamageable: canonical,
       });
     }
@@ -59,7 +59,7 @@ describe("GrenadeSystem", () => {
     expect(skinA.applyDamage).not.toHaveBeenCalled();
     expect(skinB.applyDamage).not.toHaveBeenCalled();
     expect(hits).toHaveLength(1);
-    expect(hits[0].targetId).toBe('blob-1');
+    expect(hits[0].targetId).toBe('boss-1');
   });
 
   it("remueve granadas usando PhysicsWorld.removeDynamicBody y limpia metadata", async () => {

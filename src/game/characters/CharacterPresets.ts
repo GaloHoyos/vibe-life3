@@ -5,7 +5,6 @@ import type {
   CharacterDefinition,
   CharacterId,
 } from "@engine/characters/CharacterDefinition";
-import { BlobConfig } from '@game/config/blob.config';
 
 const baseHumanoid = {
   type: "humanoid",
@@ -134,7 +133,6 @@ function buildRebelDefinition(
     ...baseHumanoid,
     id,
     modelId,
-    blobPrey: { biomass: 12 },
     faction: "resistance",
     aiProfileId: overrides.aiProfileId ?? "rebelAlly",
     visualOffset: new Vector3(0, -0.875, 0),
@@ -227,7 +225,6 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     ...baseHumanoid,
     id: "zombie",
     modelId: "zombie",
-    blobPrey: { biomass: 12 },
     visualOffset: new Vector3(0, -0.875, 0),
     movement: {
       ...baseHumanoid.movement,
@@ -310,7 +307,6 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     ...baseHumanoid,
     id: "combine",
     modelId: "combine",
-    blobPrey: { biomass: 12 },
     faction: "combine",
     aiProfileId: "combineSoldier",
     visualOffset: new Vector3(0, -0.875, 0),
@@ -414,7 +410,6 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     ...baseHumanoid,
     id: "combineElite",
     modelId: "combineElite",
-    blobPrey: { biomass: 12 },
     faction: "combine",
     aiProfileId: "combineSoldier",
     visualOffset: new Vector3(0, -0.875, 0),
@@ -520,7 +515,6 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     ...baseHumanoid,
     id: "combineShotgunner",
     modelId: "combineShotgunner",
-    blobPrey: { biomass: 12 },
     faction: "combine",
     aiProfileId: "combineSoldier",
     visualOffset: new Vector3(0, -0.875, 0),
@@ -624,7 +618,6 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     ...baseHumanoid,
     id: "alyx",
     modelId: "alyx",
-    blobPrey: { biomass: 12 },
     faction: "resistance",
     aiProfileId: "alyxSupport",
     visualOffset: new Vector3(0, -0.875, 0),
@@ -722,7 +715,6 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     ...baseHumanoid,
     id: "headcrab",
     modelId: "headcrab",
-    blobPrey: { biomass: 4 },
     type: "creature",
     faction: "zombies",
     aiProfileId: "headcrabMelee",
@@ -762,52 +754,6 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       windup: 0,
       hitWindow: 1.0,
       knockback: 1.5,
-      requireLineOfSight: false,
-      facingDotThreshold: 0.2,
-    },
-  },
-  blob: {
-    ...baseHumanoid,
-    id: "blob",
-    modelId: undefined,
-    type: "creature",
-    faction: "zombies",
-    aiProfileId: "blobCreature",
-    // Content/grounding height only: BlobV2Motor still has no solid capsule.
-    // A headcrab-sized value placed the brain at 45 cm and let the floor slice
-    // through half of the marching-cubes body.
-    height: 2,
-    radius: 0.3,
-    mass: 40,
-    visualScale: 1,
-    visualOffset: new Vector3(0, 0, 0),
-    // Informativo: la vida/daño runtime de creatures sale de `buildBlobPreset`
-    // y `BlobConfig` (no pasan por `applyDefinitionStats`).
-    health: { maxHealth: BlobConfig.v2.coreHealth },
-    collider: {
-      height: 2,
-      radius: 0.3,
-      mass: 40,
-      stepOffset: 0.4,
-      snapToGround: 0.45,
-    },
-    perception: {
-      viewDistance: 18,
-      viewConeRadians: Math.PI * 1.9,
-      hearingRadius: 22,
-      memoryDuration: 8,
-      eyeHeight: 0.35,
-    },
-    ai: { detectionRange: 18 },
-    attack: {
-      enabled: true,
-      type: "melee",
-      damage: 6,
-      range: 1.7,
-      cooldown: 0.35,
-      windup: 0,
-      hitWindow: 1.0,
-      knockback: 0.5,
       requireLineOfSight: false,
       facingDotThreshold: 0.2,
     },

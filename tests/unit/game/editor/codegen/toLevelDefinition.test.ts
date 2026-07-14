@@ -6,53 +6,6 @@ import { toLevelDefinition } from "@game/editor/codegen/toLevelDefinition";
 import { fromLevelDefinition } from "@game/editor/codegen/fromLevelDefinition";
 
 describe("toLevelDefinition", () => {
-  it("preserva configuración Blob en el round-trip editor ↔ nivel", () => {
-    const entities: EditorEntity[] = [
-      {
-        eid: "grate-eid",
-        kind: "staticBox",
-        def: { id: "grate", position: [0, 1, 0], size: [2, 2, 0.1], material: "wall", blobPermeable: true },
-      },
-      {
-        eid: "food-eid",
-        kind: "dynamicBox",
-        def: {
-          id: "food",
-          position: [2, 1, 0],
-          size: [1, 1, 1],
-          mass: 2,
-          material: "dynamic",
-          blobConsumable: { consumeSeconds: 1.5, biomass: 6 },
-        },
-      },
-      {
-        eid: "blob-eid",
-        kind: "npc",
-        def: {
-          id: "blob",
-          characterId: "blob",
-          position: [0, 1, 2],
-          blobPoses: [{ id: "column-a", kind: "column", marker: "marker-a", height: 5 }],
-        },
-      },
-      {
-        eid: "marker-eid",
-        kind: "logic",
-        def: { kind: "marker", id: "marker-a", name: "marker-a", position: [0, 1, 4] },
-        position: [0, 1, 4],
-      },
-    ];
-
-    const roundTrip = fromLevelDefinition(toLevelDefinition(testEditorDocument({ entities })));
-
-    expect(roundTrip.entities.find((entity) => entity.kind === "staticBox" && entity.def.id === "grate"))
-      .toMatchObject({ def: { blobPermeable: true } });
-    expect(roundTrip.entities.find((entity) => entity.kind === "dynamicBox" && entity.def.id === "food"))
-      .toMatchObject({ def: { blobConsumable: { consumeSeconds: 1.5, biomass: 6 } } });
-    expect(roundTrip.entities.find((entity) => entity.kind === "npc" && entity.def.id === "blob"))
-      .toMatchObject({ def: { blobPoses: [{ id: "column-a", kind: "column", marker: "marker-a", height: 5 }] } });
-  });
-
   it("preserva entidades y rotaciones del documento", () => {
     const entities: EditorEntity[] = [
       {

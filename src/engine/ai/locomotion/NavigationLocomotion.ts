@@ -242,19 +242,14 @@ export class NavigationLocomotion {
         return;
       }
     }
-    if (action?.link.kind === "door" || action?.link.kind === "flow" || action?.link.kind === "climb") {
+    if (action?.link.kind === "door") {
       const distance = planarDistance(position, aim);
       if (distance <= this.waypointReachRadius * 1.35) {
-        if (action.link.kind === "door") {
-          this.navigation.activateAction(action.link, this.ownerId);
-        }
-        if (action.link.kind === "door" && !this.navigation.isActionReady(action.link)) {
+        this.navigation.activateAction(action.link, this.ownerId);
+        if (!this.navigation.isActionReady(action.link)) {
           this.motor.update(delta, null, false, this.facingTarget);
           this.updateProgress(delta, position, false);
           return;
-        }
-        if (action.link.kind === "flow" || action.link.kind === "climb") {
-          this.motor.beginNavigationAction?.(action.link);
         }
         this.waypointIndex += 1;
         if (this.path && this.waypointIndex < this.path.points.length) {

@@ -22,17 +22,8 @@ function expectConnection(source: Connectable, expected: Partial<EntityConnectio
 }
 
 describe('Demo 2 Ravenholm rework', () => {
-  it('conserva el ID de campana y elimina al Blob de toda fuente de NPCs', () => {
+  it('conserva el ID de campana', () => {
     expect(Demo2Ravenholm.id).toBe('demo-02-ravenholm');
-
-    expect(Demo2Ravenholm.npcs.some((npc) => npc.characterId === 'blob')).toBe(false);
-
-    const spawners = logicEntities.filter(
-      (entity): entity is LogicOfKind<'npcSpawner'> => entity.kind === 'npcSpawner',
-    );
-    expect(
-      spawners.flatMap((spawner) => spawner.npcs).some((npc) => npc.characterId === 'blob'),
-    ).toBe(false);
   });
 
   it('entrega una sola portal gun y obliga a completar el control elevado', () => {

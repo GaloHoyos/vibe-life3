@@ -5,7 +5,6 @@ import { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { AssetManager, ModelInstance } from "@engine/assets/AssetManager";
 import type { ModelAssetId } from "@engine/assets/AssetManifest";
-import type { BlobOrganismSnapshot } from "@engine/blob/v2";
 import type { NpcRuntimeServices } from "@game/characters/CharacterFactory";
 import type { GameEventMap } from "@game/GameEvents";
 import { fakePhysicsWorld } from "@tests/support/fakes";
@@ -79,65 +78,6 @@ describe("CharacterFactory", () => {
       }),
     );
     npc.dispose();
-    physics.reset();
-  });
-
-  it("builds the campaign Blob through the complete V2 runtime and releases it cleanly", async () => {
-    const [{ CharacterFactory }, { blobV2Runtimes }] = await Promise.all([
-      import("@game/characters/CharacterFactory"),
-      import("@game/npc/blob/v2/BlobV2RuntimeRegistry"),
-    ]);
-    blobV2Runtimes.reset();
-    const physics = new PhysicsWorld();
-    await physics.init();
-    const eventBus = new EventBus<GameEventMap>();
-    const organismEvents: string[] = [];
-    eventBus.on("blob.event", ({ event }) => organismEvents.push(event.type));
-    const factory = new CharacterFactory(trackingAssets(), physics, eventBus);
-
-    const npc = await factory.createNPC(
-      "blob",
-      "blob-v2-integration",
-      new Vector3(2, 1, -3),
-      [],
-      runtimeServices(),
-    );
-
-    const source = blobV2Runtimes.debugSources()[0];
-    expect(source?.id).toBe("blob-v2-integration");
-    expect((source?.snapshot() as BlobOrganismSnapshot | undefined)?.biomass).toMatchObject({
-      total: 192,
-      attached: 192,
-      fragments: 0,
-      maximum: 250,
-    });
-    expect(source?.diagnostics?.()).toMatchObject({
-      motion: { target: null, wantsMove: false },
-      traversal: { kind: "none", coreReleased: false },
-      pose: { active: false },
-      presentation: {
-        frozen: false,
-        disposed: false,
-        activeSurfaceCount: 0,
-        fallbackCellCount: 0,
-      },
-    });
-    expect(npc.getBlobControlHandle?.()).not.toBeNull();
-    expect(npc.mesh.getObjectByName("blob-v2-presenter-blob-v2-integration")).toBeTruthy();
-    expect(npc.mesh.getObjectByName("blob-surface")).toBeFalsy();
-
-    source?.scenario?.("split-return");
-    npc.getBlobControlHandle?.()?.drainEvents();
-    expect(organismEvents).toContain("fragmentDetached");
-
-    const death = source?.scenario?.("death") as BlobOrganismSnapshot | undefined;
-    expect(death).toMatchObject({
-      overrideState: "Dead",
-      core: { state: "Dead", health: 0 },
-    });
-
-    npc.dispose();
-    expect(blobV2Runtimes.debugSources()).toHaveLength(0);
     physics.reset();
   });
 });

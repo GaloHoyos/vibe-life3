@@ -47,8 +47,20 @@ export class Input {
     window.removeEventListener("wheel", this.handleWheel);
   }
 
-  requestPointerLock(): void {
-    this.target.requestPointerLock();
+  /**
+   * Solicita captura del mouse sin dejar una rejection sin manejar si el
+   * navegador invalida la activacion del usuario o deniega el permiso.
+   */
+  async requestPointerLock(): Promise<boolean> {
+    if (this.isPointerLocked()) return true;
+    if (navigator.userActivation?.isActive === false) return false;
+
+    try {
+      await this.target.requestPointerLock();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   exitPointerLock(): void {
@@ -70,7 +82,7 @@ export class Input {
   lockKeyboard(): void {
     const keyboard = (navigator as NavigatorWithKeyboard).keyboard;
     if (!keyboard) return;
-    void keyboard.lock();
+    void keyboard.lock().catch(() => undefined);
   }
 
   unlockKeyboard(): void {

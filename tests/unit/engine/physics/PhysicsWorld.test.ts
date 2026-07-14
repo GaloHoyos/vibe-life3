@@ -69,14 +69,14 @@ describe("PhysicsWorld.createStaticBoxes", () => {
         id: "batched-floor",
         position: new Vector3(-3, 0, 0),
         size: new Vector3(2, 1, 2),
-        metadata: { surface: "metal", blobPermeable: true },
+        metadata: { surface: "metal" },
       },
       {
         id: "batched-wall",
         position: new Vector3(4, 1, 0),
         size: new Vector3(4, 2, 0.5),
         rotation: wallRotation,
-        metadata: { surface: "wood", blobPermeable: false },
+        metadata: { surface: "wood" },
       },
     ]);
 
@@ -97,13 +97,11 @@ describe("PhysicsWorld.createStaticBoxes", () => {
       id: "batched-floor",
       kind: "static",
       surface: "metal",
-      blobPermeable: true,
     });
     expect(physics.getColliderMetadata(wall)).toMatchObject({
       id: "batched-wall",
       kind: "static",
       surface: "wood",
-      blobPermeable: false,
     });
 
     physics.updateQueryPipeline();
@@ -132,7 +130,7 @@ describe("PhysicsWorld.createStaticBoxes", () => {
         id: "far-wall",
         position: new Vector3(7, 1, 0),
         size: new Vector3(1, 2, 2),
-        metadata: { surface: "metal", blobPermeable: true },
+        metadata: { surface: "metal" },
       },
     ]);
     physics.updateQueryPipeline();
@@ -161,7 +159,6 @@ describe("PhysicsWorld.createStaticBoxes", () => {
     expect(withoutNear?.metadata).toMatchObject({
       id: "far-wall",
       surface: "metal",
-      blobPermeable: true,
     });
     expect(withoutNear?.toi).toBeCloseTo(6.5, 5);
   });

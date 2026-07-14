@@ -16,9 +16,4 @@ export const NpcDebugFlags = {
    */
   infighting: false,
   forceAimPose: "none" as ForcedAimPose,
-  /**
-   * Dibuja las partículas individuales del organismo blob (rol por color,
-   * chunks desprendidos tintados) a través de la piel de metaballs.
-   */
-  showBlobParticles: false,
 };
