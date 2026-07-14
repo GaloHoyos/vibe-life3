@@ -21,6 +21,13 @@ const DEFAULT_SUN: Required<SunOptions> = {
 };
 
 const SUN_DISTANCE = 30;
+/**
+ * El foco no sigue cada centímetro de la cámara: desplazar una shadow map en
+ * continuo hace que sus texels "naden" sobre la geometría. Esta zona muerta
+ * mantiene el atlas estable y todavía deja margen de sobra dentro del frustum
+ * ortográfico de 60 unidades.
+ */
+const SHADOW_FOCUS_STEP = 8;
 
 /**
  * IluminaciÃ³n canÃ³nica del juego. Pensado para correr con IBL (HDRI vÃ­a
@@ -35,6 +42,8 @@ export class LightingSystem {
     hemisphere: new HemisphereLight(0xbfd8ff, 0x1d2429, 0.25),
     sun: new DirectionalLight(DEFAULT_SUN.color, DEFAULT_SUN.intensity),
   };
+  private readonly sunOffset = new Vector3();
+  private readonly shadowFocus = new Vector3();
 
   attach(scene: Scene): void {
     const sun = this.lights.sun;
@@ -69,12 +78,37 @@ export class LightingSystem {
     this.applySunDirection(options.direction ?? DEFAULT_SUN.direction);
   }
 
+  /**
+   * Mantiene el volumen de sombras alrededor del observador sin alterar la
+   * dirección del sol. Sólo sigue el plano X/Z: saltos, escaleras y head-bob no
+   * deben mover la shadow map. El foco avanza en bloques con histéresis para
+   * no oscilar cuando la cámara ronda el límite de una celda.
+   */
+  focusAt(position: Vector3): void {
+    const x = this.focusAxis(position.x, this.shadowFocus.x);
+    const z = this.focusAxis(position.z, this.shadowFocus.z);
+    if (x === this.shadowFocus.x && z === this.shadowFocus.z) return;
+
+    this.shadowFocus.set(x, 0, z);
+    this.updateSunTransform();
+  }
+
   private applySunDirection(direction: VectorTuple): void {
     const v = new Vector3(...direction);
     if (v.lengthSq() === 0) v.set(0, 1, 0);
-    v.normalize().multiplyScalar(SUN_DISTANCE);
-    this.lights.sun.position.copy(v);
-    this.lights.sun.target.position.set(0, 0, 0);
+    this.sunOffset.copy(v).normalize().multiplyScalar(SUN_DISTANCE);
+    this.updateSunTransform();
+  }
+
+  private focusAxis(value: number, current: number): number {
+    if (Math.abs(value - current) <= SHADOW_FOCUS_STEP) return current;
+    const snapped = Math.round(value / SHADOW_FOCUS_STEP) * SHADOW_FOCUS_STEP;
+    return Object.is(snapped, -0) ? 0 : snapped;
+  }
+
+  private updateSunTransform(): void {
+    this.lights.sun.position.copy(this.shadowFocus).add(this.sunOffset);
+    this.lights.sun.target.position.copy(this.shadowFocus);
     this.lights.sun.target.updateMatrixWorld();
   }
 }

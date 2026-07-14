@@ -12,6 +12,12 @@ const aliasFor = (segment: string): string => pathFor(segment, srcUrl);
 const aliasFromRoot = (segment: string): string => pathFor(segment, rootUrl);
 
 export default defineConfig({
+  optimizeDeps: {
+    exclude: ["recast-navigation"],
+  },
+  worker: {
+    format: "es",
+  },
   resolve: {
     alias: {
       "@engine": aliasFor("engine"),

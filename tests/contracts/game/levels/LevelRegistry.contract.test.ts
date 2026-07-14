@@ -12,7 +12,10 @@ import {
   getLevel,
   LevelRegistry,
 } from "@game/levels/LevelRegistry";
-import type { LevelDefinition, TriggerAction } from "@game/levels/LevelDefinition";
+import type { LevelDefinition } from "@game/levels/LevelDefinition";
+import type { EntityConnection, LogicEntityDefinition } from "@game/script/EntityIOTypes";
+import { fromLevelDefinition } from "@game/editor/codegen/fromLevelDefinition";
+import { sanitizeDocument } from "@game/workshop/sanitizeDocument";
 
 describe("LevelRegistry contracts", () => {
   it("registers campaign and custom levels with unique ids", () => {
@@ -39,6 +42,13 @@ describe("LevelRegistry contracts", () => {
     }
 
     expect(() => getLevel("__missing__")).toThrow(/no registrado/);
+  });
+
+  it("mantiene válido el grafo Entity I/O de todos los mapas registrados", () => {
+    for (const level of getAllLevels()) {
+      const result = sanitizeDocument(fromLevelDefinition(level));
+      expect(result, `${level.id}: ${result.ok ? "" : result.reason}`).toMatchObject({ ok: true });
+    }
   });
 
   it("keeps weapon-scale-test covering every weapon and ammo pickup", () => {
@@ -105,35 +115,57 @@ function expectValidLevel(level: LevelDefinition, levelIds: ReadonlySet<string>)
   for (const trigger of level.triggers) {
     expectFiniteTuple(trigger.position, 3);
     expectFiniteTuple(trigger.size, 3);
-    for (const action of trigger.actions ?? []) {
-      expectValidTriggerAction(action);
+    for (const conn of trigger.connections ?? []) {
+      expectValidConnection(conn);
+    }
+  }
+
+  for (const entity of level.logicEntities ?? []) {
+    expectValidLogicEntity(entity);
+    for (const conn of ("connections" in entity ? entity.connections : undefined) ?? []) {
+      expectValidConnection(conn);
     }
   }
 }
 
-function expectValidTriggerAction(action: TriggerAction): void {
-  if (action.delay !== undefined) {
-    expect(action.delay).toBeGreaterThanOrEqual(0);
-  }
+function expectValidConnection(conn: EntityConnection): void {
+  expect(conn.output.length).toBeGreaterThan(0);
+  expect(conn.target.length).toBeGreaterThan(0);
+  expect(conn.input.length).toBeGreaterThan(0);
+  if (conn.delay !== undefined) expect(conn.delay).toBeGreaterThanOrEqual(0);
+  if (conn.maxFires !== undefined) expect(conn.maxFires).toBeGreaterThan(0);
+}
 
-  if (action.kind === "spawnNpcs") {
-    for (const npc of action.npcs) {
-      expect(CharacterPresets[npc.characterId]).toBeDefined();
-      expectFiniteTuple(npc.position, 3);
-    }
-  }
-
-  if (action.kind === "objective" && action.marker) {
-    expectFiniteTuple(action.marker, 3);
-  }
-
-  if (action.kind === "soundscape") {
-    expect(Soundscapes[action.soundscape]).toBeDefined();
-  }
-
-  if (action.kind === "dialogue") {
-    expect(action.text.length).toBeGreaterThan(0);
-    expect(action.duration).toBeGreaterThan(0);
+function expectValidLogicEntity(entity: LogicEntityDefinition): void {
+  expect(entity.id.length).toBeGreaterThan(0);
+  switch (entity.kind) {
+    case "marker":
+      expectFiniteTuple(entity.position, 3);
+      return;
+    case "message":
+      expect(entity.text.length).toBeGreaterThan(0);
+      expect(entity.duration).toBeGreaterThan(0);
+      return;
+    case "objective":
+      if (entity.marker) expectFiniteTuple(entity.marker, 3);
+      return;
+    case "soundscape":
+      expect(Soundscapes[entity.soundscape]).toBeDefined();
+      return;
+    case "npcSpawner":
+      for (const npc of entity.npcs) {
+        expect(CharacterPresets[npc.characterId]).toBeDefined();
+        expectFiniteTuple(npc.position, 3);
+      }
+      return;
+    case "counter":
+      expect(entity.max).toBeGreaterThan(0);
+      return;
+    case "timer":
+      expect(entity.interval).toBeGreaterThan(0);
+      return;
+    default:
+      return;
   }
 }
 

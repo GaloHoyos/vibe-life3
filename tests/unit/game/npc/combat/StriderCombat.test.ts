@@ -39,7 +39,10 @@ describe("StriderCombat", () => {
     }
 
     expect(fired.filter((event) => event.weaponName === "Strider Minigun").length).toBeGreaterThan(8);
-    expect(hits.filter((event) => event.weaponName === "Strider Minigun").length).toBeGreaterThan(8);
+    // El stitch usa spread aleatorio: cuantos rays pegan en la caja varia por
+    // corrida (se observo 8±2 a 20 m). El umbral verifica "multiples impactos"
+    // sin quedar en el borde del RNG.
+    expect(hits.filter((event) => event.weaponName === "Strider Minigun").length).toBeGreaterThan(4);
     expect(damageable.applyDamage.mock.calls.length).toBeLessThanOrEqual(6);
     expect(damageable.applyDamage.mock.calls.length).toBeGreaterThan(0);
   });

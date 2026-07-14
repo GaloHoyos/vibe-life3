@@ -15,14 +15,16 @@ import type { INpc } from '@game/npc/core/INpc';
 import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import { Raycast } from '@engine/physics/Raycast';
 import { SpawnValidator } from '@engine/physics/character/SpawnValidator';
-import { createBoxMesh } from '@engine/render/PrimitiveFactory';
+import { createBoxMesh, createInstancedBoxMeshes } from '@engine/render/PrimitiveFactory';
 import { createTerrainMesh } from '@engine/render/TerrainMesh';
 import type { MaterialKey } from '@engine/render/material/Materials';
 import { materialToSurface } from './materialSurface';
 import { generateHeightField } from '@shared/math/HeightField';
-import { NavSpace } from '@engine/ai/nav/NavSpace';
-import { NavSpaceBuilder } from '@engine/ai/nav/NavSpaceBuilder';
-import { PathRequestQueue } from '@engine/ai/nav/PathRequestQueue';
+import { buildNavigationGeometry } from '@engine/ai/navigation/NavigationGeometry';
+import { NavigationService } from '@engine/ai/navigation/NavigationService';
+import { NavigationRequestQueue } from '@engine/ai/navigation/NavigationRequestQueue';
+import type { NavigationActionLink } from '@engine/ai/navigation/NavigationTypes';
+import { NavigationProfiles } from '@game/npc/navigation/NavAgentProfiles';
 import type { NpcRuntimeServices } from '@game/characters/CharacterFactory';
 import { TacticalMap, TacticalMapAnalyzer } from '@game/npc/ai/TacticalMap';
 import { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
@@ -53,8 +55,8 @@ export interface LoadedLevel {
   tacticalMap: TacticalMap;
   squadDirector: SquadDirector;
   buildingRegistry: BuildingRegistry;
-  navSpace: NavSpace;
-  pathQueue: PathRequestQueue;
+  navigation: NavigationService;
+  navigationRequests: NavigationRequestQueue;
 }
 
 /**
@@ -85,6 +87,7 @@ export class LevelLoader {
     const ammoPickups: AmmoPickup[] = [];
     const chargers: Charger[] = [];
     const sharedRaycast = new Raycast(this.physics);
+    let navigationTerrain: Parameters<typeof buildNavigationGeometry>[1];
 
     if (level.terrain) {
       const terrain = level.terrain;
@@ -107,22 +110,35 @@ export class LevelLoader {
         size: terrain.size,
         metadata: { surface: materialToSurface(terrain.material) },
       });
+      navigationTerrain = {
+        field,
+        position: tupleToVector3(terrain.position),
+        size: terrain.size,
+      };
     }
 
     const buildings = level.buildings ?? [];
     const buildingBoxes = buildings.flatMap((b) => b.boxes);
     const allStaticBoxes = [...level.staticBoxes, ...buildingBoxes];
-    allStaticBoxes.forEach((definition) => {
-      const mesh = createLevelBox(definition.id, definition.position, definition.size, definition.material, definition.rotation);
-      this.scene.add(mesh);
-      this.physics.createStaticBox({
+    this.scene.add(
+      ...createInstancedBoxMeshes({
+        id: `${level.id}-static-boxes`,
+        boxes: allStaticBoxes,
+        castShadow: true,
+        receiveShadow: true,
+      }),
+    );
+    this.physics.createStaticBoxes(
+      allStaticBoxes.map((definition) => ({
         id: definition.id,
         position: tupleToVector3(definition.position),
         size: tupleToVector3(definition.size),
         rotation: definition.rotation ? quatFromEuler(definition.rotation) : undefined,
-        metadata: { surface: materialToSurface(definition.material) },
-      });
-    });
+        metadata: {
+          surface: materialToSurface(definition.material),
+        },
+      })),
+    );
     const buildingRegistry = new BuildingRegistry(buildings);
 
     level.dynamicBoxes.forEach((definition) => {
@@ -135,7 +151,9 @@ export class LevelLoader {
           size: tupleToVector3(definition.size),
           rotation: definition.rotation ? quatFromEuler(definition.rotation) : undefined,
           mass: definition.mass,
-          metadata: { surface: materialToSurface(definition.material) },
+          metadata: {
+            surface: materialToSurface(definition.material),
+          },
         },
         mesh,
       );
@@ -157,7 +175,18 @@ export class LevelLoader {
       // deslizamiento siga la orientacion (una puerta girada desliza girado).
       const openOffset = tupleToVector3(definition.openOffset);
       if (quat) openOffset.applyQuaternion(quat);
-      const door = new SlidingDoor(definition.id, mesh, body, openOffset, definition.speed);
+      const door = new SlidingDoor(
+        definition.id,
+        mesh,
+        body,
+        openOffset,
+        definition.speed,
+        (open, activator) => this.eventBus.emit('door.opened', {
+          id: definition.id,
+          open,
+          activator,
+        }),
+      );
       doors.push(door);
 
       const doorPos = tupleToVector3(definition.position);
@@ -201,33 +230,49 @@ export class LevelLoader {
     this.physics.updateQueryPipeline();
     const spawnValidator = new SpawnValidator(new Raycast(this.physics));
 
-    const navSpaceBounds = computeNavSpaceBounds({
-      ...level,
-      staticBoxes: allStaticBoxes,
+    const navigationGeometry = buildNavigationGeometry(allStaticBoxes, navigationTerrain);
+    const navigationBuildStart = performance.now();
+    const navigation = await NavigationService.create({
+      geometry: navigationGeometry,
+      raycast: sharedRaycast,
+      physics: this.physics,
+      assetKey: level.id,
+      maxAgents: 60,
+      openDoor: (doorId, ownerId) => doors
+        .find((door) => door.id === doorId)
+        ?.setOpen(true, { kind: 'entity', key: ownerId, name: ownerId }),
+      isDoorPassable: (doorId) => doors.find((door) => door.id === doorId)?.isPassable() ?? true,
+      metadataAt: (position) => {
+        const located = buildingRegistry.roomContaining(position);
+        if (located) return { buildingId: located.building.id, roomId: located.room.id };
+        return { buildingId: buildingRegistry.containing(position)?.id ?? null, roomId: null };
+      },
+      groundProfiles: [
+        NavigationProfiles.humanoid,
+        NavigationProfiles.humanoidLimited,
+        NavigationProfiles.headcrab,
+        NavigationProfiles.strider,
+      ],
     });
-    const navBuildStart = performance.now();
-    const navSpace = new NavSpaceBuilder().build(sharedRaycast, buildings, {
-      bounds: navSpaceBounds,
-      // Edificios de hasta 4 pisos + techo = 5 superficies apiladas por columna.
-      // Solo las columnas que realmente apilan pagan el costo extra del scan.
-      maxLayers: 6,
-    });
+    navigation.setSemanticActionLinks([
+      ...buildDoorNavigationLinks(buildings, navigation),
+    ]);
+    const navigationRequests = new NavigationRequestQueue(navigation, 3);
     console.info(
-      `[LevelLoader] NavSpace: ${navSpace.cellCount()} celdas, ${navSpace.portalCount()} portales (${Math.round(performance.now() - navBuildStart)} ms)`,
+      `[LevelLoader] NavigationService: ${navigation.debugSnapshot().profiles.map((p) => `${p.id}:${p.triangleCount}`).join(', ')} (${Math.round(performance.now() - navigationBuildStart)} ms)`,
     );
-    const pathQueue = new PathRequestQueue(navSpace);
 
     const enrichedLevel: LevelDefinition = { ...level, staticBoxes: allStaticBoxes };
     const tacticalMap = new TacticalMapAnalyzer().analyze(
       enrichedLevel,
-      navSpace,
+      navigation,
       sharedRaycast,
     );
     const squadDirector = new SquadDirector();
 
     const npcServices: NpcRuntimeServices = {
-      navSpace,
-      pathQueue,
+      navigation,
+      navigationRequests,
       buildingRegistry,
       raycast: sharedRaycast,
       ...this.npcPortalServices,
@@ -364,10 +409,45 @@ export class LevelLoader {
       tacticalMap,
       squadDirector,
       buildingRegistry,
-      navSpace,
-      pathQueue,
+      navigation,
+      navigationRequests,
     };
   }
+}
+function buildDoorNavigationLinks(
+  buildings: LevelDefinition['buildings'],
+  navigation: NavigationService,
+): NavigationActionLink[] {
+  const links: NavigationActionLink[] = [];
+  for (const building of buildings ?? []) {
+    for (const doorway of building.doorways) {
+      if (!doorway.doorId) continue;
+      const center = tupleToVector3(doorway.position);
+      const normal = tupleToVector3(doorway.normal).setY(0).normalize();
+      const reach = Math.max(0.65, NavigationProfiles.humanoid.radius + 0.25);
+      const start = navigation.projectPoint(
+        center.clone().addScaledVector(normal, -reach),
+        NavigationProfiles.humanoid,
+      );
+      const end = navigation.projectPoint(
+        center.clone().addScaledVector(normal, reach),
+        NavigationProfiles.humanoid,
+      );
+      if (!start || !end) continue;
+      links.push({
+        id: `door-${building.id}-${doorway.id}`,
+        kind: 'door',
+        start,
+        end,
+        bidirectional: true,
+        cost: start.distanceTo(end) + 0.4,
+        width: doorway.width,
+        doorId: doorway.doorId,
+        profileIds: [NavigationProfiles.humanoid.id],
+      });
+    }
+  }
+  return links;
 }
 
 function createChargerFallback(id: string): Mesh {
@@ -395,31 +475,4 @@ function createLevelBox(
     castShadow: true,
     receiveShadow: true,
   });
-}
-
-function computeNavSpaceBounds(level: LevelDefinition): {
-  minX: number; maxX: number; minZ: number; maxZ: number;
-} {
-  if (level.terrain) {
-    const [cx, , cz] = level.terrain.position;
-    const [sx, sz] = level.terrain.size;
-    return { minX: cx - sx / 2, maxX: cx + sx / 2, minZ: cz - sz / 2, maxZ: cz + sz / 2 };
-  }
-  if (level.staticBoxes.length === 0) {
-    return { minX: -20, maxX: 20, minZ: -20, maxZ: 20 };
-  }
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
-  for (const box of level.staticBoxes) {
-    const [x, , z] = box.position;
-    const [sx, , sz] = box.size;
-    minX = Math.min(minX, x - sx / 2);
-    maxX = Math.max(maxX, x + sx / 2);
-    minZ = Math.min(minZ, z - sz / 2);
-    maxZ = Math.max(maxZ, z + sz / 2);
-  }
-  const margin = 4;
-  return { minX: minX - margin, maxX: maxX + margin, minZ: minZ - margin, maxZ: maxZ + margin };
 }

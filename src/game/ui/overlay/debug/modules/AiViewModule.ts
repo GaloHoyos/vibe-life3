@@ -2,7 +2,14 @@ import type { Scene } from "three";
 import { NpcAiDebugOverlay } from "@game/debug/NpcAiDebugOverlay";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { DebugFrame, DebugModule } from "../DebugModule";
-import { buildSection } from "../widgets";
+import { buildSection, buildSelect } from "../widgets";
+
+const NAVIGATION_PROFILES = new Map([
+  ["Humanoide ágil (Combine)", "humanoid"],
+  ["Humanoide limitado (zombie)", "humanoid-limited"],
+  ["Headcrab", "headcrab"],
+  ["Strider", "strider"],
+]);
 
 /**
  * Wrapper del `NpcAiDebugOverlay` (NavSpace + grafo de paths/threats por
@@ -17,6 +24,7 @@ export class AiViewModule implements DebugModule {
   private overlay: NpcAiDebugOverlay;
   private active = false;
   private status: HTMLDivElement | null = null;
+  private readonly abort = new AbortController();
 
   constructor(scene: Scene, raycast: Raycast) {
     this.overlay = new NpcAiDebugOverlay(scene, raycast);
@@ -27,8 +35,22 @@ export class AiViewModule implements DebugModule {
     const desc = document.createElement("p");
     desc.className = "debug-help";
     desc.textContent =
-      "Dibuja el grafo de navegacion local, los waypoints de cada NPC, las lineas hacia el threat y los markers de cover en la escena. Costoso: solo encender para diagnosticar movimiento.";
+      "La superficie celeste marca el navmesh transitable para NPCs humanoides; los huecos quedan fuera de navegación. También dibuja conexiones especiales, rutas, objetivos y amenazas. Costoso: usar para diagnosticar movimiento.";
     section.appendChild(desc);
+
+    const profileRow = document.createElement("div");
+    profileRow.className = "debug-row";
+    const profileLabel = document.createElement("span");
+    profileLabel.textContent = "Perfil de navegación";
+    profileRow.appendChild(profileLabel);
+    profileRow.appendChild(buildSelect(
+      [...NAVIGATION_PROFILES.keys()],
+      (label) => this.overlay.setNavigationProfile(
+        NAVIGATION_PROFILES.get(label) ?? "humanoid",
+      ),
+      this.abort.signal,
+    ));
+    section.appendChild(profileRow);
 
     this.status = document.createElement("div");
     this.status.className = "debug-status";
@@ -41,7 +63,7 @@ export class AiViewModule implements DebugModule {
   update(frame: DebugFrame): void {
     this.overlay.update(frame.delta, {
       playerPosition: frame.playerPosition ?? undefined,
-      navSpace: frame.navSpace,
+      navigation: frame.navigation,
       npcs: frame.npcs,
     });
   }
@@ -61,6 +83,7 @@ export class AiViewModule implements DebugModule {
   }
 
   dispose(): void {
+    this.abort.abort();
     this.overlay.dispose();
   }
 }

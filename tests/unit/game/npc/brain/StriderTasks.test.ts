@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Vector3 } from "three";
+import { NO_CONDITIONS } from "@engine/ai/brain/Condition";
 import type { NpcBrainContext } from "@game/npc/brain/NpcBrainContext";
 import { createStriderCloseTask, createStriderEngageTask } from "@game/npc/brain/tasks/StriderTasks";
 
@@ -80,6 +81,9 @@ function makeContext(options: {
       radius: 0.35,
     },
     threatLastKnown: null,
+    threatSuspected: null,
+    anchorPosition: null,
+    anchorOffset: null,
     player: {
       id: "player",
       position: threatPosition,
@@ -95,8 +99,13 @@ function makeContext(options: {
     noise: { combat: null, suspicious: null },
     tactical: null,
     squad: null,
-    conditions: 0,
-    navSpace: {} as NpcBrainContext["navSpace"],
+    slots: null,
+    medic: null,
+    script: null,
+    gesture: () => {},
+    conditions: NO_CONDITIONS,
+    navigation: {} as NpcBrainContext["navigation"],
+    navigationProfile: {} as NpcBrainContext["navigationProfile"],
     buildingRegistry: {} as NpcBrainContext["buildingRegistry"],
     locomotion: {
       moveTo: vi.fn(),

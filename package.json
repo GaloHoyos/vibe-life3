@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "nav:bake": "tsx scripts/nav-bake.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -15,12 +16,15 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
+    "recast-navigation": "0.43.1",
     "three": "^0.164.1"
   },
   "devDependencies": {
-    "@types/three": "^0.184.1",
+    "@types/three": "0.164.1",
     "@vitest/coverage-v8": "^4.1.7",
     "happy-dom": "^20.10.6",
+    "playwright": "1.61.1",
+    "tsx": "4.20.6",
     "typescript": "^5.4.5",
     "vite": "^5.2.11",
     "vitest": "^4.1.7"

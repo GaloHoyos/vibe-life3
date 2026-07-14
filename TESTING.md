@@ -31,7 +31,7 @@ Reglas:
 - Espejar el path productivo: `src/game/levels/Foo.ts` -> `tests/unit/game/levels/Foo.test.ts`.
 - Importar codigo productivo con `@game`, `@engine` y `@shared`.
 - Importar helpers con `@tests`.
-- Los tests DOM usan el proyecto `happy-dom`; no son E2E y no levantan Playwright.
+- Los tests DOM usan el proyecto `happy-dom`; no son E2E.
 
 ## Smoke manual
 

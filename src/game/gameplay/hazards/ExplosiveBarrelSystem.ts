@@ -1,5 +1,6 @@
 import { CylinderGeometry, Mesh, Vector3, type Scene } from "three";
 import { getMaterial } from "@engine/render/material/Materials";
+import { applyMaterialUvsToCylinder } from "@engine/render/PrimitiveFactory";
 import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Disposable } from "@shared/types/lifecycle";
 import { quatFromEuler } from "@game/levels/builders/transform";
@@ -130,11 +131,14 @@ export class ExplosiveBarrelSystem implements Disposable {
 }
 
 function createBarrelMesh(id: string): Mesh {
-  const geometry = new CylinderGeometry(
-    BARREL_RADIUS,
-    BARREL_RADIUS,
-    BARREL_HEIGHT,
-    16,
+  const geometry = applyMaterialUvsToCylinder(
+    new CylinderGeometry(
+      BARREL_RADIUS,
+      BARREL_RADIUS,
+      BARREL_HEIGHT,
+      16,
+    ),
+    "hazard",
   );
   const mesh = new Mesh(geometry, getMaterial("hazard"));
   mesh.name = id;

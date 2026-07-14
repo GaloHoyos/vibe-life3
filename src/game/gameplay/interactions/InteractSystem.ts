@@ -15,6 +15,18 @@ export class InteractSystem {
     this.interactables.push(interactable);
   }
 
+  /** Quita un interactable por id (p.ej. una compañera que murió). */
+  unregister(id: string): void {
+    const index = this.interactables.findIndex((it) => it.id === id);
+    if (index < 0) return;
+    const [removed] = this.interactables.splice(index, 1);
+    if (this.current?.id === id) this.current = null;
+    if (this.held?.id === id) {
+      removed.interactEnd?.();
+      this.held = null;
+    }
+  }
+
   /** Interactable enfocado este frame; el GrabSystem le cede la prioridad. */
   getFocused(): Interactable | null {
     return this.current;

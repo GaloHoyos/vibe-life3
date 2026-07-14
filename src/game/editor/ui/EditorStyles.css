@@ -928,6 +928,16 @@ body.editor-scrubbing {
   color: var(--editor-text-dim);
 }
 
+.editor-note--warning {
+  padding: 6px 8px;
+  border-left: 2px solid #e7a93b;
+  border-radius: 3px;
+  background: rgba(231, 169, 59, 0.1);
+  color: #f0c36d;
+  font-style: normal;
+  line-height: 1.35;
+}
+
 .editor-settings__terrain {
   margin-top: 10px;
   border-top: 1px solid var(--editor-line);

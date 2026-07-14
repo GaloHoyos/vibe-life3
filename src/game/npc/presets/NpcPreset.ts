@@ -1,5 +1,10 @@
 import type { ScheduleDefinition } from '@engine/ai/brain/Task';
 import type { PerceptionConfig } from '@engine/ai/perception/PerceptionSystem';
+import type {
+  CharacterFlinchConfig,
+  CharacterGrenadeTacticConfig,
+} from '@engine/characters/CharacterDefinition';
+import type { NpcCalloutKind } from '@game/config/audio.config';
 import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
 
 /**
@@ -13,6 +18,39 @@ import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
  */
 export interface NpcPreset {
   id: string;
+  /**
+   * Usa cover points del TacticalMap (activa el NpcCoverSensor y su scan
+   * periodico). Default true; apagar en presets cuyos schedules no consumen
+   * conditions de cover para ahorrar el computo.
+   */
+  usesCover?: boolean;
+  /** Reporta y consume roles/slots del SquadDirector. Default true; idem ahorro. */
+  usesSquad?: boolean;
+  /**
+   * Disciplina de slots de ataque HL2: el NPC reclama uno de los slots
+   * limitados de su faccion para disparar, y sus schedules de fuego requieren
+   * `HasAttackSlot`. Default false (dispara libre, ej. Alyx).
+   */
+  attackSlot?: boolean;
+  /**
+   * Perfil de granada tactica (flush-out del target oculto). Para humanoides
+   * lo copia la factory desde `CharacterPresets[..].attack.grenade`.
+   */
+  grenade?: CharacterGrenadeTacticConfig;
+  /**
+   * Cooldown de re-flinch (`FlinchReady`). Omitido = sin cooldown: cada
+   * impacto vuelve a flinchear (zombies, a proposito).
+   */
+  flinch?: CharacterFlinchConfig;
+  /**
+   * Voces tacticas (`npc.callout`): habilita los rising-edge de contact/alert
+   * y mapea entradas a schedules ('flank' → 'engaging'). Omitido = mudo.
+   */
+  callouts?: {
+    bySchedule?: Record<string, NpcCalloutKind>;
+  };
+  /** Perfil de medic: cura a aliados/player bajo el umbral (schedule `heal`). */
+  medic?: NpcMedicProfile;
   perception: PerceptionConfig;
   /** Salud maxima. */
   maxHealth: number;
@@ -55,6 +93,17 @@ export interface NpcPreset {
     followDistance: number;
     regroupDistance: number;
   };
+  /**
+   * Elegible para el squad del jugador (auto-join, ordenes ir-a-punto,
+   * formacion). Solo tiene sentido junto con `anchor`.
+   */
+  playerSquad?: boolean;
+  /**
+   * Compañera al estilo HL2 (Alyx): el jugador togglea follow/wait con USE (E) y
+   * el script la puede comandar (follow/wait/escort). Solo tiene sentido junto
+   * con `anchor`. `displayName` es el nombre visible en el prompt/diálogos.
+   */
+  companion?: { displayName: string };
   /** Movimiento. */
   movement: NpcMovementProfile;
   /** Schedules priorizados. El Brain los ordena desc por priority. */
@@ -65,6 +114,21 @@ export interface NpcPreset {
 export interface NpcPresetOptions {
   /** El NPC tiene ruta de patrol asignada en el nivel. */
   hasPatrol?: boolean;
+  /** Override de flinch por variante (elite flinchea menos). */
+  flinch?: CharacterFlinchConfig;
+}
+
+export interface NpcMedicProfile {
+  /** Fraccion de vida (0..1) bajo la cual un aliado califica para curacion. */
+  healThreshold: number;
+  /** Vida restaurada por curacion. */
+  healAmount: number;
+  /** Duracion (s) del "cast" junto al objetivo antes de aplicar el heal. */
+  castTime: number;
+  /** Cooldown (s) entre curaciones del medic. */
+  cooldown: number;
+  /** Distancia 2D maxima a la que detecta aliados heridos. */
+  range: number;
 }
 
 export interface NpcLeapProfile {

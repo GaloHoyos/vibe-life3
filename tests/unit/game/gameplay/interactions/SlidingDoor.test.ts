@@ -20,4 +20,30 @@ describe("SlidingDoor", () => {
 
     expect(mesh.position.z).toBe(0);
   });
+
+  it("emite cada transición una vez y preserva su activator", () => {
+    const mesh = new Object3D();
+    const body = { setNextKinematicTranslation: vi.fn() };
+    const changed = vi.fn();
+    const door = new SlidingDoor(
+      "door-1",
+      mesh,
+      body as never,
+      new Vector3(0, 3, 0),
+      1,
+      changed,
+    );
+
+    door.setOpen(true, { kind: "player" });
+    door.setOpen(true, { kind: "none" });
+    door.toggle({ kind: "entity", key: "npc-1", name: "guard" });
+
+    expect(changed).toHaveBeenCalledTimes(2);
+    expect(changed).toHaveBeenNthCalledWith(1, true, { kind: "player" });
+    expect(changed).toHaveBeenNthCalledWith(2, false, {
+      kind: "entity",
+      key: "npc-1",
+      name: "guard",
+    });
+  });
 });

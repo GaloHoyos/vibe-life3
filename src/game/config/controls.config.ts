@@ -15,6 +15,7 @@ export type GameAction =
   | "weaponSlot3"
   | "weaponSlot4"
   | "weaponSlot5"
+  | "squadCommand"
   | "toggleDebug"
   | "releaseMouse"
   | "spawnDebugCombine"
@@ -35,6 +36,7 @@ export const DefaultBindings: BindingMap<GameAction> = {
   weaponSlot3: ["Digit3"],
   weaponSlot4: ["Digit4"],
   weaponSlot5: ["Digit5"],
+  squadCommand: ["KeyC"],
   toggleDebug: ["F3"],
   releaseMouse: ["F9"],
   spawnDebugCombine: ["KeyN"],
@@ -56,6 +58,7 @@ export const ActionLabels: Record<GameAction, string> = {
   weaponSlot3: "Arma 3",
   weaponSlot4: "Arma 4",
   weaponSlot5: "Arma 5",
+  squadCommand: "Orden de escuadrón",
   toggleDebug: "Menu debug",
   releaseMouse: "Liberar cursor",
   spawnDebugCombine: "Spawn Combine (debug)",
@@ -77,6 +80,7 @@ export const ActionOrder: readonly GameAction[] = [
   "weaponSlot3",
   "weaponSlot4",
   "weaponSlot5",
+  "squadCommand",
   "toggleDebug",
   "releaseMouse",
   "spawnDebugCombine",

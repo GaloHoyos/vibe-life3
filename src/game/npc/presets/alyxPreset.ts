@@ -4,12 +4,9 @@ import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
 import { condMask } from '@game/npc/brain/NpcConditions';
 import {
   createAimTask,
-  createFlinchTask,
   createWaitTask,
   FaceThreatTask,
   FireBurstTask,
-  PlayDeathTask,
-  ReloadWeaponTask,
 } from '@game/npc/brain/tasks/CoreTasks';
 import {
   createFollowAnchorTask,
@@ -18,6 +15,13 @@ import {
   createRegroupTask,
   createRepositionTask,
 } from '@game/npc/brain/tasks/TacticalTasks';
+import {
+  deadSchedule,
+  hitSchedule,
+  noticeSuspicionSchedule,
+  reloadSchedules,
+  scriptedSchedules,
+} from './commonSchedules';
 import type { NpcPreset } from './NpcPreset';
 
 const FOLLOW_DISTANCE = 6;
@@ -32,30 +36,10 @@ const REGROUP_DISTANCE = 14;
  */
 export function buildAlyxPreset(): NpcPreset {
   const schedules: ScheduleDefinition<NpcBrainContext>[] = [
-    {
-      id: 'dead',
-      priority: 1000,
-      required: condMask('IsDead'),
-      blockedBy: NO_CONDITIONS,
-      interrupts: NO_CONDITIONS,
-      tasks: [PlayDeathTask],
-    },
-    {
-      id: 'hit',
-      priority: 900,
-      required: condMask('JustHit'),
-      blockedBy: condMask('IsDead'),
-      interrupts: NO_CONDITIONS,
-      tasks: [createFlinchTask(0.18)],
-    },
-    {
-      id: 'reload',
-      priority: 800,
-      required: condMask('MagazineEmpty'),
-      blockedBy: condMask('IsDead'),
-      interrupts: NO_CONDITIONS,
-      tasks: [ReloadWeaponTask],
-    },
+    deadSchedule(),
+    ...scriptedSchedules(),
+    hitSchedule(0.18),
+    ...reloadSchedules(),
     {
       id: 'regroup',
       priority: 750,
@@ -86,6 +70,7 @@ export function buildAlyxPreset(): NpcPreset {
         createWaitTask(0.2),
       ],
     },
+    noticeSuspicionSchedule(),
     {
       id: 'follow',
       priority: 200,
@@ -123,6 +108,7 @@ export function buildAlyxPreset(): NpcPreset {
       followDistance: FOLLOW_DISTANCE,
       regroupDistance: REGROUP_DISTANCE,
     },
+    companion: { displayName: 'Alyx' },
     movement: {
       walkSpeed: 3.4,
       sprintSpeed: 6.0,

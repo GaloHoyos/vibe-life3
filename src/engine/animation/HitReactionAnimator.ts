@@ -38,11 +38,6 @@ export class HitReactionAnimator {
       -0.18,
       0.18,
     );
-    const forwardLean = MathUtils.clamp(
-      update.velocity.length() * 0.025,
-      0,
-      0.12,
-    );
     const turnLag = MathUtils.clamp(
       -update.yawDelta * this.config.turnLagStrength,
       -0.18,
@@ -50,7 +45,7 @@ export class HitReactionAnimator {
     );
     const stumble = update.balanceIntensity * this.config.stumbleLean;
 
-    this.root.rotation.x += forwardLean + stumble;
+    this.root.rotation.x += stumble;
     this.root.rotation.z += lateralSway * this.config.swayStrength + turnLag;
 
     if (this.flinchTimer > 0) {

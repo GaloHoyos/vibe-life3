@@ -4,12 +4,12 @@ import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { EventBus } from "@engine/core/EventBus";
 import type { PortalSlot } from "@engine/portals/PortalFrame";
 import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
-import type { TriggerAction } from "@game/levels/LevelDefinition";
 import type { HazardKind } from "@game/levels/HazardVolumeSystem";
-import type { UiSoundCue } from "@game/config/audio.config";
+import type { NpcCalloutKind, UiSoundCue } from "@game/config/audio.config";
 import type { ChargerKind } from "@game/config/items.config";
 import type { DifficultyLevel } from "@game/config/difficulty.config";
 import type { DamageType } from "@shared/types/lifecycle";
+import type { ActivatorRef } from "@game/script/ActivatorRef";
 
 export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
 export type CombatEventSourceKind = "player" | "npc" | "system";
@@ -184,6 +184,13 @@ export interface GameEventMap {
     /** Posición del NPC, para reproducir la vocalización en 3D. */
     position?: Vector3;
   };
+  /** Voz tactica sincronizada con la decision del NPC (contact/engaging/...). */
+  "npc.callout": {
+    id: string;
+    characterId: CharacterId;
+    kind: NpcCalloutKind;
+    position?: Vector3;
+  };
   /**
    * Un NPC vio un threat â€” broadcast a la facciÃ³n para que aliados cercanos
    * reciban la LKP. SÃ³lo NPCs hostiles a `threatFaction` deberÃ­an reaccionar.
@@ -208,6 +215,31 @@ export interface GameEventMap {
     /** Posición del NPC, para reproducir el sonido de ataque en 3D. */
     position?: Vector3;
   };
+  /**
+   * Un NPC lanza una granada fisica (flush-out de un target oculto). Game la
+   * materializa via `GrenadeSystem.spawn` con `ownerKind: "npc"`.
+   */
+  "npc.grenade": {
+    id: string;
+    characterId: CharacterId;
+    origin: Vector3;
+    velocity: Vector3;
+    damage: number;
+    radius: number;
+    impulse: number;
+    fuseSeconds: number;
+    sourceFaction: Faction;
+    /** Elapsed del game loop al lanzar (base del fuse). */
+    now: number;
+  };
+  /** Un medic curo a un aliado (player u otro NPC). Game aplica el heal real. */
+  "npc.heal": {
+    medicId: string;
+    characterId: CharacterId;
+    targetId: string;
+    amount: number;
+    position?: Vector3;
+  };
   /** El NPC entra en fase de carga/telegraph de un ataque (e.g. cañón del strider). */
   "npc.charge": {
     id: string;
@@ -223,6 +255,8 @@ export interface GameEventMap {
   "npc.killed": {
     id: string;
     characterId: CharacterId;
+    /** Entidad que produjo el daño letal (`player` o id de NPC). */
+    attackerId?: string;
     /** Posición del NPC al morir, para reproducir el sonido de muerte en 3D. */
     position?: Vector3;
   };
@@ -232,21 +266,33 @@ export interface GameEventMap {
     weaponId: string;
     position: Vector3;
   };
+  /** Cambio de tamaño del squad del jugador (join/muerte/reset). */
+  "squad.changed": {
+    size: number;
+    max: number;
+  };
+  /** Orden del jugador a su squad (tecla C): ir a un punto o reagruparse. */
+  "squad.command": {
+    kind: "move" | "regroup";
+    position?: Vector3;
+  };
   "door.opened": {
     id: string;
     open: boolean;
+    /** Activador original de la transición; se conserva hasta !activator. */
+    activator?: ActivatorRef;
   };
   "trigger.entered": {
     id: string;
   };
-  /**
-   * Una acción de un trigger quedó lista para ejecutarse (ya pasó su `delay`).
-   * `Game` la despacha; el `TriggerSystem` no conoce la lógica del juego.
-   */
-  "trigger.action": {
-    triggerId: string;
-    action: TriggerAction;
-    position: Vector3;
+  /** El jugador salió del volumen de un trigger (flanco). Alimenta `OnEndTouch`. */
+  "trigger.exited": {
+    id: string;
+  };
+  /** Cambió el modo de una compañera (follow/wait/escort), por script o interacción. */
+  "companion.changed": {
+    id: string;
+    mode: "follow" | "wait" | "escort";
   };
   /** El jugador cruzó un volumen de checkpoint. `position` = punto de reaparición. */
   "checkpoint.reached": {

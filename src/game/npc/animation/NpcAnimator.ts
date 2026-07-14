@@ -1,6 +1,7 @@
 import type { Vector3 } from "three";
 import type {
   AnimationActivity,
+  GestureId,
   WeaponHandedness,
 } from "@engine/animation/AnimationInput";
 import type { CharacterMotorSnapshot } from "@engine/physics/character/CharacterMotor";
@@ -11,6 +12,10 @@ export interface AnimationFrame {
   balanceIsStumbling: boolean;
   /** Segundos del frame; los decays temporales (flashes) deben usar esto. */
   delta: number;
+  /** Distancia visual mínima (player o cámara de portal) para elegir LOD. */
+  viewerDistance?: number;
+  /** False cuando ninguna cámara dibujó al NPC recientemente. */
+  visible?: boolean;
 }
 
 /**
@@ -25,9 +30,12 @@ export interface NpcAnimator {
   updateStandalone(delta: number, opts?: { dead?: boolean }): void;
   setAiming(target: Vector3 | null, pose?: WeaponHandedness): void;
   setActivity(activity: AnimationActivity): void;
+  setCrouch?(amount: number): void;
   notifyShot(): void;
   notifyReload(duration: number): void;
   notifyAttack(): void;
+  /** Dispara un gesto procedural nombrado (secuencias guionadas). Opcional. */
+  playGesture?(id: GestureId, duration: number): void;
   notifyHit(direction: Vector3, intensityFraction: number): void;
   notifyDeath(
     direction: Vector3 | undefined,
@@ -35,4 +43,6 @@ export interface NpcAnimator {
     partName: string | undefined,
   ): void;
   disable(): void;
+  /** Libera recursos GPU/físicos propios. Debe ser idempotente. */
+  dispose?(): void;
 }

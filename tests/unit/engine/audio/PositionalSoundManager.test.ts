@@ -47,8 +47,9 @@ function fakeAudioContext() {
 
 function setup() {
   const context = fakeAudioContext();
+  const getContext = vi.fn(() => context as unknown as AudioContext);
   const audioSystem = {
-    getContext: () => context as unknown as AudioContext,
+    getContext,
     unlock: vi.fn(),
     getBus: () => null,
   } as unknown as AudioSystem;
@@ -71,7 +72,7 @@ function setup() {
     await new Promise((resolve) => setTimeout(resolve, 0));
   };
 
-  return { context, manager, pendingBuffers, flush };
+  return { camera, context, getContext, manager, pendingBuffers, flush };
 }
 
 function attachedAudios(object: Object3D): PositionalAudio[] {
@@ -81,14 +82,24 @@ function attachedAudios(object: Object3D): PositionalAudio[] {
 }
 
 describe("PositionalSoundManager", () => {
+  it("no crea AudioListener ni pide contexto durante el bootstrap", () => {
+    const { camera, getContext } = setup();
+
+    expect(getContext).not.toHaveBeenCalled();
+    expect(camera.children).toHaveLength(0);
+  });
+
   it("reproduce y frena un loop atachado cuando el buffer ya cargo", async () => {
-    const { context, manager, pendingBuffers, flush } = setup();
+    const { camera, context, getContext, manager, pendingBuffers, flush } =
+      setup();
     const object = new Object3D();
 
     manager.attachToObject("loop", object, { loop: true });
     pendingBuffers[0]({} as AudioBuffer);
     await flush();
 
+    expect(getContext).toHaveBeenCalledTimes(1);
+    expect(camera.children).toHaveLength(1);
     expect(context.createBufferSource).toHaveBeenCalledTimes(1);
     expect(attachedAudios(object)).toHaveLength(1);
 

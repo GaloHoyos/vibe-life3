@@ -62,6 +62,8 @@ interface ExplosionDamageTarget {
   point: Vector3;
 }
 
+type ExplosionTargetKey = Damageable | string;
+
 /**
  * Owner de las granadas activas en el mundo (fuse + impact). Cada `update`
  * tickea fuse + beeps, chequea contacto para `impact`, y dispara la
@@ -321,7 +323,7 @@ export class GrenadeSystem implements Disposable {
     const sphere = new RAPIER.Ball(params.radius);
     const seenColliders = new Set<number>();
     const impulseBodies = new Map<number, RAPIER.RigidBody>();
-    const damageTargets = new Map<Damageable, ExplosionDamageTarget>();
+    const damageTargets = new Map<ExplosionTargetKey, ExplosionDamageTarget>();
 
     this.physics.world.intersectionsWithShape(
       { x: point.x, y: point.y, z: point.z },
@@ -339,7 +341,8 @@ export class GrenadeSystem implements Disposable {
           impulseBodies.set(parent.handle, parent);
         }
 
-        if (!metadata?.damageable) {
+        const damageable = metadata?.explosionDamageable ?? metadata?.damageable;
+        if (!metadata || !damageable) {
           return true;
         }
 
@@ -365,15 +368,19 @@ export class GrenadeSystem implements Disposable {
         const direction = tmpOffset.lengthSq() > 1e-4
           ? tmpOffset.clone().normalize()
           : new Vector3(0, 1, 0);
-        this.collectDamageTarget(damageTargets, {
-          damageable: metadata.damageable,
-          targetId: metadata.id,
+        this.collectDamageTarget(
+          damageTargets,
+          metadata.explosionGroupId ?? damageable,
+          {
+          damageable,
+          targetId: metadata.ownerId ?? metadata.id,
           surfaceKind: metadata.kind,
           bodyPartName: metadata.bodyPart?.name,
           damage,
           direction,
           point: new Vector3(bodyPos.x, bodyPos.y, bodyPos.z),
-        });
+          },
+        );
         return true;
       },
     );
@@ -424,14 +431,15 @@ export class GrenadeSystem implements Disposable {
   }
 
   private collectDamageTarget(
-    targets: Map<Damageable, ExplosionDamageTarget>,
+    targets: Map<ExplosionTargetKey, ExplosionDamageTarget>,
+    key: ExplosionTargetKey,
     candidate: ExplosionDamageTarget,
   ): void {
-    const existing = targets.get(candidate.damageable);
+    const existing = targets.get(key);
     if (existing && existing.damage >= candidate.damage) {
       return;
     }
-    targets.set(candidate.damageable, {
+    targets.set(key, {
       ...candidate,
       direction: candidate.direction.clone(),
       point: candidate.point.clone(),
@@ -512,6 +520,9 @@ export class GrenadeSystem implements Disposable {
     this.physics.registerCollider(collider, {
       id: `grenade-${this.nextId}`,
       kind: "dynamic",
+      // HL2 no calcula el golpe de la frag por masa: manda apenas 0.1 de
+      // DMG_CRUSH para que el personaje reaccione al "bonk".
+      impactDamageOverride: 0.1,
     });
     return body;
   }

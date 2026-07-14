@@ -1,6 +1,7 @@
 import type { Vector3 } from 'three';
 import type { ConditionMask } from '@engine/ai/brain/Condition';
-import type { NavSpace } from '@engine/ai/nav/NavSpace';
+import type { NavAgentProfile } from '@engine/ai/navigation/NavigationTypes';
+import type { GestureId } from '@engine/animation/AnimationInput';
 import type { GameEventBus } from '@game/GameEvents';
 import type { ActorSnapshot } from '@game/npc/core/INpc';
 import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
@@ -8,6 +9,7 @@ import type { Faction } from '@engine/ai/Faction';
 import type { NoiseSnapshot } from '@game/npc/brain/NpcNoiseSensor';
 import type { NpcTacticalHandle } from '@game/npc/brain/NpcCoverSensor';
 import type { SquadRole } from '@game/npc/ai/SquadDirector';
+import type { NpcScriptOrder } from '@game/script/NpcScriptOrder';
 
 export interface NpcSelfSnapshot {
   id: string;
@@ -18,6 +20,10 @@ export interface NpcSelfSnapshot {
   health: number;
   maxHealth: number;
   radius: number;
+}
+
+export interface NpcNavigationQueries {
+  projectPoint(position: Vector3, profile: NavAgentProfile): Vector3 | null;
 }
 
 /**
@@ -39,6 +45,12 @@ export interface NpcLocomotionHandle {
   leap(target: Vector3, params: NpcLeapParams): void;
   /** True mientras el cuerpo este en el aire por un `leap`. */
   isLeaping(): boolean;
+  /**
+   * Teletransporte instantaneo a un punto encarando `yaw` (secuencias guionadas
+   * con `moveMode: 'teleport'`). Opcional: solo motores terrestres estandar lo
+   * exponen; flyers/strider no.
+   */
+  teleport?(position: Vector3, yaw: number): void;
 }
 
 export interface NpcLeapParams {
@@ -53,6 +65,25 @@ export interface NpcMoveOptions {
   facing?: Vector3;
   /** 'walk' (default) | 'sprint'. */
   gait?: 'walk' | 'sprint';
+}
+
+/**
+ * Interfaz minima de los squad slots que los tasks consumen (los tasks no ven
+ * el SquadDirector). El slot de ataque NO esta aca: su lifecycle lo maneja el
+ * `Npc` por sensores (`HasAttackSlot`), no los tasks.
+ */
+export interface NpcSlotHandle {
+  /** Reclama el slot unico de overwatch de la squad. True si quedo en poder del NPC. */
+  claimOverwatch(): boolean;
+  releaseOverwatch(): void;
+  claimGrenade(): boolean;
+  /** `lockoutSeconds` veda el slot para toda la squad (espaciar granadas). */
+  releaseGrenade(lockoutSeconds?: number): void;
+  /**
+   * Emite la granada fisica hacia la LKP y arranca el cooldown del NPC.
+   * Presupone `claimGrenade()` previo. False si no hay perfil/target valido.
+   */
+  throwGrenade(elapsed: number): boolean;
 }
 
 /** Estado del mundo que el `Npc` empuja al combat handle cada frame. */
@@ -92,6 +123,8 @@ export interface NpcCombatHandle {
   magazineEmpty(): boolean;
   /** Distancia maxima a la que tiene sentido encarar combate. */
   effectiveRange(): number;
+  /** Libera claims/listeners propios. */
+  dispose?(): void;
 }
 
 /**
@@ -115,6 +148,21 @@ export interface NpcBrainContext {
   threat: ActorSnapshot | null;
   /** Ultimo punto conocido del threat (memoria de perception). */
   threatLastKnown: Vector3 | null;
+  /** Donde se sospecha que hay un enemigo (acumulador sub-umbral de deteccion). */
+  threatSuspected: Vector3 | null;
+  /**
+   * Ancla efectiva del ally (player u orden ir-a-punto del squad del
+   * jugador). Null en NPCs sin `anchor`. Los tasks de follow/regroup usan
+   * esto, no `player` directo.
+  */
+  anchorPosition: Vector3 | null;
+  /**
+   * Radio de llegada impuesto por el controlador del ancla (escort). Null o
+   * undefined usa la distancia social propia del task de follow/regroup.
+   */
+  anchorArrivalRadius?: number | null;
+  /** Offset de formacion alrededor del anchor (miembros del squad del jugador). */
+  anchorOffset: Vector3 | null;
   /** Snapshot del player (puede ser aliado — no necesariamente threat). */
   player: ActorSnapshot;
   /** Ruta de patrol del nivel, o null si el NPC no patrulla. */
@@ -125,8 +173,21 @@ export interface NpcBrainContext {
   tactical: NpcTacticalHandle | null;
   /** Rol asignado por el SquadDirector este frame. Null sin squad. */
   squad: { role: SquadRole; flankSide: 1 | -1 } | null;
+  /** Claims de slots de squad (overwatch/granada). Null sin squad. */
+  slots: NpcSlotHandle | null;
+  /**
+   * Curacion (solo presets medic con un objetivo valido este frame): `target`
+   * es el aliado mas herido en rango; `heal` aplica la curacion (emite
+   * `npc.heal` y arranca el cooldown del medic).
+   */
+  medic: { target: ActorSnapshot; heal(elapsed: number): boolean } | null;
+  /** Orden de secuencia guionada activa para este NPC, o null. */
+  script: NpcScriptOrder | null;
+  /** Dispara un gesto procedural nombrado (pasos `gesture` de una secuencia). */
+  gesture(id: GestureId, duration: number): void;
   conditions: ConditionMask;
-  navSpace: NavSpace;
+  navigation: NpcNavigationQueries;
+  navigationProfile: NavAgentProfile;
   buildingRegistry: BuildingRegistry;
   locomotion: NpcLocomotionHandle;
   combat: NpcCombatHandle;

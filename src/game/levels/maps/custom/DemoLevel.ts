@@ -88,11 +88,17 @@ export const DemoLevel: LevelDefinition = {
       position: [0, 1, 6.5],
       size: [5, 2, 3],
       once: true,
-      dialogue: {
-        speaker: 'Sistema',
-        text: 'Modulo de entrenamiento activo. Prueba movimiento, interaccion y arma.',
-        duration: 4,
-      },
+      connections: [{ output: 'OnStartTouch', target: 'intro-msg', input: 'Show' }],
+    },
+  ],
+  logicEntities: [
+    {
+      kind: 'message',
+      id: 'intro-msg',
+      name: 'intro-msg',
+      speaker: 'Sistema',
+      text: 'Modulo de entrenamiento activo. Prueba movimiento, interaccion y arma.',
+      duration: 4,
     },
   ],
   checkpoints: [

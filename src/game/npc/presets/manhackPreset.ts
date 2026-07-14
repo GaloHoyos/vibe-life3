@@ -1,16 +1,13 @@
 import type { ScheduleDefinition } from '@engine/ai/brain/Task';
-import { NO_CONDITIONS } from '@engine/ai/brain/Condition';
 import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
-import { condMask } from '@game/npc/brain/NpcConditions';
-import {
-  createWaitTask,
-  PlayDeathTask,
-} from '@game/npc/brain/tasks/CoreTasks';
+import { condMask, type CondKey } from '@game/npc/brain/NpcConditions';
 import { createFlyerPursuitTask } from '@game/npc/brain/tasks/CreatureTasks';
 import {
-  createInvestigateTask,
-  createSearchSweepTask,
-} from '@game/npc/brain/tasks/TacticalTasks';
+  deadSchedule,
+  idleSchedule,
+  investigateCombatSchedule,
+  searchLastKnownSchedule,
+} from './commonSchedules';
 import type { NpcPreset } from './NpcPreset';
 
 /**
@@ -20,16 +17,11 @@ import type { NpcPreset } from './NpcPreset';
  * rebota torpe (bump) y vuelve, y corta por contacto (slice). El daño es del
  * motor, no del combat del brain. Fragil, sin flinch. Usa el `CreatureAnimator`.
  */
+const MANHACK_ALERT_CONDS: readonly CondKey[] = ['SeeEnemy', 'LostEnemy', 'HeardCombat'];
+
 export function buildManhackPreset(): NpcPreset {
   const schedules: ScheduleDefinition<NpcBrainContext>[] = [
-    {
-      id: 'dead',
-      priority: 1000,
-      required: condMask('IsDead'),
-      blockedBy: NO_CONDITIONS,
-      interrupts: NO_CONDITIONS,
-      tasks: [PlayDeathTask],
-    },
+    deadSchedule(),
     {
       // Persecucion continua: vuela directo al player. El slice por contacto y el
       // bump contra todo lo maneja el motor (no frena, no muerde por brain).
@@ -40,34 +32,15 @@ export function buildManhackPreset(): NpcPreset {
       interrupts: condMask('LostEnemy', 'EnemyDead'),
       tasks: [createFlyerPursuitTask('sprint')],
     },
-    {
-      id: 'searchLastKnown',
-      priority: 500,
-      required: condMask('LostEnemy'),
-      blockedBy: condMask('IsDead', 'SeeEnemy'),
-      interrupts: condMask('SeeEnemy', 'EnemyDead'),
-      tasks: [createSearchSweepTask(), createWaitTask(0.8)],
-    },
-    {
-      id: 'investigateCombat',
-      priority: 320,
-      required: condMask('HeardCombat'),
-      blockedBy: condMask('IsDead', 'SeeEnemy', 'LostEnemy'),
-      interrupts: condMask('SeeEnemy', 'LostEnemy'),
-      tasks: [createInvestigateTask(), createWaitTask(0.8)],
-    },
-    {
-      id: 'idle',
-      priority: 100,
-      required: NO_CONDITIONS,
-      blockedBy: condMask('IsDead', 'SeeEnemy', 'LostEnemy', 'HeardCombat'),
-      interrupts: condMask('SeeEnemy', 'LostEnemy', 'HeardCombat'),
-      tasks: [createWaitTask(1.0)],
-    },
+    searchLastKnownSchedule(0.8),
+    investigateCombatSchedule(0.8),
+    idleSchedule(1.0, MANHACK_ALERT_CONDS),
   ];
 
   return {
     id: 'manhack',
+    usesCover: false,
+    usesSquad: false,
     perception: {
       visionRange: 24,
       visionConeRadians: (150 * Math.PI) / 180,

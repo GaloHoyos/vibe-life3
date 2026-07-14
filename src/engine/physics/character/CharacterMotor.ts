@@ -25,6 +25,8 @@ export interface CharacterMotorConfig {
   gravity: number;
   stepOffset: number;
   snapToGround: number;
+  /** Altura total de la cápsula agachada. Omitida = no puede agacharse. */
+  crouchHeight?: number;
   debug?: boolean;
   metadata: PhysicsMetadata;
 }
@@ -55,6 +57,7 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
   private leapAirborne = false;
   private leapTimer = 0;
   private portalExclusions: ReadonlySet<number> | null = null;
+  private crouched = false;
 
   constructor(
     physics: PhysicsWorld,
@@ -216,6 +219,27 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
     return this.leaping;
   }
 
+  setCrouched(crouched: boolean): void {
+    if (this.config.crouchHeight === undefined || this.crouched === crouched) return;
+    const standingHalfHeight = getCapsuleHalfHeight(this.config.height, this.config.radius);
+    const crouchHalfHeight = getCapsuleHalfHeight(this.config.crouchHeight, this.config.radius);
+    const nextHalfHeight = crouched ? crouchHalfHeight : standingHalfHeight;
+    const currentHalfHeight = this.crouched ? crouchHalfHeight : standingHalfHeight;
+    const delta = nextHalfHeight - currentHalfHeight;
+    this.collider.setHalfHeight(nextHalfHeight);
+    const position = this.body.translation();
+    this.body.setTranslation(
+      { x: position.x, y: position.y + delta, z: position.z },
+      true,
+    );
+    this.body.setNextKinematicTranslation(
+      { x: position.x, y: position.y + delta, z: position.z },
+    );
+    this.crouched = crouched;
+  }
+
+  isCrouched(): boolean { return this.crouched; }
+
   /**
    * Detecta el aterrizaje: una vez que el cuerpo dejo el piso (`leapAirborne`),
    * el primer frame que vuelve a estar grounded cierra el leap. Corte duro por
@@ -269,6 +293,7 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
 
   disable(): void {
     this.enabled = false;
+    this.setCrouched(false);
     if (this.leaping) {
       this.leaping = false;
       this.controller.enableSnapToGround(this.config.snapToGround);

@@ -1,6 +1,7 @@
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3 } from "three";
 import type { Raycast, RaycastHit } from "@engine/physics/Raycast";
+import type { PhysicsMetadata } from '@engine/physics/PhysicsWorld';
 import type { PortalPairState, PortalSlot } from "./PortalFrame";
 import {
   intersectRayPortal,
@@ -44,8 +45,9 @@ export class PortalRaycast {
     maxDistance: number,
     excludeBody?: RAPIER.RigidBody,
     excludeId?: string,
+    filter?: (metadata: PhysicsMetadata | undefined, collider: RAPIER.Collider) => boolean,
   ): RaycastHit | null {
-    return this.castSegments(origin, direction, maxDistance, excludeBody, excludeId)
+    return this.castSegments(origin, direction, maxDistance, excludeBody, excludeId, filter)
       .hit;
   }
 
@@ -55,6 +57,7 @@ export class PortalRaycast {
     maxDistance: number,
     excludeBody?: RAPIER.RigidBody,
     excludeId?: string,
+    filter?: (metadata: PhysicsMetadata | undefined, collider: RAPIER.Collider) => boolean,
   ): PortalRaycastResult {
     const segments: PortalRaySegment[] = [];
     const currentOrigin = origin.clone();
@@ -68,6 +71,7 @@ export class PortalRaycast {
         remaining,
         excludeBody,
         excludeId,
+        filter,
       );
 
       const entry = this.pair.linked

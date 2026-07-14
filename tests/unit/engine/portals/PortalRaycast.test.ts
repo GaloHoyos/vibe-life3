@@ -73,6 +73,19 @@ describe("PortalRaycast", () => {
     expect(hit!.metadata?.id).toBe("target");
   });
 
+  it('forwards collider filters on every segment', async () => {
+    const { portal } = await setupWorld();
+    const hit = portal.cast(
+      new Vector3(0, 5, 8),
+      new Vector3(0, 0, -1),
+      60,
+      undefined,
+      undefined,
+      (metadata) => metadata?.id !== 'target',
+    );
+    expect(hit).toBeNull();
+  });
+
   it("hits the backing wall when the ray misses the disc", async () => {
     const { portal } = await setupWorld();
     // Aim 2 m beside the portal center — still wall A, outside the ellipse.

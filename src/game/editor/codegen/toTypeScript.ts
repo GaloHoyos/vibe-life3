@@ -66,6 +66,12 @@ export function toTypeScript(doc: EditorDocument): string {
       case 'prebuiltBuilding':
         lines.push(`  .building(${lit(entity.artifact)})`);
         break;
+      case 'logic':
+        lines.push(`  .logic(${lit(entity.def)})`);
+        break;
+      case 'sequence':
+        lines.push(`  .sequence(${lit(entity.def)})`);
+        break;
     }
   }
 

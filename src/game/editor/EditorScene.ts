@@ -9,7 +9,7 @@ import {
   type Scene,
   Vector3,
 } from 'three';
-import { createBoxMesh } from '@engine/render/PrimitiveFactory';
+import { applyMaterialUvsToCylinder, createBoxMesh } from '@engine/render/PrimitiveFactory';
 import { getMaterial } from '@engine/render/material/Materials';
 import { createTerrainMesh } from '@engine/render/TerrainMesh';
 import { generateHeightField } from '@shared/math/HeightField';
@@ -244,6 +244,11 @@ export class EditorScene {
       }
       case 'prebuiltBuilding':
         return groupFromBoxes(entity.artifact.boxes);
+      case 'sequence':
+        return placeholder(entity.def.position, [0.5, 0.5, 0.5], 'button', entity.def.rotation);
+      case 'logic':
+        // Entidades lógicas sin cuerpo físico: cubo pequeño para verlas/moverlas.
+        return placeholder(entity.position, [0.4, 0.4, 0.4], 'trim');
     }
   }
 }
@@ -274,7 +279,11 @@ function triggerMesh(id: string, position: VectorTuple, size: VectorTuple, rotat
 function barrelMesh(id: string, position: VectorTuple, rotation?: VectorTuple): Mesh {
   const radius = 0.28;
   const height = 0.95;
-  const mesh = new Mesh(new CylinderGeometry(radius, radius, height, 16), getMaterial('hazard'));
+  const geometry = applyMaterialUvsToCylinder(
+    new CylinderGeometry(radius, radius, height, 16),
+    'hazard',
+  );
+  const mesh = new Mesh(geometry, getMaterial('hazard'));
   mesh.name = id;
   mesh.position.set(position[0], position[1] + height / 2, position[2]);
   if (rotation) mesh.rotation.set(rotation[0], rotation[1], rotation[2]);

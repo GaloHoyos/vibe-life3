@@ -21,8 +21,11 @@ import type {
   WeaponPickupDefinition,
 } from '@game/levels/LevelDefinition';
 import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
+import type { CheckpointDefinition } from '@game/levels/CheckpointSystem';
 import type { ExplosiveBarrelDefinition } from '@game/gameplay/hazards/ExplosiveBarrel';
 import type { PlayerModelId } from '@game/config/playermodel.config';
+import type { LogicEntityDefinition } from '@game/script/EntityIOTypes';
+import type { ScriptedSequenceDefinition } from '@game/script/ScriptedSequenceTypes';
 import { buildBuilding, type BuildingSpec } from './BuildingBuilder';
 import { buildHouse, type HouseSpec } from './HouseBuilder';
 import { buildRamp, type RampSpec } from './RampBuilder';
@@ -96,8 +99,11 @@ export class MapBuilder {
   private readonly ammoPickupList: AmmoPickupDefinition[] = [];
   private readonly chargerList: ChargerDefinition[] = [];
   private readonly triggerList: TriggerDefinition[] = [];
+  private readonly logicList: LogicEntityDefinition[] = [];
+  private readonly sequenceList: ScriptedSequenceDefinition[] = [];
   private readonly barrelList: ExplosiveBarrelDefinition[] = [];
   private readonly hazardList: HazardVolumeDefinition[] = [];
+  private readonly checkpointList: CheckpointDefinition[] = [];
   private terrainDef: TerrainDefinition | undefined;
 
   constructor(private readonly meta: MapMeta) {}
@@ -274,6 +280,18 @@ export class MapBuilder {
     return this;
   }
 
+  /** Entidad lógica del entity I/O (relay, counter, timer, message, spawner, etc.). */
+  logic(def: LogicEntityDefinition): this {
+    this.logicList.push(def);
+    return this;
+  }
+
+  /** Secuencia guionada de un NPC (scripted_sequence). */
+  sequence(def: ScriptedSequenceDefinition): this {
+    this.sequenceList.push(def);
+    return this;
+  }
+
   /** Barril explosivo (prop dañable que explota al morir). */
   explosiveBarrel(def: ExplosiveBarrelDefinition): this {
     this.barrelList.push(def);
@@ -283,6 +301,12 @@ export class MapBuilder {
   /** Volumen de peligro (kill-volume) que daña al jugador mientras está adentro. */
   hazardVolume(def: HazardVolumeDefinition): this {
     this.hazardList.push(def);
+    return this;
+  }
+
+  /** Punto de control para respawn (captura vida/armadura/inventario al cruzarlo). */
+  checkpoint(def: CheckpointDefinition): this {
+    this.checkpointList.push(def);
     return this;
   }
 
@@ -337,8 +361,11 @@ export class MapBuilder {
       ammoPickups: this.ammoPickupList.length > 0 ? this.ammoPickupList : undefined,
       chargers: this.chargerList.length > 0 ? this.chargerList : undefined,
       triggers: this.triggerList,
+      logicEntities: this.logicList.length > 0 ? this.logicList : undefined,
+      sequences: this.sequenceList.length > 0 ? this.sequenceList : undefined,
       explosiveBarrels: this.barrelList.length > 0 ? this.barrelList : undefined,
       hazardVolumes: this.hazardList.length > 0 ? this.hazardList : undefined,
+      checkpoints: this.checkpointList.length > 0 ? this.checkpointList : undefined,
     };
   }
 
@@ -364,8 +391,11 @@ export class MapBuilder {
     this.ammoPickupList.forEach((p) => check(p.id));
     this.chargerList.forEach((c) => { check(c.id); check(`${c.id}-body`); });
     this.triggerList.forEach((t) => check(t.id));
+    this.logicList.forEach((l) => check(l.id));
+    this.sequenceList.forEach((s) => check(s.id));
     this.barrelList.forEach((b) => check(b.id));
     this.hazardList.forEach((h) => check(h.id));
+    this.checkpointList.forEach((c) => check(c.id));
     if (dupes.size > 0) {
       throw new Error(
         `MapBuilder('${this.meta.id}'): ids duplicados: ${[...dupes].join(', ')}`,

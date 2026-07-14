@@ -357,6 +357,47 @@ describe("IceGunSystem (blobulator)", () => {
     expect(removeBody).toHaveBeenCalledTimes(1);
   });
 
+  it('notifica el shatter a handles con congelamiento no letal (Blob)', () => {
+    const { system, bus, setHit } = setupMocked();
+    const handle = freezeHandle('blob-1');
+    handle.freezeSolid = () => {
+      handle.freezeSolidCalls.count += 1;
+      const visual = new Group();
+      visual.position.set(0, 1, -2);
+      return visual;
+    };
+    handle.shatter = vi.fn(() => {
+      handle.alive.value = false;
+    });
+    setHit(
+      npcHit({
+        id: 'blob-mass',
+        ownerId: 'blob-1',
+        kind: 'npc',
+        characterId: 'blob',
+        damageable: { applyDamage: vi.fn(), isAlive: () => handle.alive.value },
+      }),
+    );
+    system.update(1 / 60, 0, [handle]);
+    for (let i = 0; i < 8; i++) fire(system, i * 0.06);
+    expect(handle.alive.value).toBe(true);
+    expect(system.isFrozen('blob-1')).toBe(true);
+
+    bus.emit('weapon.hit', {
+      weaponName: 'Shotgun',
+      targetId: 'ice-statue-blob-1',
+      surfaceKind: 'dynamic',
+      point: new Vector3(0, 1, -2),
+      normal: new Vector3(0, 0, 1),
+      damage: 25,
+      sourceId: 'player',
+    });
+
+    expect(handle.shatter).toHaveBeenCalledTimes(1);
+    expect(handle.alive.value).toBe(false);
+    expect(system.isFrozen('blob-1')).toBe(false);
+  });
+
   it("targets without a freeze handle die of cold at threshold (fallback)", () => {
     const { system, setHit, vfx } = setupMocked();
     let alive = true;

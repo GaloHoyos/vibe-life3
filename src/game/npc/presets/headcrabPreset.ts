@@ -1,20 +1,21 @@
 import type { ScheduleDefinition } from '@engine/ai/brain/Task';
-import { NO_CONDITIONS } from '@engine/ai/brain/Condition';
 import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
 import { condMask } from '@game/npc/brain/NpcConditions';
 import {
-  createFlinchTask,
   createMoveToThreatTask,
   createWaitTask,
   FaceThreatTask,
   FireBurstTask,
-  PlayDeathTask,
 } from '@game/npc/brain/tasks/CoreTasks';
 import { createLeapTask } from '@game/npc/brain/tasks/CreatureTasks';
 import {
-  createInvestigateTask,
-  createSearchSweepTask,
-} from '@game/npc/brain/tasks/TacticalTasks';
+  deadSchedule,
+  hitSchedule,
+  idleSchedule,
+  investigateCombatSchedule,
+  investigateSuspiciousSchedule,
+  searchLastKnownSchedule,
+} from './commonSchedules';
 import type { NpcLeapProfile, NpcPreset } from './NpcPreset';
 
 /**
@@ -38,22 +39,8 @@ const HEADCRAB_LEAP: NpcLeapProfile = {
  */
 export function buildHeadcrabPreset(): NpcPreset {
   const schedules: ScheduleDefinition<NpcBrainContext>[] = [
-    {
-      id: 'dead',
-      priority: 1000,
-      required: condMask('IsDead'),
-      blockedBy: NO_CONDITIONS,
-      interrupts: NO_CONDITIONS,
-      tasks: [PlayDeathTask],
-    },
-    {
-      id: 'stagger',
-      priority: 900,
-      required: condMask('JustHit'),
-      blockedBy: condMask('IsDead'),
-      interrupts: NO_CONDITIONS,
-      tasks: [createFlinchTask(0.25)],
-    },
+    deadSchedule(),
+    hitSchedule(0.25, 'stagger'),
     {
       // Prioridad sobre el melee point-blank: una vez en el aire, el salto no se
       // corta aunque el cuerpo cruce a rango melee (el schedule corre hasta
@@ -81,49 +68,16 @@ export function buildHeadcrabPreset(): NpcPreset {
       interrupts: condMask('EnemyInMeleeRange', 'EnemyInLeapRange', 'LostEnemy', 'EnemyDead'),
       tasks: [createMoveToThreatTask(1.0, 'walk')],
     },
-    {
-      id: 'searchLastKnown',
-      priority: 500,
-      required: condMask('LostEnemy'),
-      blockedBy: condMask('IsDead', 'SeeEnemy'),
-      interrupts: condMask('SeeEnemy', 'EnemyDead'),
-      tasks: [createSearchSweepTask(), createWaitTask(0.8)],
-    },
-    {
-      id: 'investigateCombat',
-      priority: 320,
-      required: condMask('HeardCombat'),
-      blockedBy: condMask('IsDead', 'SeeEnemy', 'LostEnemy'),
-      interrupts: condMask('SeeEnemy', 'LostEnemy'),
-      tasks: [createInvestigateTask(), createWaitTask(0.8)],
-    },
-    {
-      id: 'investigateSuspicious',
-      priority: 300,
-      required: condMask('HeardSuspicious'),
-      blockedBy: condMask('IsDead', 'SeeEnemy', 'LostEnemy', 'HeardCombat'),
-      interrupts: condMask('SeeEnemy', 'LostEnemy', 'HeardCombat'),
-      tasks: [createInvestigateTask(), createWaitTask(1.2)],
-    },
-    {
-      id: 'idle',
-      priority: 100,
-      required: NO_CONDITIONS,
-      blockedBy: condMask(
-        'IsDead',
-        'SeeEnemy',
-        'LostEnemy',
-        'JustHit',
-        'HeardCombat',
-        'HeardSuspicious',
-      ),
-      interrupts: condMask('SeeEnemy', 'LostEnemy', 'JustHit', 'HeardCombat', 'HeardSuspicious'),
-      tasks: [createWaitTask(1.0)],
-    },
+    searchLastKnownSchedule(0.8),
+    investigateCombatSchedule(0.8),
+    investigateSuspiciousSchedule(1.2),
+    idleSchedule(1.0),
   ];
 
   return {
     id: 'headcrab',
+    usesCover: false,
+    usesSquad: false,
     perception: {
       visionRange: 16,
       visionConeRadians: (120 * Math.PI) / 180,

@@ -6,6 +6,7 @@ import type {
 } from "@engine/animation/procedural/ProceduralWalk";
 import type { RagdollConfig } from "@engine/animation/ragdoll/RagdollDefinition";
 import type { Faction } from "@engine/ai/Faction";
+import type { PerceptionDetectionConfig } from "@engine/ai/perception/PerceptionSystem";
 
 export type CharacterType = "humanoid" | "creature" | "robot" | "prop";
 export type CharacterId = string;
@@ -18,6 +19,8 @@ export type CharacterAIProfileId =
   | "combineSoldier"
   | "zombieMelee"
   | "alyxSupport"
+  | "rebelAlly"
+  | "rebelMedic"
   | "passiveHumanoid"
   | "headcrabMelee"
   | "manhackFlyer"
@@ -32,6 +35,8 @@ export interface CharacterPerceptionConfig {
   hearingRadius: number;
   memoryDuration: number;
   eyeHeight: number;
+  /** Deteccion no-binaria opt-in; sin esto la vision es instantanea. */
+  detection?: PerceptionDetectionConfig;
 }
 
 export interface CharacterMovementConfig {
@@ -56,9 +61,10 @@ export interface CharacterColliderConfig {
 }
 
 /**
- * NOTA: NO es la vida runtime de los NPCs. El `Npc` toma su HP de
- * `NpcPreset.maxHealth` (`game/npc/presets/*`). Este campo es metadata de la
- * definicion; para cambiar cuanto aguanta un enemigo, editar el preset.
+ * Vida runtime de los perfiles HUMANOIDES (combineSoldier, alyxSupport,
+ * zombieMelee, passiveHumanoid y derivados): la factory la aplica sobre el
+ * `NpcPreset` via `applyDefinitionStats`. Para creatures/bosses la vida sigue
+ * saliendo del builder en `game/npc/presets/*`.
  */
 export interface CharacterHealthConfig {
   maxHealth: number;
@@ -170,6 +176,16 @@ export interface CharacterAttackConfig {
   grenade?: CharacterGrenadeTacticConfig;
 }
 
+/**
+ * Flinch al recibir daño: `duration` corta el avance ese tiempo y `cooldown`
+ * impide re-flinch continuo (anti-stunlock bajo fuego sostenido). Sin esto el
+ * preset usa su default (zombies: cooldown 0 = frenarlos a tiros, intencional).
+ */
+export interface CharacterFlinchConfig {
+  duration: number;
+  cooldown: number;
+}
+
 export interface CharacterStumbleConfig {
   stumbleImpulseThreshold: number;
   stumbleDuration: number;
@@ -198,10 +214,15 @@ export interface CharacterDefinition {
   ragdoll: CharacterRagdollConfig;
   collider: CharacterColliderConfig;
   ai: CharacterAIConfig;
-  /** VisiÃ³n + LOS + memoria. SÃ³lo usado por `combineRanged` y `alyxAlly`. */
+  /**
+   * Vision + LOS + memoria. Para perfiles humanoides es la fuente del
+   * `NpcPreset.perception` (via `applyDefinitionStats`). `eyeHeight` es offset
+   * desde el CENTRO de la capsula.
+   */
   perception: CharacterPerceptionConfig;
   attack: CharacterAttackConfig;
   stumble: CharacterStumbleConfig;
+  flinch?: CharacterFlinchConfig;
   debug: boolean;
 }
 

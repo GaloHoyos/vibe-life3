@@ -78,6 +78,17 @@ interface PlacedPortal {
   backingColliders: RAPIER.Collider[];
 }
 
+interface NpcTraversalState {
+  prev: Vector3;
+  cooldownUntil: number;
+  seenFrame: number;
+  excluding: boolean;
+  /** Una boca sólo queda abierta si el NPC la alcanzó desde su cara frontal. */
+  engaged: Record<PortalSlot, boolean>;
+  /** Permite restaurar el collider si el NPC desaparece del update o se mueve el portal. */
+  handle: NpcPortalHandle;
+}
+
 // Disc sits slightly off the wall to avoid z-fighting; portal math keeps
 // using the exact surface plane stored in the frame. 1 mm: invisible a ojo
 // pero robusto contra el shimmer del depth buffer logarítmico.
@@ -125,10 +136,7 @@ export class PortalGunSystem implements Disposable {
   /** Tránsito del jugador (filtro, funnel, cruce, teleport). Engine-puro. */
   private readonly transit: PortalPlayerTransitSystem;
   private readonly transitCamera: PortalTransitCamera;
-  private readonly npcStates = new Map<
-    string,
-    { prev: Vector3; cooldownUntil: number; seenFrame: number; excluding: boolean }
-  >();
+  private readonly npcStates = new Map<string, NpcTraversalState>();
   private npcFrame = 0;
   private readonly viewRenderer: PortalViewRenderer;
   private shadowPolicyActive = false;
@@ -357,20 +365,13 @@ export class PortalGunSystem implements Disposable {
       return;
     }
     if (!this.pair.linked) {
-      if (this.npcStates.size > 0) {
-        for (const handle of handles) {
-          handle.setColliderExclusions(null);
-        }
-        this.npcStates.clear();
-      }
+      this.resetNpcTraversalStates();
       return;
     }
 
     this.npcFrame++;
     for (const handle of handles) {
       const position = handle.getPosition();
-      this.applyNpcPassThrough(handle, position);
-
       let state = this.npcStates.get(handle.id);
       if (!state) {
         state = {
@@ -378,10 +379,14 @@ export class PortalGunSystem implements Disposable {
           cooldownUntil: 0,
           seenFrame: 0,
           excluding: false,
+          engaged: { a: false, b: false },
+          handle,
         };
         this.npcStates.set(handle.id, state);
       }
+      state.handle = handle;
       state.seenFrame = this.npcFrame;
+      this.applyNpcPassThrough(handle, position, state);
 
       if (elapsed >= state.cooldownUntil) {
         for (const slot of ["a", "b"] as const) {
@@ -412,6 +417,7 @@ export class PortalGunSystem implements Disposable {
 
     for (const [id, state] of this.npcStates) {
       if (state.seenFrame !== this.npcFrame) {
+        if (state.excluding) state.handle.setColliderExclusions(null);
         this.npcStates.delete(id);
       }
     }
@@ -420,9 +426,14 @@ export class PortalGunSystem implements Disposable {
   private applyNpcPassThrough(
     handle: NpcPortalHandle,
     position: Vector3,
+    state: {
+      excluding: boolean;
+      engaged: Record<PortalSlot, boolean>;
+    },
   ): void {
     const excluded = new Set<number>();
-    for (const portal of this.portals.values()) {
+    const nextEngaged: Record<PortalSlot, boolean> = { a: false, b: false };
+    for (const [slot, portal] of this.portals) {
       const frame = portal.frame;
       TMP_DELTA.copy(position).sub(frame.position);
       if (
@@ -438,21 +449,33 @@ export class PortalGunSystem implements Disposable {
       if (ex * ex + ey * ey > 1) {
         continue;
       }
+      // local +Z es la normal/frente del portal. Un NPC descubierto por
+      // primera vez detrás nunca abre la pared. Si ya se comprometió desde
+      // adelante, conserva el hueco durante el cruce hasta el teleport.
+      if (TMP_LOCAL.z < 0 && !state.engaged[slot]) {
+        continue;
+      }
+      nextEngaged[slot] = true;
       for (const collider of portal.backingColliders) {
         excluded.add(collider.handle);
       }
     }
 
-    const state = this.npcStates.get(handle.id);
     const wantsExclusions = excluded.size > 0;
     if (wantsExclusions) {
       handle.setColliderExclusions(excluded);
-    } else if (state?.excluding) {
+    } else if (state.excluding) {
       handle.setColliderExclusions(null);
     }
-    if (state) {
-      state.excluding = wantsExclusions;
+    state.excluding = wantsExclusions;
+    state.engaged = nextEngaged;
+  }
+
+  private resetNpcTraversalStates(): void {
+    for (const state of this.npcStates.values()) {
+      if (state.excluding) state.handle.setColliderExclusions(null);
     }
+    this.npcStates.clear();
   }
 
   private teleportNpc(
@@ -492,7 +515,19 @@ export class PortalGunSystem implements Disposable {
     }
     const yaw = Math.atan2(yawX, yawZ);
 
-    handle.teleport(TMP_EXIT_POS.clone(), TMP_VELOCITY.clone(), yaw);
+    const exitPosition = TMP_EXIT_POS.clone();
+    const exitVelocity = TMP_VELOCITY.clone();
+    const traversedComposite =
+      handle.teleportThroughPortal?.(
+        entry,
+        exit,
+        exitPosition,
+        exitVelocity,
+        yaw,
+      ) === true;
+    if (!traversedComposite) {
+      handle.teleport(exitPosition, exitVelocity, yaw);
+    }
     this.eventBus.emit("portal.teleported", {
       entityKind: "npc",
       entityId: handle.id,
@@ -537,6 +572,7 @@ export class PortalGunSystem implements Disposable {
 
   /** Removes both portals (level teardown / editor toggle). */
   clear(): void {
+    this.resetNpcTraversalStates();
     if (this.portals.size === 0) {
       return;
     }
@@ -566,6 +602,9 @@ export class PortalGunSystem implements Disposable {
     frame: PortalFrame,
     backingColliders: RAPIER.Collider[],
   ): void {
+    // El plano cambió: ningún compromiso frontal del frame anterior sigue
+    // siendo válido y todo collider excluido debe restaurarse inmediatamente.
+    this.resetNpcTraversalStates();
     let portal = this.portals.get(slot);
     if (!portal) {
       portal = this.createPortalVisual(slot, frame, backingColliders);

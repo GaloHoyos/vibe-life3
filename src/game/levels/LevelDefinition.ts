@@ -15,6 +15,8 @@ import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
 import type { ExplosiveBarrelDefinition } from '@game/gameplay/hazards/ExplosiveBarrel';
 import type { LevelId } from '@game/levels/LevelRegistry';
 import type { PlayerModelId } from '@game/config/playermodel.config';
+import type { IOEntityFields, LogicEntityDefinition } from '@game/script/EntityIOTypes';
+import type { ScriptedSequenceDefinition } from '@game/script/ScriptedSequenceTypes';
 
 /** Rotacion Euler XYZ en radianes. Omitida = alineado a los ejes. */
 type RotationTuple = VectorTuple;
@@ -36,7 +38,7 @@ export interface DynamicBoxDefinition {
   rotation?: RotationTuple;
 }
 
-export interface DoorDefinition {
+export interface DoorDefinition extends IOEntityFields {
   id: string;
   position: VectorTuple;
   size: VectorTuple;
@@ -61,7 +63,7 @@ export interface ActionButtonDefinition {
   rotation?: RotationTuple;
 }
 
-export interface NPCDefinition {
+export interface NPCDefinition extends IOEntityFields {
   id: string;
   position: VectorTuple;
   characterId: CharacterId;
@@ -101,27 +103,6 @@ export interface ChargerDefinition {
   capacity?: number;
 }
 
-/**
- * Acción que un trigger ejecuta al cruzarlo. Todo serializable (datos, no
- * código): por eso un "scripted sequence" se modela como acciones con `delay`,
- * no como closures. `delay` = segundos tras entrar al volumen (0 = inmediato).
- */
-export type TriggerAction =
-  | { kind: 'dialogue'; speaker?: string; text: string; duration: number; delay?: number }
-  | { kind: 'spawnNpcs'; npcs: NPCDefinition[]; delay?: number }
-  | { kind: 'door'; doorId: string; open: boolean; delay?: number }
-  | { kind: 'levelAction'; action: LevelActionKind; delay?: number }
-  | { kind: 'soundscape'; soundscape: SoundscapeId; delay?: number }
-  /** Actualiza el objetivo del HUD. `completed` lo marca cumplido; `marker` mueve la brújula. */
-  | { kind: 'objective'; text: string; completed?: boolean; marker?: VectorTuple; delay?: number }
-  /**
-   * Salida del nivel: encadena a `LevelDefinition.nextLevel` (o termina la
-   * campaña si no hay). `landmark` = punto de referencia en ESTE nivel (estilo
-   * `info_landmark` de HL2); el jugador reaparece en el nivel siguiente
-   * conservando su offset relativo a este punto. Default = centro del trigger.
-   */
-  | { kind: 'endLevel'; landmark?: VectorTuple; delay?: number };
-
 /** Objetivo inicial de un nivel. El HUD lo muestra al cargar. */
 export interface ObjectiveDefinition {
   text: string;
@@ -129,24 +110,22 @@ export interface ObjectiveDefinition {
   marker?: VectorTuple;
 }
 
-export interface TriggerDefinition {
+/**
+ * Volumen que emite outputs de entity I/O al cruzarlo: `OnStartTouch` al entrar,
+ * `OnEndTouch` al salir. Las acciones (diálogo, spawn, puertas, etc.) viven en
+ * `connections` hacia entidades lógicas — ver `@game/script/EntityIOTypes`.
+ */
+export interface TriggerDefinition extends IOEntityFields {
   id: string;
   position: VectorTuple;
   size: VectorTuple;
   rotation?: RotationTuple;
+  /** Se desactiva tras el primer `OnStartTouch` (equivale a `trigger_once`). */
   once: boolean;
-  /** Acciones que dispara al cruzarlo. */
-  actions?: TriggerAction[];
-  /**
-   * @deprecated Forma vieja: un único diálogo. Se mantiene para documentos
-   * serializados (biblioteca/Workshop) anteriores a `actions`. El
-   * `TriggerSystem` lo normaliza a una acción `dialogue` si `actions` falta.
-   */
-  dialogue?: {
-    speaker?: string;
-    text: string;
-    duration: number;
-  };
+  /** Cooldown mínimo entre entradas válidas de un trigger_multiple, en segundos. */
+  wait?: number;
+  /** Arranca deshabilitado: no emite hasta recibir un input `Enable`. */
+  startDisabled?: boolean;
 }
 
 export interface TerrainDefinition {
@@ -226,6 +205,14 @@ export interface LevelDefinition {
   /** Cargadores de pared (vida / HEV) estilo HL2. Si se omite, el nivel no trae. */
   chargers?: ChargerDefinition[];
   triggers: TriggerDefinition[];
+  /**
+   * Entidades lógicas y de efecto del entity I/O (relays, counters, timers,
+   * mensajes, spawners, etc.). Los triggers/puertas/NPCs las referencian por
+   * nombre vía `connections`. Ver `@game/script/EntityIOTypes`.
+   */
+  logicEntities?: LogicEntityDefinition[];
+  /** Secuencias guionadas de NPCs (scripted_sequence). Ver `@game/script/ScriptedSequenceTypes`. */
+  sequences?: ScriptedSequenceDefinition[];
   /** Puntos de control para respawn. Si se omite, el nivel solo reaparece en `playerStart`. */
   checkpoints?: CheckpointDefinition[];
   /** Barriles explosivos (props dañables que explotan al morir). */

@@ -143,33 +143,35 @@ export class LocomotionLayer implements AnimationLayer {
       0,
       this.config.maxKneeBend,
     );
-    const leftLift =
-      Math.max(0, leftCos) * this.config.stepHeight * intensity;
-    const rightLift =
-      Math.max(0, rightCos) * this.config.stepHeight * intensity;
+    // La flexión ocurre durante la recuperación del pie (de atrás hacia
+    // delante), no en el extremo delantero del paso.
+    const leftRecovery = Math.max(0, -leftCos);
+    const rightRecovery = Math.max(0, -rightCos);
+    const leftKneeAngle = MathUtils.clamp(
+      leftRecovery * (kneeBend + this.config.stepHeight * intensity),
+      0,
+      this.config.maxKneeBend,
+    );
+    const rightKneeAngle = MathUtils.clamp(
+      rightRecovery * (kneeBend + this.config.stepHeight * intensity),
+      0,
+      this.config.maxKneeBend,
+    );
     applyBoneRotationOffset(
       ctx.bones.leftShin,
       this.axes.kneeBendAxis,
-      MathUtils.clamp(
-        Math.max(0, -leftSin) * kneeBend + leftLift,
-        0,
-        this.config.maxKneeBend,
-      ),
+      leftKneeAngle,
     );
     applyBoneRotationOffset(
       ctx.bones.rightShin,
       this.axes.kneeBendAxis,
-      MathUtils.clamp(
-        Math.max(0, -rightSin) * kneeBend + rightLift,
-        0,
-        this.config.maxKneeBend,
-      ),
+      rightKneeAngle,
     );
     applyBoneRotationOffset(
       ctx.bones.leftFoot,
       this.axes.kneeBendAxis,
       MathUtils.clamp(
-        -leftSin * 0.08,
+        -leftSin * 0.08 - leftKneeAngle,
         -this.config.maxFootRotation,
         this.config.maxFootRotation,
       ),
@@ -178,7 +180,7 @@ export class LocomotionLayer implements AnimationLayer {
       ctx.bones.rightFoot,
       this.axes.kneeBendAxis,
       MathUtils.clamp(
-        -rightSin * 0.08,
+        -rightSin * 0.08 - rightKneeAngle,
         -this.config.maxFootRotation,
         this.config.maxFootRotation,
       ),

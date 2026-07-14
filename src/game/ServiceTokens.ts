@@ -16,6 +16,7 @@ import type { GameEventMap } from "./GameEvents";
 import type { DialogueSystem } from "@game/narrative/DialogueSystem";
 import type { GrabSystem, InteractSystem } from "@game/gameplay/interactions";
 import type { TriggerSystem } from "@game/levels/TriggerSystem";
+import type { EntityIOSystem } from "@game/script/EntityIOSystem";
 import type { CheckpointSystem } from "@game/levels/CheckpointSystem";
 import type { HazardVolumeSystem } from "@game/levels/HazardVolumeSystem";
 import type { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
@@ -28,6 +29,7 @@ import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
 import type { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
 import type { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
 import type { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
+import type { PlayerSquadService } from "@game/gameplay/squad/PlayerSquadService";
 import type { ScopeOverlay } from "@game/ui/overlay/ScopeOverlay";
 import type { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
 import type { HUD } from "@game/ui/hud/HUD";
@@ -59,9 +61,11 @@ export const GameTokens = {
   Portals: new ServiceToken<PortalGunSystem>("PortalGunSystem"),
   ExplosiveBarrels: new ServiceToken<ExplosiveBarrelSystem>("ExplosiveBarrelSystem"),
   PropImpacts: new ServiceToken<PropImpactSystem>("PropImpactSystem"),
+  PlayerSquad: new ServiceToken<PlayerSquadService>("PlayerSquadService"),
   InteractSystem: new ServiceToken<InteractSystem>("InteractSystem"),
   GrabSystem: new ServiceToken<GrabSystem>("GrabSystem"),
   TriggerSystem: new ServiceToken<TriggerSystem>("TriggerSystem"),
+  EntityIO: new ServiceToken<EntityIOSystem>("EntityIOSystem"),
   CheckpointSystem: new ServiceToken<CheckpointSystem>("CheckpointSystem"),
   HazardVolumes: new ServiceToken<HazardVolumeSystem>("HazardVolumeSystem"),
   HUD: new ServiceToken<HUD>("HUD"),

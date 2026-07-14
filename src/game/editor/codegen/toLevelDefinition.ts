@@ -65,6 +65,12 @@ export function toLevelDefinition(doc: EditorDocument): LevelDefinition {
       case 'prebuiltBuilding':
         map.building(entity.artifact);
         break;
+      case 'logic':
+        map.logic(entity.def);
+        break;
+      case 'sequence':
+        map.sequence(entity.def);
+        break;
     }
   }
 

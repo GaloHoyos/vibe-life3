@@ -46,11 +46,14 @@ describe("NpcAiTraceRecorder", () => {
 function fakeNpc(snapshot: NpcAiDebugSnapshot = fakeSnapshot()): INpc {
   return {
     id: snapshot.id,
+    characterId: "zombie",
     mesh: new Group(),
     health: new Health(snapshot.maxHealth),
     faction: "zombies",
     position: snapshot.position,
     radius: 0.4,
+    playerSquadEligible: false,
+    companionName: null,
     update: () => undefined,
     syncFromPhysics: () => undefined,
     getPortalTraversalHandle: () => null,

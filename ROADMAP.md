@@ -24,17 +24,14 @@ Half-Life completo. Ordenado por impacto. Marcá cada ítem al cerrarlo.
   - **Limitaciones / pendientes:** respawn solo para niveles del registro (campaña +
     `maps/custom/`); mapas de biblioteca/Workshop solo ofrecen "Salir al menú". El editor de
     niveles todavía no expone checkpoints. La vida se restaura tal cual se capturó (sin piso mínimo).
-- [x] **Triggers con acción** *(hecho)* — `TriggerDefinition` ahora lleva `actions: TriggerAction[]`
-  (union serializable: `dialogue` | `spawnNpcs` | `door` | `levelAction`), cada una con `delay?`
-  opcional para dar ritmo tipo scripted sequence sin código. El `TriggerSystem` dispara al
-  **entrar** al volumen (flanco, ya no cada frame), encola las acciones con delay y emite
-  `trigger.action`; `Game.runTriggerAction` las ejecuta (spawn de NPCs, abrir/cerrar puertas vía
-  `SlidingDoor.setOpen`, reusar `level.action`). La forma vieja `dialogue` queda como legacy y se
-  normaliza (compat con mapas serializados de biblioteca/Workshop). Editado en el editor: lista de
-  acciones por trigger en el inspector (el editor migra `dialogue`→`actions` al tocarlo).
-  **Pendiente:** acción de fin de nivel se cubre con "Encadenar niveles" (abajo).
+- [x] **Triggers con acción** *(hecho; luego reemplazado por Entity I/O)* — el runtime actual usa
+  `connections` sobre `TriggerDefinition`: `OnStartTouch`/`OnEndTouch` alimentan el grafo y los
+  inputs `Enable`/`Disable`/`Toggle` controlan el volumen. Soporta `once`, cooldown `wait`, rotación
+  y cierre balanceado del touch al deshabilitar. El formato intermedio `TriggerAction` ya no existe
+  en runtime; `migrateDocument` convierte automáticamente mapas legacy (`dialogue`/`actions`) al
+  cargarlos para conservar biblioteca y Workshop.
 - [x] **Encadenar niveles** *(hecho — transición seamless estilo HL2)* — `LevelDefinition.nextLevel`
-  + acción de trigger `endLevel`. Al cruzar la salida, `Game.goToNextLevel` hace una transición
+  + entidad `changelevel` disparada por I/O. Al cruzar la salida, `Game.goToNextLevel` hace una transición
   **in-place (sin recargar la página)**: overlay translúcido "Cargando" sobre el frame congelado
   (render freezado) mientras `loadLevelDefinition` desmonta el nivel viejo y arma el nuevo.
   Teardown completo: `PhysicsWorld.reset()` (recrea el mundo Rapier → borra todos los bodies),
@@ -51,7 +48,7 @@ Half-Life completo. Ordenado por impacto. Marcá cada ítem al cerrarlo.
   world-space que se proyecta a pantalla cada frame, clamped a los bordes cuando queda fuera de
   cuadro, con distancia en metros). Objetivo inicial por nivel (`LevelDefinition.objective`) y
   acción de trigger `objective` para actualizar/cumplir/mover el marcador. Editable: campo en
-  config. del nivel + acción en el inspector de triggers; viaja por el codegen (`MapMeta`).
+  config. del nivel + entidad lógica `objective` (input `Apply`); viaja por el codegen (`MapMeta`).
 
 ## Tier 2 — Profundidad de combate y contenido
 
@@ -150,7 +147,28 @@ Half-Life completo. Ordenado por impacto. Marcá cada ítem al cerrarlo.
 
 ## Tier 4 — Lo que da "alma" (más caro)
 
-- [ ] Setpieces guionados + compañera que sigue/escolta (Alyx ya dispara, falta follow/escort).
+- [x] **Setpieces guionados + compañera que sigue/escolta** *(hecho)* — sistema de **entity I/O
+  estilo Source (HL2)** que reemplazó por completo al viejo `TriggerAction`: cada entidad tiene un
+  `targetname`, emite *outputs* y recibe *inputs*, atados por `EntityConnection` (`output → target →
+  input`, con `delay?` y `maxFires?`; fan-out por nombre compartido y outputs/refire por instancia).
+  Nuevo módulo `src/game/script/`: `EntityIOSystem` (cola temporal estable, comodines, keywords
+  `!self`/`!caller`/`!activator`/`!player`, cadenas relay-0 síncronas y lifecycle seguro para efectos
+  asíncronos), entidades lógicas (`relay`/`auto`/`timer`/`counter`/`marker`/`message`/
+  `objective`/`soundscape`/`npcSpawner`/`levelAction`/`changelevel`), `EntityEventBridge` (eventos
+  del juego → outputs: `trigger.entered`/`exited`, `door.opened`, `npc.killed`/`damaged`) y
+  `WorldEntityBinder`. **Scripted sequences** de NPC (`scripted_sequence`): mueven al NPC nombrado a
+  un punto (walk/run/teleport), lo encaran y ejecutan pasos (gesto/espera/cue/decir/encarar) con
+  outputs `OnBegin`/`OnArrived`/`OnEnd`/`OnCanceled`; corren sobre un `scripted` schedule (prioridad
+  2000 ininterrumpible / 900 interrumpible). **Gestos procedurales** (`GestureLayer`: señalar/saludar/
+  hablar + crouch). **Compañera** (Alyx) con follow/wait/escort como override del ancla (reusa los
+  schedules follow/regroup): toggle con **E** (follow↔wait) y comandable por script
+  (`StartFollowing`/`StopFollowing`/`EscortTo`), con `OnEscortArrived`. `ConditionMask` migrado a dos
+  words (bits para el estado scripted). Editor completo: paleta de lógicas/secuencias, inspector de
+  conexiones contextuales con parámetros tipados, validación del grafo, codegen y `migrateDocument`
+  (documentos viejos de biblioteca/Workshop se migran al cargar). Campaña migrada al modelo nuevo;
+  mapa de verificación
+  `setpiece-test`. **Pendiente:** voces por línea/personaje (hoy subtítulo + clip placeholder);
+  ampliar el `validateDocument` del backend de Workshop a `connections`/`logicEntities`/`sequences`.
 - [ ] Vehículos (airboat/buggy). El ítem más caro; dejar para el final.
 
 ---

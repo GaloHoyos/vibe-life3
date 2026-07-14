@@ -1,7 +1,7 @@
 import { Vector3 } from 'three';
 import type { Task, TaskStatus } from '@engine/ai/brain/Task';
-import type { NavSpace } from '@engine/ai/nav/NavSpace';
-import type { NpcBrainContext } from '@game/npc/brain/NpcBrainContext';
+import type { NpcBrainContext, NpcNavigationQueries } from '@game/npc/brain/NpcBrainContext';
+import type { NavAgentProfile } from '@engine/ai/navigation/NavigationTypes';
 
 type NpcTask = Task<NpcBrainContext>;
 
@@ -12,12 +12,14 @@ const tmpCandidate = new Vector3();
  * Devuelve el primer candidato que cae sobre una celda navegable, con el `y`
  * ajustado al de la celda. Null si ninguno es valido.
  */
-function snapToNav(navSpace: NavSpace, candidates: Vector3[]): Vector3 | null {
+function snapToNav(
+  navigation: NpcNavigationQueries,
+  profile: NavAgentProfile,
+  candidates: Vector3[],
+): Vector3 | null {
   for (const candidate of candidates) {
-    const cell = navSpace.cellAt(candidate);
-    if (cell) {
-      return new Vector3(candidate.x, cell.center[1], candidate.z);
-    }
+    const projected = navigation.projectPoint(candidate, profile);
+    if (projected) return projected;
   }
   return null;
 }
@@ -60,6 +62,48 @@ export function createPatrolTask(dwell = 1.5): NpcTask {
         index = (index + 1) % route.length;
       }
       return 'running';
+    },
+    abort: (ctx) => ctx.locomotion.stop(),
+  };
+}
+
+/**
+ * Deambula sin rumbo (zombies): elige un punto navegable aleatorio alrededor
+ * de la posicion actual, camina hasta el y se queda un beat. Un ciclo por
+ * schedule — al completar, el brain re-elige y el proximo wander toma otro
+ * punto. Si no hay punto navegable degrada a esperar (equivale a idle).
+ */
+export function createWanderTask(radius = 8, dwellMin = 1.5, dwellMax = 3.5): NpcTask {
+  let target: Vector3 | null = null;
+  let phase: 'move' | 'dwell' = 'move';
+  let dwell = 0;
+  return {
+    id: 'wander',
+    init: (ctx) => {
+      dwell = dwellMin + Math.random() * (dwellMax - dwellMin);
+      const angle = Math.random() * Math.PI * 2;
+      const distance = radius * (0.4 + Math.random() * 0.6);
+      target = snapToNav(ctx.navigation, ctx.navigationProfile, [
+        pointAt(ctx.self.position, angle, distance),
+        pointAt(ctx.self.position, angle + 1.3, distance * 0.7),
+        pointAt(ctx.self.position, angle - 1.3, distance * 0.5),
+      ]);
+      phase = target ? 'move' : 'dwell';
+    },
+    tick: (ctx): TaskStatus => {
+      if (phase === 'move' && target) {
+        ctx.locomotion.moveTo(target, { gait: 'walk' });
+        if (ctx.locomotion.distanceToTarget() <= 1.2) {
+          ctx.locomotion.stop();
+          phase = 'dwell';
+        } else if (ctx.locomotion.isStuck()) {
+          ctx.locomotion.stop();
+          phase = 'dwell';
+        }
+        return 'running';
+      }
+      dwell -= ctx.delta;
+      return dwell <= 0 ? 'success' : 'running';
     },
     abort: (ctx) => ctx.locomotion.stop(),
   };
@@ -135,7 +179,7 @@ export function createSearchSweepTask(): NpcTask {
       // opuestos para que dos NPCs buscando no converjan exactamente igual.
       const baseAngle = Math.random() * Math.PI * 2;
       for (const offset of [0, Math.PI]) {
-        const candidate = snapToNav(ctx.navSpace, [
+        const candidate = snapToNav(ctx.navigation, ctx.navigationProfile, [
           pointAt(lkp, baseAngle + offset, 4),
           pointAt(lkp, baseAngle + offset + 0.6, 6),
         ]);
@@ -184,7 +228,7 @@ export function createRetreatTask(retreatDistance = 10, safeDistance = 18): NpcT
       const self = ctx.self.position;
       const awayAngle = Math.atan2(self.x - threatPos.x, self.z - threatPos.z);
       const spread = (35 * Math.PI) / 180;
-      target = snapToNav(ctx.navSpace, [
+      target = snapToNav(ctx.navigation, ctx.navigationProfile, [
         pointAt(self, awayAngle, retreatDistance),
         pointAt(self, awayAngle + spread, retreatDistance),
         pointAt(self, awayAngle - spread, retreatDistance),
@@ -217,34 +261,50 @@ export function createRetreatTask(retreatDistance = 10, safeDistance = 18): NpcT
 }
 
 /**
- * Sigue al anchor (player) manteniendose a `followDistance`. Nunca termina:
- * corre hasta que un interrupt lo tumbe. Histeresis de arranque/parada para
- * que el NPC no haga ping-pong cuando el player camina lento.
+ * Sigue al anchor manteniendose a `followDistance`. El anchor efectivo lo
+ * resuelve el `Npc` (player, u orden ir-a-punto del squad del jugador); con
+ * `anchorOffset` cada miembro apunta a su lugar de la formacion — asi varios
+ * rebeldes no convergen al mismo punto. Nunca termina: corre hasta que un
+ * interrupt lo tumbe. Histeresis de arranque/parada para no hacer ping-pong.
  */
 export function createFollowAnchorTask(followDistance = 6): NpcTask {
   let moving = false;
+  const formationTarget = new Vector3();
   return {
     id: 'followAnchor',
     init: () => {
       moving = false;
     },
     tick: (ctx): TaskStatus => {
-      const anchor = ctx.player;
-      if (!anchor.isAlive) return 'failure';
-      const dx = anchor.position.x - ctx.self.position.x;
-      const dz = anchor.position.z - ctx.self.position.z;
+      const anchor = ctx.anchorPosition ?? (ctx.player.isAlive ? ctx.player.position : null);
+      if (!anchor) return 'failure';
+      const target = ctx.anchorOffset
+        ? formationTarget.copy(anchor).add(ctx.anchorOffset)
+        : anchor;
+      const dx = target.x - ctx.self.position.x;
+      const dz = target.z - ctx.self.position.z;
       const dist = Math.sqrt(dx * dx + dz * dz);
-      if (!moving && dist > followDistance + 2) moving = true;
+      // Con lugar de formacion asignado, el destino es exacto (radio corto).
+      // Escort también impone un radio exacto; follow conserva sus 2 m de
+      // histéresis para no hacer ping-pong alrededor del jugador.
+      const preciseArrival = ctx.anchorArrivalRadius;
+      const arrive = preciseArrival ?? (ctx.anchorOffset ? 1.2 : followDistance);
+      const startMovingAt = preciseArrival != null ? arrive : arrive + 2;
+      if (!moving && dist > startMovingAt) moving = true;
       if (moving) {
-        ctx.locomotion.moveTo(anchor.position, {
+        ctx.locomotion.moveTo(target, {
           gait: dist > followDistance * 2 ? 'sprint' : 'walk',
         });
-        if (dist <= followDistance) {
+        if (dist <= arrive) {
           ctx.locomotion.stop();
           moving = false;
         }
+      } else if (dist < 1 && ctx.player.isAlive) {
+        // Ancla pegada a sí mismo (compañera en 'wait'): encarar al player en
+        // vez del ancla degenerada.
+        ctx.locomotion.face(ctx.player.position);
       } else {
-        ctx.locomotion.face(anchor.position);
+        ctx.locomotion.face(anchor);
       }
       return 'running';
     },
@@ -256,20 +316,25 @@ export function createFollowAnchorTask(followDistance = 6): NpcTask {
  * Regroup: sprint hacia el anchor hasta quedar a `arriveDistance`. Pensado
  * para `AnchorFar` — el ally quedo descolgado y vuelve aunque este en combate.
  */
-export function createRegroupTask(arriveDistance = 5): NpcTask {
+export function createRegroupTask(defaultArriveDistance = 5): NpcTask {
+  const formationTarget = new Vector3();
   return {
     id: 'regroup',
     init: () => {},
     tick: (ctx): TaskStatus => {
-      const anchor = ctx.player;
-      if (!anchor.isAlive) return 'failure';
-      const dx = anchor.position.x - ctx.self.position.x;
-      const dz = anchor.position.z - ctx.self.position.z;
+      const anchor = ctx.anchorPosition ?? (ctx.player.isAlive ? ctx.player.position : null);
+      if (!anchor) return 'failure';
+      const target = ctx.anchorOffset
+        ? formationTarget.copy(anchor).add(ctx.anchorOffset)
+        : anchor;
+      const dx = target.x - ctx.self.position.x;
+      const dz = target.z - ctx.self.position.z;
+      const arriveDistance = ctx.anchorArrivalRadius ?? defaultArriveDistance;
       if (Math.sqrt(dx * dx + dz * dz) <= arriveDistance) {
         ctx.locomotion.stop();
         return 'success';
       }
-      ctx.locomotion.moveTo(anchor.position, { gait: 'sprint' });
+      ctx.locomotion.moveTo(target, { gait: 'sprint' });
       if (ctx.locomotion.isStuck()) return 'failure';
       return 'running';
     },
@@ -297,7 +362,7 @@ export function createFlankTask(flankDistance = 12): NpcTask {
       const self = ctx.self.position;
       const toThreatAngle = Math.atan2(threatPos.x - self.x, threatPos.z - self.z);
       const lateralAngle = toThreatAngle + side * Math.PI * 0.45;
-      target = snapToNav(ctx.navSpace, [
+      target = snapToNav(ctx.navigation, ctx.navigationProfile, [
         pointAt(self, lateralAngle, flankDistance),
         pointAt(self, lateralAngle, flankDistance * 0.6),
         pointAt(self, toThreatAngle + side * Math.PI * 0.3, flankDistance),
@@ -452,7 +517,7 @@ export function createRepositionTask(lateralDistance = 2.5, timeout = 1.8): NpcT
       const toThreatAngle = Math.atan2(threatPos.x - self.x, threatPos.z - self.z);
       const lateralAngle = toThreatAngle + side * Math.PI * 0.5;
       tmpCandidate.copy(pointAt(self, lateralAngle, lateralDistance));
-      target = snapToNav(ctx.navSpace, [
+      target = snapToNav(ctx.navigation, ctx.navigationProfile, [
         tmpCandidate.clone(),
         pointAt(self, lateralAngle + side * 0.5, lateralDistance),
       ]);

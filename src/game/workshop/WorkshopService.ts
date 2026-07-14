@@ -1,6 +1,7 @@
 import type { GameEventBus } from "@game/GameEvents";
 import type { EditorDocument } from "@game/editor/EditorDocument";
 import { sanitizeDocument } from "./sanitizeDocument";
+import { migrateDocument } from "@game/editor/migrateDocument";
 import type { WorkshopBackend, WorkshopCapabilities } from "./WorkshopBackend";
 import type { WorkshopStore } from "./WorkshopStore";
 import type { WorkshopSubscription } from "./workshopIndex";
@@ -53,7 +54,7 @@ export class WorkshopService {
       this.fail("subscribe", result.reason);
       throw new Error(result.reason);
     }
-    await this.store.subscribe(listing, result.document);
+    await this.store.subscribe(listing, migrateDocument(result.document));
     this.eventBus.emit("workshop.subscribed", { id: listing.id, title: listing.title });
   }
 
@@ -84,8 +85,9 @@ export class WorkshopService {
     return this.store.needsUpdate(listing);
   }
 
-  getDocument(id: string): Promise<EditorDocument | null> {
-    return this.store.getDocument(id);
+  async getDocument(id: string): Promise<EditorDocument | null> {
+    const doc = await this.store.getDocument(id);
+    return doc ? migrateDocument(doc) : null;
   }
 
   async publish(document: unknown, meta: PublishMeta): Promise<WorkshopListing> {

@@ -71,6 +71,8 @@ const KIND_ICONS: Record<EditorEntityKind, EditorIconName> = {
   ramp: 'stairs',
   prop: 'cube',
   prebuiltBuilding: 'building',
+  logic: 'bolt',
+  sequence: 'person',
 };
 
 export function entityIcon(kind: EditorEntityKind): HTMLSpanElement {
