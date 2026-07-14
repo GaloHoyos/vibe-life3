@@ -206,6 +206,8 @@ export class CharacterFactory {
           position,
           collider: { shape: 'sphere', radius: BlobConfig.core.radius },
           mass: BlobConfig.core.mass,
+          linearDamping: BlobConfig.armor.linearDamping,
+          angularDamping: BlobConfig.armor.angularDamping,
           mountYaw: 0,
           metadata,
         })

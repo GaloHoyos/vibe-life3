@@ -73,6 +73,14 @@ describe("CharacterFactory: blob", () => {
       BlobConfig.core.gravityScale,
       6,
     );
+    expect(core?.body.linearDamping()).toBeCloseTo(
+      BlobConfig.armor.linearDamping,
+      6,
+    );
+    expect(core?.body.angularDamping()).toBeCloseTo(
+      BlobConfig.armor.angularDamping,
+      6,
+    );
     expect(armor).toHaveLength(BlobConfig.armor.count);
 
     npc.dispose();

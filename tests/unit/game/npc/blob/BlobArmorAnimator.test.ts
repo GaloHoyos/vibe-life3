@@ -152,6 +152,409 @@ describe("BlobArmorAnimator", () => {
     harness.dispose();
   });
 
+  it("cae con peso pero no se desarma cuando todo el gel está en caída libre", async () => {
+    const harness = await createHarness();
+    const initialY = harness.coreBody.translation().y;
+
+    advanceSimulation(
+      harness,
+      BlobConfig.armor.cohesionLoadInitialGraceSeconds +
+        BlobConfig.armor.cohesionLoadFatigueSeconds +
+        0.5,
+    );
+
+    expect(initialY - harness.coreBody.translation().y).toBeGreaterThan(0.75);
+    expect(harness.coreBody.linvel().y).toBeLessThan(-3.5);
+    expect(harness.animator.getDebugSnapshot().attachedCount).toBe(
+      BlobConfig.armor.count,
+    );
+    expect(releasedArmorIndices(harness, armorRecords(harness.physics))).toEqual(
+      [],
+    );
+    expectMainGraphConsistent(harness.animator.getDebugSnapshot());
+
+    harness.dispose();
+  });
+
+  it("fatiga y desprende sólo parte de los blobs exteriores que cuelgan sobre un precipicio", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    translateWholeBlob(harness, armor, new Vector3(-0.4, 1.22, 0));
+    harness.physics.createStaticBox({
+      id: "blob-cliff",
+      position: new Vector3(-4, -0.5, 0),
+      size: new Vector3(8, 1, 8),
+    });
+    harness.coreBody.setBodyType(
+      RAPIER.RigidBodyType.KinematicPositionBased,
+      true,
+    );
+    const coreAnchor = vectorFromRapier(harness.coreBody.translation());
+    harness.physics.updateQueryPipeline();
+
+    const initial = harness.animator.getDebugSnapshot();
+    const outerLayer = maximumLayer(initial);
+    const supported = layerIndices(initial, outerLayer).filter(
+      (index) => armor[index].body.translation().x < -0.65,
+    );
+    const everReleased = new Set<number>();
+    const releasedFromVoid = new Set<number>();
+    const stepCliff = (seconds: number) => {
+      const steps = Math.ceil(seconds * 60);
+      for (let step = 0; step < steps; step += 1) {
+        harness.coreBody.setNextKinematicTranslation(coreAnchor);
+        harness.animator.updateFromMotor(animationFrame(1 / 60));
+        harness.physics.step(1 / 60);
+        for (const index of releasedArmorIndices(harness, armor)) {
+          if (
+            !everReleased.has(index) &&
+            armor[index].body.translation().x > 0.05
+          ) {
+            releasedFromVoid.add(index);
+          }
+          everReleased.add(index);
+        }
+      }
+    };
+
+    stepCliff(0.3);
+    expect(everReleased.size).toBe(0);
+    stepCliff(4);
+
+    const final = harness.animator.getDebugSnapshot();
+    expect(everReleased.size).toBeGreaterThanOrEqual(2);
+    expect(everReleased.size).toBeLessThanOrEqual(
+      BlobConfig.armor.cohesionLoadMaxChunkSize,
+    );
+    expect(
+      releasedFromVoid.size,
+    ).toBeGreaterThanOrEqual(Math.ceil(everReleased.size * 0.6));
+    expect(
+      [...everReleased].some((index) => initial.coreAnchoredIndices.includes(index)),
+    ).toBe(false);
+    expect(final.attachedCount).toBeGreaterThan(
+      BlobConfig.armor.count - BlobConfig.armor.cohesionLoadMaxChunkSize,
+    );
+    expect(supported.some((index) => final.attachedIndices.includes(index))).toBe(
+      true,
+    );
+    expectMainGraphConsistent(final);
+
+    harness.dispose();
+  });
+
+  it("gotea por abajo cuando se levanta suavemente sin una sacudida", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    harness.physics.createStaticBox({
+      id: "blob-lift-floor",
+      position: new Vector3(0, -0.5, 0),
+      size: new Vector3(12, 1, 12),
+    });
+    translateWholeBlob(harness, armor, new Vector3(0, 1.25, 0));
+    harness.coreBody.setBodyType(
+      RAPIER.RigidBodyType.KinematicPositionBased,
+      true,
+    );
+    const start = vectorFromRapier(harness.coreBody.translation());
+    const roots = new Set(
+      harness.animator.getDebugSnapshot().coreAnchoredIndices,
+    );
+    const everReleased = new Set<number>();
+    const releasedBelowCore = new Set<number>();
+    const stepAt = (target: Vector3) => {
+      harness.coreBody.setNextKinematicTranslation(target);
+      harness.animator.updateFromMotor(animationFrame(1 / 60));
+      harness.physics.step(1 / 60);
+      const coreY = harness.coreBody.translation().y;
+      for (const index of releasedArmorIndices(harness, armor)) {
+        if (!everReleased.has(index) && armor[index].body.translation().y < coreY) {
+          releasedBelowCore.add(index);
+        }
+        everReleased.add(index);
+      }
+    };
+
+    for (let frame = 0; frame < 60; frame += 1) stepAt(start);
+    expect(everReleased.size).toBe(0);
+    for (let frame = 0; frame < 90; frame += 1) {
+      const u = frame / 89;
+      const smooth = u ** 3 * (u * (u * 6 - 15) + 10);
+      stepAt(start.clone().add(new Vector3(0, smooth * 1.6, 0)));
+    }
+    const lifted = start.clone().add(new Vector3(0, 1.6, 0));
+    for (let frame = 0; frame < 120; frame += 1) stepAt(lifted);
+
+    expect(everReleased.size).toBeGreaterThanOrEqual(1);
+    expect(everReleased.size).toBeLessThanOrEqual(
+      BlobConfig.armor.cohesionLoadMaxChunkSize,
+    );
+    expect(releasedBelowCore.size).toBeGreaterThanOrEqual(
+      Math.ceil(everReleased.size * 0.6),
+    );
+    expect([...everReleased].some((index) => roots.has(index))).toBe(false);
+    expect(harness.animator.getDebugSnapshot().attachedCount).toBeGreaterThanOrEqual(
+      BlobConfig.armor.cohesionLoadMinimumAttachedCount,
+    );
+    expectMainGraphConsistent(harness.animator.getDebugSnapshot());
+
+    harness.dispose();
+  });
+
+  it("cede como líquido al arrastrar un blob y desprende un racimo al revolearlo", async () => {
+    const runManeuver = async (abrupt: boolean) => {
+      const harness = await createHarness();
+      const armor = armorRecords(harness.physics);
+      harness.physics.world.gravity = { x: 0, y: 0, z: 0 };
+      advanceSimulation(
+        harness,
+        BlobConfig.armor.cohesionLoadInitialGraceSeconds + 0.2,
+      );
+      const initial = harness.animator.getDebugSnapshot();
+      const heldIndex = layerIndices(initial, maximumLayer(initial))[0];
+      const heldBody = armor[heldIndex].body;
+      const grab = new PhysicsGrabController(
+        harness.physics,
+        new Raycast(harness.physics),
+        { ...GravityGunConfig.hold, dropErrorTime: 5 },
+      );
+      const cameraDirection = vectorFromRapier(heldBody.translation())
+        .sub(vectorFromRapier(harness.coreBody.translation()))
+        .normalize();
+      const swingAxis = cameraDirection
+        .clone()
+        .cross(new Vector3(0, 1, 0));
+      if (swingAxis.lengthSq() <= 1e-6) swingAxis.set(0, 0, 1);
+      swingAxis.normalize();
+      const cameraQuaternion = new Quaternion();
+      const cameraOrigin = vectorFromRapier(heldBody.translation()).addScaledVector(
+        cameraDirection,
+        -GravityGunConfig.hold.holdDistance,
+      );
+      grab.grab(heldBody, cameraQuaternion);
+      const everReleased = new Set<number>();
+      let releasedClusterObserved = false;
+      let firstReleaseFrame: number | null = null;
+      const frameCount = abrupt ? 120 : 180;
+
+      for (let frame = 0; frame < frameCount; frame += 1) {
+        const cameraPosition = cameraOrigin.clone();
+        if (abrupt) {
+          cameraPosition.addScaledVector(
+            swingAxis,
+            Math.floor(frame / 6) % 2 === 0 ? -0.8 : 0.8,
+          );
+        } else {
+          const u = frame / Math.max(1, frameCount - 1);
+          const smooth = u ** 3 * (u * (u * 6 - 15) + 10);
+          cameraPosition.addScaledVector(cameraDirection, smooth * 4);
+        }
+        grab.update(
+          1 / 60,
+          cameraPosition,
+          cameraDirection,
+          cameraQuaternion,
+        );
+        harness.animator.updateFromMotor(animationFrame(1 / 60));
+        harness.physics.step(1 / 60);
+        const releasedNow = releasedArmorIndices(harness, armor);
+        if (releasedNow.length > 0 && firstReleaseFrame === null) {
+          firstReleaseFrame = frame;
+        }
+        for (const index of releasedNow) {
+          everReleased.add(index);
+        }
+        if (releasedNow.length >= 2) {
+          const snapshot = harness.animator.getDebugSnapshot();
+          releasedClusterObserved ||=
+            reachableWithin(
+              releasedNow[0],
+              snapshot.cohesionPairs,
+              releasedNow,
+            ).size === releasedNow.length;
+        }
+      }
+
+      expect(grab.getHeldBody()).toBe(heldBody);
+      const result = {
+        everReleased,
+        firstReleaseFrame,
+        releasedClusterObserved,
+        heldIndex,
+        heldDistanceFromCore: vectorFromRapier(heldBody.translation()).distanceTo(
+          vectorFromRapier(harness.coreBody.translation()),
+        ),
+        roots: new Set(initial.coreAnchoredIndices),
+      };
+      grab.release();
+      harness.dispose();
+      return result;
+    };
+
+    const smooth = await runManeuver(false);
+    const abrupt = await runManeuver(true);
+
+    expect(smooth.everReleased.has(smooth.heldIndex)).toBe(true);
+    expect(smooth.everReleased.size).toBeLessThanOrEqual(3);
+    expect(smooth.firstReleaseFrame).not.toBeNull();
+    expect(smooth.firstReleaseFrame!).toBeGreaterThan(10);
+    expect(smooth.heldDistanceFromCore).toBeGreaterThan(
+      BlobConfig.armor.reassemblyAttractionRadius + 1,
+    );
+    expect(abrupt.everReleased.size).toBeGreaterThanOrEqual(2);
+    expect(abrupt.releasedClusterObserved).toBe(true);
+    expect(abrupt.firstReleaseFrame).not.toBeNull();
+    expect(abrupt.firstReleaseFrame!).toBeLessThan(smooth.firstReleaseFrame!);
+    expect(abrupt.everReleased.size).toBeLessThanOrEqual(
+      BlobConfig.armor.cohesionLoadMaxChunkSize,
+    );
+    expect(
+      [...abrupt.everReleased].some((index) => abrupt.roots.has(index)),
+    ).toBe(false);
+  });
+
+  it("sacudir un fragmento desprendido no arranca blobs del cuerpo a distancia", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    harness.physics.world.gravity = { x: 0, y: 0, z: 0 };
+    const initial = harness.animator.getDebugSnapshot();
+    const targetIndex = layerIndices(initial, maximumLayer(initial))[0];
+    const target = armor[targetIndex];
+
+    target.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () => currentMetadata(harness, target).kind === "dynamic",
+        1,
+      ),
+    ).toBe(true);
+    placeBody(target.body, new Vector3(8, 2, 0));
+    const attachedBefore = harness.animator.getDebugSnapshot().attachedIndices;
+    const grab = new PhysicsGrabController(
+      harness.physics,
+      new Raycast(harness.physics),
+      { ...GravityGunConfig.hold, dropErrorTime: 5 },
+    );
+    const cameraDirection = new Vector3(1, 0, 0);
+    const cameraQuaternion = new Quaternion();
+    const cameraOrigin = vectorFromRapier(target.body.translation()).addScaledVector(
+      cameraDirection,
+      -GravityGunConfig.hold.holdDistance,
+    );
+    grab.grab(target.body, cameraQuaternion);
+
+    for (let frame = 0; frame < 120; frame += 1) {
+      const cameraPosition = cameraOrigin.clone();
+      cameraPosition.z += Math.floor(frame / 6) % 2 === 0 ? -0.8 : 0.8;
+      grab.update(
+        1 / 60,
+        cameraPosition,
+        cameraDirection,
+        cameraQuaternion,
+      );
+      harness.animator.updateFromMotor(animationFrame(1 / 60));
+      harness.physics.step(1 / 60);
+    }
+
+    expect(grab.getHeldBody()).toBe(target.body);
+    expect(harness.animator.getDebugSnapshot().attachedIndices).toEqual(
+      attachedBefore,
+    );
+    expect(releasedArmorIndices(harness, armor)).toEqual([targetIndex]);
+
+    grab.release();
+    harness.dispose();
+  });
+
+  it("redistribuye capas y cierra el hueco cada vez que pierde masa", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    harness.physics.world.gravity = { x: 0, y: 0, z: 0 };
+    const initial = harness.animator.getDebugSnapshot();
+    const core = vectorFromRapier(harness.coreBody.translation());
+    const removed = layerIndices(initial, maximumLayer(initial))
+      .map((index) => ({
+        index,
+        score: vectorFromRapier(armor[index].body.translation())
+          .sub(core)
+          .normalize()
+          .x,
+      }))
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .slice(0, 5)
+      .map(({ index }) => index);
+    const intactOuter = layerIndices(initial, maximumLayer(initial));
+    const intactHole = coverageHoleForIndices(harness, armor, intactOuter);
+
+    for (const index of removed) {
+      armor[index].metadata.damageable!.applyDamage(1);
+    }
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          removed.every(
+            (index) => currentMetadata(harness, armor[index]).kind === "dynamic",
+          ),
+        1,
+      ),
+    ).toBe(true);
+    for (let slot = 0; slot < removed.length; slot += 1) {
+      placeBody(armor[removed[slot]].body, new Vector3(8 + slot, 5, 0));
+    }
+
+    const opened = harness.animator.getDebugSnapshot();
+    expect(opened.attachedCount).toBe(BlobConfig.armor.count - removed.length);
+    expect(attachedLayerHistogram(opened)).toEqual([6, 12, 13]);
+    expect(
+      opened.coreAnchoredIndices.every((index) => opened.layers[index] === 0),
+    ).toBe(true);
+    const openedOuter = layerIndices(opened, maximumLayer(opened)).filter(
+      (index) => opened.attachedIndices.includes(index),
+    );
+    const openedHole = coverageHoleForIndices(harness, armor, openedOuter);
+    const openedFocused = coverageGapAtCoreDirection(
+      harness,
+      armor,
+      openedOuter,
+      new Vector3(1, 0, 0),
+    );
+    const openedPairs = normalizedPairKeys(opened.cohesionPairs);
+    expect(openedHole).toBeGreaterThan(intactHole + 0.15);
+
+    advanceSimulation(harness, 2);
+    const holeSamples: number[] = [];
+    const focusedSamples: number[] = [];
+    for (let sample = 0; sample < 10; sample += 1) {
+      advanceSimulation(harness, 0.1);
+      const snapshot = harness.animator.getDebugSnapshot();
+      const outer = layerIndices(snapshot, maximumLayer(snapshot)).filter(
+        (index) => snapshot.attachedIndices.includes(index),
+      );
+      holeSamples.push(coverageHoleForIndices(harness, armor, outer));
+      focusedSamples.push(
+        coverageGapAtCoreDirection(
+          harness,
+          armor,
+          outer,
+          new Vector3(1, 0, 0),
+        ),
+      );
+    }
+
+    const healed = harness.animator.getDebugSnapshot();
+    expect(average(holeSamples)).toBeLessThan(openedHole - 0.15);
+    expect(Math.max(...holeSamples)).toBeLessThan(openedHole - 0.1);
+    expect(average(focusedSamples)).toBeLessThan(openedFocused * 0.8);
+    expect(normalizedPairKeys(healed.cohesionPairs)).not.toEqual(openedPairs);
+    expect(healed.attachedCount).toBe(BlobConfig.armor.count - removed.length);
+    expect(attachedLayerHistogram(healed)).toEqual([6, 12, 13]);
+    expectMainGraphConsistent(healed);
+
+    harness.dispose();
+  });
+
   it("mantiene el grafo gel persistente y conectado aunque no haya impactos", async () => {
     const harness = await createHarness();
     const armor = armorRecords(harness.physics);
@@ -649,26 +1052,41 @@ describe("BlobArmorAnimator", () => {
     harness.animator.updateFromMotor(animationFrame(1 / 60));
     const docked = harness.animator.getDebugSnapshot();
     expect(docked.attachedCount).toBe(BlobConfig.armor.count);
+    expect(attachedLayerHistogram(docked)).toEqual([
+      ...BlobConfig.armor.layerCounts,
+    ]);
     const tailMaximumRadius = maximumCoreRadius(harness, records);
     const tailAspect = shellShapeAspect(harness, armor);
     const tailCoverageHole = sphericalCoverageHole(harness, armor);
+    const tailOuterCoverageHole = coverageHoleForIndices(
+      harness,
+      armor,
+      layerIndices(docked, maximumLayer(docked)),
+    );
 
     advanceSimulation(harness, 3.5);
 
     const uniformMaximumRadius = maximumCoreRadius(harness, records);
     const uniformAspect = shellShapeAspect(harness, armor);
     const uniformCoverageHole = sphericalCoverageHole(harness, armor);
+    const uniformSnapshot = harness.animator.getDebugSnapshot();
+    const uniformOuterCoverageHole = coverageHoleForIndices(
+      harness,
+      armor,
+      layerIndices(uniformSnapshot, maximumLayer(uniformSnapshot)),
+    );
     expect(uniformMaximumRadius).toBeLessThan(tailMaximumRadius * 0.8);
     expect(uniformMaximumRadius).toBeLessThanOrEqual(
       BlobConfig.armor.aggregateRadius + 0.1,
     );
     expect(uniformAspect).toBeLessThan(1.5);
     expect(uniformAspect).toBeLessThan(tailAspect * 0.8);
-    expect(uniformCoverageHole).toBeLessThan(tailCoverageHole - 0.03);
+    expect(uniformCoverageHole).toBeLessThan(tailCoverageHole);
+    expect(uniformOuterCoverageHole).toBeLessThan(tailOuterCoverageHole);
     expect(uniformCoverageHole).toBeLessThanOrEqual(
-      intactCoverageHole + 0.1,
+      intactCoverageHole + 0.08,
     );
-    expectMainGraphConsistent(harness.animator.getDebugSnapshot());
+    expectMainGraphConsistent(uniformSnapshot);
 
     harness.dispose();
   });
@@ -1114,6 +1532,13 @@ function layerHistogram(snapshot: BlobArmorDebugSnapshot): number[] {
   );
 }
 
+function attachedLayerHistogram(snapshot: BlobArmorDebugSnapshot): number[] {
+  return Array.from({ length: maximumLayer(snapshot) + 1 }, (_, layer) =>
+    snapshot.attachedIndices.filter((index) => snapshot.layers[index] === layer)
+      .length,
+  );
+}
+
 function graphDegrees(snapshot: BlobArmorDebugSnapshot): number[] {
   const degrees = Array.from({ length: snapshot.totalCount }, () => 0);
   for (const [from, to] of snapshot.cohesionPairs) {
@@ -1216,6 +1641,27 @@ function currentMetadata(
 function placeBody(body: RAPIER.RigidBody, position: Vector3): void {
   body.setTranslation(position, true);
   stopBody(body);
+}
+
+function translateWholeBlob(
+  harness: BlobHarness,
+  armor: ArmorRecord[],
+  coreTarget: Vector3,
+): void {
+  const delta = coreTarget
+    .clone()
+    .sub(vectorFromRapier(harness.coreBody.translation()));
+  harness.coreBody.setTranslation(coreTarget, true);
+  harness.coreBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+  harness.coreBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  for (const record of armor) {
+    record.body.setTranslation(
+      vectorFromRapier(record.body.translation()).add(delta),
+      true,
+    );
+    record.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    record.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  }
 }
 
 function placeRecordsInLine(
@@ -1354,6 +1800,53 @@ function sphericalCoverageHole(
     maximumHole = Math.max(maximumHole, nearestAngle);
   }
   return maximumHole;
+}
+
+function coverageHoleForIndices(
+  harness: BlobHarness,
+  armor: ArmorRecord[],
+  indices: number[],
+): number {
+  return sphericalCoverageHole(
+    harness,
+    indices.map((index) => armor[index]),
+  );
+}
+
+function coverageGapAtCoreDirection(
+  harness: BlobHarness,
+  armor: ArmorRecord[],
+  indices: number[],
+  localDirection: Vector3,
+): number {
+  if (indices.length === 0) return Math.PI;
+  const rotation = harness.coreBody.rotation();
+  const direction = localDirection.clone().normalize().applyQuaternion(
+    new Quaternion(rotation.x, rotation.y, rotation.z, rotation.w),
+  );
+  const core = vectorFromRapier(harness.coreBody.translation());
+  return Math.min(
+    ...indices.map((index) =>
+      Math.acos(
+        Math.max(
+          -1,
+          Math.min(
+            1,
+            direction.dot(
+              vectorFromRapier(armor[index].body.translation())
+                .sub(core)
+                .normalize(),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+function average(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) /
+    Math.max(1, values.length);
 }
 
 function symmetricSecondMoment(points: Vector3[]): number[][] {

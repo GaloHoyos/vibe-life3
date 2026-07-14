@@ -8,6 +8,8 @@ interface StationaryDynamicBaseConfig {
   id: string;
   position: Vector3;
   mass: number;
+  linearDamping?: number;
+  angularDamping?: number;
   /** Yaw de montaje inicial (rad): hacia donde "mira" el cuerpo al spawnear. */
   mountYaw: number;
   metadata: PhysicsMetadata;
@@ -69,8 +71,8 @@ export class StationaryDynamicMotor implements NpcMotor {
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(config.position.x, config.position.y, config.position.z)
         .setRotation({ x: rot.x, y: rot.y, z: rot.z, w: rot.w })
-        .setLinearDamping(LINEAR_DAMPING)
-        .setAngularDamping(ANGULAR_DAMPING)
+        .setLinearDamping(config.linearDamping ?? LINEAR_DAMPING)
+        .setAngularDamping(config.angularDamping ?? ANGULAR_DAMPING)
         .setCcdEnabled(true),
     );
     const { desc, volume } = buildCollider(config);

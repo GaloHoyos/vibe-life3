@@ -43,6 +43,7 @@ interface BlobArmorPart {
   cohesionWaveId: number | null;
   reassemblyCooldownRemaining: number;
   yieldFinalized: boolean;
+  hangingLoadFatigue: number;
 }
 
 interface BlobCohesionBond {
@@ -54,6 +55,9 @@ interface BlobCohesionBond {
   resistanceFramesRemaining: number;
   tearArmed: boolean;
   snapArmed: boolean;
+  loadFatigue: number;
+  passiveProtectionRemaining: number;
+  lastRelativeVelocity: Vector3;
 }
 
 interface ReassemblyCandidate {
@@ -80,7 +84,12 @@ interface GelPlacement {
   coreAnchored: boolean;
 }
 
-type BlobDetachCause = "impact" | "cohesion" | "lifecycle";
+interface MainShapeSlot {
+  target: Vector3;
+  layer: number;
+}
+
+type BlobDetachCause = "impact" | "cohesion" | "load" | "lifecycle";
 
 export interface BlobArmorAnimatorOptions {
   id: string;
@@ -132,11 +141,24 @@ export class BlobArmorAnimator implements NpcAnimator {
   private reflowActive = false;
   private shapeHealElapsed = 0;
   private mainShapeHealingRemaining = 0;
+  private loadSheddingCooldownRemaining = 0;
+  private loadFatigueGraceRemaining: number =
+    BlobConfig.armor.cohesionLoadInitialGraceSeconds;
+  private readonly previousHeldVelocities = new Map<number, Vector3>();
+  private readonly maneuverAccelerationVector = new Vector3();
+  private heldBodyManeuverAcceleration = 0;
+  private mainBodyHeldThisFrame = false;
+  private mainBodySupportedThisFrame = false;
+  private mainShapeLoadScale = 1;
+  private maneuverLoadFatigue = 0;
+  private readonly passiveLoadShedIndices = new Set<number>();
+  private fullySupportedElapsed = 0;
+  private readonly mainShapeAssignments = new Map<number, Vector3>();
   private readonly fragmentShapeAssignments = new Map<
     string,
     Map<number, Vector3>
   >();
-  private readonly layerSurfaceSpacings = gelLayerSurfaceSpacings();
+  private layerSurfaceSpacings = gelLayerSurfaceSpacings();
   private enabled = true;
   private dead = false;
   private disposed = false;
@@ -144,6 +166,7 @@ export class BlobArmorAnimator implements NpcAnimator {
   constructor(private readonly options: BlobArmorAnimatorOptions) {
     this.raycast = new Raycast(options.physics);
     this.buildArmor();
+    this.rebuildMainShapeAssignments();
   }
 
   updateFromMotor(frame: AnimationFrame): void {
@@ -197,6 +220,7 @@ export class BlobArmorAnimator implements NpcAnimator {
       part.mesh.removeFromParent();
     }
     this.parts.length = 0;
+    this.mainShapeAssignments.clear();
     this.fragmentShapeAssignments.clear();
     this.geometry.dispose();
     this.material.dispose();
@@ -332,6 +356,7 @@ export class BlobArmorAnimator implements NpcAnimator {
         cohesionWaveId: null,
         reassemblyCooldownRemaining: 0,
         yieldFinalized: false,
+        hangingLoadFatigue: 0,
       };
       this.parts.push(part);
     }
@@ -437,7 +462,11 @@ export class BlobArmorAnimator implements NpcAnimator {
       this.armCohesionFromImpact(part, "direct");
     }
 
-    if (cause === "cohesion" || cause === "lifecycle") {
+    if (
+      cause === "cohesion" ||
+      cause === "load" ||
+      cause === "lifecycle"
+    ) {
       // El umbral de tensión ya representa la rotura del anclaje: mantener el
       // resorte otra décima haría que el vecino arrancado vuelva al core.
       this.finalizeYield(part);
@@ -483,6 +512,18 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.reflowActive = false;
     this.shapeHealElapsed = 0;
     this.mainShapeHealingRemaining = 0;
+    this.loadSheddingCooldownRemaining = 0;
+    this.loadFatigueGraceRemaining = 0;
+    this.heldBodyManeuverAcceleration = 0;
+    this.mainBodyHeldThisFrame = false;
+    this.mainBodySupportedThisFrame = false;
+    this.mainShapeLoadScale = 1;
+    this.maneuverLoadFatigue = 0;
+    this.maneuverAccelerationVector.set(0, 0, 0);
+    this.previousHeldVelocities.clear();
+    this.passiveLoadShedIndices.clear();
+    this.fullySupportedElapsed = 0;
+    this.mainShapeAssignments.clear();
     this.fragmentShapeAssignments.clear();
   }
 
@@ -507,6 +548,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.removeCoreJoint(part);
     part.state = "released";
     part.yieldFinalized = true;
+    part.hangingLoadFatigue = 0;
     part.reassemblyCooldownRemaining = Math.max(
       part.reassemblyCooldownRemaining,
       cooldown,
@@ -532,6 +574,15 @@ export class BlobArmorAnimator implements NpcAnimator {
       ? Math.min(Math.max(0, delta), 1 / 20)
       : 0;
     const config = BlobConfig.armor;
+    this.loadSheddingCooldownRemaining = Math.max(
+      0,
+      this.loadSheddingCooldownRemaining - elapsed,
+    );
+    this.loadFatigueGraceRemaining = Math.max(
+      0,
+      this.loadFatigueGraceRemaining - elapsed,
+    );
+    this.updateHeldBodyManeuverAcceleration(elapsed);
 
     for (const part of this.parts) {
       if (part.state === "attached") continue;
@@ -553,14 +604,32 @@ export class BlobArmorAnimator implements NpcAnimator {
       }
     }
 
+    this.updateEnvironmentalLoadFatigue(elapsed);
+    this.updateManeuverLoadFatigue(elapsed);
+
     const cohesionTears = new Map<BlobArmorPart, number | null>();
+    let passiveBreak: { bond: BlobCohesionBond; score: number } | null = null;
     for (const bond of this.cohesionBonds) {
       if (!bond.joint?.isValid()) {
         this.removeCohesionBond(bond);
         continue;
       }
+      if (bond.passiveProtectionRemaining > 0) {
+        bond.passiveProtectionRemaining = Math.max(
+          0,
+          bond.passiveProtectionRemaining - elapsed,
+        );
+        bond.loadFatigue = 0;
+        bond.lastRelativeVelocity.copy(
+          relativeVelocityVector(bond.partA, bond.partB),
+        );
+        continue;
+      }
       if (bond.resistanceFramesRemaining > 0) {
         bond.resistanceFramesRemaining -= 1;
+        bond.lastRelativeVelocity.copy(
+          relativeVelocityVector(bond.partA, bond.partB),
+        );
         continue;
       }
       const aAttached = bond.partA.state === "attached";
@@ -568,6 +637,13 @@ export class BlobArmorAnimator implements NpcAnimator {
       const extension = cohesionBondExtension(bond);
 
       if (aAttached !== bAttached) {
+        bond.loadFatigue = Math.max(
+          0,
+          bond.loadFatigue - config.cohesionLoadRecoveryPerSecond * elapsed,
+        );
+        bond.lastRelativeVelocity.copy(
+          relativeVelocityVector(bond.partA, bond.partB),
+        );
         bond.mixedElapsed += elapsed;
         if (bond.snapArmed) {
           this.removeCohesionBond(bond, true);
@@ -588,6 +664,21 @@ export class BlobArmorAnimator implements NpcAnimator {
         continue;
       }
 
+      if (aAttached) {
+        const score = this.updateCohesionLoadFatigue(
+          bond,
+          extension,
+          elapsed,
+        );
+        if (
+          score >= config.cohesionLoadFatigueSeconds &&
+          (!passiveBreak || score > passiveBreak.score)
+        ) {
+          passiveBreak = { bond, score };
+        }
+        continue;
+      }
+
       if (
         !aAttached &&
         (bond.snapArmed ||
@@ -596,6 +687,51 @@ export class BlobArmorAnimator implements NpcAnimator {
             extension >= config.cohesionFragmentBreakStretch))
       ) {
         this.removeCohesionBond(bond, true);
+      } else {
+        bond.lastRelativeVelocity.copy(
+          relativeVelocityVector(bond.partA, bond.partB),
+        );
+      }
+    }
+    if (
+      passiveBreak &&
+      this.loadSheddingCooldownRemaining <= 0
+    ) {
+      const orphans = this.passiveCutOrphans(passiveBreak.bond);
+      const attachedCount = this.parts.filter(
+        (part) => part.state === "attached",
+      ).length;
+      const newOrphans = orphans.filter(
+        (part) => !this.passiveLoadShedIndices.has(part.index),
+      );
+      // Cortar un enlace redundante (sin orphan) es el ceder gradual que
+      // permite arrancar con suavidad un blob con varios vecinos. Cuando el
+      // corte ya desprende masa, en cambio, toda la closure debe ser exterior.
+      const onlyPeelsOuterShell =
+        orphans.length === 0 ||
+        orphans.every(
+          (part) => part.layer === config.layerCounts.length - 1,
+        );
+      if (
+        onlyPeelsOuterShell &&
+        attachedCount > config.cohesionLoadMinimumAttachedCount &&
+        this.passiveLoadShedIndices.size < config.cohesionLoadMaxChunkSize &&
+        orphans.length <= config.cohesionLoadMaxChunkSize &&
+        attachedCount - orphans.length >=
+          config.cohesionLoadMinimumAttachedCount &&
+        this.passiveLoadShedIndices.size + newOrphans.length <=
+          config.cohesionLoadMaxChunkSize
+      ) {
+        for (const part of newOrphans) {
+          this.passiveLoadShedIndices.add(part.index);
+        }
+        this.protectPassivePatchBonds(orphans);
+        this.removeCohesionBond(passiveBreak.bond);
+        this.loadSheddingCooldownRemaining = config.cohesionLoadBreakCooldown;
+        this.fullySupportedElapsed = 0;
+      } else {
+        passiveBreak.bond.loadFatigue =
+          config.cohesionLoadFatigueSeconds * 0.5;
       }
     }
     for (const [part, waveId] of cohesionTears) {
@@ -605,6 +741,562 @@ export class BlobArmorAnimator implements NpcAnimator {
       (bond) => bond.joint?.isValid(),
     );
     this.reconcileMainBodyConnectivity();
+  }
+
+  private updateHeldBodyManeuverAcceleration(elapsed: number): void {
+    if (elapsed <= 0) {
+      this.heldBodyManeuverAcceleration = 0;
+      this.mainBodyHeldThisFrame = false;
+      this.maneuverAccelerationVector.set(0, 0, 0);
+      return;
+    }
+    const heldBodies: RAPIER.RigidBody[] = [];
+    if (
+      this.options.coreBody.isValid() &&
+      this.options.physics.isHeldBody(this.options.coreBody.handle)
+    ) {
+      heldBodies.push(this.options.coreBody);
+    }
+    for (const part of this.parts) {
+      if (
+        part.state === "attached" &&
+        part.body.isValid() &&
+        this.options.physics.isHeldBody(part.body.handle)
+      ) {
+        heldBodies.push(part.body);
+      }
+    }
+    this.mainBodyHeldThisFrame = heldBodies.length > 0;
+    const activeHandles = new Set<number>();
+    let strongest = new Vector3();
+    for (const body of heldBodies) {
+      activeHandles.add(body.handle);
+      const velocity = vectorFromRapier(body.linvel());
+      const previous = this.previousHeldVelocities.get(body.handle);
+      if (previous) {
+        const acceleration = velocity.clone().sub(previous).multiplyScalar(
+          1 / elapsed,
+        );
+        if (acceleration.lengthSq() > strongest.lengthSq()) {
+          strongest = acceleration;
+        }
+        previous.copy(velocity);
+      } else {
+        this.previousHeldVelocities.set(body.handle, velocity);
+      }
+    }
+    for (const handle of this.previousHeldVelocities.keys()) {
+      if (!activeHandles.has(handle)) {
+        this.previousHeldVelocities.delete(handle);
+      }
+    }
+    this.maneuverAccelerationVector.copy(strongest);
+    this.heldBodyManeuverAcceleration = strongest.length();
+  }
+
+  private updateEnvironmentalLoadFatigue(elapsed: number): void {
+    this.mainBodySupportedThisFrame = false;
+    this.mainShapeLoadScale = 1;
+    if (elapsed <= 0 || !this.options.coreBody.isValid()) return;
+    const config = BlobConfig.armor;
+    const attached = this.parts.filter(
+      (part) => part.state === "attached" && part.body.isValid(),
+    );
+    const recover = (part: BlobArmorPart) => {
+      part.hangingLoadFatigue = Math.max(
+        0,
+        part.hangingLoadFatigue -
+          config.hangingLoadRecoveryPerSecond * elapsed,
+      );
+    };
+    if (attached.length === 0 || this.loadFatigueGraceRemaining > 0) {
+      this.fullySupportedElapsed = 0;
+      for (const part of attached) recover(part);
+      return;
+    }
+
+    const coreHeld = this.options.physics.isHeldBody(
+      this.options.coreBody.handle,
+    );
+    const shellHeld = attached.some((part) =>
+      this.options.physics.isHeldBody(part.body.handle),
+    );
+    const coreGroundSupported = this.hasExternalSupportBelow(
+      this.options.coreBody,
+      BlobConfig.core.radius + config.hangingLoadSupportProbe,
+    );
+    const shellGroundSupported = attached.some((part) =>
+      this.hasExternalSupportBelow(
+        part.body,
+        partRadius(part) + config.hangingLoadSupportProbe,
+      ),
+    );
+    const externallyConstrained =
+      coreHeld || shellHeld || !this.options.coreBody.isDynamic();
+    const suspended =
+      externallyConstrained &&
+      !coreGroundSupported &&
+      !shellGroundSupported;
+    this.mainBodySupportedThisFrame =
+      externallyConstrained || coreGroundSupported || shellGroundSupported;
+    if (!this.mainBodySupportedThisFrame) {
+      this.fullySupportedElapsed = 0;
+      for (const part of attached) recover(part);
+      return;
+    }
+
+    const corePosition = vectorFromRapier(this.options.coreBody.translation());
+    const worldGravity = this.options.physics.world.gravity;
+    const gravityStrength =
+      (Math.hypot(worldGravity.x, worldGravity.y, worldGravity.z) / 20.5) *
+      config.attachedGravityScale;
+    const hanging = new Set<BlobArmorPart>();
+    let candidate: BlobArmorPart | null = null;
+    for (const part of attached) {
+      if (
+        part.layer < config.layerCounts.length - 1 ||
+        this.passiveLoadShedIndices.has(part.index)
+      ) {
+        recover(part);
+        continue;
+      }
+      if (
+        !suspended &&
+        this.hasExternalSupportBelow(
+          part.body,
+          config.hangingLoadGroundProbeDepth,
+        )
+      ) {
+        recover(part);
+        continue;
+      }
+      hanging.add(part);
+
+      const position = vectorFromRapier(part.body.translation());
+      const radialDistance = position.distanceTo(corePosition);
+      const distanceFactor = clamp(
+        (radialDistance / config.outerRadius - 0.55) / 0.45,
+        0,
+        1.8,
+      );
+      const downwardFactor = clamp(
+        0.45 + (corePosition.y - position.y) / config.outerRadius,
+        0.25,
+        1.5,
+      );
+      part.hangingLoadFatigue +=
+        (elapsed *
+          config.hangingLoadRate *
+          gravityStrength *
+          distanceFactor *
+          downwardFactor) /
+        passivePartToughness(part.index);
+      if (
+        part.hangingLoadFatigue >= config.hangingLoadFatigueSeconds &&
+        (!candidate ||
+          part.hangingLoadFatigue > candidate.hangingLoadFatigue)
+      ) {
+        candidate = part;
+      }
+    }
+    if (suspended || hanging.size > 0) {
+      this.mainShapeLoadScale = config.mainShapeLoadedScale;
+    }
+
+    if (hanging.size === 0 && !this.mainBodyHeldThisFrame) {
+      this.fullySupportedElapsed += elapsed;
+      if (this.fullySupportedElapsed >= 2) {
+        this.passiveLoadShedIndices.clear();
+      }
+    } else {
+      this.fullySupportedElapsed = 0;
+    }
+
+    const minimumCoverCapacity =
+      attached.length - config.cohesionLoadMinimumAttachedCount;
+    if (
+      candidate &&
+      minimumCoverCapacity > 0 &&
+      this.passiveLoadShedIndices.size < config.cohesionLoadMaxChunkSize &&
+      this.loadSheddingCooldownRemaining <= 0
+    ) {
+      const patch = [candidate];
+      const desiredPatchSize = Math.min(
+        passivePatchSize(candidate.index, config.hangingLoadMaxPatchSize),
+        minimumCoverCapacity,
+        config.cohesionLoadMaxChunkSize - this.passiveLoadShedIndices.size,
+      );
+      const neighbors = this.cohesionBonds
+        .filter(
+          (bond) =>
+            bond.joint?.isValid() &&
+            (bond.partA === candidate || bond.partB === candidate),
+        )
+        .map((bond) =>
+          bond.partA === candidate ? bond.partB : bond.partA,
+        )
+        .filter(
+          (part) =>
+            hanging.has(part) &&
+            part.hangingLoadFatigue >=
+              config.hangingLoadFatigueSeconds * 0.6,
+        )
+        .sort(
+          (a, b) =>
+            b.hangingLoadFatigue - a.hangingLoadFatigue ||
+            a.index - b.index,
+        );
+      for (const neighbor of neighbors) {
+        if (
+          patch.length >= desiredPatchSize ||
+          this.passiveLoadShedIndices.size + patch.length >=
+            config.cohesionLoadMaxChunkSize
+        ) {
+          break;
+        }
+        patch.push(neighbor);
+      }
+      const detachablePatch = this.resolvePassivePatch(patch);
+      if (!detachablePatch) {
+        candidate.hangingLoadFatigue =
+          config.hangingLoadFatigueSeconds * 0.5;
+        return;
+      }
+      this.protectPassivePatchBonds(detachablePatch);
+      for (const part of detachablePatch) {
+        part.hangingLoadFatigue = 0;
+        this.passiveLoadShedIndices.add(part.index);
+        this.detach(part, undefined, "load");
+      }
+      this.loadSheddingCooldownRemaining = config.cohesionLoadBreakCooldown;
+    }
+  }
+
+  private updateManeuverLoadFatigue(elapsed: number): void {
+    const config = BlobConfig.armor;
+    const load = Math.max(
+      0,
+      this.heldBodyManeuverAcceleration /
+        config.cohesionHeldBodyAcceleration -
+        1,
+    );
+    if (
+      !this.mainBodyHeldThisFrame ||
+      this.loadFatigueGraceRemaining > 0 ||
+      load <= 0
+    ) {
+      this.maneuverLoadFatigue = Math.max(
+        0,
+        this.maneuverLoadFatigue -
+          config.cohesionManeuverRecoveryPerSecond * elapsed,
+      );
+      return;
+    }
+    this.maneuverLoadFatigue += elapsed * load;
+    const attachedCount = this.parts.filter(
+      (part) => part.state === "attached",
+    ).length;
+    const patchCapacity = Math.min(
+      attachedCount - config.cohesionLoadMinimumAttachedCount,
+      config.cohesionLoadMaxChunkSize - this.passiveLoadShedIndices.size,
+    );
+    if (
+      this.maneuverLoadFatigue < config.cohesionManeuverFatigueSeconds ||
+      this.loadSheddingCooldownRemaining > 0 ||
+      patchCapacity < 2
+    ) {
+      return;
+    }
+
+    const corePosition = vectorFromRapier(this.options.coreBody.translation());
+    const trailing = this.maneuverAccelerationVector.clone().negate();
+    if (trailing.lengthSq() <= 1e-8) return;
+    trailing.normalize();
+    const candidates = this.parts
+      .filter(
+        (part) =>
+          part.state === "attached" &&
+          part.body.isValid() &&
+          part.layer === config.layerCounts.length - 1 &&
+          !this.passiveLoadShedIndices.has(part.index),
+      )
+      .map((part) => {
+        const radial = vectorFromRapier(part.body.translation()).sub(
+          corePosition,
+        );
+        const distance = radial.length();
+        if (distance > 1e-5) radial.multiplyScalar(1 / distance);
+        return {
+          part,
+          score:
+            radial.dot(trailing) +
+            (distance / config.outerRadius) * 0.12 +
+            (this.options.physics.isHeldBody(part.body.handle) ? 2 : 0) -
+            passivePartToughness(part.index) * 0.04,
+        };
+      })
+      .sort((a, b) => b.score - a.score || a.part.index - b.part.index);
+    const seed = candidates[0]?.part;
+    if (!seed) return;
+
+    const desiredPatchSize = Math.max(
+      2,
+      Math.min(
+        passivePatchSize(seed.index, config.hangingLoadMaxPatchSize),
+        patchCapacity,
+      ),
+    );
+    const patch = [seed];
+    const patchSet = new Set(patch);
+    while (
+      patch.length < desiredPatchSize &&
+      this.passiveLoadShedIndices.size + patch.length <
+        config.cohesionLoadMaxChunkSize
+    ) {
+      const next = this.cohesionBonds
+        .filter(
+          (bond) =>
+            bond.joint?.isValid() &&
+            ((patchSet.has(bond.partA) && !patchSet.has(bond.partB)) ||
+              (patchSet.has(bond.partB) && !patchSet.has(bond.partA))),
+        )
+        .map((bond) =>
+          patchSet.has(bond.partA) ? bond.partB : bond.partA,
+        )
+        .filter(
+          (part) =>
+            part.state === "attached" &&
+            part.layer === config.layerCounts.length - 1 &&
+            !this.passiveLoadShedIndices.has(part.index),
+        )
+        .sort((a, b) => {
+          const scoreA =
+            candidates.find(({ part }) => part === a)?.score ??
+            Number.NEGATIVE_INFINITY;
+          const scoreB =
+            candidates.find(({ part }) => part === b)?.score ??
+            Number.NEGATIVE_INFINITY;
+          return scoreB - scoreA || a.index - b.index;
+        })[0];
+      if (!next) break;
+      patch.push(next);
+      patchSet.add(next);
+    }
+
+    const detachablePatch = this.resolvePassivePatch(patch);
+    if (!detachablePatch) {
+      this.maneuverLoadFatigue = config.cohesionManeuverFatigueSeconds * 0.5;
+      return;
+    }
+    this.protectPassivePatchBonds(detachablePatch);
+    for (const part of detachablePatch) {
+      this.passiveLoadShedIndices.add(part.index);
+      this.detach(part, undefined, "load");
+    }
+    this.maneuverLoadFatigue = 0;
+    this.loadSheddingCooldownRemaining = config.cohesionLoadBreakCooldown;
+    this.fullySupportedElapsed = 0;
+  }
+
+  private hasExternalSupportBelow(
+    body: RAPIER.RigidBody,
+    maxDistance: number,
+  ): boolean {
+    if (!body.isValid() || maxDistance <= 0) return false;
+    const origin = vectorFromRapier(body.translation());
+    const hit = this.raycast.cast(
+      origin,
+      new Vector3(0, -1, 0),
+      maxDistance,
+      body,
+      this.options.id,
+      (metadata) =>
+        metadata?.impactOwnerId !== this.options.id &&
+        (metadata?.kind === "static" ||
+          metadata?.kind === "door" ||
+          metadata?.kind === "dynamic"),
+    );
+    return hit !== null && (hit.normal?.y ?? 0) > 0.35;
+  }
+
+  private updateCohesionLoadFatigue(
+    bond: BlobCohesionBond,
+    extension: number,
+    elapsed: number,
+  ): number {
+    if (elapsed <= 0) return bond.loadFatigue;
+    const config = BlobConfig.armor;
+    const relativeVelocity = relativeVelocityVector(bond.partA, bond.partB);
+    const relativeAcceleration = relativeVelocity
+      .clone()
+      .sub(bond.lastRelativeVelocity)
+      .length() / elapsed;
+    bond.lastRelativeVelocity.copy(relativeVelocity);
+    if (
+      this.loadFatigueGraceRemaining > 0 ||
+      (!this.mainBodySupportedThisFrame && !this.mainBodyHeldThisFrame) ||
+      Math.max(bond.partA.layer, bond.partB.layer) <
+        config.layerCounts.length - 1
+    ) {
+      bond.loadFatigue = Math.max(
+        0,
+        bond.loadFatigue - config.cohesionLoadRecoveryPerSecond * elapsed,
+      );
+      return bond.loadFatigue;
+    }
+
+    const positionA = vectorFromRapier(bond.partA.body.translation());
+    const positionB = vectorFromRapier(bond.partB.body.translation());
+    const axis = positionB.clone().sub(positionA);
+    const distance = axis.length();
+    const separatingSpeed =
+      distance > 1e-5
+        ? Math.max(0, relativeVelocity.dot(axis.multiplyScalar(1 / distance)))
+        : relativeVelocity.length();
+    const rawLoad = Math.max(
+      Math.max(0, extension) /
+        (this.mainBodyHeldThisFrame
+          ? config.cohesionHeldStretchStart
+          : config.cohesionLoadStretchStart),
+      this.mainBodyHeldThisFrame
+        ? 0
+        : separatingSpeed / config.cohesionLoadSeparationSpeed,
+      this.mainBodyHeldThisFrame
+        ? 0
+        : (relativeAcceleration / config.cohesionLoadRelativeAcceleration) *
+          0.55,
+    );
+
+    const corePosition = vectorFromRapier(this.options.coreBody.translation());
+    const radialFactor =
+      Math.max(
+        positionA.distanceTo(corePosition),
+        positionB.distanceTo(corePosition),
+      ) / config.outerRadius;
+    const leverage = clamp(
+      0.72 + Math.max(0, radialFactor - 0.65) * 0.72,
+      0.72,
+      1.65,
+    );
+    const toughness = passiveBondToughness(bond.partA.index, bond.partB.index);
+    const effectiveLoad = (rawLoad * leverage) / toughness;
+
+    if (effectiveLoad > 1) {
+      bond.loadFatigue += elapsed * effectiveLoad;
+    } else {
+      bond.loadFatigue = Math.max(
+        0,
+        bond.loadFatigue - config.cohesionLoadRecoveryPerSecond * elapsed,
+      );
+    }
+    return bond.loadFatigue;
+  }
+
+  private passiveCutOrphans(ignored: BlobCohesionBond): BlobArmorPart[] {
+    const attached = this.parts.filter((part) => part.state === "attached");
+    const reachable = new Set<BlobArmorPart>();
+    const pending = attached.filter((part) => part.joint?.isValid());
+    while (pending.length > 0) {
+      const part = pending.pop()!;
+      if (reachable.has(part)) continue;
+      reachable.add(part);
+      for (const bond of this.cohesionBonds) {
+        if (bond === ignored || !bond.joint?.isValid()) continue;
+        if (bond.partA === part && bond.partB.state === "attached") {
+          pending.push(bond.partB);
+        } else if (bond.partB === part && bond.partA.state === "attached") {
+          pending.push(bond.partA);
+        }
+      }
+    }
+    return attached.filter((part) => !reachable.has(part));
+  }
+
+  private resolvePassivePatch(
+    requested: BlobArmorPart[],
+  ): BlobArmorPart[] | null {
+    const config = BlobConfig.armor;
+    const selected = [...new Set(requested)].filter(
+      (part) => part.state === "attached" && part.body.isValid(),
+    );
+    if (selected.length === 0) return null;
+
+    const excluded = new Set(selected);
+    const attached = this.parts.filter(
+      (part) => part.state === "attached" && part.body.isValid(),
+    );
+    const reachable = new Set<BlobArmorPart>();
+    const pending = attached.filter(
+      (part) => !excluded.has(part) && part.joint?.isValid(),
+    );
+    while (pending.length > 0) {
+      const part = pending.pop()!;
+      if (reachable.has(part) || excluded.has(part)) continue;
+      reachable.add(part);
+      for (const bond of this.cohesionBonds) {
+        if (!bond.joint?.isValid()) continue;
+        if (
+          bond.partA === part &&
+          bond.partB.state === "attached" &&
+          !excluded.has(bond.partB)
+        ) {
+          pending.push(bond.partB);
+        } else if (
+          bond.partB === part &&
+          bond.partA.state === "attached" &&
+          !excluded.has(bond.partA)
+        ) {
+          pending.push(bond.partA);
+        }
+      }
+    }
+
+    const closure = [
+      ...selected,
+      ...attached.filter(
+        (part) => !excluded.has(part) && !reachable.has(part),
+      ),
+    ];
+    const newMembers = closure.filter(
+      (part) => !this.passiveLoadShedIndices.has(part.index),
+    );
+    if (
+      closure.some(
+        (part) => part.layer < config.layerCounts.length - 1,
+      ) ||
+      attached.length - closure.length <
+        config.cohesionLoadMinimumAttachedCount ||
+      this.passiveLoadShedIndices.size + newMembers.length >
+        config.cohesionLoadMaxChunkSize
+    ) {
+      return null;
+    }
+    return closure;
+  }
+
+  private protectPassivePatchBonds(patch: BlobArmorPart[]): void {
+    if (patch.length < 2) return;
+    const members = new Set(patch);
+    for (const bond of this.cohesionBonds) {
+      if (
+        !bond.joint?.isValid() ||
+        !members.has(bond.partA) ||
+        !members.has(bond.partB)
+      ) {
+        continue;
+      }
+      bond.mixedElapsed = 0;
+      bond.tearArmed = false;
+      bond.snapArmed = false;
+      bond.loadFatigue = 0;
+      bond.passiveProtectionRemaining = Math.max(
+        bond.passiveProtectionRemaining,
+        BlobConfig.armor.cohesionLoadPatchProtectionSeconds,
+      );
+      bond.lastRelativeVelocity.copy(
+        relativeVelocityVector(bond.partA, bond.partB),
+      );
+    }
   }
 
   private reconcileMainBodyConnectivity(): void {
@@ -633,6 +1325,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     for (const part of orphaned) {
       this.markPartReleased(part);
     }
+    this.armMainShapeHealing(false);
     this.scheduleReflow();
   }
 
@@ -844,6 +1537,12 @@ export class BlobArmorAnimator implements NpcAnimator {
         resistanceFramesRemaining: 1,
         tearArmed: false,
         snapArmed: false,
+        loadFatigue: 0,
+        passiveProtectionRemaining: 0,
+        lastRelativeVelocity: relativeVelocityVector(
+          candidate.partA,
+          candidate.partB,
+        ),
       };
       this.createCohesionBond(bond);
       this.cohesionBonds.push(bond);
@@ -1007,13 +1706,22 @@ export class BlobArmorAnimator implements NpcAnimator {
   }
 
   /**
-   * The core is protected by two complementary constraints: every attached
-   * node is contained at its layer radius, and nodes in the same layer repel
-   * tangentially. A radial tail therefore buckles and spreads over the shell
-   * instead of remaining a valid (but visually wrong) graph.
+   * El cerebro recompone una cobertura tipo cebolla: contiene cada rol en su
+   * radio, mantiene slots uniformes y separa tangencialmente vecinos. Los slots
+   * siguen activos con poca fuerza al terminar el reflow para que el gel pueda
+   * deformarse sin volver a dejar un corredor abierto hacia el core.
    */
   private updateMainShapeRelaxation(elapsed: number): void {
     const config = BlobConfig.armor;
+    const healingBoost =
+      (this.mainShapeHealingRemaining > 0
+        ? config.mainShapeHealingBoost
+        : 1) * this.mainShapeLoadScale;
+    const assignmentScale =
+      (this.mainShapeHealingRemaining > 0
+        ? config.mainShapeAssignmentHealingBoost
+        : config.mainShapeAssignmentMaintenanceScale) *
+      this.mainShapeLoadScale;
     const attached = this.parts.filter(
       (part) => part.state === "attached" && part.body.isValid(),
     );
@@ -1051,14 +1759,56 @@ export class BlobArmorAnimator implements NpcAnimator {
       );
       const velocityDelta = clamp(
         desiredRadialVelocity - radialVelocity,
-        -config.mainShapeRadialAcceleration * elapsed,
-        config.mainShapeRadialAcceleration * elapsed,
+        -config.mainShapeRadialAcceleration * healingBoost * elapsed,
+        config.mainShapeRadialAcceleration * healingBoost * elapsed,
       );
-      const impulse = radial.multiplyScalar(
+      const impulse = radial.clone().multiplyScalar(
         velocityDelta * Math.max(1e-4, part.body.mass()),
       );
       part.body.applyImpulse(impulse, true);
       coreReaction.sub(impulse);
+
+      const assignedTarget = this.mainShapeAssignments.get(part.index);
+      if (!assignedTarget || assignmentScale <= 0) continue;
+      const assignedWorld = coreAnchorWorldPosition(
+        assignedTarget,
+        this.options.coreBody,
+      );
+      if (!this.hasClearWorldPath(part, assignedWorld)) continue;
+      const tangentialError = assignedWorld.sub(position);
+      tangentialError.addScaledVector(
+        radial,
+        -tangentialError.dot(radial),
+      );
+      const tangentialDistance = tangentialError.length();
+      if (tangentialDistance <= 1e-5) continue;
+      const desiredTangentialVelocity = tangentialError
+        .clone()
+        .multiplyScalar(config.mainShapeAssignmentGain);
+      const desiredSpeed = desiredTangentialVelocity.length();
+      if (desiredSpeed > config.mainShapeAssignmentMaxSpeed) {
+        desiredTangentialVelocity.multiplyScalar(
+          config.mainShapeAssignmentMaxSpeed / desiredSpeed,
+        );
+      }
+      const relativeVelocity = vectorFromRapier(part.body.linvel()).sub(
+        frameVelocity,
+      );
+      relativeVelocity.addScaledVector(
+        radial,
+        -relativeVelocity.dot(radial),
+      );
+      const tangentialDelta = desiredTangentialVelocity.sub(relativeVelocity);
+      const maxTangentialDelta =
+        config.mainShapeAssignmentAcceleration * assignmentScale * elapsed;
+      if (tangentialDelta.length() > maxTangentialDelta) {
+        tangentialDelta.setLength(maxTangentialDelta);
+      }
+      const tangentialImpulse = tangentialDelta.multiplyScalar(
+        Math.max(1e-4, part.body.mass()),
+      );
+      part.body.applyImpulse(tangentialImpulse, true);
+      coreReaction.sub(tangentialImpulse);
     }
     if (coreReaction.lengthSq() > 1e-12) {
       this.options.coreBody.applyImpulse(coreReaction, true);
@@ -1123,8 +1873,8 @@ export class BlobArmorAnimator implements NpcAnimator {
         );
         const relativeDelta = clamp(
           desiredSeparationVelocity - relativeVelocity,
-          -2 * config.mainShapeAngularAcceleration * elapsed,
-          2 * config.mainShapeAngularAcceleration * elapsed,
+          -2 * config.mainShapeAngularAcceleration * healingBoost * elapsed,
+          2 * config.mainShapeAngularAcceleration * healingBoost * elapsed,
         );
         const inverseMass =
           1 / Math.max(1e-4, partA.body.mass()) +
@@ -1140,6 +1890,7 @@ export class BlobArmorAnimator implements NpcAnimator {
       const maxImpulse =
         Math.max(1e-4, part.body.mass()) *
         config.mainShapeAngularAcceleration *
+        healingBoost *
         elapsed;
       const length = impulse.length();
       if (length > maxImpulse && length > 1e-6) {
@@ -1185,7 +1936,8 @@ export class BlobArmorAnimator implements NpcAnimator {
         const bothMain =
           this.mainShapeHealingRemaining > 0 &&
           partA.state === "attached" &&
-          partB.state === "attached";
+          partB.state === "attached" &&
+          Math.abs(partA.layer - partB.layer) <= 1;
         const componentA = graph.componentByPart.get(partA);
         const bothReadyFragment =
           partA.state === "released" &&
@@ -1255,6 +2007,90 @@ export class BlobArmorAnimator implements NpcAnimator {
         );
         added += 1;
       }
+    }
+    if (this.mainShapeHealingRemaining > 0) {
+      this.pruneStaleMainBonds();
+    }
+  }
+
+  private pruneStaleMainBonds(): void {
+    const config = BlobConfig.armor;
+    const staleDistance =
+      config.cohesionAttachMaxDistance *
+      config.shapeHealStaleDistanceFactor;
+    const hasTargetCompatibleReplacement = (
+      part: BlobArmorPart,
+      ignored: BlobCohesionBond,
+    ): boolean => {
+      const target = this.mainShapeAssignments.get(part.index);
+      if (!target) return false;
+      return this.cohesionBonds.some((candidate) => {
+        if (candidate === ignored || !candidate.joint?.isValid()) return false;
+        const other =
+          candidate.partA === part
+            ? candidate.partB
+            : candidate.partB === part
+              ? candidate.partA
+              : null;
+        if (!other || other.state !== "attached") return false;
+        const otherTarget = this.mainShapeAssignments.get(other.index);
+        return (
+          otherTarget !== undefined &&
+          Math.abs(part.layer - other.layer) <= 1 &&
+          target.distanceTo(otherTarget) <= staleDistance &&
+          rapierDistance(part.body.translation(), other.body.translation()) <=
+            staleDistance
+        );
+      });
+    };
+    const candidates = this.cohesionBonds
+      .filter((bond) => {
+        if (
+          !bond.joint?.isValid() ||
+          bond.partA.state !== "attached" ||
+          bond.partB.state !== "attached"
+        ) {
+          return false;
+        }
+        const actualDistance = rapierDistance(
+          bond.partA.body.translation(),
+          bond.partB.body.translation(),
+        );
+        const targetA = this.mainShapeAssignments.get(bond.partA.index);
+        const targetB = this.mainShapeAssignments.get(bond.partB.index);
+        const targetStale =
+          targetA !== undefined &&
+          targetB !== undefined &&
+          targetA.distanceTo(targetB) > staleDistance;
+        return (
+          Math.abs(bond.partA.layer - bond.partB.layer) > 1 ||
+          actualDistance > staleDistance ||
+          (targetStale &&
+            hasTargetCompatibleReplacement(bond.partA, bond) &&
+            hasTargetCompatibleReplacement(bond.partB, bond))
+        );
+      })
+      .sort(
+        (a, b) =>
+          cohesionBondExtension(b) - cohesionBondExtension(a) ||
+          cohesionPairKey(a.partA, a.partB).localeCompare(
+            cohesionPairKey(b.partA, b.partB),
+          ),
+      );
+    let pruned = 0;
+    for (const bond of candidates) {
+      if (pruned >= config.shapeHealMaxPrunedPerTick) break;
+      const degreeA = activeBondDegree(this.cohesionBonds, bond.partA);
+      const degreeB = activeBondDegree(this.cohesionBonds, bond.partB);
+      if (
+        degreeA <= 2 ||
+        degreeB <= 2 ||
+        this.passiveCutOrphans(bond).length > 0
+      ) {
+        continue;
+      }
+      this.removeCohesionBond(bond);
+      pruned += 1;
     }
   }
 
@@ -1352,11 +2188,83 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.armMainShapeHealing();
   }
 
-  private armMainShapeHealing(): void {
+  private armMainShapeHealing(protectFromLoad = true): void {
+    const healingDuration =
+      BlobConfig.armor.reflowDelay + BlobConfig.armor.reflowDuration + 1;
+    this.rebuildMainShapeAssignments();
     this.mainShapeHealingRemaining = Math.max(
       this.mainShapeHealingRemaining,
-      BlobConfig.armor.reflowDelay + BlobConfig.armor.reflowDuration + 1,
+      healingDuration,
     );
+    if (protectFromLoad) {
+      this.loadFatigueGraceRemaining = Math.max(
+        this.loadFatigueGraceRemaining,
+        BlobConfig.armor.cohesionReflowLoadGraceSeconds,
+      );
+    }
+  }
+
+  private rebuildMainShapeAssignments(): void {
+    this.mainShapeAssignments.clear();
+    const config = BlobConfig.armor;
+    const parts = this.parts.filter(
+      (part) => part.state === "attached" && part.body.isValid(),
+    );
+    if (parts.length === 0) {
+      this.layerSurfaceSpacings = config.layerCounts.map(
+        () => config.maxRadius * 2,
+      );
+      return;
+    }
+
+    let remaining = parts.length;
+    const layerCounts = config.layerCounts.map((capacity) => {
+      const count = Math.min(capacity, remaining);
+      remaining -= count;
+      return count;
+    });
+    if (remaining > 0) {
+      throw new Error("Blob gel layout: faltan slots para la masa adjunta");
+    }
+    const slots: MainShapeSlot[] = [];
+    const targetsByLayer: Vector3[][] = [];
+    for (let layer = 0; layer < layerCounts.length; layer += 1) {
+      const targets = fibonacciAnchors(
+        layerCounts[layer],
+        config.layerRadii[layer] ?? config.outerRadius,
+        config.layerPhases[layer] ?? 0,
+      );
+      targetsByLayer.push(targets);
+      slots.push(...targets.map((target) => ({ target, layer })));
+    }
+    this.layerSurfaceSpacings = targetsByLayer.map((targets) =>
+      averageNearestTargetSpacing(targets, config.maxRadius * 2),
+    );
+
+    const innerSlots = slots.filter((slot) => slot.layer === 0);
+    const priorityInner = parts
+      .filter((part) => part.coreAnchorEligible || part.joint?.isValid())
+      .sort((a, b) => a.index - b.index)
+      .slice(0, innerSlots.length);
+    const assignments = assignNearestShapeSlots(
+      priorityInner,
+      innerSlots,
+      this.options.coreBody,
+    );
+    const assignedParts = new Set(assignments.keys());
+    const assignedSlots = new Set(assignments.values());
+    const remainingAssignments = assignNearestShapeSlots(
+      parts.filter((part) => !assignedParts.has(part)),
+      slots.filter((slot) => !assignedSlots.has(slot)),
+      this.options.coreBody,
+    );
+    for (const [part, slot] of remainingAssignments) {
+      assignments.set(part, slot);
+    }
+    for (const [part, slot] of assignments) {
+      part.layer = slot.layer;
+      this.mainShapeAssignments.set(part.index, slot.target.clone());
+    }
   }
 
   private restoreAttachedComponent(component: BlobArmorPart[]): void {
@@ -1368,6 +2276,7 @@ export class BlobArmorAnimator implements NpcAnimator {
       part.cohesionWaveId = null;
       part.reassemblyCooldownRemaining = 0;
       part.yieldFinalized = false;
+      part.hangingLoadFatigue = 0;
       this.options.physics.registerCollider(
         part.collider,
         this.attachedMetadata(part.index, part.damageable),
@@ -1396,6 +2305,11 @@ export class BlobArmorAnimator implements NpcAnimator {
       bond.resistanceFramesRemaining = 0;
       bond.tearArmed = false;
       bond.snapArmed = false;
+      bond.loadFatigue = 0;
+      bond.passiveProtectionRemaining = 0;
+      bond.lastRelativeVelocity.copy(
+        relativeVelocityVector(bond.partA, bond.partB),
+      );
     }
   }
 
@@ -1549,6 +2463,9 @@ export class BlobArmorAnimator implements NpcAnimator {
     // tracción que faltaba para que el racimo se comporte como gel.
     joint.setContactsEnabled(true);
     bond.joint = joint;
+    bond.lastRelativeVelocity.copy(
+      relativeVelocityVector(bond.partA, bond.partB),
+    );
   }
 
   private addCohesionBond(
@@ -1581,6 +2498,9 @@ export class BlobArmorAnimator implements NpcAnimator {
       resistanceFramesRemaining,
       tearArmed: false,
       snapArmed: false,
+      loadFatigue: 0,
+      passiveProtectionRemaining: 0,
+      lastRelativeVelocity: relativeVelocityVector(partA, partB),
     };
     this.createCohesionBond(bond);
     this.cohesionBonds.push(bond);
@@ -1648,9 +2568,10 @@ export class BlobArmorAnimator implements NpcAnimator {
     );
     if (attached.length === 0) return;
 
-    const targets = fibonacciAnchors(
-      attached.length,
-      BlobConfig.armor.coreAnchorRadius,
+    const targets = attached.map(
+      (part) =>
+        this.mainShapeAssignments.get(part.index)?.clone() ??
+        part.anchorTo.clone(),
     );
     const assignments = assignNearestTargets(
       attached,
@@ -1946,30 +2867,149 @@ function assignNearestTargets(
   targets: Vector3[],
   coreBody: RAPIER.RigidBody,
 ): Map<BlobArmorPart, Vector3> {
-  const pairs: Array<{ part: BlobArmorPart; target: Vector3; score: number }> = [];
-  for (const part of parts) {
+  if (parts.length === 0 || targets.length === 0) return new Map();
+  const costs = parts.map((part) => {
     const current = bodyDirectionInCoreSpace(part, coreBody);
-    for (const target of targets) {
-      pairs.push({
-        part,
-        target,
-        score: current.dot(target.clone().normalize()),
-      });
-    }
-  }
-  pairs.sort((a, b) => b.score - a.score);
-
-  const assignedParts = new Set<BlobArmorPart>();
-  const assignedTargets = new Set<Vector3>();
+    return targets.map(
+      (target) => 1 - current.dot(target.clone().normalize()),
+    );
+  });
+  const targetIndices = minimumCostAssignment(costs);
   const assignments = new Map<BlobArmorPart, Vector3>();
-  for (const pair of pairs) {
-    if (assignedParts.has(pair.part) || assignedTargets.has(pair.target)) continue;
-    assignments.set(pair.part, pair.target);
-    assignedParts.add(pair.part);
-    assignedTargets.add(pair.target);
-    if (assignments.size === parts.length) break;
+  for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
+    assignments.set(parts[partIndex], targets[targetIndices[partIndex]]);
   }
   return assignments;
+}
+
+function assignNearestShapeSlots(
+  parts: BlobArmorPart[],
+  slots: MainShapeSlot[],
+  coreBody: RAPIER.RigidBody,
+): Map<BlobArmorPart, MainShapeSlot> {
+  if (parts.length === 0 || slots.length === 0) return new Map();
+  const corePosition = vectorFromRapier(coreBody.translation());
+  const costs = parts.map((part) => {
+    const direction = bodyDirectionInCoreSpace(part, coreBody);
+    const radius = vectorFromRapier(part.body.translation()).distanceTo(
+      corePosition,
+    );
+    return slots.map(
+      (slot) =>
+        -(
+          direction.dot(slot.target.clone().normalize()) * 1.4 -
+          Math.abs(radius - slot.target.length()) * 0.5 +
+          (part.layer === slot.layer ? 0.04 : 0)
+        ),
+    );
+  });
+  const slotIndices = minimumCostAssignment(costs);
+  const assignments = new Map<BlobArmorPart, MainShapeSlot>();
+  for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
+    assignments.set(parts[partIndex], slots[slotIndices[partIndex]]);
+  }
+  return assignments;
+}
+
+/**
+ * Hungarian assignment for a rectangular cost matrix (rows <= columns).
+ * Unlike a greedy nearest-slot pass, it cannot strand the final blob with an
+ * antipodal target and therefore keeps the complete shell uniformly covered.
+ */
+function minimumCostAssignment(costs: number[][]): number[] {
+  const rowCount = costs.length;
+  const columnCount = costs[0]?.length ?? 0;
+  if (rowCount === 0) return [];
+  if (
+    columnCount < rowCount ||
+    costs.some(
+      (row) =>
+        row.length !== columnCount ||
+        row.some((cost) => !Number.isFinite(cost)),
+    )
+  ) {
+    throw new Error("Blob gel layout: matriz de asignación inválida");
+  }
+
+  const rowPotential = new Array(rowCount + 1).fill(0);
+  const columnPotential = new Array(columnCount + 1).fill(0);
+  const matchedRowByColumn = new Array(columnCount + 1).fill(0);
+  const previousColumn = new Array(columnCount + 1).fill(0);
+
+  for (let row = 1; row <= rowCount; row += 1) {
+    matchedRowByColumn[0] = row;
+    let currentColumn = 0;
+    const minimumReducedCost = new Array(columnCount + 1).fill(
+      Number.POSITIVE_INFINITY,
+    );
+    const usedColumn = new Array(columnCount + 1).fill(false);
+
+    do {
+      usedColumn[currentColumn] = true;
+      const currentRow = matchedRowByColumn[currentColumn];
+      let delta = Number.POSITIVE_INFINITY;
+      let nextColumn = 0;
+      for (let column = 1; column <= columnCount; column += 1) {
+        if (usedColumn[column]) continue;
+        const reducedCost =
+          costs[currentRow - 1][column - 1] -
+          rowPotential[currentRow] -
+          columnPotential[column];
+        if (reducedCost < minimumReducedCost[column]) {
+          minimumReducedCost[column] = reducedCost;
+          previousColumn[column] = currentColumn;
+        }
+        if (minimumReducedCost[column] < delta) {
+          delta = minimumReducedCost[column];
+          nextColumn = column;
+        }
+      }
+      for (let column = 0; column <= columnCount; column += 1) {
+        if (usedColumn[column]) {
+          rowPotential[matchedRowByColumn[column]] += delta;
+          columnPotential[column] -= delta;
+        } else {
+          minimumReducedCost[column] -= delta;
+        }
+      }
+      currentColumn = nextColumn;
+    } while (matchedRowByColumn[currentColumn] !== 0);
+
+    do {
+      const nextColumn = previousColumn[currentColumn];
+      matchedRowByColumn[currentColumn] =
+        matchedRowByColumn[nextColumn];
+      currentColumn = nextColumn;
+    } while (currentColumn !== 0);
+  }
+
+  const columnByRow = new Array(rowCount).fill(-1);
+  for (let column = 1; column <= columnCount; column += 1) {
+    const row = matchedRowByColumn[column];
+    if (row !== 0) columnByRow[row - 1] = column - 1;
+  }
+  if (columnByRow.some((column) => column < 0)) {
+    throw new Error("Blob gel layout: asignación incompleta");
+  }
+  return columnByRow;
+}
+
+function averageNearestTargetSpacing(
+  targets: Vector3[],
+  fallback: number,
+): number {
+  if (targets.length < 2) return fallback;
+  const nearest = targets.map((target, index) => {
+    let minimum = Number.POSITIVE_INFINITY;
+    for (let other = 0; other < targets.length; other += 1) {
+      if (other === index) continue;
+      minimum = Math.min(minimum, target.distanceTo(targets[other]));
+    }
+    return minimum;
+  });
+  return (
+    nearest.reduce((sum, distance) => sum + distance, 0) / nearest.length
+  );
 }
 
 function closestBodyDockCandidate(
@@ -2155,6 +3195,52 @@ function relativeSpeed(partA: BlobArmorPart, partB: BlobArmorPart): number {
     velocityA.y - velocityB.y,
     velocityA.z - velocityB.z,
   );
+}
+
+function relativeVelocityVector(
+  partA: BlobArmorPart,
+  partB: BlobArmorPart,
+): Vector3 {
+  if (!partA.body.isValid() || !partB.body.isValid()) return new Vector3();
+  return vectorFromRapier(partB.body.linvel()).sub(
+    vectorFromRapier(partA.body.linvel()),
+  );
+}
+
+function activeBondDegree(
+  bonds: BlobCohesionBond[],
+  part: BlobArmorPart,
+): number {
+  return bonds.reduce(
+    (degree, bond) =>
+      degree +
+      (bond.joint?.isValid() &&
+      (bond.partA === part || bond.partB === part)
+        ? 1
+        : 0),
+    0,
+  );
+}
+
+function passiveBondToughness(indexA: number, indexB: number): number {
+  const low = Math.min(indexA, indexB) + 1;
+  const high = Math.max(indexA, indexB) + 1;
+  const noise = Math.sin(low * 91.733 + high * 37.719) * 43758.5453;
+  const unit = noise - Math.floor(noise);
+  return 0.86 + unit * 0.28;
+}
+
+function passivePartToughness(index: number): number {
+  const noise = Math.sin((index + 1) * 53.117) * 43758.5453;
+  const unit = noise - Math.floor(noise);
+  return 0.82 + unit * 0.36;
+}
+
+function passivePatchSize(index: number, maximum: number): number {
+  const count = Math.max(1, Math.floor(maximum));
+  const noise = Math.sin((index + 1) * 71.911) * 43758.5453;
+  const unit = noise - Math.floor(noise);
+  return 1 + Math.floor(unit * count);
 }
 
 function queueImpulse(
