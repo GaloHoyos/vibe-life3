@@ -67,6 +67,7 @@ export class CharacterController extends KinematicCharacterBase {
   private readonly tmpRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, TMP_STAND_UP);
   private collisionFilter: ((collider: RAPIER.Collider) => boolean) | null =
     null;
+  private movementSpeedMultiplier = 1;
 
   constructor(
     physics: PhysicsWorld,
@@ -92,7 +93,7 @@ export class CharacterController extends KinematicCharacterBase {
     this.updateCrouch(delta);
     this.moveState = this.computeMoveState(wantsMove);
 
-    const wishSpeed = this.getWishSpeed();
+    const wishSpeed = this.getWishSpeed() * this.movementSpeedMultiplier;
 
     if (this.grounded) {
       this.applyFriction(delta);
@@ -151,6 +152,13 @@ export class CharacterController extends KinematicCharacterBase {
     filter: ((collider: RAPIER.Collider) => boolean) | null,
   ): void {
     this.collisionFilter = filter;
+  }
+
+  /** Escala externa reversible (gel, scripted restraint) sin tocar el tuning base. */
+  setMovementSpeedMultiplier(multiplier: number): void {
+    this.movementSpeedMultiplier = Number.isFinite(multiplier)
+      ? Math.max(0, multiplier)
+      : 0;
   }
 
   applyImpulse(direction: Vector3, strength: number): void {

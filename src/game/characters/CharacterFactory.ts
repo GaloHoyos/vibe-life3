@@ -45,7 +45,9 @@ import { DynamicFlyerMotor } from '@engine/physics/character/DynamicFlyerMotor';
 import { KinematicFlyerMotor } from '@engine/physics/character/KinematicFlyerMotor';
 import { StriderWalkerMotor } from '@engine/physics/character/StriderWalkerMotor';
 import { StationaryDynamicMotor } from '@engine/physics/character/StationaryDynamicMotor';
+import { BlobDynamicMotor } from '@engine/physics/character/BlobDynamicMotor';
 import { BlobArmorAnimator } from '@game/npc/blob/BlobArmorAnimator';
+import { BlobPredatorController } from '@game/npc/blob/BlobPredatorController';
 import { BlobConfig } from '@game/config/blob.config';
 import type { NpcMotor } from '@engine/physics/character/NpcMotor';
 import type { PortalPairState } from '@engine/portals/PortalFrame';
@@ -61,6 +63,7 @@ import { applyDefinitionStats } from './CharacterStats';
 import type { CharacterDefinition, CharacterId } from '@engine/characters/CharacterDefinition';
 import type { DifficultyProvider } from '@game/config/difficulty.config';
 import type { Damageable } from '@shared/types/lifecycle';
+import { organicYieldForMass } from '@game/gameplay/organic/OrganicMatter';
 
 export interface NpcRuntimeServices {
   navigation: NavigationService;
@@ -201,14 +204,16 @@ export class CharacterFactory {
           metadata,
         })
       : isBlob
-      ? new StationaryDynamicMotor(this.physics, {
+      ? new BlobDynamicMotor(this.physics, {
           id: instanceId,
           position,
-          collider: { shape: 'sphere', radius: BlobConfig.core.radius },
+          radius: BlobConfig.core.radius,
           mass: BlobConfig.core.mass,
+          maxSpeed: preset.movement.walkSpeed,
+          acceleration: preset.movement.acceleration,
+          gravityScale: BlobConfig.core.gravityScale,
           linearDamping: BlobConfig.armor.linearDamping,
           angularDamping: BlobConfig.armor.angularDamping,
-          mountYaw: 0,
           metadata,
         })
       : isGunship
@@ -274,11 +279,9 @@ export class CharacterFactory {
           debug: definition.debug,
           metadata,
         });
-    if (isBlob) {
-      motor.body.setGravityScale(BlobConfig.core.gravityScale, true);
-    }
     const striderAnimator =
       isStrider && striderMotor ? new StriderAnimator(visualRoot, striderMotor) : null;
+    let blobAnimator: BlobArmorAnimator | null = null;
     const animation: NpcAnimator =
       isTurret && turretAim
         ? new TurretAnimator(visualRoot, turretAim)
@@ -287,7 +290,7 @@ export class CharacterFactory {
         : striderAnimator
         ? striderAnimator
         : isBlob
-        ? new BlobArmorAnimator({
+        ? (blobAnimator = new BlobArmorAnimator({
             id: instanceId,
             faction: definition.faction,
             visualGroup,
@@ -297,7 +300,7 @@ export class CharacterFactory {
             owner: ownerProxy,
             navigation: services.navigation,
             navigationRequests: services.navigationRequests,
-          })
+          }))
         : definition.type === 'humanoid'
         ? new NpcAnimationBridge(instanceId, definition, visualRoot, this.physics, ownerProxy)
         : new CreatureAnimator(
@@ -394,6 +397,22 @@ export class CharacterFactory {
       patrolRoute: patrolPoints,
       tacticalMap: services.tacticalMap,
       squadDirector: services.squadDirector,
+      behavior:
+        blobAnimator !== null
+          ? new BlobPredatorController(
+              instanceId,
+              blobAnimator,
+              () => motor.getPosition(),
+            )
+          : null,
+      organicMatter:
+        !isBlob && (definition.type === 'humanoid' || definition.type === 'creature')
+          ? {
+              mass: definition.collider.mass,
+              radius: Math.max(definition.collider.radius, definition.collider.height * 0.45),
+              yieldNodes: organicYieldForMass(definition.collider.mass),
+            }
+          : null,
     });
     ownerProxy.applyDamage = npc.applyDamage.bind(npc);
     ownerProxy.isAlive = npc.isAlive.bind(npc);

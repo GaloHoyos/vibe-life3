@@ -87,9 +87,21 @@ interface GelPlacement {
   coreAnchored: boolean;
 }
 
+interface GelLayerDefinition {
+  count: number;
+  radius: number;
+  phase: number;
+}
+
 interface MainShapeSlot {
   target: Vector3;
   layer: number;
+}
+
+interface FeedingTarget {
+  position: Vector3;
+  radius: number;
+  requestedCoverage: number;
 }
 
 type BlobDetachCause = "impact" | "cohesion" | "load" | "lifecycle";
@@ -135,6 +147,7 @@ export class BlobArmorAnimator implements NpcAnimator {
   private readonly geometry = new SphereGeometry(1, 18, 14);
   private readonly materials = new Set<MeshStandardMaterial>();
   private readonly parts: BlobArmorPart[] = [];
+  private nextPartIndex = 0;
   private readonly raycast: Raycast;
   private readonly chunkNavigator: BlobChunkNavigator | null;
   private cohesionBonds: BlobCohesionBond[] = [];
@@ -163,6 +176,14 @@ export class BlobArmorAnimator implements NpcAnimator {
     string,
     Map<number, Vector3>
   >();
+  private feedingTarget: FeedingTarget | null = null;
+  private feedingCoverage = 0;
+  private readonly feedingPartIndices = new Set<number>();
+  private readonly feedingAssignments = new Map<number, Vector3>();
+  private readonly feedingCoreAssignments = new Map<number, Vector3>();
+  private mainLayerRadii: number[] = [...BlobConfig.armor.layerRadii];
+  private mainOuterLayer = BlobConfig.armor.layerCounts.length - 1;
+  private mainOuterRadius: number = BlobConfig.armor.outerRadius;
   private layerSurfaceSpacings = gelLayerSurfaceSpacings();
   private enabled = true;
   private dead = false;
@@ -214,6 +235,128 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.releaseAll();
   }
 
+  /**
+   * Convierte biomasa digerida en nodos fisicos nuevos. Los indices nunca se
+   * reciclan: rutas, metadata y firmas de racimos siguen siendo estables aunque
+   * otros nodos se hayan marchitado antes. Cada esfera nace unida al perimetro
+   * vivo y el shape field la redistribuye en una cascara uniforme.
+   */
+  addOrganicMass(nodeCount: number): number {
+    if (
+      !Number.isFinite(nodeCount) ||
+      nodeCount <= 0 ||
+      this.disposed ||
+      this.dead ||
+      !this.enabled ||
+      !this.options.coreBody.isValid()
+    ) {
+      return 0;
+    }
+    const requested = Math.floor(nodeCount);
+    let added = 0;
+    for (let offset = 0; offset < requested; offset += 1) {
+      const host = this.findGrowthHost(this.nextPartIndex);
+      if (!host) break;
+      const index = this.nextPartIndex;
+      const radius = radiusForIndex(
+        index,
+        BlobConfig.armor.minRadius,
+        BlobConfig.armor.maxRadius,
+      );
+      const direction = growthDirectionForIndex(index);
+      const corePosition = vectorFromRapier(this.options.coreBody.translation());
+      const hostPosition = vectorFromRapier(host.body.translation());
+      const hostRadial = hostPosition.clone().sub(corePosition);
+      if (hostRadial.lengthSq() <= 1e-8) hostRadial.copy(direction);
+      hostRadial.normalize();
+      const spawnDirection = hostRadial
+        .clone()
+        .multiplyScalar(2)
+        .add(direction)
+        .normalize();
+      const spawnPosition = hostPosition.addScaledVector(
+        spawnDirection,
+        host.radius + radius + BlobConfig.armor.growthSpawnPadding,
+      );
+      const attachedCount = this.parts.filter(
+        (part) => part.state === "attached" && part.body.isValid(),
+      ).length;
+      const layout = adaptiveGelLayers(attachedCount + 1);
+      const layer = Math.max(0, layout.length - 1);
+      const anchor = direction.multiplyScalar(
+        layout[layer]?.radius ?? this.mainOuterRadius,
+      );
+      const part = this.createArmorPart(
+        index,
+        { anchor, layer, coreAnchored: false },
+        spawnPosition,
+      );
+      this.nextPartIndex += 1;
+      this.parts.push(part);
+      if (this.meshesAttachedToScene) {
+        this.options.visualGroup.parent?.add(part.mesh);
+      }
+      this.connectGrowthPart(part, host);
+      added += 1;
+    }
+    if (added > 0) {
+      this.fragmentShapeAssignments.clear();
+      this.armMainShapeHealing();
+      this.scheduleReflow();
+    }
+    return added;
+  }
+
+  /**
+   * Redistribuye una porcion de las capas media/externa hacia una presa. La
+   * posicion se refresca cada frame porque puede pertenecer a un NPC vivo o al
+   * centro de masa de un ragdoll en movimiento.
+   */
+  setFeedingTarget(
+    position: Vector3,
+    radius: number,
+    requestedCoverage01: number,
+  ): void {
+    if (this.disposed || this.dead || !this.enabled) return;
+    const requestedCoverage = clamp(requestedCoverage01, 0, 1);
+    if (!this.feedingTarget) {
+      this.feedingTarget = {
+        position: position.clone(),
+        radius: Math.max(0.1, radius),
+        requestedCoverage,
+      };
+    } else {
+      this.feedingTarget.position.copy(position);
+      this.feedingTarget.radius = Math.max(0.1, radius);
+      this.feedingTarget.requestedCoverage = requestedCoverage;
+    }
+    // El estiramiento es deliberado, no fatiga ambiental: el cerebro controla
+    // esos nodos mientras construye el puente y el abrazo.
+    this.loadFatigueGraceRemaining = Math.max(
+      this.loadFatigueGraceRemaining,
+      0.25,
+    );
+  }
+
+  clearFeedingTarget(): void {
+    if (!this.feedingTarget && this.feedingPartIndices.size === 0) return;
+    this.feedingTarget = null;
+    this.feedingCoverage = 0;
+    this.feedingPartIndices.clear();
+    this.feedingAssignments.clear();
+    this.feedingCoreAssignments.clear();
+    if (!this.disposed && !this.dead && this.enabled) {
+      // Los nodos prestados vuelven a ocupar slots uniformes y reconstruyen
+      // sus crosslinks al entrar otra vez en alcance del cuerpo.
+      this.armMainShapeHealing();
+      this.scheduleReflow();
+    }
+  }
+
+  getFeedingCoverage(): number {
+    return this.feedingCoverage;
+  }
+
   disable(): void {
     if (!this.enabled) return;
     this.enabled = false;
@@ -241,6 +384,11 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.parts.length = 0;
     this.mainShapeAssignments.clear();
     this.fragmentShapeAssignments.clear();
+    this.feedingTarget = null;
+    this.feedingCoverage = 0;
+    this.feedingPartIndices.clear();
+    this.feedingAssignments.clear();
+    this.feedingCoreAssignments.clear();
     this.geometry.dispose();
     for (const material of this.materials) material.dispose();
     this.materials.clear();
@@ -250,10 +398,11 @@ export class BlobArmorAnimator implements NpcAnimator {
     const activeBonds = this.cohesionBonds.filter(
       (bond) => bond.joint?.isValid(),
     );
-    const layers = Array.from(
-      { length: BlobConfig.armor.count },
-      () => -1,
+    const highestIndex = this.parts.reduce(
+      (highest, part) => Math.max(highest, part.index),
+      -1,
     );
+    const layers = Array.from({ length: highestIndex + 1 }, () => -1);
     for (const part of this.parts) layers[part.index] = part.layer;
     return {
       attachedCount: this.parts.filter((part) => part.state !== "released")
@@ -304,96 +453,112 @@ export class BlobArmorAnimator implements NpcAnimator {
 
     for (let index = 0; index < placements.length; index += 1) {
       const placement = placements[index];
-      const anchor = placement.anchor;
-      const radius = radiusForIndex(index, config.minRadius, config.maxRadius);
-      const material = new MeshStandardMaterial({
-        color: ARMOR_COLOR,
-        roughness: ARMOR_ROUGHNESS,
-        metalness: ARMOR_METALNESS,
-      });
-      this.materials.add(material);
-      const mesh = new Mesh(this.geometry, material);
-      mesh.name = `${this.options.id}-blob-${index}`;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.scale.setScalar(radius);
-      mesh.position.copy(this.options.position).add(anchor);
-
-      let part: BlobArmorPart;
-      const damageable: Damageable = {
-        applyDamage: (amount, hitDirection) => {
-          if (
-            amount <= 0 ||
-            this.dead ||
-            !this.enabled ||
-            this.disposed ||
-            !part.body.isValid() ||
-            !this.options.owner.isAlive()
-          ) {
-            return;
-          }
-          if (part.state === "attached") {
-            this.detach(part, hitDirection);
-          } else {
-            // Las armas aplican el impulso antes del daño. Leer la velocidad
-            // aquí captura impactos posteriores sobre un racimo ya desprendido.
-            this.resetReassemblyCooldownForComponent(part);
-            this.armCohesionFromImpact(part, "fragment");
-          }
-        },
-        // Un fragmento desprendido sigue siendo golpeable: su "vida" física
-        // termina recién al destruir el NPC o remover este rigid body.
-        isAlive: () =>
-          this.enabled &&
-          !this.dead &&
-          !this.disposed &&
-          part.body.isValid() &&
-          this.options.owner.isAlive(),
-      };
-      const body = this.options.physics.createDynamicSphere(
-        {
-          id: `${this.options.id}-blob-${index}`,
-          position: mesh.position.clone(),
-          radius,
-          mass: config.mass,
-          metadata: this.attachedMetadata(index, damageable),
-        },
-        mesh,
+      this.parts.push(
+        this.createArmorPart(
+          index,
+          placement,
+          this.options.position.clone().add(placement.anchor),
+        ),
       );
-      body.setLinearDamping(config.linearDamping);
-      body.setAngularDamping(config.angularDamping);
-      body.setGravityScale(config.attachedGravityScale, true);
-      body.enableCcd(true);
-      const collider = body.collider(0);
-      collider.setFriction(0.7);
-      collider.setRestitution(0.08);
-      const joint = placement.coreAnchored
-        ? this.createCoreJoint(body, anchor)
-        : null;
-
-      part = {
-        index,
-        layer: placement.layer,
-        coreAnchorEligible: placement.coreAnchored,
-        radius,
-        mesh,
-        body,
-        collider,
-        damageable,
-        joint,
-        state: "attached",
-        anchorFrom: anchor.clone(),
-        anchorTo: anchor.clone(),
-        detachedElapsed: 0,
-        resistanceFramesRemaining: 0,
-        cohesionWaveId: null,
-        reassemblyCooldownRemaining: 0,
-        yieldFinalized: false,
-        hangingLoadFatigue: 0,
-      };
-      this.parts.push(part);
+      this.nextPartIndex = index + 1;
     }
     this.initializeCohesionGraph();
+  }
+
+  private createArmorPart(
+    index: number,
+    placement: GelPlacement,
+    position: Vector3,
+  ): BlobArmorPart {
+    const config = BlobConfig.armor;
+    const anchor = placement.anchor;
+    const radius = radiusForIndex(index, config.minRadius, config.maxRadius);
+    const material = new MeshStandardMaterial({
+      color: ARMOR_COLOR,
+      roughness: ARMOR_ROUGHNESS,
+      metalness: ARMOR_METALNESS,
+    });
+    this.materials.add(material);
+    const mesh = new Mesh(this.geometry, material);
+    mesh.name = `${this.options.id}-blob-${index}`;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.scale.setScalar(radius);
+    mesh.position.copy(position);
+
+    let part!: BlobArmorPart;
+    const damageable: Damageable = {
+      applyDamage: (amount, hitDirection) => {
+        if (
+          amount <= 0 ||
+          this.dead ||
+          !this.enabled ||
+          this.disposed ||
+          !part.body.isValid() ||
+          !this.options.owner.isAlive()
+        ) {
+          return;
+        }
+        if (part.state === "attached") {
+          this.detach(part, hitDirection);
+        } else {
+          // Las armas aplican el impulso antes del daño. Leer la velocidad
+          // aquí captura impactos posteriores sobre un racimo ya desprendido.
+          this.resetReassemblyCooldownForComponent(part);
+          this.armCohesionFromImpact(part, "fragment");
+        }
+      },
+      // Un fragmento desprendido sigue siendo golpeable: su "vida" física
+      // termina recién al destruir el NPC o remover este rigid body.
+      isAlive: () =>
+        this.enabled &&
+        !this.dead &&
+        !this.disposed &&
+        part.body.isValid() &&
+        this.options.owner.isAlive(),
+    };
+    const body = this.options.physics.createDynamicSphere(
+      {
+        id: `${this.options.id}-blob-${index}`,
+        position: mesh.position.clone(),
+        radius,
+        mass: config.mass,
+        metadata: this.attachedMetadata(index, damageable, radius),
+      },
+      mesh,
+    );
+    body.setLinearDamping(config.linearDamping);
+    body.setAngularDamping(config.angularDamping);
+    body.setGravityScale(config.attachedGravityScale, true);
+    body.enableCcd(true);
+    const collider = body.collider(0);
+    collider.setFriction(0.7);
+    collider.setRestitution(0.08);
+    const joint = placement.coreAnchored
+      ? this.createCoreJoint(body, anchor)
+      : null;
+
+    part = {
+      index,
+      layer: placement.layer,
+      coreAnchorEligible: placement.coreAnchored,
+      radius,
+      mesh,
+      body,
+      collider,
+      damageable,
+      joint,
+      state: "attached",
+      anchorFrom: anchor.clone(),
+      anchorTo: anchor.clone(),
+      detachedElapsed: 0,
+      resistanceFramesRemaining: 0,
+      cohesionWaveId: null,
+      reassemblyCooldownRemaining: 0,
+      yieldFinalized: false,
+      hangingLoadFatigue: 0,
+    };
+    return part;
   }
 
   private initializeCohesionGraph(): void {
@@ -408,15 +573,80 @@ export class BlobArmorAnimator implements NpcAnimator {
     }
   }
 
+  private findGrowthHost(index: number): BlobArmorPart | null {
+    const corePosition = vectorFromRapier(this.options.coreBody.translation());
+    const direction = growthDirectionForIndex(index);
+    return (
+      this.parts
+        .filter((part) => part.state === "attached" && part.body.isValid())
+        .map((part) => {
+          const radial = vectorFromRapier(part.body.translation()).sub(
+            corePosition,
+          );
+          const distance = radial.length();
+          if (distance > 1e-5) radial.multiplyScalar(1 / distance);
+          return {
+            part,
+            score:
+              radial.dot(direction) +
+              distance / Math.max(0.1, this.mainOuterRadius) * 0.08,
+          };
+        })
+        .sort((a, b) => b.score - a.score || a.part.index - b.part.index)[0]
+        ?.part ?? null
+    );
+  }
+
+  private connectGrowthPart(
+    part: BlobArmorPart,
+    guaranteedHost: BlobArmorPart,
+  ): void {
+    const maxBonds = Math.max(
+      1,
+      Math.floor(BlobConfig.armor.growthInitialBondCount),
+    );
+    const candidates = this.parts
+      .filter(
+        (candidate) =>
+          candidate !== part &&
+          candidate.state === "attached" &&
+          candidate.body.isValid(),
+      )
+      .map((candidate) => ({
+        part: candidate,
+        distance: rapierDistance(
+          part.body.translation(),
+          candidate.body.translation(),
+        ),
+      }))
+      .filter(
+        (candidate) =>
+          candidate.part === guaranteedHost ||
+          candidate.distance <= BlobConfig.armor.cohesionAttachMaxDistance,
+      )
+      .sort(
+        (a, b) =>
+          (a.part === guaranteedHost ? -1 : 0) -
+            (b.part === guaranteedHost ? -1 : 0) ||
+          a.distance - b.distance ||
+          a.part.index - b.part.index,
+      );
+    let added = 0;
+    for (const candidate of candidates) {
+      if (added >= maxBonds) break;
+      if (this.addCohesionBond(part, candidate.part, 1)) added += 1;
+    }
+  }
+
   private attachedMetadata(
     index: number,
     damageable: Damageable,
-  ): PhysicsMetadata {
-    const radius = radiusForIndex(
+    radius = radiusForIndex(
       index,
       BlobConfig.armor.minRadius,
       BlobConfig.armor.maxRadius,
-    );
+    ),
+  ): PhysicsMetadata {
     const diameter = radius * 2;
     return {
       id: `${this.options.id}-blob-${index}`,
@@ -559,6 +789,11 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.fullySupportedElapsed = 0;
     this.mainShapeAssignments.clear();
     this.fragmentShapeAssignments.clear();
+    this.feedingTarget = null;
+    this.feedingCoverage = 0;
+    this.feedingPartIndices.clear();
+    this.feedingAssignments.clear();
+    this.feedingCoreAssignments.clear();
   }
 
   private removeCoreJoint(part: BlobArmorPart): void {
@@ -750,7 +985,7 @@ export class BlobArmorAnimator implements NpcAnimator {
       const onlyPeelsOuterShell =
         orphans.length === 0 ||
         orphans.every(
-          (part) => part.layer === config.layerCounts.length - 1,
+          (part) => part.layer === this.mainOuterLayer,
         );
       if (
         onlyPeelsOuterShell &&
@@ -853,6 +1088,8 @@ export class BlobArmorAnimator implements NpcAnimator {
       this.passiveLoadShedIndices.delete(part.index);
       this.mainShapeAssignments.delete(part.index);
       part.mesh.removeFromParent();
+      this.materials.delete(part.mesh.material);
+      part.mesh.material.dispose();
       if (part.body.isValid()) this.options.physics.removeBody(part.body);
     }
     for (let index = this.parts.length - 1; index >= 0; index -= 1) {
@@ -974,7 +1211,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     let candidate: BlobArmorPart | null = null;
     for (const part of attached) {
       if (
-        part.layer < config.layerCounts.length - 1 ||
+        part.layer < this.mainOuterLayer ||
         this.passiveLoadShedIndices.has(part.index)
       ) {
         recover(part);
@@ -995,12 +1232,12 @@ export class BlobArmorAnimator implements NpcAnimator {
       const position = vectorFromRapier(part.body.translation());
       const radialDistance = position.distanceTo(corePosition);
       const distanceFactor = clamp(
-        (radialDistance / config.outerRadius - 0.55) / 0.45,
+        (radialDistance / this.mainOuterRadius - 0.55) / 0.45,
         0,
         1.8,
       );
       const downwardFactor = clamp(
-        0.45 + (corePosition.y - position.y) / config.outerRadius,
+        0.45 + (corePosition.y - position.y) / this.mainOuterRadius,
         0.25,
         1.5,
       );
@@ -1137,7 +1374,7 @@ export class BlobArmorAnimator implements NpcAnimator {
         (part) =>
           part.state === "attached" &&
           part.body.isValid() &&
-          part.layer === config.layerCounts.length - 1 &&
+          part.layer === this.mainOuterLayer &&
           !this.passiveLoadShedIndices.has(part.index),
       )
       .map((part) => {
@@ -1150,7 +1387,7 @@ export class BlobArmorAnimator implements NpcAnimator {
           part,
           score:
             radial.dot(trailing) +
-            (distance / config.outerRadius) * 0.12 +
+            (distance / this.mainOuterRadius) * 0.12 +
             (this.options.physics.isHeldBody(part.body.handle) ? 2 : 0) -
             passivePartToughness(part.index) * 0.04,
         };
@@ -1186,7 +1423,7 @@ export class BlobArmorAnimator implements NpcAnimator {
         .filter(
           (part) =>
             part.state === "attached" &&
-            part.layer === config.layerCounts.length - 1 &&
+            part.layer === this.mainOuterLayer &&
             !this.passiveLoadShedIndices.has(part.index),
         )
         .sort((a, b) => {
@@ -1256,7 +1493,7 @@ export class BlobArmorAnimator implements NpcAnimator {
       this.loadFatigueGraceRemaining > 0 ||
       (!this.mainBodySupportedThisFrame && !this.mainBodyHeldThisFrame) ||
       Math.max(bond.partA.layer, bond.partB.layer) <
-        config.layerCounts.length - 1
+        this.mainOuterLayer
     ) {
       bond.loadFatigue = Math.max(
         0,
@@ -1292,7 +1529,7 @@ export class BlobArmorAnimator implements NpcAnimator {
       Math.max(
         positionA.distanceTo(corePosition),
         positionB.distanceTo(corePosition),
-      ) / config.outerRadius;
+      ) / this.mainOuterRadius;
     const leverage = clamp(
       0.72 + Math.max(0, radialFactor - 0.65) * 0.72,
       0.72,
@@ -1382,7 +1619,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     );
     if (
       closure.some(
-        (part) => part.layer < config.layerCounts.length - 1,
+        (part) => part.layer < this.mainOuterLayer,
       ) ||
       attached.length - closure.length <
         config.cohesionLoadMinimumAttachedCount ||
@@ -1439,7 +1676,10 @@ export class BlobArmorAnimator implements NpcAnimator {
     }
 
     const orphaned = this.parts.filter(
-      (part) => part.state !== "released" && !reachable.has(part),
+      (part) =>
+        part.state !== "released" &&
+        !reachable.has(part) &&
+        !this.feedingPartIndices.has(part.index),
     );
     if (orphaned.length === 0) return;
     for (const part of orphaned) {
@@ -1885,6 +2125,177 @@ export class BlobArmorAnimator implements NpcAnimator {
    * siguen activos con poca fuerza al terminar el reflow para que el gel pueda
    * deformarse sin volver a dejar un corredor abierto hacia el core.
    */
+  private rebuildFeedingField(
+    attached: BlobArmorPart[],
+    corePosition: Vector3,
+  ): void {
+    const target = this.feedingTarget;
+    this.feedingAssignments.clear();
+    this.feedingCoreAssignments.clear();
+    if (!target || target.requestedCoverage <= 0) {
+      this.feedingCoverage = 0;
+      this.feedingPartIndices.clear();
+      return;
+    }
+
+    const towardTarget = target.position.clone().sub(corePosition);
+    if (towardTarget.lengthSq() <= 1e-6) towardTarget.set(0, 0, 1);
+    else towardTarget.normalize();
+    const eligible = attached
+      .filter((part) => part.layer > 0 && !part.joint?.isValid())
+      .sort((left, right) => {
+        const leftDirection = coreAnchorWorldPosition(
+          this.mainShapeAssignments.get(left.index) ?? left.anchorTo,
+          this.options.coreBody,
+        ).sub(corePosition).normalize();
+        const rightDirection = coreAnchorWorldPosition(
+          this.mainShapeAssignments.get(right.index) ?? right.anchorTo,
+          this.options.coreBody,
+        ).sub(corePosition).normalize();
+        return (
+          right.layer - left.layer ||
+          rightDirection.dot(towardTarget) - leftDirection.dot(towardTarget) ||
+          left.index - right.index
+        );
+      });
+    const maxFeeding = Math.min(
+      eligible.length,
+      Math.max(
+        1,
+        Math.floor(
+          attached.length * BlobConfig.armor.feedingMaximumFraction,
+        ),
+      ),
+    );
+    const desiredCount = Math.min(
+      maxFeeding,
+      Math.max(1, Math.round(maxFeeding * target.requestedCoverage)),
+    );
+    const selected = eligible.slice(0, desiredCount);
+    const nextIndices = new Set(selected.map((part) => part.index));
+    const selectionChanged = !sameNumberSet(
+      this.feedingPartIndices,
+      nextIndices,
+    );
+    if (selectionChanged) {
+      const newlyBorrowed = new Set(
+        [...nextIndices].filter((index) => !this.feedingPartIndices.has(index)),
+      );
+      // Mientras los nodos estan bajo el campo inteligente, sus springs de
+      // reposo del caparazon pelearian contra la extension. Se reconstruyen al
+      // volver; los impactos aun pueden desprender cada body normalmente.
+      if (newlyBorrowed.size > 0) {
+        for (const bond of this.cohesionBonds) {
+          if (
+            newlyBorrowed.has(bond.partA.index) ||
+            newlyBorrowed.has(bond.partB.index)
+          ) {
+            this.removeCohesionBond(bond);
+          }
+        }
+        this.cohesionBonds = this.cohesionBonds.filter(
+          (bond) => bond.joint?.isValid(),
+        );
+      }
+      if (
+        [...this.feedingPartIndices].some((index) => !nextIndices.has(index))
+      ) {
+        this.mainShapeHealingRemaining = Math.max(
+          this.mainShapeHealingRemaining,
+          BlobConfig.armor.reflowDuration + 1,
+        );
+      }
+      this.feedingPartIndices.clear();
+      for (const index of nextIndices) this.feedingPartIndices.add(index);
+    }
+
+    const wrapCount = Math.max(
+      1,
+      Math.min(
+        selected.length,
+        Math.round(selected.length * BlobConfig.armor.feedingWrapFraction),
+      ),
+    );
+    const averageRadius =
+      selected.reduce((sum, part) => sum + part.radius, 0) /
+      Math.max(1, selected.length);
+    const wrapRadius =
+      target.radius + averageRadius + BlobConfig.armor.feedingSurfacePadding;
+    const wrapSlots = fibonacciAnchors(
+      wrapCount,
+      wrapRadius,
+      GOLDEN_ANGLE * 0.37,
+    ).map((anchor) => target.position.clone().add(anchor));
+    const bridgeCount = selected.length - wrapCount;
+    const bridgeSlots = feedingBridgeSlots(
+      bridgeCount,
+      corePosition,
+      target.position,
+      this.mainOuterRadius,
+      target.radius,
+    );
+    const slots = [...wrapSlots, ...bridgeSlots];
+    for (let index = 0; index < selected.length; index += 1) {
+      const slot = slots[index];
+      if (slot) this.feedingAssignments.set(selected[index].index, slot);
+    }
+
+    // Los nodos que se quedan atras no conservan agujeros authored: se vuelven
+    // a repartir uniformemente por capa para seguir escondiendo el cerebro.
+    const remaining = attached.filter(
+      (part) => !this.feedingPartIndices.has(part.index),
+    );
+    for (let layer = 0; layer <= this.mainOuterLayer; layer += 1) {
+      const layerParts = remaining.filter((part) => part.layer === layer);
+      if (layerParts.length === 0) continue;
+      const targets = fibonacciAnchors(
+        layerParts.length,
+        this.mainLayerRadii[layer] ?? this.mainOuterRadius,
+        (BlobConfig.armor.layerPhases[layer] ?? layer * GOLDEN_ANGLE) + 0.19,
+      );
+      const assignments = assignNearestTargets(
+        layerParts,
+        targets,
+        this.options.coreBody,
+      );
+      for (const [part, assignment] of assignments) {
+        this.feedingCoreAssignments.set(part.index, assignment.clone());
+      }
+    }
+  }
+
+  private applyFeedingField(
+    part: BlobArmorPart,
+    target: Vector3,
+    elapsed: number,
+  ): number {
+    const position = vectorFromRapier(part.body.translation());
+    const error = target.clone().sub(position);
+    const distance = error.length();
+    if (distance <= 1e-5) return 1;
+    const desiredVelocity = error.multiplyScalar(
+      BlobConfig.armor.feedingPositionGain,
+    );
+    if (desiredVelocity.length() > BlobConfig.armor.feedingMaxSpeed) {
+      desiredVelocity.setLength(BlobConfig.armor.feedingMaxSpeed);
+    }
+    const velocityDelta = desiredVelocity.sub(
+      vectorFromRapier(part.body.linvel()),
+    );
+    const maxDelta = BlobConfig.armor.feedingAcceleration * elapsed;
+    if (velocityDelta.length() > maxDelta) velocityDelta.setLength(maxDelta);
+    part.body.applyImpulse(
+      velocityDelta.multiplyScalar(Math.max(1e-4, part.body.mass())),
+      true,
+    );
+    return 1 - clamp(
+      (distance - BlobConfig.armor.feedingCoverageContactDistance) /
+        BlobConfig.armor.feedingCoverageFalloffDistance,
+      0,
+      1,
+    );
+  }
+
   private updateMainShapeRelaxation(elapsed: number): void {
     const config = BlobConfig.armor;
     const healingBoost =
@@ -1899,22 +2310,38 @@ export class BlobArmorAnimator implements NpcAnimator {
     const attached = this.parts.filter(
       (part) => part.state === "attached" && part.body.isValid(),
     );
-    if (attached.length === 0) return;
+    if (attached.length === 0) {
+      this.feedingCoverage = 0;
+      return;
+    }
 
     const corePosition = vectorFromRapier(this.options.coreBody.translation());
+    this.rebuildFeedingField(attached, corePosition);
     const coreVelocity = vectorFromRapier(this.options.coreBody.linvel());
     const coreAngularVelocity = vectorFromRapier(this.options.coreBody.angvel());
     const coreReaction = new Vector3();
 
+    let feedingCloseness = 0;
+    let feedingCount = 0;
     for (const part of attached) {
       if (this.options.physics.isHeldBody(part.body.handle)) continue;
+      const feedingTarget = this.feedingAssignments.get(part.index);
+      if (feedingTarget) {
+        feedingCloseness += this.applyFeedingField(
+          part,
+          feedingTarget,
+          elapsed,
+        );
+        feedingCount += 1;
+        continue;
+      }
       const position = vectorFromRapier(part.body.translation());
       const radiusVector = position.clone().sub(corePosition);
       const distance = radiusVector.length();
       if (distance <= 1e-4) continue;
       const radial = radiusVector.clone().multiplyScalar(1 / distance);
       const layerRadius =
-        config.layerRadii[part.layer] ?? config.outerRadius;
+        this.mainLayerRadii[part.layer] ?? this.mainOuterRadius;
       const target = corePosition
         .clone()
         .addScaledVector(radial, layerRadius);
@@ -1942,7 +2369,9 @@ export class BlobArmorAnimator implements NpcAnimator {
       part.body.applyImpulse(impulse, true);
       coreReaction.sub(impulse);
 
-      const assignedTarget = this.mainShapeAssignments.get(part.index);
+      const assignedTarget =
+        this.feedingCoreAssignments.get(part.index) ??
+        this.mainShapeAssignments.get(part.index);
       if (!assignedTarget || assignmentScale <= 0) continue;
       const assignedWorld = coreAnchorWorldPosition(
         assignedTarget,
@@ -1987,6 +2416,11 @@ export class BlobArmorAnimator implements NpcAnimator {
     if (coreReaction.lengthSq() > 1e-12) {
       this.options.coreBody.applyImpulse(coreReaction, true);
     }
+    this.feedingCoverage =
+      feedingCount > 0 && this.feedingTarget
+        ? this.feedingTarget.requestedCoverage *
+          (feedingCloseness / feedingCount)
+        : 0;
 
     const angularImpulses = new Map<BlobArmorPart, Vector3>();
     for (let from = 0; from < attached.length; from += 1) {
@@ -1996,6 +2430,8 @@ export class BlobArmorAnimator implements NpcAnimator {
         const partB = attached[to];
         if (
           partA.layer !== partB.layer ||
+          this.feedingPartIndices.has(partA.index) ||
+          this.feedingPartIndices.has(partB.index) ||
           this.options.physics.isHeldBody(partB.body.handle)
         ) {
           continue;
@@ -2012,7 +2448,7 @@ export class BlobArmorAnimator implements NpcAnimator {
         const unitA = radiusA.normalize();
         const unitB = radiusB.normalize();
         const layerRadius =
-          config.layerRadii[partA.layer] ?? config.outerRadius;
+          this.mainLayerRadii[partA.layer] ?? this.mainOuterRadius;
         const surfaceDistance =
           layerRadius *
           Math.sqrt(Math.max(0, 2 - 2 * clamp(unitA.dot(unitB), -1, 1)));
@@ -2221,6 +2657,8 @@ export class BlobArmorAnimator implements NpcAnimator {
       .filter((bond) => {
         if (
           !bond.joint?.isValid() ||
+          this.feedingPartIndices.has(bond.partA.index) ||
+          this.feedingPartIndices.has(bond.partB.index) ||
           bond.partA.state !== "attached" ||
           bond.partB.state !== "attached"
         ) {
@@ -2385,28 +2823,27 @@ export class BlobArmorAnimator implements NpcAnimator {
       (part) => part.state === "attached" && part.body.isValid(),
     );
     if (parts.length === 0) {
+      this.mainLayerRadii = [...config.layerRadii];
+      this.mainOuterLayer = config.layerCounts.length - 1;
+      this.mainOuterRadius = config.outerRadius;
       this.layerSurfaceSpacings = config.layerCounts.map(
         () => config.maxRadius * 2,
       );
       return;
     }
 
-    let remaining = parts.length;
-    const layerCounts = config.layerCounts.map((capacity) => {
-      const count = Math.min(capacity, remaining);
-      remaining -= count;
-      return count;
-    });
-    if (remaining > 0) {
-      throw new Error("Blob gel layout: faltan slots para la masa adjunta");
-    }
+    const layout = adaptiveGelLayers(parts.length);
+    this.mainLayerRadii = layout.map((layer) => layer.radius);
+    this.mainOuterLayer = Math.max(0, layout.length - 1);
+    this.mainOuterRadius =
+      layout[this.mainOuterLayer]?.radius ?? config.outerRadius;
     const slots: MainShapeSlot[] = [];
     const targetsByLayer: Vector3[][] = [];
-    for (let layer = 0; layer < layerCounts.length; layer += 1) {
+    for (let layer = 0; layer < layout.length; layer += 1) {
       const targets = fibonacciAnchors(
-        layerCounts[layer],
-        config.layerRadii[layer] ?? config.outerRadius,
-        config.layerPhases[layer] ?? 0,
+        layout[layer].count,
+        layout[layer].radius,
+        layout[layer].phase,
       );
       targetsByLayer.push(targets);
       slots.push(...targets.map((target) => ({ target, layer })));
@@ -2796,6 +3233,116 @@ export class BlobArmorAnimator implements NpcAnimator {
   }
 }
 
+function feedingBridgeSlots(
+  count: number,
+  core: Vector3,
+  target: Vector3,
+  coreRadius: number,
+  targetRadius: number,
+): Vector3[] {
+  if (count <= 0) return [];
+  const axis = target.clone().sub(core);
+  const distance = axis.length();
+  if (distance <= 1e-5) axis.set(0, 0, 1);
+  else axis.multiplyScalar(1 / distance);
+  const tangentA = Math.abs(axis.y) < 0.9
+    ? axis.clone().cross(new Vector3(0, 1, 0)).normalize()
+    : axis.clone().cross(new Vector3(1, 0, 0)).normalize();
+  const tangentB = axis.clone().cross(tangentA).normalize();
+  const start = core.clone().addScaledVector(axis, coreRadius * 0.72);
+  const end = target.clone().addScaledVector(axis, -targetRadius * 0.7);
+  const slots: Vector3[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const t = (index + 1) / (count + 1);
+    const angle = index * GOLDEN_ANGLE;
+    const width = Math.sin(Math.PI * t) * 0.24;
+    slots.push(
+      start
+        .clone()
+        .lerp(end, t)
+        .addScaledVector(tangentA, Math.cos(angle) * width)
+        .addScaledVector(tangentB, Math.sin(angle) * width),
+    );
+  }
+  return slots;
+}
+
+function sameNumberSet(
+  left: ReadonlySet<number>,
+  right: ReadonlySet<number>,
+): boolean {
+  if (left.size !== right.size) return false;
+  for (const value of left) if (!right.has(value)) return false;
+  return true;
+}
+
+function adaptiveGelLayers(nodeCount: number): GelLayerDefinition[] {
+  const config = BlobConfig.armor;
+  let remaining = Math.max(0, Math.floor(nodeCount));
+  if (remaining === 0) return [];
+  const layers: GelLayerDefinition[] = [];
+
+  for (let layer = 0; layer < config.layerCounts.length; layer += 1) {
+    if (remaining <= 0) break;
+    const capacity = config.layerCounts[layer];
+    const count = Math.min(capacity, remaining);
+    layers.push({
+      count,
+      radius: config.layerRadii[layer],
+      phase: config.layerPhases[layer],
+    });
+    remaining -= count;
+  }
+  if (remaining <= 0) return layers;
+
+  const seedCount = Math.max(
+    1,
+    Math.floor(config.growthLayerMinimumNodes),
+  );
+  // Un puñado menor al seed densifica y ensancha suavemente la última capa en
+  // vez de crear una protuberancia aislada a un radio completamente nuevo.
+  if (remaining < seedCount) {
+    const outer = layers[layers.length - 1];
+    const nominalCapacity = config.layerCounts.at(-1) ?? outer.count;
+    outer.count += remaining;
+    outer.radius *= Math.sqrt(outer.count / nominalCapacity);
+    return layers;
+  }
+
+  let dynamicLayer = 0;
+  while (remaining > 0) {
+    const nominalRadius =
+      config.outerRadius +
+      config.growthLayerSpacing * (dynamicLayer + 1);
+    const capacity = Math.max(
+      seedCount,
+      Math.round(
+        config.growthLayerSurfaceDensity * nominalRadius * nominalRadius,
+      ),
+    );
+    let count = Math.min(capacity, remaining);
+    if (remaining > capacity && remaining - capacity < seedCount) {
+      count = remaining;
+    }
+    const radius =
+      count > capacity
+        ? nominalRadius * Math.sqrt(count / capacity)
+        : nominalRadius;
+    layers.push({
+      count,
+      radius,
+      phase:
+        (config.layerPhases.at(-1)! +
+          GOLDEN_ANGLE * (dynamicLayer + 1) +
+          dynamicLayer * 0.371) %
+        (Math.PI * 2),
+    });
+    remaining -= count;
+    dynamicLayer += 1;
+  }
+  return layers;
+}
+
 function gelPlacements(
   layerCounts: readonly number[],
   layerRadii: readonly number[],
@@ -2832,6 +3379,21 @@ function gelPlacements(
     }
   }
   return placements;
+}
+
+function growthDirectionForIndex(index: number): Vector3 {
+  const sequence = index + 1;
+  const verticalUnit =
+    sequence * 0.7548776662466927 -
+    Math.floor(sequence * 0.7548776662466927);
+  const y = 1 - verticalUnit * 2;
+  const horizontal = Math.sqrt(Math.max(0, 1 - y * y));
+  const angle = sequence * GOLDEN_ANGLE;
+  return new Vector3(
+    Math.cos(angle) * horizontal,
+    y,
+    Math.sin(angle) * horizontal,
+  );
 }
 
 function fibonacciAnchors(

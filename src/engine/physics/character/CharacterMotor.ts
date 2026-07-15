@@ -57,6 +57,7 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
   private leapAirborne = false;
   private leapTimer = 0;
   private portalExclusions: ReadonlySet<number> | null = null;
+  private disposed = false;
   private crouched = false;
 
   constructor(
@@ -292,6 +293,7 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
   }
 
   disable(): void {
+    if (this.disposed) return;
     this.enabled = false;
     this.setCrouched(false);
     if (this.leaping) {
@@ -303,6 +305,13 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
     this.horizontalVelocity.set(0, 0, 0);
     this.collider.setEnabled(false);
     this.body.setEnabled(false);
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.physics.world.removeCharacterController(this.controller);
+    if (this.body.isValid()) this.physics.removeBody(this.body);
   }
 
   override getVelocity(): Vector3 {

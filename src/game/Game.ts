@@ -1452,22 +1452,31 @@ export class Game {
     if (this.tacticalMap && this.navigation && this.squadDirector) {
       const playerSnapshot: ActorSnapshot = {
         id: "player",
+        characterId: "player",
         position: playerPosition,
         faction: "player",
         entity: player,
         isAlive: player.isAlive(),
         radius: 0.35,
         health01: player.health.max > 0 ? player.health.current / player.health.max : 0,
+        organicMatter: player.getOrganicMatterHandle(),
       };
-      const npcSnapshots: ActorSnapshot[] = this.npcs.map((npc) => ({
-        id: npc.id,
-        position: npc.position,
-        faction: npc.faction,
-        entity: npc,
-        isAlive: npc.isAlive(),
-        radius: npc.radius,
-        health01: npc.health.max > 0 ? npc.health.current / npc.health.max : 0,
-      }));
+      const npcSnapshots: ActorSnapshot[] = this.npcs.map((npc) => {
+        const organicMatter = npc.getOrganicMatterHandle?.() ?? null;
+        return {
+          id: npc.id,
+          characterId: npc.characterId,
+          position: organicMatter && !npc.isAlive()
+            ? organicMatter.getPosition()
+            : npc.position,
+          faction: npc.faction,
+          entity: npc,
+          isAlive: npc.isAlive(),
+          radius: npc.radius,
+          health01: npc.health.max > 0 ? npc.health.current / npc.health.max : 0,
+          ...(organicMatter ? { organicMatter } : {}),
+        };
+      });
       const npcIndex = new ActorSpatialIndex(npcSnapshots);
       const playerSquad = s.resolve(GameTokens.PlayerSquad);
       playerSquad.update(

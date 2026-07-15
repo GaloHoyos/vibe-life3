@@ -1,4 +1,5 @@
 import type { NavAgentProfile } from "@engine/ai/navigation/NavigationTypes";
+import { BlobConfig } from "@game/config/blob.config";
 import type { NpcPreset } from "@game/npc/presets/NpcPreset";
 
 const BASE_AREA_COSTS = {
@@ -94,6 +95,30 @@ export const NavigationProfiles = {
     safeDropHeight: 0,
     fallbackProfileId: "headcrab",
   }),
+  /**
+   * Clearance conservador del organismo completo. La ruta guia al cerebro
+   * dinamico; el collider real y la cubierta de resortes resuelven el contacto
+   * fino, sin convertir al Blob en una capsula cinematica.
+   */
+  blobBody: profile({
+    id: "blob-body",
+    domain: "largeGround",
+    radius: BlobConfig.armor.aggregateRadius,
+    standingHeight: BlobConfig.armor.aggregateRadius * 2,
+    navigationHeight: BlobConfig.armor.aggregateRadius * 2,
+    maxSlopeDegrees: 38,
+    stepHeight: 0.25,
+    maxSpeed: 1.8,
+    acceleration: 3.5,
+    canJump: false,
+    canCrouch: false,
+    canDrop: false,
+    canOpenDoors: false,
+    canUsePortals: false,
+    jumpSpeed: 0,
+    maxJumpDistance: 0,
+    safeDropHeight: 0,
+  }),
   manhack: profile({
     id: "manhack",
     domain: "air",
@@ -183,8 +208,9 @@ export function navigationProfileForPreset(preset: NpcPreset): NavAgentProfile {
     case "strider":
       return NavigationProfiles.strider;
     case "floorTurret":
-    case "blob":
       return NavigationProfiles.stationary;
+    case "blob":
+      return NavigationProfiles.blobBody;
     case "headcrab":
       return NavigationProfiles.headcrab;
     case "zombie":

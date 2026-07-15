@@ -34,11 +34,11 @@ export function buildBlobPreset(): NpcPreset {
     weaponAim: "none",
     movement: {
       // Valores nominales sanos para el runtime; el perfil de navegación
-      // stationary garantiza que nunca intente autopropulsarse.
-      walkSpeed: 1,
-      sprintSpeed: 1,
-      acceleration: 0,
-      turnSpeed: 0,
+      // El motor fisico se propulsa con impulsos limitados.
+      walkSpeed: BlobConfig.predator.moveSpeed,
+      sprintSpeed: BlobConfig.predator.moveSpeed,
+      acceleration: BlobConfig.predator.movementAcceleration,
+      turnSpeed: 2,
       stepOffset: 0,
       snapToGround: 0,
       canJump: false,

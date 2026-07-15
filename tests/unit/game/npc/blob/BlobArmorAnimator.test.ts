@@ -165,6 +165,168 @@ describe("BlobArmorAnimator", () => {
     harness.dispose();
   });
 
+  it("convierte materia orgánica en nodos físicos conectados y abre una capa exterior uniforme", async () => {
+    const harness = await createHarness();
+    const initial = harness.animator.getDebugSnapshot();
+    const initialHandles = new Set(initial.bodyHandles);
+
+    expect(harness.animator.addOrganicMass(7)).toBe(7);
+    const grown = harness.animator.getDebugSnapshot();
+    const armor = armorRecords(harness.physics);
+
+    expect(grown.totalCount).toBe(BlobConfig.armor.count + 7);
+    expect(grown.attachedCount).toBe(BlobConfig.armor.count + 7);
+    expect(grown.coreJointCount).toBe(BlobConfig.armor.coreAnchorCount);
+    expect(layerHistogram(grown)).toEqual([6, 12, 18, 7]);
+    expect(grown.layers).toHaveLength(BlobConfig.armor.count + 7);
+    expect(armor).toHaveLength(BlobConfig.armor.count + 7);
+    expect(harness.physics.getBodyCount()).toBe(BlobConfig.armor.count + 8);
+    expect(harness.scene.children).toHaveLength(BlobConfig.armor.count + 8);
+    expect(
+      grown.bodyHandles.filter((handle) => !initialHandles.has(handle)),
+    ).toHaveLength(7);
+    expectMainGraphConsistent(grown);
+
+    for (let index = BlobConfig.armor.count; index < armor.length; index += 1) {
+      expect(armor[index].metadata).toMatchObject({
+        id: `${harness.id}-blob-${index}`,
+        ownerId: harness.id,
+        kind: "npc",
+        bodyPart: { name: `blob-armor-${index}`, damageMultiplier: 1 },
+      });
+      expect(armor[index].metadata.damageable?.isAlive()).toBe(true);
+      expect(armor[index].body.mass()).toBeCloseTo(BlobConfig.armor.mass, 5);
+    }
+
+    harness.dispose();
+  });
+
+  it("crece más allá de una capa sin límites fijos y conserva índices estables", async () => {
+    const harness = await createHarness();
+
+    expect(harness.animator.addOrganicMass(40)).toBe(40);
+    expect(harness.animator.addOrganicMass(Number.POSITIVE_INFINITY)).toBe(0);
+    expect(harness.animator.addOrganicMass(0.9)).toBe(0);
+    expect(harness.animator.addOrganicMass(3)).toBe(3);
+
+    const grown = harness.animator.getDebugSnapshot();
+    const armor = armorRecords(harness.physics);
+    expect(grown.totalCount).toBe(BlobConfig.armor.count + 43);
+    expect(grown.attachedIndices).toEqual(
+      Array.from({ length: BlobConfig.armor.count + 43 }, (_, index) => index),
+    );
+    expect(layerHistogram(grown)).toEqual([6, 12, 18, 27, 16]);
+    expect(new Set(grown.bodyHandles).size).toBe(grown.totalCount);
+    expectMainGraphConsistent(grown);
+
+    harness.physics.world.gravity = { x: 0, y: 0, z: 0 };
+    harness.coreBody.setBodyType(
+      RAPIER.RigidBodyType.KinematicPositionBased,
+      true,
+    );
+    advanceSimulation(harness, 2.5);
+    for (const record of armor) {
+      const position = record.body.translation();
+      expect([position.x, position.y, position.z].every(Number.isFinite)).toBe(
+        true,
+      );
+    }
+    expect(shellShapeAspect(harness, armor)).toBeLessThan(2);
+    expectMainGraphConsistent(harness.animator.getDebugSnapshot());
+
+    harness.dispose();
+  });
+
+  it("no recicla el índice de biomasa que se desprendió y marchitó", async () => {
+    const harness = await createHarness();
+    expect(harness.animator.addOrganicMass(1)).toBe(1);
+    const grown = armorRecords(harness.physics);
+    const doomed = grown[BlobConfig.armor.count];
+    const outward = vectorFromRapier(doomed.body.translation())
+      .sub(vectorFromRapier(harness.coreBody.translation()))
+      .normalize();
+    doomed.body.applyImpulse(
+      outward.clone().multiplyScalar(WeaponDefinitions.revolver.impulse),
+      true,
+    );
+    doomed.metadata.damageable!.applyDamage(
+      WeaponDefinitions.revolver.damage,
+      outward,
+    );
+    expect(
+      advanceUntil(
+        harness,
+        () => currentMetadata(harness, doomed).kind === "dynamic",
+        1,
+      ),
+    ).toBe(true);
+    placeBody(doomed.body, new Vector3(12, 6, 0));
+    advanceSimulation(
+      harness,
+      BlobConfig.armor.detachedLifetimeSeconds + 0.2,
+      1 / 20,
+    );
+    expect(doomed.body.isValid()).toBe(false);
+
+    expect(harness.animator.addOrganicMass(1)).toBe(1);
+    const restored = harness.animator.getDebugSnapshot();
+    expect(restored.totalCount).toBe(BlobConfig.armor.count + 1);
+    expect(restored.layers[BlobConfig.armor.count]).toBe(-1);
+    expect(restored.layers[BlobConfig.armor.count + 1]).toBeGreaterThanOrEqual(
+      0,
+    );
+    expect(
+      armorRecords(harness.physics).map((record) => armorIndex(record.metadata)),
+    ).toContain(BlobConfig.armor.count + 1);
+    expectMainGraphConsistent(restored);
+
+    harness.dispose();
+  });
+
+  it("presta nodos exteriores para abrazar una presa y luego recompone una masa uniforme", async () => {
+    const harness = await createHarness();
+    harness.physics.world.gravity = { x: 0, y: 0, z: 0 };
+    harness.coreBody.setBodyType(
+      RAPIER.RigidBodyType.KinematicPositionBased,
+      true,
+    );
+    const core = vectorFromRapier(harness.coreBody.translation());
+    const targetRadius = 0.78;
+    const target = core.clone().add(new Vector3(1.85, 0, 0));
+
+    harness.animator.setFeedingTarget(target, targetRadius, 1);
+    advanceSimulation(harness, 4);
+
+    const embracing = harness.animator.getDebugSnapshot();
+    const armor = armorRecords(harness.physics);
+    const aroundPrey = armor.filter(
+      (record) =>
+        vectorFromRapier(record.body.translation()).distanceTo(target) <=
+        targetRadius + BlobConfig.armor.maxRadius + 0.42,
+    );
+    const guardingCore = armor.filter(
+      (record) =>
+        vectorFromRapier(record.body.translation()).distanceTo(core) <= 1.3,
+    );
+    expect(harness.animator.getFeedingCoverage()).toBeGreaterThanOrEqual(
+      BlobConfig.predator.fullCoverageThreshold,
+    );
+    expect(aroundPrey.length).toBeGreaterThanOrEqual(8);
+    expect(guardingCore.length).toBeGreaterThanOrEqual(18);
+    expect(embracing.attachedCount).toBe(BlobConfig.armor.count);
+    expect(embracing.coreJointCount).toBe(BlobConfig.armor.coreAnchorCount);
+
+    harness.animator.clearFeedingTarget();
+    advanceSimulation(harness, 4);
+    expect(harness.animator.getFeedingCoverage()).toBe(0);
+    expectMainGraphConsistent(harness.animator.getDebugSnapshot());
+    expect(shellShapeAspect(harness, armorRecords(harness.physics))).toBeLessThan(
+      1.8,
+    );
+
+    harness.dispose();
+  });
+
   it("cae con peso pero no se desarma cuando todo el gel está en caída libre", async () => {
     const harness = await createHarness();
     const initialY = harness.coreBody.translation().y;

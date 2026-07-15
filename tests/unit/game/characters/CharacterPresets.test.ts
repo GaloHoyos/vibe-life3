@@ -80,7 +80,7 @@ describe("CharacterPresets", () => {
     expect(blob).toBeDefined();
     expect(blob.modelId).toBeUndefined();
     expect(blob.type).toBe("creature");
-    expect(blob.faction).toBe("zombies");
+    expect(blob.faction).toBe("blob");
     expect(blob.aiProfileId).toBe("blobArmor");
     expect(blob.health.maxHealth).toBe(BlobConfig.core.maxHealth);
     expect(blob.collider.radius).toBe(aggregateRadius);

@@ -23,12 +23,31 @@ import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyB
 import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
 import type { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
 import type { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
+import {
+  OrganicMatterController,
+  organicYieldForMass,
+  type OrganicMatterHandle,
+} from "@game/gameplay/organic/OrganicMatter";
+
+const PLAYER_ORGANIC_MASS = 70;
+const FULL_ORGANIC_RESTRAINT_COVERAGE = 0.72;
+const NO_MOVEMENT: MovementInput = {
+  forward: false,
+  back: false,
+  left: false,
+  right: false,
+  jumpPressed: false,
+  sprintDown: false,
+  crouchDown: false,
+};
 
 export class Player implements Damageable {
   readonly health: PlayerHealth;
   readonly stamina: Stamina;
   readonly controller: CharacterController;
   readonly weapons: WeaponController;
+  private readonly organicMatter: OrganicMatterController;
+  private organicRestraintCoverage = 0;
 
   constructor(
     startPosition: Vector3,
@@ -91,6 +110,26 @@ export class Player implements Damageable {
       portals,
       propImpacts,
     );
+    this.organicMatter = new OrganicMatterController({
+      id: "player",
+      characterId: "player",
+      radius:
+        PlayerConfig.collider.standingHalfHeight +
+        PlayerConfig.collider.radius,
+      mass: PLAYER_ORGANIC_MASS,
+      yieldNodes: organicYieldForMass(PLAYER_ORGANIC_MASS),
+      getPosition: (out) => out.copy(this.controller.getPosition()),
+      isAlive: () => this.isAlive(),
+      setRestraint: (coverage) => {
+        this.organicRestraintCoverage = coverage;
+        this.controller.setMovementSpeedMultiplier(
+          movementScaleForCoverage(coverage),
+        );
+      },
+      // La secuencia de muerte es duena de la camara/cuerpo del jugador. El
+      // handle puede agotarse y alimentar al Blob sin desmontarla por debajo.
+      onConsumed: () => {},
+    });
   }
 
   update(
@@ -104,21 +143,25 @@ export class Player implements Damageable {
       return;
     }
 
+    const fullyRestrained =
+      this.organicRestraintCoverage >= FULL_ORGANIC_RESTRAINT_COVERAGE;
     this.controller.update(
       delta,
-      readMovement(controls, this.stamina),
+      fullyRestrained ? NO_MOVEMENT : readMovement(controls, this.stamina),
       cameraSystem,
     );
     this.applyFallDamage();
-    this.weapons.update(
-      delta,
-      input,
-      controls,
-      cameraSystem,
-      elapsed,
-      this.controller.getMoveIntensity(),
-      this.controller.isGrounded(),
-    );
+    if (!fullyRestrained) {
+      this.weapons.update(
+        delta,
+        input,
+        controls,
+        cameraSystem,
+        elapsed,
+        this.controller.getMoveIntensity(),
+        this.controller.isGrounded(),
+      );
+    }
     this.stamina.tick(delta, this.controller.isSprinting());
   }
 
@@ -152,7 +195,12 @@ export class Player implements Damageable {
   }
 
   dispose(): void {
+    this.organicMatter.invalidate();
     this.weapons.dispose();
+  }
+
+  getOrganicMatterHandle(): OrganicMatterHandle {
+    return this.organicMatter;
   }
 
   /** Aplica daño por caída si el controller registró un aterrizaje fuerte este frame. */
@@ -199,4 +247,13 @@ function readMovement(controls: Controls, stamina: Stamina): MovementInput {
     sprintDown: controls.isDown("sprint") && !stamina.isDepleted(),
     crouchDown: controls.isDown("crouch"),
   };
+}
+
+function movementScaleForCoverage(coverage: number): number {
+  const restraint = Math.min(
+    1,
+    Math.max(0, coverage) / FULL_ORGANIC_RESTRAINT_COVERAGE,
+  );
+  const smooth = restraint * restraint * (3 - 2 * restraint);
+  return 1 - smooth;
 }

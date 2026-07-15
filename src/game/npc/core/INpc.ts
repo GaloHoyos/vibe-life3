@@ -8,6 +8,7 @@ import type { SquadDirector, SquadRole } from "@game/npc/ai/SquadDirector";
 import type { NpcScriptOrder } from "@game/script/NpcScriptOrder";
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { PortalFrame } from "@engine/portals/PortalFrame";
+import type { OrganicMatterHandle } from "@game/gameplay/organic/OrganicMatter";
 
 /**
  * Snapshot ligero de un actor del mundo (player u otro NPC) que cualquier
@@ -16,6 +17,8 @@ import type { PortalFrame } from "@engine/portals/PortalFrame";
  */
 export interface ActorSnapshot {
   id: string;
+  /** Preset del actor; `player` para el jugador. */
+  characterId?: CharacterId | "player";
   position: Vector3;
   faction: Faction;
   entity: Damageable;
@@ -23,6 +26,8 @@ export interface ActorSnapshot {
   radius: number;
   /** Fraccion de vida 0..1 (para medics/priorizacion). Game la llena por frame. */
   health01?: number;
+  /** Ausente para maquinas, props y el propio Blob. */
+  organicMatter?: OrganicMatterHandle;
   /**
    * Posición real NAVEGABLE del actor cuando `position` es una proyección
    * (ghost de portal: `position` queda detrás del disco, correcta para
@@ -266,6 +271,8 @@ export interface INpc {
   getPortalTraversalHandle(): NpcPortalHandle | null;
   /** Handle de congelamiento (ice gun), o null si el NPC ya no está vivo. */
   getFreezeHandle(): NpcFreezeHandle | null;
+  /** Materia comestible estable a traves de vida, ragdoll y digestion. */
+  getOrganicMatterHandle?(): OrganicMatterHandle | null;
   applyDamage(
     amount: number,
     hitDirection?: Vector3,

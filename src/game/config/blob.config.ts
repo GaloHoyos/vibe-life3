@@ -24,6 +24,25 @@ export const BlobConfig = {
     minRadius: 0.18,
     maxRadius: 0.21,
     mass: 0.24,
+    /**
+     * Crecimiento por biomasa. Las tres capas iniciales conservan su layout
+     * authored; a partir de ahi nacen cascaras nuevas con la misma densidad
+     * superficial aproximada y una separacion radial constante.
+     */
+    growthLayerSpacing: 0.22,
+    growthLayerSurfaceDensity: 18.5,
+    growthLayerMinimumNodes: 6,
+    growthSpawnPadding: 0.025,
+    growthInitialBondCount: 3,
+    /** Campo ferrofluido usado para prestar nodos al abrazo de una presa. */
+    feedingMaximumFraction: 0.46,
+    feedingWrapFraction: 0.72,
+    feedingSurfacePadding: 0.035,
+    feedingPositionGain: 6.5,
+    feedingMaxSpeed: 3.4,
+    feedingAcceleration: 42,
+    feedingCoverageContactDistance: 0.2,
+    feedingCoverageFalloffDistance: 1.15,
     springRestLength: 0,
     springStiffness: 240,
     springDamping: 20,
@@ -137,5 +156,18 @@ export const BlobConfig = {
     attachedGravityScale: 0.8,
     linearDamping: 0.45,
     angularDamping: 0.8,
+  },
+  predator: {
+    detectionRange: 26,
+    disengageRange: 42,
+    moveSpeed: 1.65,
+    movementAcceleration: 4.2,
+    /** Distancia core-superficie de la presa donde empieza el abrazo. */
+    coreEmbraceDistance: 1.15,
+    embraceRampSeconds: 2.25,
+    fullCoverageThreshold: 0.72,
+    damagePerPulse: 8,
+    damageIntervalSeconds: 0.48,
+    digestionSeconds: 3.6,
   },
 } as const;

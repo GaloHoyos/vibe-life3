@@ -43,6 +43,8 @@ export interface NpcAnimator {
     partName: string | undefined,
   ): void;
   disable(): void;
+  /** Centro world-space del cuerpo fisico pasivo, si este animator lo posee. */
+  getPhysicalCenter?(): Vector3 | null;
   /** Libera recursos GPU/físicos propios. Debe ser idempotente. */
   dispose?(): void;
 }

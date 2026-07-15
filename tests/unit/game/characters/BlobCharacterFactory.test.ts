@@ -59,7 +59,7 @@ describe("CharacterFactory: blob", () => {
       ownerId: "blob-factory",
       kind: "npc",
       characterId: "blob",
-      faction: "zombies",
+      faction: "blob",
       selfPortalTraversal: true,
       bodyPart: { name: "blob-core", damageMultiplier: 1 },
     });

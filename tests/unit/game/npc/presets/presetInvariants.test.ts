@@ -11,7 +11,10 @@ import { buildRebelPreset } from "@game/npc/presets/rebelPreset";
 import { buildStriderPreset } from "@game/npc/presets/striderPreset";
 import { buildTurretPreset } from "@game/npc/presets/turretPreset";
 import { buildZombiePreset } from "@game/npc/presets/zombiePreset";
-import { navigationProfileForPreset } from "@game/npc/navigation/NavAgentProfiles";
+import {
+  NavigationProfiles,
+  navigationProfileForPreset,
+} from "@game/npc/navigation/NavAgentProfiles";
 
 const builders: Array<[string, () => NpcPreset]> = [
   ["alyx", () => buildAlyxPreset()],
@@ -32,8 +35,10 @@ const builders: Array<[string, () => NpcPreset]> = [
 ];
 
 describe("preset invariants", () => {
-  it("keeps the blob on the stationary navigation domain", () => {
-    expect(navigationProfileForPreset(buildBlobPreset()).domain).toBe("stationary");
+  it("routes the complete Blob through its large dynamic-body profile", () => {
+    expect(navigationProfileForPreset(buildBlobPreset())).toBe(
+      NavigationProfiles.blobBody,
+    );
   });
 
   it.each(builders)("%s: schedules con ids unicos, prioridades validas y tasks", (_name, build) => {

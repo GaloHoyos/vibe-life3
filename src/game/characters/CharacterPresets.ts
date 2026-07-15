@@ -923,7 +923,7 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     id: "blob",
     modelId: undefined,
     type: "creature",
-    faction: "zombies",
+    faction: "blob",
     aiProfileId: "blobArmor",
     // Dimensiones agregadas (core + órbita + esfera máxima) para spawn y
     // separación de IA. El collider físico real del core usa BlobConfig.core.
@@ -934,9 +934,9 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     visualOffset: new Vector3(0, 0, 0),
     movement: {
       ...baseHumanoid.movement,
-      maxSpeed: 0,
-      acceleration: 0,
-      turnSpeed: 0,
+      maxSpeed: BlobConfig.predator.moveSpeed,
+      acceleration: BlobConfig.predator.movementAcceleration,
+      turnSpeed: 2,
       rotationSmoothing: 0,
       faceTargetDeadzone: 0,
       turnBeforeMoveAngle: Math.PI,
@@ -964,9 +964,9 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
       stepOffset: 0,
       snapToGround: 0,
     },
-    ai: { detectionRange: 18 },
+    ai: { detectionRange: BlobConfig.predator.detectionRange },
     perception: {
-      viewDistance: 18,
+      viewDistance: BlobConfig.predator.detectionRange,
       viewConeRadians: Math.PI,
       hearingRadius: 10,
       memoryDuration: 2,
