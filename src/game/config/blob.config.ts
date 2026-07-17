@@ -63,6 +63,9 @@ export const BlobConfig = {
     outerRadius: 0.99,
     /** Radio agregado conservador para spawn, separación y bounds de IA. */
     aggregateRadius: 1.48,
+    /** Envelope comprimible usado sólo para bake/crowd; la física conserva el volumen completo. */
+    navigationRadius: 1.05,
+    navigationHeight: 2.2,
     minRadius: 0.18,
     maxRadius: 0.21,
     mass: 0.24,
@@ -245,6 +248,9 @@ export const BlobConfig = {
     approachRecoveryRadius: 2.6,
     approachMaxRecoveryAttempts: 2,
     blockedTargetRetrySeconds: 4,
+    /** Evita esperar indefinidamente cuando una pared impide que el gel alcance la presa. */
+    embraceStallSeconds: 1.8,
+    embraceCoverageProgress: 0.04,
     /** Merodeo determinista cuando no hay materia organica disponible. */
     searchPauseMinSeconds: 0.35,
     searchPauseMaxSeconds: 0.9,

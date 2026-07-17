@@ -96,16 +96,15 @@ export const NavigationProfiles = {
     fallbackProfileId: "headcrab",
   }),
   /**
-   * Clearance conservador del organismo completo. La ruta guia al cerebro
-   * dinamico; el collider real y la cubierta de resortes resuelven el contacto
-   * fino, sin convertir al Blob en una capsula cinematica.
+   * El corredor admite compresión del gel. La ruta guía al cerebro dinámico;
+   * el collider real y la cubierta de resortes conservan la autoridad física.
    */
   blobBody: profile({
     id: "blob-body",
     domain: "largeGround",
-    radius: BlobConfig.armor.aggregateRadius,
-    standingHeight: BlobConfig.armor.aggregateRadius * 2,
-    navigationHeight: BlobConfig.armor.aggregateRadius * 2,
+    radius: BlobConfig.armor.navigationRadius,
+    standingHeight: BlobConfig.armor.navigationHeight,
+    navigationHeight: BlobConfig.armor.navigationHeight,
     maxSlopeDegrees: 38,
     stepHeight: 0.25,
     maxSpeed: BlobConfig.predator.moveSpeed,

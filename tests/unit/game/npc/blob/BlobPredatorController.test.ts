@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Vector3 } from "three";
 import type { Faction } from "@engine/ai/Faction";
 import type { Damageable } from "@shared/types/lifecycle";
@@ -10,6 +10,11 @@ import {
 } from "@game/npc/blob/BlobPredatorController";
 import type { NpcLocomotionHandle } from "@game/npc/brain/NpcBrainContext";
 import type { ActorSnapshot, AiFrameContext } from "@game/npc/core/INpc";
+import { NpcDebugFlags } from "@game/npc/core/NpcDebugFlags";
+
+afterEach(() => {
+  NpcDebugFlags.ignorePlayer = false;
+});
 
 describe("BlobPredatorController", () => {
   it("prioriza un cadaver, ignora otros Blobs y materia no organica, y navega hacia el claim", () => {
@@ -49,6 +54,74 @@ describe("BlobPredatorController", () => {
     expect(locomotion.lastMove).toEqual(corpse.position);
     expect(locomotion.lastGait).toBe("walk");
     expect(body.clearFeedingTarget).toHaveBeenCalledTimes(1);
+  });
+
+  it("prioriza al jugador sobre una presa viva normal", () => {
+    const body = new FeedingBodyFake();
+    const predator = new BlobPredatorController(
+      "hunter",
+      body,
+      () => new Vector3(),
+    );
+    const locomotion = locomotionFixture();
+    const player = preyFixture({
+      id: "player",
+      characterId: "player",
+      faction: "player",
+      position: new Vector3(8, 0, 0),
+    });
+    const closerNpc = preyFixture({
+      id: "closer-npc",
+      position: new Vector3(2, 0, 0),
+    });
+    const ctx = frame(player.actor, [closerNpc.actor]);
+
+    const selected = predator.update(ctx, locomotion.handle);
+
+    expect(selected?.id).toBe("player");
+    expect(player.matter.isClaimedBy("hunter")).toBe(true);
+    expect(closerNpc.matter.isClaimedBy("hunter")).toBe(false);
+    expect(locomotion.lastMove).toEqual(player.position);
+  });
+
+  it("IA me ignora libera al jugador y vuelve a considerarlo al apagar el flag", () => {
+    const body = new FeedingBodyFake();
+    const predator = new BlobPredatorController(
+      "hunter",
+      body,
+      () => new Vector3(),
+    );
+    const locomotion = locomotionFixture();
+    const player = preyFixture({
+      id: "player",
+      characterId: "player",
+      faction: "player",
+      position: new Vector3(3, 0, 0),
+    });
+    const npc = preyFixture({
+      id: "npc-target",
+      position: new Vector3(5, 0, 0),
+    });
+    const ctx = frame(player.actor, [npc.actor]);
+
+    predator.update(ctx, locomotion.handle);
+    expect(player.matter.isClaimedBy("hunter")).toBe(true);
+
+    NpcDebugFlags.ignorePlayer = true;
+    const ignored = predator.update(ctx, locomotion.handle, player.actor);
+
+    expect(ignored?.id).toBe("npc-target");
+    expect(player.matter.isClaimedBy("hunter")).toBe(false);
+    expect(npc.matter.isClaimedBy("hunter")).toBe(true);
+    expect(locomotion.lastMove).toEqual(npc.position);
+
+    NpcDebugFlags.ignorePlayer = false;
+    const consideredAgain = predator.update(ctx, locomotion.handle);
+
+    expect(consideredAgain?.id).toBe("player");
+    expect(npc.matter.isClaimedBy("hunter")).toBe(false);
+    expect(player.matter.isClaimedBy("hunter")).toBe(true);
+    expect(locomotion.lastMove).toEqual(player.position);
   });
 
   it("abandona el cadaver pero termina un agresor antes de cambiar al siguiente", () => {
@@ -136,7 +209,12 @@ describe("BlobPredatorController", () => {
     });
     const ctx = frame(nonOrganicPlayer(), [victim.actor]);
 
-    tick(predator, ctx, locomotion.handle, 3);
+    tick(
+      predator,
+      ctx,
+      locomotion.handle,
+      BlobConfig.predator.embraceRampSeconds + 0.4,
+    );
 
     expect(predator.getState()).toBe("blob-embracing");
     expect(body.setFeedingTarget).toHaveBeenCalled();
@@ -160,6 +238,105 @@ describe("BlobPredatorController", () => {
     expect(victim.damage).toHaveBeenCalledTimes(1);
     expect(locomotion.stop).toHaveBeenCalled();
     expect(locomotion.face).toHaveBeenCalled();
+  });
+
+  it("sale del abrazo si el gel no logra alcanzar fisicamente a la presa", () => {
+    const body = new FeedingBodyFake();
+    body.coverage = 0;
+    const predator = new BlobPredatorController(
+      "hunter",
+      body,
+      () => new Vector3(),
+    );
+    const locomotion = locomotionFixture();
+    const victim = preyFixture({
+      id: "occluded-victim",
+      position: new Vector3(1, 0, 0),
+    });
+    const ctx = frame(nonOrganicPlayer(), [victim.actor]);
+
+    tick(
+      predator,
+      ctx,
+      locomotion.handle,
+      BlobConfig.predator.embraceRampSeconds +
+        BlobConfig.predator.embraceStallSeconds +
+        0.3,
+    );
+
+    expect(predator.getState()).toBe("blob-repositioning");
+    expect(locomotion.lastMove).not.toEqual(victim.position);
+    expect(victim.setRestraint).toHaveBeenLastCalledWith(0);
+    expect(body.clearFeedingTarget).toHaveBeenCalled();
+  });
+
+  it("cambia de presa despues de agotar los angulos de un abrazo bloqueado", () => {
+    const body = new FeedingBodyFake();
+    body.coverage = 0;
+    const predator = new BlobPredatorController(
+      "hunter",
+      body,
+      () => new Vector3(),
+    );
+    const locomotion = locomotionFixture();
+    const blockedCorpse = preyFixture({
+      id: "occluded-corpse",
+      position: new Vector3(1, 0, 0),
+      alive: false,
+    });
+    const alternative = preyFixture({
+      id: "reachable-victim",
+      position: new Vector3(8, 0, 0),
+    });
+    const ctx = frame(nonOrganicPlayer(), [blockedCorpse.actor, alternative.actor]);
+
+    tick(
+      predator,
+      ctx,
+      locomotion.handle,
+      (BlobConfig.predator.embraceRampSeconds *
+        BlobConfig.predator.digestionCoverageThreshold +
+        BlobConfig.predator.embraceStallSeconds) *
+        (BlobConfig.predator.approachMaxRecoveryAttempts + 1) +
+        BlobConfig.predator.approachRecoverySeconds *
+          BlobConfig.predator.approachMaxRecoveryAttempts +
+        0.3,
+    );
+
+    expect(blockedCorpse.matter.isClaimedBy("hunter")).toBe(false);
+    expect(alternative.matter.isClaimedBy("hunter")).toBe(true);
+    expect(predator.getState()).toBe("blob-approaching");
+    expect(locomotion.lastMove).toEqual(alternative.position);
+  });
+
+  it("sigue navegando si la presa esta cerca en planta pero en otra altura", () => {
+    const body = new FeedingBodyFake();
+    const predator = new BlobPredatorController(
+      "hunter",
+      body,
+      () => new Vector3(),
+    );
+    const locomotion = locomotionFixture();
+    const elevated = preyFixture({
+      id: "elevated-victim",
+      position: new Vector3(
+        0,
+        BlobConfig.predator.coreEmbraceDistance +
+          BlobConfig.predator.embraceContactPadding +
+          1,
+        0,
+      ),
+    });
+
+    predator.update(
+      frame(nonOrganicPlayer(), [elevated.actor]),
+      locomotion.handle,
+    );
+
+    expect(predator.getState()).toBe("blob-approaching");
+    expect(locomotion.lastMove).toEqual(elevated.position);
+    expect(locomotion.stop).not.toHaveBeenCalled();
+    expect(body.setFeedingTarget).not.toHaveBeenCalled();
   });
 
   it("mantiene el abrazo ante empujes y solo lo reinicia fuera del margen", () => {

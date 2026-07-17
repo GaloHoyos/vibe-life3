@@ -42,6 +42,12 @@ describe("preset invariants", () => {
     );
     expect(NavigationProfiles.blobBody.canUsePortals).toBe(true);
     expect(NavigationProfiles.blobFragment.canUsePortals).toBe(false);
+    expect(NavigationProfiles.blobBody.radius).toBe(
+      BlobConfig.armor.navigationRadius,
+    );
+    expect(NavigationProfiles.blobBody.radius).toBeLessThan(
+      BlobConfig.armor.aggregateRadius,
+    );
   });
 
   it("keeps the Blob mobile, responsive and durable enough for a soldier", () => {
