@@ -137,6 +137,22 @@ export class RagdollSystem {
     return this.controller?.getCenter() ?? null;
   }
 
+  pullToward(
+    target: Vector3,
+    delta: number,
+    positionGain: number,
+    maxSpeed: number,
+    acceleration: number,
+  ): void {
+    this.controller?.pullToward(
+      target,
+      delta,
+      positionGain,
+      maxSpeed,
+      acceleration,
+    );
+  }
+
   /** Libera tanto el cadaver pasivo como los sensores vivos. Idempotente. */
   dispose(): void {
     if (this.disposed) return;

@@ -253,6 +253,9 @@ export class Npc implements INpc {
             this.organicRestraintCoverage = coverage;
             this.applyMovementSpeedMultiplier();
           },
+          pullToward: (target, delta, settings) => {
+            this.animation?.pullPhysicalBodyToward?.(target, delta, settings);
+          },
           setDigestionProgress: (progress) => {
             const scale = Math.max(0.12, 1 - progress * 0.88);
             this.mesh.scale.copy(this.baseVisualScale).multiplyScalar(scale);
@@ -335,7 +338,11 @@ export class Npc implements INpc {
     if (this.behavior) {
       const handle = this.createLocomotionHandle();
       this.feedNeighbors(ctx);
-      this.currentThreat = this.behavior.update(ctx, handle);
+      this.currentThreat = this.behavior.update(
+        ctx,
+        handle,
+        this.resolveRecentAttacker(ctx),
+      );
       if (NpcDebugFlags.freezeMovement) this.locomotion.stop();
       this.locomotion.update(delta);
       const impactDamage = this.motor.consumeImpactDamage();
@@ -575,7 +582,7 @@ export class Npc implements INpc {
   }
 
   syncFromPhysics(): void {
-    if (this.frozenSolid) return;
+    if (this.disposed || this.frozenSolid) return;
     this.syncMeshFromMotor();
   }
 
@@ -831,6 +838,14 @@ export class Npc implements INpc {
       isLeaping: () => this.locomotion.isLeaping(),
       teleport: this.scriptTeleport,
     };
+  }
+
+  private resolveRecentAttacker(ctx: AiFrameContext): ActorSnapshot | null {
+    if (this.aggroTimer <= 0 || !this.aggroAttackerId) return null;
+    const attacker = [ctx.player, ...ctx.npcs].find(
+      (candidate) => candidate.id === this.aggroAttackerId,
+    );
+    return attacker?.isAlive && attacker.entity.isAlive() ? attacker : null;
   }
 
   private syncMeshFromMotor(): void {

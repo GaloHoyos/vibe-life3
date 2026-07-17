@@ -3,6 +3,12 @@ import { Vector3 } from "three";
 import type { CameraSystem } from "@engine/render/CameraSystem";
 import { KinematicCharacterBase } from "./KinematicCharacterBase";
 import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
+import {
+  applyCharacterContactDamping,
+  combineCharacterContacts,
+  isPassThroughCharacterContact,
+  type ResolvedCharacterContact,
+} from "./CharacterContactMedium";
 
 const PlayerGravity = 28;
 
@@ -38,6 +44,8 @@ export interface CharacterControllerOptions {
   friction: number;
   stopSpeed: number;
   crouchTransitionTime: number;
+  /** Masa virtual usada al empujar rigid bodies dinámicos. Cero lo desactiva. */
+  dynamicPushMass?: number;
 }
 
 type MoveState = "walk" | "sprint" | "crouch";
@@ -79,6 +87,7 @@ export class CharacterController extends KinematicCharacterBase {
       radius: options.radius,
       halfHeight: options.standingHalfHeight,
       metadata: { id: "player", kind: "player" },
+      dynamicPushMass: options.dynamicPushMass,
     });
     this.currentHalfHeight = options.standingHalfHeight;
   }
@@ -93,7 +102,10 @@ export class CharacterController extends KinematicCharacterBase {
     this.updateCrouch(delta);
     this.moveState = this.computeMoveState(wantsMove);
 
-    const wishSpeed = this.getWishSpeed() * this.movementSpeedMultiplier;
+    const wishSpeed =
+      this.getWishSpeed() *
+      this.movementSpeedMultiplier *
+      this.contactSpeedMultiplier;
 
     if (this.grounded) {
       this.applyFriction(delta);
@@ -114,7 +126,16 @@ export class CharacterController extends KinematicCharacterBase {
     // impacto se captura ANTES; el flanco aire→suelo lo da el cambio de `grounded`.
     const wasGrounded = this.grounded;
     const fallSpeed = -this.velocity.y;
-    this.stepMovement(delta, this.collisionFilter ?? undefined);
+    const { medium } = this.stepMovement(
+      delta,
+      this.collisionFilter ?? undefined,
+    );
+    const contact = combineCharacterContacts(
+      this.resolveCharacterContact(),
+      medium,
+    );
+    this.contactSpeedMultiplier = contact?.speedScale ?? 1;
+    applyCharacterContactDamping(this.velocity, contact, delta);
     // Sin daño por caída mientras se transita un portal: el filtro pass-through
     // (que sólo lo activan los portales) significa que la cápsula está sobre la
     // boca de un portal y va a atravesarlo, no a impactar. El snap-to-ground
@@ -122,7 +143,7 @@ export class CharacterController extends KinematicCharacterBase {
     // Portal caer DENTRO de un portal nunca lastima porque no golpeás nada.
     this.landingImpact =
       !wasGrounded && this.grounded && fallSpeed > 0 && this.collisionFilter === null
-        ? fallSpeed
+        ? fallSpeed * (contact?.landingImpactScale ?? 1)
         : 0;
   }
 
@@ -359,7 +380,9 @@ export class CharacterController extends KinematicCharacterBase {
         this.body,
         // Respeta el mismo filtro que el movimiento: parado dentro de un portal,
         // el backing wall está excluido, así que no debe bloquear el levantarse.
-        this.collisionFilter ?? undefined,
+        (collider) =>
+          !isPassThroughCharacterContact(this.physics, collider) &&
+          (this.collisionFilter?.(collider) ?? true),
       );
       if (hit !== null) {
         return false;
@@ -367,6 +390,34 @@ export class CharacterController extends KinematicCharacterBase {
     }
 
     return true;
+  }
+
+  private resolveCharacterContact(): ResolvedCharacterContact | null {
+    let speedScale = 1;
+    let damping = 0;
+    let landingImpactScale = 1;
+    let verticalDamping = 0;
+    let found = false;
+    for (let index = 0; index < this.controller.numComputedCollisions(); index += 1) {
+      const collider = this.controller.computedCollision(index)?.collider;
+      if (!collider) continue;
+      const response = this.physics.getColliderMetadata(collider)?.characterContact;
+      if (!response) continue;
+      found = true;
+      speedScale = Math.min(speedScale, clamp01(response.speedScale));
+      damping = Math.max(damping, Math.max(0, response.damping));
+      landingImpactScale = Math.min(
+        landingImpactScale,
+        clamp01(response.landingImpactScale),
+      );
+      verticalDamping = Math.max(
+        verticalDamping,
+        Math.max(0, response.verticalDamping ?? 0),
+      );
+    }
+    return found
+      ? { speedScale, damping, landingImpactScale, verticalDamping }
+      : null;
   }
 
 }
@@ -382,4 +433,8 @@ function readMoveInput(move: MovementInput): Vector3 {
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+function clamp01(value: number): number {
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
 }

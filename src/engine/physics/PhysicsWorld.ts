@@ -53,6 +53,27 @@ export interface PhysicsMetadata {
   explosionDamageable?: Damageable;
   /** Tamaño del blocker temporal para el Tile Cache de navegación. */
   navigationObstacleSize?: [number, number, number];
+  /**
+   * Respuesta de una cápsula de personaje al tocar esta superficie. Permite
+   * modelar medios blandos o viscosos sin acoplar el controller a contenido
+   * concreto del juego.
+   */
+  characterContact?: {
+    /** Escala de velocidad mientras persiste el contacto. */
+    speedScale: number;
+    /** Amortiguación horizontal exponencial, en 1/s. */
+    damping: number;
+    /** Fracción del impacto vertical que conserva el aterrizaje. */
+    landingImpactScale: number;
+    /** El actor atraviesa el collider y la respuesta se resuelve como un medio. */
+    passThrough?: boolean;
+    /** Cantidad aproximada de colliders superpuestos para inmersión completa. */
+    fullImmersionCount?: number;
+    /** Amortiguación vertical descendente, en 1/s. */
+    verticalDamping?: number;
+    /** Aceleración transmitida a las partes dinámicas apartadas por el actor. */
+    pushAcceleration?: number;
+  };
   bodyPart?: {
     name: string;
     damageMultiplier: number;

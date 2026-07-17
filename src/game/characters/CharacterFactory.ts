@@ -39,6 +39,7 @@ import type { NpcCombatHandle } from '@game/npc/brain/NpcBrainContext';
 import type { ModelAssetId } from '@engine/assets/AssetManifest';
 import type { GameEventBus } from "@game/GameEvents";
 import type { PhysicsMetadata, PhysicsWorld } from '@engine/physics/PhysicsWorld';
+import { CHARACTER_MEDIUM_COLLISION_GROUPS } from '@engine/physics/CollisionGroups';
 import { Raycast, type RaycastSource } from '@engine/physics/Raycast';
 import { CharacterMotor } from '@engine/physics/character/CharacterMotor';
 import { DynamicFlyerMotor } from '@engine/physics/character/DynamicFlyerMotor';
@@ -175,6 +176,15 @@ export class CharacterFactory {
         ? {
             ownerId: instanceId,
             selfPortalTraversal: true,
+            characterContact: {
+              speedScale: BlobConfig.contact.characterSpeedScale,
+              damping: BlobConfig.contact.characterDamping,
+              landingImpactScale: BlobConfig.contact.landingImpactScale,
+              passThrough: BlobConfig.contact.passThrough,
+              fullImmersionCount: BlobConfig.contact.fullImmersionCount,
+              verticalDamping: BlobConfig.contact.verticalDamping,
+              pushAcceleration: BlobConfig.contact.pushAcceleration,
+            },
             bodyPart: { name: 'blob-core', damageMultiplier: 1 },
           }
         : {}),
@@ -209,6 +219,12 @@ export class CharacterFactory {
           position,
           radius: BlobConfig.core.radius,
           mass: BlobConfig.core.mass,
+          drivenMass:
+            BlobConfig.core.mass +
+            BlobConfig.armor.count * BlobConfig.armor.mass,
+          friction: BlobConfig.contact.friction,
+          restitution: BlobConfig.contact.restitution,
+          collisionGroups: CHARACTER_MEDIUM_COLLISION_GROUPS,
           maxSpeed: preset.movement.walkSpeed,
           acceleration: preset.movement.acceleration,
           gravityScale: BlobConfig.core.gravityScale,

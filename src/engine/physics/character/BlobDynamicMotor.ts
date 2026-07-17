@@ -15,6 +15,11 @@ export interface BlobDynamicMotorConfig {
   position: Vector3;
   radius: number;
   mass: number;
+  /** Masa total que el core arrastra al impulsar la red de gel. */
+  drivenMass: number;
+  friction: number;
+  restitution: number;
+  collisionGroups?: number;
   maxSpeed: number;
   acceleration: number;
   gravityScale: number;
@@ -64,13 +69,14 @@ export class BlobDynamicMotor implements NpcMotor {
         .setCcdEnabled(true),
     );
     const volume = Math.max((4 / 3) * Math.PI * config.radius ** 3, 0.001);
-    this.collider = physics.world.createCollider(
-      RAPIER.ColliderDesc.ball(config.radius)
-        .setDensity(config.mass / volume)
-        .setFriction(0.9)
-        .setRestitution(0.08),
-      this.body,
-    );
+    const colliderDesc = RAPIER.ColliderDesc.ball(config.radius)
+      .setDensity(config.mass / volume)
+      .setFriction(config.friction)
+      .setRestitution(config.restitution);
+    if (config.collisionGroups !== undefined) {
+      colliderDesc.setCollisionGroups(config.collisionGroups);
+    }
+    this.collider = physics.world.createCollider(colliderDesc, this.body);
     physics.registerCollider(this.collider, config.metadata);
   }
 
@@ -126,11 +132,12 @@ export class BlobDynamicMotor implements NpcMotor {
       return;
     }
 
+    const drivenMass = Math.max(this.body.mass(), this.config.drivenMass);
     this.body.applyImpulse(
       {
-        x: this.appliedVelocityDelta.x * this.body.mass(),
+        x: this.appliedVelocityDelta.x * drivenMass,
         y: 0,
-        z: this.appliedVelocityDelta.z * this.body.mass(),
+        z: this.appliedVelocityDelta.z * drivenMass,
       },
       true,
     );

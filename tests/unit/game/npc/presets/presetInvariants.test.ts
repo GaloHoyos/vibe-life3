@@ -11,6 +11,7 @@ import { buildRebelPreset } from "@game/npc/presets/rebelPreset";
 import { buildStriderPreset } from "@game/npc/presets/striderPreset";
 import { buildTurretPreset } from "@game/npc/presets/turretPreset";
 import { buildZombiePreset } from "@game/npc/presets/zombiePreset";
+import { BlobConfig } from "@game/config/blob.config";
 import {
   NavigationProfiles,
   navigationProfileForPreset,
@@ -39,6 +40,19 @@ describe("preset invariants", () => {
     expect(navigationProfileForPreset(buildBlobPreset())).toBe(
       NavigationProfiles.blobBody,
     );
+  });
+
+  it("keeps the Blob mobile, responsive and durable enough for a soldier", () => {
+    const blob = buildBlobPreset();
+    const combine = buildCombinePreset();
+
+    expect(blob.maxHealth).toBeGreaterThanOrEqual(combine.maxHealth * 2);
+    expect(blob.movement.walkSpeed).toBeGreaterThanOrEqual(5);
+    expect(blob.movement.acceleration).toBeGreaterThan(
+      combine.movement.acceleration,
+    );
+    expect(BlobConfig.predator.detectionRange).toBeGreaterThanOrEqual(32);
+    expect(BlobConfig.predator.embraceRampSeconds).toBeLessThanOrEqual(1);
   });
 
   it.each(builders)("%s: schedules con ids unicos, prioridades validas y tasks", (_name, build) => {

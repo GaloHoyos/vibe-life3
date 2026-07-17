@@ -1,8 +1,13 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Euler, Quaternion, Vector3 } from "three";
 import { createBoxCollider } from "@engine/physics/Colliders";
+import { ACTOR_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { CharacterMotorSnapshot, NpcMotor, SliceHit } from "./NpcMotor";
+import {
+  applyCharacterContactDamping,
+  sampleCharacterMedium,
+} from "./CharacterContactMedium";
 
 interface StationaryDynamicBaseConfig {
   id: string;
@@ -60,6 +65,7 @@ export class StationaryDynamicMotor implements NpcMotor {
 
   private readonly tmpQuat = new Quaternion();
   private readonly tmpEuler = new Euler(0, 0, 0, "YXZ");
+  private readonly tmpVelocity = new Vector3();
 
   constructor(
     private readonly physics: PhysicsWorld,
@@ -77,15 +83,40 @@ export class StationaryDynamicMotor implements NpcMotor {
     );
     const { desc, volume } = buildCollider(config);
     this.collider = physics.world.createCollider(
-      desc.setDensity(config.mass / volume).setFriction(0.9),
+      desc
+        .setDensity(config.mass / volume)
+        .setFriction(0.9)
+        .setCollisionGroups(ACTOR_COLLISION_GROUPS),
       this.body,
     );
     physics.registerCollider(this.collider, config.metadata);
   }
 
-  update(): void {
+  update(delta: number): void {
     if (!this.enabled) return;
     this.syncYawFromBody();
+    const velocity = this.body.linvel();
+    this.tmpVelocity.set(velocity.x, velocity.y, velocity.z);
+    const medium = sampleCharacterMedium({
+      physics: this.physics,
+      collider: this.collider,
+      position: this.body.translation(),
+      rotation: this.body.rotation(),
+      velocity: this.tmpVelocity,
+      delta,
+      characterMass: this.body.mass(),
+    });
+    applyCharacterContactDamping(this.tmpVelocity, medium, delta);
+    if (medium) {
+      this.body.setLinvel(
+        {
+          x: this.tmpVelocity.x,
+          y: this.tmpVelocity.y,
+          z: this.tmpVelocity.z,
+        },
+        true,
+      );
+    }
   }
 
   getPosition(): Vector3 {

@@ -2,8 +2,17 @@ import { Vector3 } from "three";
 import type { ActorSnapshot, AiFrameContext } from "@game/npc/core/INpc";
 import type { NpcBehaviorController } from "@game/npc/core/NpcBehaviorController";
 import type { NpcLocomotionHandle } from "@game/npc/brain/NpcBrainContext";
-import type { OrganicMatterHandle } from "@game/gameplay/organic/OrganicMatter";
+import type {
+  OrganicMatterHandle,
+  OrganicPullSettings,
+} from "@game/gameplay/organic/OrganicMatter";
 import { BlobConfig } from "@game/config/blob.config";
+
+const CORPSE_PULL_SETTINGS = {
+  positionGain: BlobConfig.predator.corpsePullPositionGain,
+  maxSpeed: BlobConfig.predator.corpsePullMaxSpeed,
+  acceleration: BlobConfig.predator.corpsePullAcceleration,
+} satisfies OrganicPullSettings;
 
 export interface BlobFeedingBody {
   setFeedingTarget(
@@ -31,8 +40,10 @@ export class BlobPredatorController implements NpcBehaviorController {
   private embraceElapsed = 0;
   private digestionElapsed = 0;
   private damageCooldown = 0;
+  private defensiveTargetId: string | null = null;
   private disposed = false;
   private readonly targetPosition = new Vector3();
+  private readonly digestionTarget = new Vector3();
   private readonly attackDirection = new Vector3();
 
   constructor(
@@ -44,12 +55,14 @@ export class BlobPredatorController implements NpcBehaviorController {
   update(
     ctx: AiFrameContext,
     locomotion: NpcLocomotionHandle,
+    urgentThreat?: ActorSnapshot | null,
   ): ActorSnapshot | null {
     if (this.disposed) return null;
     const delta = finiteDelta(ctx.delta);
     this.damageCooldown = Math.max(0, this.damageCooldown - delta);
 
     this.refreshTargetSnapshot(ctx);
+    this.prioritizeUrgentThreat(urgentThreat);
     if (!this.validateTarget()) this.acquireTarget(ctx);
     const target = this.target;
     if (!target) {
@@ -64,10 +77,14 @@ export class BlobPredatorController implements NpcBehaviorController {
     const distance = planarDistance(corePosition, this.targetPosition);
     const embraceDistance =
       BlobConfig.predator.coreEmbraceDistance + target.radius;
+    const releaseDistance =
+      embraceDistance + BlobConfig.predator.embraceReleasePadding;
+    const canMaintainEmbrace =
+      this.phase === "embracing" || this.phase === "digesting";
 
     // Si una presa/ragdoll se aleja durante el abrazo, el gel se recoge y el
     // core vuelve a navegar. El claim permanece para no alternar objetivos.
-    if (distance > embraceDistance) {
+    if (distance > (canMaintainEmbrace ? releaseDistance : embraceDistance)) {
       this.phase = "approaching";
       this.embraceElapsed = 0;
       this.digestionElapsed = 0;
@@ -105,10 +122,21 @@ export class BlobPredatorController implements NpcBehaviorController {
 
     if (target.isAlive()) {
       this.tickLivingPrey(target, physicalCoverage, corePosition);
-    } else if (
-      physicalCoverage >= BlobConfig.predator.fullCoverageThreshold
-    ) {
-      this.tickDigestion(target, delta);
+    } else {
+      this.digestionTarget.copy(corePosition);
+      this.digestionTarget.y += BlobConfig.predator.corpsePullCoreHeight;
+      target.pullToward(
+        this.id,
+        this.digestionTarget,
+        delta,
+        CORPSE_PULL_SETTINGS,
+      );
+      if (
+        this.phase === "digesting" ||
+        physicalCoverage >= BlobConfig.predator.digestionCoverageThreshold
+      ) {
+        this.tickDigestion(target, delta);
+      }
     }
     return this.targetSnapshot;
   }
@@ -130,7 +158,7 @@ export class BlobPredatorController implements NpcBehaviorController {
     corePosition: Vector3,
   ): void {
     if (
-      physicalCoverage < BlobConfig.predator.fullCoverageThreshold ||
+      physicalCoverage < BlobConfig.predator.damageCoverageThreshold ||
       this.damageCooldown > 0
     ) {
       return;
@@ -152,7 +180,13 @@ export class BlobPredatorController implements NpcBehaviorController {
       "melee",
     );
     if (!target.isAlive()) {
-      this.phase = "digesting";
+      if (this.defensiveTargetId === target.id) {
+        this.defensiveTargetId = null;
+      }
+      this.phase =
+        physicalCoverage >= BlobConfig.predator.digestionCoverageThreshold
+          ? "digesting"
+          : "embracing";
       this.digestionElapsed = 0;
     }
   }
@@ -217,6 +251,45 @@ export class BlobPredatorController implements NpcBehaviorController {
     }
   }
 
+  private prioritizeUrgentThreat(threat: ActorSnapshot | null | undefined): void {
+    if (this.defensiveTargetId) {
+      const currentDefenseIsActive =
+        this.target?.id === this.defensiveTargetId &&
+        this.target.isAlive() &&
+        this.target.isAvailable() &&
+        this.target.isClaimedBy(this.id);
+      if (currentDefenseIsActive) return;
+      this.defensiveTargetId = null;
+    }
+
+    const organic = threat?.organicMatter;
+    if (
+      !threat ||
+      threat.id === this.id ||
+      threat.characterId === "blob" ||
+      !threat.isAlive ||
+      !threat.entity.isAlive() ||
+      !organic?.isAlive() ||
+      !organic.isAvailable() ||
+      planarDistance(this.getCorePosition(), organic.getPosition(this.targetPosition)) >
+        BlobConfig.predator.disengageRange
+    ) {
+      return;
+    }
+    if (this.target?.id === organic.id) {
+      this.targetSnapshot = threat;
+      this.defensiveTargetId = organic.id;
+      return;
+    }
+    if (!organic.tryClaim(this.id)) return;
+
+    this.releaseTarget();
+    this.target = organic;
+    this.targetSnapshot = threat;
+    this.defensiveTargetId = organic.id;
+    this.phase = "approaching";
+  }
+
   private validateTarget(): boolean {
     if (!this.target) return false;
     if (
@@ -243,6 +316,9 @@ export class BlobPredatorController implements NpcBehaviorController {
   }
 
   private releaseTarget(): void {
+    if (this.target?.id === this.defensiveTargetId) {
+      this.defensiveTargetId = null;
+    }
     this.target?.release(this.id);
     this.target = null;
     this.targetSnapshot = null;

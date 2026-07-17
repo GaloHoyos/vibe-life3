@@ -14,8 +14,15 @@ describe("OrganicMatterController", () => {
     expect(fixture.matter.tryClaim("blob-b")).toBe(false);
 
     fixture.matter.setRestraint("blob-b", 0.8);
+    fixture.matter.pullToward(
+      "blob-b",
+      new Vector3(),
+      0.1,
+      { positionGain: 4, maxSpeed: 3, acceleration: 18 },
+    );
     fixture.matter.setDigestionProgress("blob-b", 0.5);
     expect(fixture.setRestraint).not.toHaveBeenCalled();
+    expect(fixture.pullToward).not.toHaveBeenCalled();
     expect(fixture.setDigestionProgress).not.toHaveBeenCalled();
 
     fixture.matter.setRestraint("blob-a", 1.4);
@@ -40,10 +47,20 @@ describe("OrganicMatterController", () => {
     expect(fixture.matter.consume("blob-a")).toBe(0);
     expect(fixture.matter.isAvailable()).toBe(true);
     expect(fixture.matter.isClaimedBy("blob-a")).toBe(true);
+    const pullTarget = new Vector3(3, 0.5, -2);
+    const pullSettings = { positionGain: 4, maxSpeed: 3, acceleration: 18 };
+    fixture.matter.pullToward("blob-a", pullTarget, 0.1, pullSettings);
+    expect(fixture.pullToward).not.toHaveBeenCalled();
 
     fixture.setAlive(false);
     expect(fixture.matter.isAlive()).toBe(false);
     expect(fixture.matter.isClaimedBy("blob-a")).toBe(true);
+    fixture.matter.pullToward("blob-a", pullTarget, 0.1, pullSettings);
+    expect(fixture.pullToward).toHaveBeenCalledWith(
+      pullTarget,
+      0.1,
+      pullSettings,
+    );
     fixture.matter.setDigestionProgress("blob-a", 0.6);
 
     expect(fixture.matter.consume("blob-a")).toBe(7);
@@ -88,6 +105,7 @@ function organicFixture(
   let alive = true;
   const position = options.position?.clone() ?? new Vector3(1, 0, 2);
   const setRestraint = vi.fn();
+  const pullToward = vi.fn();
   const setDigestionProgress = vi.fn();
   const onConsumed = vi.fn();
   const matter = new OrganicMatterController({
@@ -99,6 +117,7 @@ function organicFixture(
     getPosition: (out) => out.copy(position),
     isAlive: () => alive,
     setRestraint,
+    pullToward,
     setDigestionProgress,
     onConsumed,
   });
@@ -109,6 +128,7 @@ function organicFixture(
       alive = value;
     },
     setRestraint,
+    pullToward,
     setDigestionProgress,
     onConsumed,
   };

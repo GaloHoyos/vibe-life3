@@ -309,7 +309,7 @@ describe("BlobArmorAnimator", () => {
         vectorFromRapier(record.body.translation()).distanceTo(core) <= 1.3,
     );
     expect(harness.animator.getFeedingCoverage()).toBeGreaterThanOrEqual(
-      BlobConfig.predator.fullCoverageThreshold,
+      BlobConfig.predator.digestionCoverageThreshold,
     );
     expect(aroundPrey.length).toBeGreaterThanOrEqual(8);
     expect(guardingCore.length).toBeGreaterThanOrEqual(18);

@@ -10,6 +10,7 @@ export interface NpcBehaviorController {
   update(
     ctx: AiFrameContext,
     locomotion: NpcLocomotionHandle,
+    urgentThreat?: ActorSnapshot | null,
   ): ActorSnapshot | null;
   getState(): string;
   dispose(): void;

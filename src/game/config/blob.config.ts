@@ -4,11 +4,23 @@
  */
 export const BlobConfig = {
   core: {
-    maxHealth: 60,
+    maxHealth: 140,
     radius: 0.38,
     mass: 24,
     /** Peso del cuerpo gel; la futura navegación mueve este root contra él. */
     gravityScale: 0.8,
+  },
+  contact: {
+    friction: 0.28,
+    restitution: 0,
+    /** Arrastre y amortiguación al vadear o aterrizar sobre el gel. */
+    characterSpeedScale: 0.34,
+    characterDamping: 7,
+    landingImpactScale: 0.18,
+    passThrough: true,
+    fullImmersionCount: 5,
+    verticalDamping: 9,
+    pushAcceleration: 11,
   },
   armor: {
     /** Volumen multicapa: 6 nodos internos, 12 medios y 18 externos. */
@@ -35,17 +47,17 @@ export const BlobConfig = {
     growthSpawnPadding: 0.025,
     growthInitialBondCount: 3,
     /** Campo ferrofluido usado para prestar nodos al abrazo de una presa. */
-    feedingMaximumFraction: 0.46,
-    feedingWrapFraction: 0.72,
+    feedingMaximumFraction: 0.52,
+    feedingWrapFraction: 0.78,
     feedingSurfacePadding: 0.035,
-    feedingPositionGain: 6.5,
-    feedingMaxSpeed: 3.4,
-    feedingAcceleration: 42,
+    feedingPositionGain: 7.5,
+    feedingMaxSpeed: 4.2,
+    feedingAcceleration: 52,
     feedingCoverageContactDistance: 0.2,
     feedingCoverageFalloffDistance: 1.15,
     springRestLength: 0,
-    springStiffness: 240,
-    springDamping: 20,
+    springStiffness: 170,
+    springDamping: 24,
     /** El resorte al core sobrevive brevemente al impacto para que pueda ceder. */
     detachResistanceSeconds: 0.1,
     detachImpulse: 1.2,
@@ -53,8 +65,8 @@ export const BlobConfig = {
     cohesionNeighborCount: 4,
     /** Refuerzo tangencial mínimo para que las capas no sean sólo rayos. */
     cohesionLayerNeighborCount: 2,
-    cohesionSpringStiffness: 50,
-    cohesionSpringDamping: 5,
+    cohesionSpringStiffness: 34,
+    cohesionSpringDamping: 8,
     /** No crea resortes nuevos hacia fragmentos que ya quedaron lejos. */
     cohesionAttachMaxDistance: 0.84,
     /** Carga relativa mínima para que un impacto pueda arrancar un vecino. */
@@ -158,16 +170,26 @@ export const BlobConfig = {
     angularDamping: 0.8,
   },
   predator: {
-    detectionRange: 26,
+    detectionRange: 32,
     disengageRange: 42,
-    moveSpeed: 1.65,
-    movementAcceleration: 4.2,
+    moveSpeed: 5,
+    movementAcceleration: 15,
     /** Distancia core-superficie de la presa donde empieza el abrazo. */
-    coreEmbraceDistance: 1.15,
-    embraceRampSeconds: 2.25,
-    fullCoverageThreshold: 0.72,
-    damagePerPulse: 8,
-    damageIntervalSeconds: 0.48,
-    digestionSeconds: 3.6,
+    coreEmbraceDistance: 1.35,
+    /** Margen para conservar un abrazo ya iniciado ante empujes y ragdolls. */
+    embraceReleasePadding: 0.85,
+    embraceRampSeconds: 0.9,
+    /** Cobertura mínima para empezar a triturar una presa viva. */
+    damageCoverageThreshold: 0.22,
+    /** Cobertura necesaria para iniciar la digestión del cadáver. */
+    digestionCoverageThreshold: 0.5,
+    /** Local height of the swallowing point above the core. */
+    corpsePullCoreHeight: 0.35,
+    corpsePullPositionGain: 4,
+    corpsePullMaxSpeed: 3,
+    corpsePullAcceleration: 18,
+    damagePerPulse: 16,
+    damageIntervalSeconds: 0.35,
+    digestionSeconds: 2.4,
   },
 } as const;

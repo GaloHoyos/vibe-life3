@@ -208,6 +208,22 @@ export class ProceduralCharacterAnimator {
     return this.ragdoll.getCenter();
   }
 
+  pullPhysicalBodyToward(
+    target: Vector3,
+    delta: number,
+    positionGain: number,
+    maxSpeed: number,
+    acceleration: number,
+  ): void {
+    this.ragdoll.pullToward(
+      target,
+      delta,
+      positionGain,
+      maxSpeed,
+      acceleration,
+    );
+  }
+
   /** Libera sensores, joints y bodies del ragdoll. Idempotente. */
   dispose(): void {
     if (this.disposed) return;

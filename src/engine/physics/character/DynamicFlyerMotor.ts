@@ -1,6 +1,7 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Euler, Quaternion, Vector3 } from "three";
 import { createCapsuleCollider } from "@engine/physics/Colliders";
+import { ACTOR_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { PortalPairState, PortalSlot } from "@engine/portals/PortalFrame";
 import {
@@ -10,6 +11,11 @@ import {
   transformPointThroughPortal,
 } from "@engine/portals/PortalMath";
 import type { CharacterMotorSnapshot, NpcMotor, SliceHit } from "./NpcMotor";
+import {
+  applyCharacterContactDamping,
+  isPassThroughCharacterContact,
+  sampleCharacterMedium,
+} from "./CharacterContactMedium";
 
 export interface DynamicFlyerConfig {
   id: string;
@@ -126,6 +132,7 @@ export class DynamicFlyerMotor implements NpcMotor {
   private enabled = true;
   private alive = true;
   private speedMultiplier = 1;
+  private contactSpeedMultiplier = 1;
   private yaw = 0;
   private targetYaw = 0;
   private distanceToTarget = Number.POSITIVE_INFINITY;
@@ -171,7 +178,8 @@ export class DynamicFlyerMotor implements NpcMotor {
       createCapsuleCollider(config.radius, halfHeight)
         .setRestitution(0.3)
         .setFriction(0.4)
-        .setDensity(8),
+        .setDensity(8)
+        .setCollisionGroups(ACTOR_COLLISION_GROUPS),
       this.body,
     );
     physics.registerCollider(this.collider, config.metadata);
@@ -229,6 +237,18 @@ export class DynamicFlyerMotor implements NpcMotor {
       this.tryContactSlice(targetPosition);
     }
 
+    const medium = sampleCharacterMedium({
+      physics: this.physics,
+      collider: this.collider,
+      position: this.body.translation(),
+      rotation: this.body.rotation(),
+      velocity: this.vel,
+      delta,
+      characterMass: this.body.mass(),
+    });
+    this.contactSpeedMultiplier = medium?.speedScale ?? 1;
+    applyCharacterContactDamping(this.vel, medium, delta);
+
     this.body.setLinvel({ x: this.vel.x, y: this.vel.y, z: this.vel.z }, true);
     this.updateFacing(delta, targetPosition, facingTarget);
   }
@@ -243,7 +263,10 @@ export class DynamicFlyerMotor implements NpcMotor {
       const aim = this.resolvePortalFunnel(pos, target) ?? target;
       this.desiredVel.set(aim.x - pos.x, aim.y - pos.y, aim.z - pos.z);
       const d = this.desiredVel.length();
-      const max = this.config.maxSpeed * this.speedMultiplier;
+      const max =
+        this.config.maxSpeed *
+        this.speedMultiplier *
+        this.contactSpeedMultiplier;
       if (d > 1e-4) this.desiredVel.multiplyScalar(Math.min(max, d * APPROACH_GAIN) / d);
       else this.desiredVel.set(0, 0, 0);
     } else {
@@ -289,6 +312,7 @@ export class DynamicFlyerMotor implements NpcMotor {
       undefined,
       undefined,
       this.body,
+      (collider) => !isPassThroughCharacterContact(this.physics, collider),
     );
     // Un portal linked en el paso barrido gana sobre la pared que lo respalda
     // (coplanar): cruzar en vez de rebotar. El alcance del rayo suma el radio
@@ -462,6 +486,7 @@ export class DynamicFlyerMotor implements NpcMotor {
       undefined,
       undefined,
       this.body,
+      (collider) => !isPassThroughCharacterContact(this.physics, collider),
     );
     if (!hit) return;
     const meta = this.physics.getColliderMetadata(hit.collider);

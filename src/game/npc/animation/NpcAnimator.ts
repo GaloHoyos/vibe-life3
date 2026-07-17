@@ -6,6 +6,12 @@ import type {
 } from "@engine/animation/AnimationInput";
 import type { CharacterMotorSnapshot } from "@engine/physics/character/CharacterMotor";
 
+export interface PhysicalBodyPullSettings {
+  positionGain: number;
+  maxSpeed: number;
+  acceleration: number;
+}
+
 export interface AnimationFrame {
   snapshot: CharacterMotorSnapshot;
   lookTarget: Vector3;
@@ -45,6 +51,12 @@ export interface NpcAnimator {
   disable(): void;
   /** Centro world-space del cuerpo fisico pasivo, si este animator lo posee. */
   getPhysicalCenter?(): Vector3 | null;
+  /** Pulls the passive body as a unit while preserving its joints. */
+  pullPhysicalBodyToward?(
+    target: Vector3,
+    delta: number,
+    settings: PhysicalBodyPullSettings,
+  ): void;
   /** Libera recursos GPU/físicos propios. Debe ser idempotente. */
   dispose?(): void;
 }

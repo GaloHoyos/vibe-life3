@@ -30,11 +30,12 @@ describe("BlobDynamicMotor", () => {
     const motor = createMotor(physics, { acceleration: 4, maxSpeed: 2 });
     motor.body.setLinvel({ x: 0, y: -5, z: 0 }, true);
 
-    // El control clampa frames largos a 1/20: dv horizontal maximo = 4 * .05.
+    // El control clampa frames largos a 1/20. El impulso contempla los 32.64 kg
+    // del organismo, aunque Rapier lo recibe a través del core de 24 kg.
     motor.update(0.5, new Vector3(0, 3, 10), true);
 
     const velocity = motor.body.linvel();
-    expect(velocity.z).toBeCloseTo(0.2, 5);
+    expect(velocity.z).toBeCloseTo(0.272, 5);
     expect(velocity.x).toBeCloseTo(0, 6);
     expect(velocity.y).toBeCloseTo(-5, 6);
     expect(motor.syncFromPhysics().desiredVelocity.z).toBeCloseTo(2, 5);
@@ -48,7 +49,7 @@ describe("BlobDynamicMotor", () => {
     motor.update(1 / 30, null, false);
 
     const velocity = motor.body.linvel();
-    expect(velocity.x).toBeCloseTo(7.9, 5);
+    expect(velocity.x).toBeCloseTo(7.864, 5);
     expect(velocity.y).toBeCloseTo(1.75, 6);
     expect(velocity.x).toBeGreaterThan(2);
   });
@@ -102,6 +103,9 @@ function createMotor(
     position: new Vector3(0, 3, 0),
     radius: 0.38,
     mass: 24,
+    drivenMass: 32.64,
+    friction: 0.28,
+    restitution: 0,
     maxSpeed: overrides.maxSpeed ?? 1.8,
     acceleration: overrides.acceleration ?? 3.5,
     gravityScale: 0.8,

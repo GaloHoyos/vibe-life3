@@ -16,6 +16,7 @@ import {
   type PhysicsWorld,
 } from "@engine/physics/PhysicsWorld";
 import { Raycast } from "@engine/physics/Raycast";
+import { CHARACTER_MEDIUM_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
 import type { Damageable } from "@shared/types/lifecycle";
 import type {
   AnimationFrame,
@@ -137,6 +138,15 @@ const ARMOR_ROUGHNESS = 0.24;
 const ARMOR_METALNESS = 0.04;
 const WITHER_COLOR = new Color(BlobConfig.armor.detachedWitherColor);
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const BLOB_CHARACTER_CONTACT = {
+  speedScale: BlobConfig.contact.characterSpeedScale,
+  damping: BlobConfig.contact.characterDamping,
+  landingImpactScale: BlobConfig.contact.landingImpactScale,
+  passThrough: BlobConfig.contact.passThrough,
+  fullImmersionCount: BlobConfig.contact.fullImmersionCount,
+  verticalDamping: BlobConfig.contact.verticalDamping,
+  pushAcceleration: BlobConfig.contact.pushAcceleration,
+} as const;
 
 /**
  * Physical shell for the Blob NPC. Every visible sphere owns a real dynamic
@@ -532,8 +542,9 @@ export class BlobArmorAnimator implements NpcAnimator {
     body.setGravityScale(config.attachedGravityScale, true);
     body.enableCcd(true);
     const collider = body.collider(0);
-    collider.setFriction(0.7);
-    collider.setRestitution(0.08);
+    collider.setCollisionGroups(CHARACTER_MEDIUM_COLLISION_GROUPS);
+    collider.setFriction(BlobConfig.contact.friction);
+    collider.setRestitution(BlobConfig.contact.restitution);
     const joint = placement.coreAnchored
       ? this.createCoreJoint(body, anchor)
       : null;
@@ -661,6 +672,7 @@ export class BlobArmorAnimator implements NpcAnimator {
         damageMultiplier: 1,
       },
       navigationObstacleSize: [diameter, diameter, diameter],
+      characterContact: BLOB_CHARACTER_CONTACT,
     };
   }
 
@@ -835,6 +847,7 @@ export class BlobArmorAnimator implements NpcAnimator {
       impactOwnerId: this.options.id,
       kind: "dynamic",
       damageable: part.damageable,
+      characterContact: BLOB_CHARACTER_CONTACT,
     });
     if (this.options.physics.isHeldBody(part.body.handle)) {
       this.options.physics.setHeldRestoreGravityScale(part.body.handle, 1);

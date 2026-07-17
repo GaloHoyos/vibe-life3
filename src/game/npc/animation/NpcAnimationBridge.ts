@@ -11,7 +11,11 @@ import type { CharacterDefinition } from "@engine/characters/CharacterDefinition
 import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Damageable } from "@shared/types/lifecycle";
 import { NpcDebugFlags } from "@game/npc/core/NpcDebugFlags";
-import type { AnimationFrame, NpcAnimator } from "./NpcAnimator";
+import type {
+  AnimationFrame,
+  NpcAnimator,
+  PhysicalBodyPullSettings,
+} from "./NpcAnimator";
 
 export type { AnimationFrame } from "./NpcAnimator";
 
@@ -337,6 +341,20 @@ export class NpcAnimationBridge implements NpcAnimator {
   /** Centro de masa del ragdoll, no la posicion congelada del motor. */
   getPhysicalCenter(): Vector3 | null {
     return this.animator.getPhysicalCenter();
+  }
+
+  pullPhysicalBodyToward(
+    target: Vector3,
+    delta: number,
+    settings: PhysicalBodyPullSettings,
+  ): void {
+    this.animator.pullPhysicalBodyToward(
+      target,
+      delta,
+      settings.positionGain,
+      settings.maxSpeed,
+      settings.acceleration,
+    );
   }
 
   /** Propaga el cleanup fisico completo. Seguro ante llamadas repetidas. */

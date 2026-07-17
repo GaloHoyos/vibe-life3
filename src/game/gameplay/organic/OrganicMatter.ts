@@ -1,6 +1,12 @@
 import { Vector3 } from "three";
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 
+export interface OrganicPullSettings {
+  positionGain: number;
+  maxSpeed: number;
+  acceleration: number;
+}
+
 /**
  * Superficie estable que un depredador usa tanto mientras la presa esta viva
  * como despues de que pasa a ragdoll. El handle pertenece a la presa: de ese
@@ -20,6 +26,13 @@ export interface OrganicMatterHandle {
   isClaimedBy(consumerId: string): boolean;
   tryClaim(consumerId: string): boolean;
   setRestraint(consumerId: string, coverage01: number): void;
+  /** Pulls claimed dead matter without teleporting its physical body. */
+  pullToward(
+    consumerId: string,
+    target: Vector3,
+    delta: number,
+    settings: OrganicPullSettings,
+  ): void;
   setDigestionProgress(consumerId: string, progress01: number): void;
   release(consumerId: string): void;
   /** Consume una presa muerta y devuelve su rendimiento; cero si no corresponde. */
@@ -35,6 +48,11 @@ export interface OrganicMatterControllerOptions {
   getPosition(out: Vector3): Vector3;
   isAlive(): boolean;
   setRestraint(coverage01: number): void;
+  pullToward?(
+    target: Vector3,
+    delta: number,
+    settings: OrganicPullSettings,
+  ): void;
   setDigestionProgress?(progress01: number): void;
   onConsumed(): void;
 }
@@ -89,6 +107,22 @@ export class OrganicMatterController implements OrganicMatterHandle {
   setRestraint(consumerId: string, coverage01: number): void {
     if (!this.isClaimedBy(consumerId) || this.consumed) return;
     this.options.setRestraint(clamp01(coverage01));
+  }
+
+  pullToward(
+    consumerId: string,
+    target: Vector3,
+    delta: number,
+    settings: OrganicPullSettings,
+  ): void {
+    if (
+      !this.isClaimedBy(consumerId) ||
+      this.consumed ||
+      this.options.isAlive()
+    ) {
+      return;
+    }
+    this.options.pullToward?.(target, delta, settings);
   }
 
   setDigestionProgress(consumerId: string, progress01: number): void {

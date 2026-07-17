@@ -29,7 +29,7 @@ import {
   type OrganicMatterHandle,
 } from "@game/gameplay/organic/OrganicMatter";
 
-const PLAYER_ORGANIC_MASS = 70;
+const PLAYER_ORGANIC_MASS = PlayerConfig.collider.mass;
 const FULL_ORGANIC_RESTRAINT_COVERAGE = 0.72;
 const NO_MOVEMENT: MovementInput = {
   forward: false,
@@ -90,6 +90,7 @@ export class Player implements Damageable {
       friction: PlayerConfig.movement.friction,
       stopSpeed: PlayerConfig.movement.stopSpeed,
       crouchTransitionTime: PlayerConfig.movement.crouchTransitionTime,
+      dynamicPushMass: PlayerConfig.collider.mass,
     });
     physics.registerCollider(this.controller.collider, {
       id: "player",
