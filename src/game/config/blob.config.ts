@@ -27,6 +27,13 @@ export const BlobConfig = {
     surfaceResolution: 36,
     surfaceDomainSize: 5.2,
     surfaceMaxPolyCount: 30000,
+    /** Islas desprendidas usan una grilla menor ajustada a sus propios bounds. */
+    fragmentSurfaceResolution: 18,
+    fragmentSurfaceMaxPolyCount: 6000,
+    fragmentSurfaceMinDomainSize: 1.4,
+    fragmentSurfacePadding: 0.16,
+    /** Tolerancia visual: no altera bonds ni captura de reintegracion. */
+    surfaceContactPadding: 0.04,
     surfaceNodeRadiusScale: 2.25,
     surfaceCoreRadius: 0.72,
     surfaceColor: 0xa7c5bd,

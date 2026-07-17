@@ -1415,6 +1415,69 @@ describe("BlobArmorAnimator", () => {
     harness.dispose();
   });
 
+  it("funde por contacto fragmentos del mismo blob sin adelantar su union fisica", async () => {
+    const harness = await createHarness();
+    harness.physics.world.gravity = { x: 0, y: 0, z: 0 };
+    const armor = armorRecords(harness.physics);
+    const initial = harness.animator.getDebugSnapshot();
+    const [firstIndex, secondIndex] = findNonBondedOuterPair(initial);
+    const first = armor[firstIndex];
+    const second = armor[secondIndex];
+    const firstMesh = blobMesh(harness, firstIndex);
+    const secondMesh = blobMesh(harness, secondIndex);
+
+    first.metadata.damageable!.applyDamage(1);
+    second.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () =>
+          currentMetadata(harness, first).kind === "dynamic" &&
+          currentMetadata(harness, second).kind === "dynamic",
+        1,
+      ),
+    ).toBe(true);
+
+    const visualContactDistance =
+      firstMesh.scale.x +
+      secondMesh.scale.x +
+      BlobConfig.visual.surfaceContactPadding * 0.5;
+    placeBody(first.body, new Vector3(8, 6, 0));
+    placeBody(second.body, new Vector3(8 + visualContactDistance, 6, 0));
+    harness.animator.updateFromMotor(animationFrame(0, true));
+
+    expect(
+      hasPair(harness.animator.getDebugSnapshot(), firstIndex, secondIndex),
+    ).toBe(false);
+    const fragmentSurface = harness.scene.getObjectByName(
+      `${harness.id}-gel-fragment-0`,
+    );
+    expect(fragmentSurface).toBeInstanceOf(Mesh);
+    expect(fragmentSurface?.visible).toBe(true);
+    expect(firstMesh.visible).toBe(false);
+    expect(secondMesh.visible).toBe(false);
+
+    placeBody(
+      second.body,
+      new Vector3(
+        8 +
+          firstMesh.scale.x +
+          secondMesh.scale.x +
+          BlobConfig.visual.surfaceContactPadding +
+          0.1,
+        6,
+        0,
+      ),
+    );
+    harness.animator.updateFromMotor(animationFrame(0, true));
+
+    expect(fragmentSurface?.visible).toBe(false);
+    expect(firstMesh.visible).toBe(true);
+    expect(secondMesh.visible).toBe(true);
+
+    harness.dispose();
+  });
+
   it("conserva resultados dinámicos: un golpe suave puede sacar uno y una pistola un racimo", async () => {
     const gentle = await createHarness();
     const gentleArmor = armorRecords(gentle.physics);

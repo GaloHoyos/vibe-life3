@@ -21,7 +21,7 @@ export interface DynamicBlobSurfaceOptions {
 /** Reusable local metaball field for a moving, deformable visual surface. */
 export class DynamicBlobSurface {
   readonly object: MarchingCubes;
-  private readonly domainSize: number;
+  private domainSize: number;
 
   constructor(material: Material, options: DynamicBlobSurfaceOptions) {
     const resolution = Math.max(8, Math.floor(options.resolution));
@@ -37,6 +37,11 @@ export class DynamicBlobSurface {
     this.object.isolation = BLOB_FIELD_ISOLATION;
     this.object.scale.setScalar(this.domainSize / 2);
     this.object.frustumCulled = false;
+  }
+
+  setDomainSize(domainSize: number): void {
+    this.domainSize = Math.max(0.1, domainSize);
+    this.object.scale.setScalar(this.domainSize / 2);
   }
 
   attachTo(parent: Object3D): void {

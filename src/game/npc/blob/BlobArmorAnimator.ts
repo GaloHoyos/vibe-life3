@@ -13,6 +13,7 @@ import {
   DynamicBlobSurface,
   type DynamicBlobSample,
 } from "@engine/blob/DynamicBlobSurface";
+import { BLOB_SUPPORT_FACTOR } from "@engine/blob/Blobulator";
 import type { NavigationService } from "@engine/ai/navigation/NavigationService";
 import type { NavigationRequestQueue } from "@engine/ai/navigation/NavigationRequestQueue";
 import {
@@ -109,6 +110,22 @@ interface FeedingTarget {
   requestedCoverage: number;
 }
 
+interface FragmentGelVisual {
+  material: MeshPhysicalMaterial;
+  surface: DynamicBlobSurface;
+  samples: DynamicBlobSample[];
+  center: Vector3;
+}
+
+interface GelVisualPoint {
+  position: Vector3;
+  radius: number;
+}
+
+interface GelVisualPart extends GelVisualPoint {
+  part: BlobArmorPart;
+}
+
 type BlobDetachCause = "impact" | "cohesion" | "load" | "lifecycle";
 
 export interface BlobArmorAnimatorOptions {
@@ -153,9 +170,10 @@ const BLOB_CHARACTER_CONTACT = {
 } as const;
 
 /**
- * Physical shell for the Blob NPC. Hidden dynamic nodes drive one continuous
- * metaball skin. Core springs hold the shell; weaker neighbor springs let an
- * impacted part resist, tear nearby parts away, and leave physical droplets.
+ * Physical shell for the Blob NPC. Hidden dynamic nodes drive continuous
+ * metaball skins per contact island. Core springs hold the shell; weaker
+ * neighbor springs let an impacted part resist, tear nearby parts away, and
+ * leave physical droplets.
  */
 export class BlobArmorAnimator implements NpcAnimator {
   private readonly geometry = new SphereGeometry(1, 18, 14);
@@ -163,6 +181,7 @@ export class BlobArmorAnimator implements NpcAnimator {
   private readonly gelSurface: DynamicBlobSurface;
   private readonly gelSamples: DynamicBlobSample[] = [];
   private readonly gelCenter = new Vector3();
+  private readonly fragmentGelVisuals: FragmentGelVisual[] = [];
   private readonly materials = new Set<MeshPhysicalMaterial>();
   private readonly parts: BlobArmorPart[] = [];
   private nextPartIndex = 0;
@@ -266,7 +285,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     if (this.options.coreBody.isValid()) {
       this.options.coreBody.setGravityScale(1, true);
     }
-    this.gelSurface.object.visible = false;
+    this.hideGelSurfaces();
     this.releaseAll();
   }
 
@@ -398,7 +417,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     if (this.options.coreBody.isValid()) {
       this.options.coreBody.setGravityScale(1, true);
     }
-    this.gelSurface.object.visible = false;
+    this.hideGelSurfaces();
     this.releaseAll();
   }
 
@@ -428,6 +447,11 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.gelSamples.length = 0;
     this.gelSurface.dispose();
     this.gelMaterial.dispose();
+    for (const visual of this.fragmentGelVisuals) {
+      visual.surface.dispose();
+      visual.material.dispose();
+    }
+    this.fragmentGelVisuals.length = 0;
     this.geometry.dispose();
     for (const material of this.materials) material.dispose();
     this.materials.clear();
@@ -3050,49 +3074,170 @@ export class BlobArmorAnimator implements NpcAnimator {
 
   private updateGelSurface(): void {
     if (!this.options.coreBody.isValid()) {
-      this.gelSurface.object.visible = false;
+      this.hideGelSurfaces();
       return;
     }
-    const translation = this.options.coreBody.translation();
-    this.gelCenter.set(translation.x, translation.y, translation.z);
-    this.gelSurface.setCenter(this.gelCenter);
-
-    let sampleCount = 0;
-    sampleCount = this.writeGelSample(
-      sampleCount,
-      this.gelCenter,
-      BlobConfig.visual.surfaceCoreRadius,
-    );
-    for (const part of this.parts) {
-      if (part.state === "released" || !part.body.isValid()) continue;
+    const visualParts = this.parts.flatMap((part): GelVisualPart[] => {
+      if (!part.body.isValid()) return [];
       const position = part.body.translation();
-      this.gelCenter.set(position.x, position.y, position.z);
-      sampleCount = this.writeGelSample(
-        sampleCount,
-        this.gelCenter,
-        part.radius * BlobConfig.visual.surfaceNodeRadiusScale,
+      return [
+        {
+          part,
+          position: new Vector3(position.x, position.y, position.z),
+          radius:
+            part.state === "released"
+              ? part.mesh.scale.x
+              : detachedVisualRadius(part.radius),
+        },
+      ];
+    });
+    const released = visualParts.filter(
+      ({ part }) => part.state === "released",
+    );
+    const visualSets = new NumericDisjointSet(
+      released.map(({ part }) => part.index),
+    );
+    for (let from = 0; from < released.length; from += 1) {
+      for (let to = from + 1; to < released.length; to += 1) {
+        if (!gelVisualsTouch(released[from], released[to])) continue;
+        visualSets.union(released[from].part.index, released[to].part.index);
+      }
+    }
+
+    const coreTranslation = this.options.coreBody.translation();
+    const coreVisual: GelVisualPoint = {
+      position: new Vector3(
+        coreTranslation.x,
+        coreTranslation.y,
+        coreTranslation.z,
+      ),
+      radius: BlobConfig.visual.surfaceCoreRadius,
+    };
+    const attached = visualParts.filter(
+      ({ part }) => part.state !== "released",
+    );
+    const rootsTouchingMain = new Set<number>();
+    for (const candidate of released) {
+      if (
+        gelVisualsTouch(candidate, coreVisual) ||
+        attached.some((member) => gelVisualsTouch(candidate, member))
+      ) {
+        rootsTouchingMain.add(visualSets.find(candidate.part.index));
+      }
+    }
+
+    let mainSampleCount = 0;
+    mainSampleCount = writeGelSample(
+      this.gelSamples,
+      mainSampleCount,
+      coreVisual.position,
+      coreVisual.radius,
+    );
+    const fragmentGroups = new Map<number, GelVisualPart[]>();
+    for (const visual of visualParts) {
+      if (visual.part.state !== "released") {
+        visual.part.mesh.visible = false;
+        mainSampleCount = writeGelSample(
+          this.gelSamples,
+          mainSampleCount,
+          visual.position,
+          visual.radius,
+        );
+        continue;
+      }
+      const root = visualSets.find(visual.part.index);
+      if (rootsTouchingMain.has(root)) {
+        visual.part.mesh.visible = false;
+        mainSampleCount = writeGelSample(
+          this.gelSamples,
+          mainSampleCount,
+          visual.position,
+          visual.radius,
+        );
+        continue;
+      }
+      visual.part.mesh.visible = true;
+      const group = fragmentGroups.get(root) ?? [];
+      group.push(visual);
+      fragmentGroups.set(root, group);
+    }
+    this.gelSamples.length = mainSampleCount;
+    fitGelSurface(
+      this.gelSurface,
+      this.gelCenter,
+      this.gelSamples,
+      BlobConfig.visual.surfaceDomainSize,
+      coreVisual.position,
+    );
+
+    const continuousGroups = [...fragmentGroups.values()]
+      .filter((group) => group.length > 1)
+      .sort((a, b) => a[0].part.index - b[0].part.index);
+    for (const [index, group] of continuousGroups.entries()) {
+      const visual = this.getFragmentGelVisual(index);
+      let sampleCount = 0;
+      for (const member of group) {
+        member.part.mesh.visible = false;
+        sampleCount = writeGelSample(
+          visual.samples,
+          sampleCount,
+          member.position,
+          member.radius,
+        );
+      }
+      visual.samples.length = sampleCount;
+      updateFragmentGelMaterial(
+        visual.material,
+        group.map(({ part }) => part),
+      );
+      fitGelSurface(
+        visual.surface,
+        visual.center,
+        visual.samples,
+        BlobConfig.visual.fragmentSurfaceMinDomainSize,
       );
     }
-    this.gelSamples.length = sampleCount;
-
-    const corePosition = this.options.coreBody.translation();
-    this.gelCenter.set(corePosition.x, corePosition.y, corePosition.z);
-    this.gelSurface.update(this.gelCenter, this.gelSamples);
+    for (
+      let index = continuousGroups.length;
+      index < this.fragmentGelVisuals.length;
+      index += 1
+    ) {
+      this.fragmentGelVisuals[index].surface.object.visible = false;
+    }
   }
 
-  private writeGelSample(
-    index: number,
-    position: Vector3,
-    radius: number,
-  ): number {
-    const sample = this.gelSamples[index];
-    if (sample) {
-      sample.position.copy(position);
-      sample.radius = radius;
-    } else {
-      this.gelSamples.push({ position: position.clone(), radius });
+  private getFragmentGelVisual(index: number): FragmentGelVisual {
+    const existing = this.fragmentGelVisuals[index];
+    if (existing) return existing;
+
+    const visualConfig = BlobConfig.visual;
+    const material = createGelMaterial();
+    const surface = new DynamicBlobSurface(material, {
+      name: `${this.options.id}-gel-fragment-${index}`,
+      resolution: visualConfig.fragmentSurfaceResolution,
+      domainSize: visualConfig.fragmentSurfaceMinDomainSize,
+      maxPolyCount: visualConfig.fragmentSurfaceMaxPolyCount,
+    });
+    surface.object.castShadow = false;
+    surface.object.receiveShadow = true;
+    surface.object.renderOrder = 1;
+    const parent = this.options.visualGroup.parent;
+    if (parent) surface.attachTo(parent);
+    const visual = {
+      material,
+      surface,
+      samples: [],
+      center: new Vector3(),
+    };
+    this.fragmentGelVisuals.push(visual);
+    return visual;
+  }
+
+  private hideGelSurfaces(): void {
+    this.gelSurface.object.visible = false;
+    for (const visual of this.fragmentGelVisuals) {
+      visual.surface.object.visible = false;
     }
-    return index + 1;
   }
 
   private armCohesionFromImpact(
@@ -3337,6 +3482,120 @@ function createGelMaterial(): MeshPhysicalMaterial {
     thickness: 0.8,
     ior: 1.34,
   });
+}
+
+function gelVisualsTouch(
+  visualA: GelVisualPoint,
+  visualB: GelVisualPoint,
+): boolean {
+  const reach =
+    visualA.radius +
+    visualB.radius +
+    BlobConfig.visual.surfaceContactPadding;
+  return visualA.position.distanceToSquared(visualB.position) <= reach * reach;
+}
+
+function writeGelSample(
+  samples: DynamicBlobSample[],
+  index: number,
+  position: Vector3,
+  radius: number,
+): number {
+  const sample = samples[index];
+  if (sample) {
+    sample.position.copy(position);
+    sample.radius = radius;
+  } else {
+    samples.push({ position: position.clone(), radius });
+  }
+  return index + 1;
+}
+
+function fitGelSurface(
+  surface: DynamicBlobSurface,
+  center: Vector3,
+  samples: readonly DynamicBlobSample[],
+  minimumDomainSize: number,
+  fixedCenter?: Vector3,
+): void {
+  if (samples.length === 0) {
+    surface.object.visible = false;
+    return;
+  }
+  let minimumX = Number.POSITIVE_INFINITY;
+  let minimumY = Number.POSITIVE_INFINITY;
+  let minimumZ = Number.POSITIVE_INFINITY;
+  let maximumX = Number.NEGATIVE_INFINITY;
+  let maximumY = Number.NEGATIVE_INFINITY;
+  let maximumZ = Number.NEGATIVE_INFINITY;
+  for (const sample of samples) {
+    const reach =
+      sample.radius * BLOB_SUPPORT_FACTOR +
+      BlobConfig.visual.fragmentSurfacePadding;
+    minimumX = Math.min(minimumX, sample.position.x - reach);
+    minimumY = Math.min(minimumY, sample.position.y - reach);
+    minimumZ = Math.min(minimumZ, sample.position.z - reach);
+    maximumX = Math.max(maximumX, sample.position.x + reach);
+    maximumY = Math.max(maximumY, sample.position.y + reach);
+    maximumZ = Math.max(maximumZ, sample.position.z + reach);
+  }
+  if (fixedCenter) {
+    center.copy(fixedCenter);
+    let maximumHalfExtent = minimumDomainSize / 2;
+    for (const sample of samples) {
+      const reach =
+        sample.radius * BLOB_SUPPORT_FACTOR +
+        BlobConfig.visual.fragmentSurfacePadding;
+      maximumHalfExtent = Math.max(
+        maximumHalfExtent,
+        Math.abs(sample.position.x - center.x) + reach,
+        Math.abs(sample.position.y - center.y) + reach,
+        Math.abs(sample.position.z - center.z) + reach,
+      );
+    }
+    surface.setDomainSize(maximumHalfExtent * 2);
+  } else {
+    center.set(
+      (minimumX + maximumX) * 0.5,
+      (minimumY + maximumY) * 0.5,
+      (minimumZ + maximumZ) * 0.5,
+    );
+    surface.setDomainSize(
+      Math.max(
+        minimumDomainSize,
+        maximumX - minimumX,
+        maximumY - minimumY,
+        maximumZ - minimumZ,
+      ),
+    );
+  }
+  surface.update(center, samples);
+}
+
+function updateFragmentGelMaterial(
+  material: MeshPhysicalMaterial,
+  parts: readonly BlobArmorPart[],
+): void {
+  const averageWither =
+    parts.reduce((sum, part) => sum + partWitherVisualProgress(part), 0) /
+    Math.max(1, parts.length);
+  material.color.lerpColors(ARMOR_COLOR, WITHER_COLOR, averageWither);
+  material.roughness =
+    ARMOR_ROUGHNESS +
+    (BlobConfig.armor.detachedWitherRoughness - ARMOR_ROUGHNESS) *
+      averageWither;
+  material.metalness = ARMOR_METALNESS * (1 - averageWither);
+}
+
+function partWitherVisualProgress(part: BlobArmorPart): number {
+  const lifetime = Math.max(0, BlobConfig.armor.detachedLifetimeSeconds);
+  const duration = Math.max(
+    1e-4,
+    Math.min(lifetime, BlobConfig.armor.detachedWitherSeconds),
+  );
+  const start = Math.max(0, lifetime - duration);
+  const progress = clamp((part.detachedElapsed - start) / duration, 0, 1);
+  return progress * progress * (3 - 2 * progress);
 }
 
 function detachedVisualRadius(physicalRadius: number): number {
