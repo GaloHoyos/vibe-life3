@@ -2,7 +2,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import {
   Group,
   Mesh,
-  MeshStandardMaterial,
+  MeshPhysicalMaterial,
   Quaternion,
   Scene,
   Vector3,
@@ -95,9 +95,22 @@ describe("BlobArmorAnimator", () => {
 
     expect(harness.coreBody.mass()).toBeCloseTo(BlobConfig.core.mass, 4);
     expect(harness.physics.getBodyCount()).toBe(BlobConfig.armor.count + 1);
-    expect(harness.scene.children).toHaveLength(BlobConfig.armor.count + 1);
+    expect(harness.scene.children).toHaveLength(BlobConfig.armor.count + 2);
     expect(new Set(snapshot.bodyHandles).size).toBe(BlobConfig.armor.count);
     expect(armor).toHaveLength(BlobConfig.armor.count);
+
+    const surface = harness.scene.getObjectByName(
+      `${harness.id}-gel-surface`,
+    );
+    expect(surface).toBeInstanceOf(Mesh);
+    if (!(surface instanceof Mesh)) {
+      throw new Error("Superficie continua del blob no encontrada");
+    }
+    expect(surface.material).toBeInstanceOf(MeshPhysicalMaterial);
+    expect(surface.visible).toBe(true);
+    expect(blobMesh(harness, 0).visible).toBe(false);
+    expect((surface.material as MeshPhysicalMaterial).transparent).toBe(true);
+    expect((surface.material as MeshPhysicalMaterial).opacity).toBeLessThan(1);
 
     let coreJoints = 0;
     let gelJoints = 0;
@@ -181,7 +194,7 @@ describe("BlobArmorAnimator", () => {
     expect(grown.layers).toHaveLength(BlobConfig.armor.count + 7);
     expect(armor).toHaveLength(BlobConfig.armor.count + 7);
     expect(harness.physics.getBodyCount()).toBe(BlobConfig.armor.count + 8);
-    expect(harness.scene.children).toHaveLength(BlobConfig.armor.count + 8);
+    expect(harness.scene.children).toHaveLength(BlobConfig.armor.count + 9);
     expect(
       grown.bodyHandles.filter((handle) => !initialHandles.has(handle)),
     ).toHaveLength(7);
@@ -1274,6 +1287,7 @@ describe("BlobArmorAnimator", () => {
     const yielding = harness.animator.getDebugSnapshot();
     expect(yielding.attachedIndices).toContain(targetIndex);
     expect(yielding.attachedCount).toBe(BlobConfig.armor.count);
+    expect(blobMesh(harness, targetIndex).visible).toBe(false);
     expect(yielding.coreJointCount).toBe(BlobConfig.armor.coreAnchorCount);
     expect(currentMetadata(harness, target).kind).toBe("npc");
     expect(target.metadata.damageable!.isAlive()).toBe(true);
@@ -1302,6 +1316,26 @@ describe("BlobArmorAnimator", () => {
     const released = harness.animator.getDebugSnapshot();
     expect(released.attachedIndices).not.toContain(targetIndex);
     expect(released.attachedCount).toBe(BlobConfig.armor.count - 1);
+    const releasedMesh = blobMesh(harness, targetIndex);
+    const surface = harness.scene.getObjectByName(
+      `${harness.id}-gel-surface`,
+    );
+    expect(releasedMesh.visible).toBe(true);
+    expect(surface).toBeInstanceOf(Mesh);
+    if (!(surface instanceof Mesh)) {
+      throw new Error("Superficie continua del blob no encontrada");
+    }
+    expect(releasedMesh.material.color.getHex()).toBe(
+      (surface.material as MeshPhysicalMaterial).color.getHex(),
+    );
+    expect(releasedMesh.material.opacity).toBeCloseTo(
+      (surface.material as MeshPhysicalMaterial).opacity,
+      6,
+    );
+    expect(releasedMesh.scale.x).toBeCloseTo(
+      ballRadius(target.collider) * BlobConfig.visual.surfaceNodeRadiusScale,
+      6,
+    );
     expect(
       released.cohesionPairs.some(
         ([from, to]) => from === targetIndex || to === targetIndex,
@@ -1613,6 +1647,8 @@ describe("BlobArmorAnimator", () => {
     ).toBe(true);
     expect(currentMetadata(harness, first).kind).toBe("npc");
     expect(currentMetadata(harness, second).kind).toBe("npc");
+    expect(blobMesh(harness, firstIndex).visible).toBe(false);
+    expect(blobMesh(harness, secondIndex).visible).toBe(false);
     expectMainGraphConsistent(restored);
 
     harness.dispose();
@@ -1996,6 +2032,10 @@ describe("BlobArmorAnimator", () => {
 
     harness.animator.notifyDeath();
     grab.release();
+    expect(
+      harness.scene.getObjectByName(`${harness.id}-gel-surface`)?.visible,
+    ).toBe(false);
+    expect(blobMesh(harness, 0).visible).toBe(true);
     expect(harness.animator.getDebugSnapshot()).toMatchObject({
       attachedCount: 0,
       coreJointCount: 0,
@@ -2107,7 +2147,7 @@ async function createHarness(options: {
     navigation: options.navigation,
     navigationRequests: options.navigationRequests,
   });
-  animator.updateFromMotor(animationFrame(0));
+  animator.updateFromMotor(animationFrame(0, true));
 
   const disposeCore = () => {
     if (coreBody.isValid()) physics.removeBody(coreBody);
@@ -2718,11 +2758,11 @@ function recordsCenter(records: ArmorRecord[]): Vector3 {
 function blobMesh(
   harness: BlobHarness,
   index: number,
-): Mesh<BufferGeometry, MeshStandardMaterial> {
+): Mesh<BufferGeometry, MeshPhysicalMaterial> {
   const object = harness.scene.getObjectByName(`${harness.id}-blob-${index}`);
   if (
     !(object instanceof Mesh) ||
-    !(object.material instanceof MeshStandardMaterial)
+    !(object.material instanceof MeshPhysicalMaterial)
   ) {
     throw new Error(`Mesh del blob ${index} no encontrado`);
   }
@@ -2754,7 +2794,7 @@ function armorIndex(metadata: PhysicsMetadata): number {
   return Number(metadata.bodyPart?.name.split("-").at(-1));
 }
 
-function animationFrame(delta: number): AnimationFrame {
+function animationFrame(delta: number, visible = false): AnimationFrame {
   const snapshot: CharacterMotorSnapshot = {
     position: new Vector3(),
     velocity: new Vector3(),
@@ -2770,6 +2810,7 @@ function animationFrame(delta: number): AnimationFrame {
     lookTarget: new Vector3(),
     balanceIsStumbling: false,
     delta,
+    visible,
   };
 }
 

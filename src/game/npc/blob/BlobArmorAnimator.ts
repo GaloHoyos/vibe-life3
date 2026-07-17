@@ -2,13 +2,17 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import {
   Color,
   Mesh,
-  MeshStandardMaterial,
+  MeshPhysicalMaterial,
   Quaternion,
   SphereGeometry,
   Vector3,
   type Group,
 } from "three";
 import type { Faction } from "@engine/ai/Faction";
+import {
+  DynamicBlobSurface,
+  type DynamicBlobSample,
+} from "@engine/blob/DynamicBlobSurface";
 import type { NavigationService } from "@engine/ai/navigation/NavigationService";
 import type { NavigationRequestQueue } from "@engine/ai/navigation/NavigationRequestQueue";
 import {
@@ -34,7 +38,7 @@ interface BlobArmorPart {
   layer: number;
   coreAnchorEligible: boolean;
   radius: number;
-  mesh: Mesh<SphereGeometry, MeshStandardMaterial>;
+  mesh: Mesh<SphereGeometry, MeshPhysicalMaterial>;
   body: RAPIER.RigidBody;
   collider: RAPIER.Collider;
   damageable: Damageable;
@@ -133,9 +137,9 @@ export interface BlobArmorDebugSnapshot {
 }
 
 const ZERO_ANCHOR = { x: 0, y: 0, z: 0 } as const;
-const ARMOR_COLOR = new Color(0x55bfc2);
-const ARMOR_ROUGHNESS = 0.24;
-const ARMOR_METALNESS = 0.04;
+const ARMOR_COLOR = new Color(BlobConfig.visual.surfaceColor);
+const ARMOR_ROUGHNESS = 0.18;
+const ARMOR_METALNESS = 0;
 const WITHER_COLOR = new Color(BlobConfig.armor.detachedWitherColor);
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const BLOB_CHARACTER_CONTACT = {
@@ -149,13 +153,17 @@ const BLOB_CHARACTER_CONTACT = {
 } as const;
 
 /**
- * Physical shell for the Blob NPC. Every visible sphere owns a real dynamic
- * body. Core springs hold the shell; weaker neighbor springs let an impacted
- * part resist, tear nearby parts away, and leave breakable passive fragments.
+ * Physical shell for the Blob NPC. Hidden dynamic nodes drive one continuous
+ * metaball skin. Core springs hold the shell; weaker neighbor springs let an
+ * impacted part resist, tear nearby parts away, and leave physical droplets.
  */
 export class BlobArmorAnimator implements NpcAnimator {
   private readonly geometry = new SphereGeometry(1, 18, 14);
-  private readonly materials = new Set<MeshStandardMaterial>();
+  private readonly gelMaterial: MeshPhysicalMaterial;
+  private readonly gelSurface: DynamicBlobSurface;
+  private readonly gelSamples: DynamicBlobSample[] = [];
+  private readonly gelCenter = new Vector3();
+  private readonly materials = new Set<MeshPhysicalMaterial>();
   private readonly parts: BlobArmorPart[] = [];
   private nextPartIndex = 0;
   private readonly raycast: Raycast;
@@ -200,6 +208,17 @@ export class BlobArmorAnimator implements NpcAnimator {
   private disposed = false;
 
   constructor(private readonly options: BlobArmorAnimatorOptions) {
+    const visual = BlobConfig.visual;
+    this.gelMaterial = createGelMaterial();
+    this.gelSurface = new DynamicBlobSurface(this.gelMaterial, {
+      name: `${options.id}-gel-surface`,
+      resolution: visual.surfaceResolution,
+      domainSize: visual.surfaceDomainSize,
+      maxPolyCount: visual.surfaceMaxPolyCount,
+    });
+    this.gelSurface.object.castShadow = false;
+    this.gelSurface.object.receiveShadow = true;
+    this.gelSurface.object.renderOrder = 1;
     this.raycast = new Raycast(options.physics);
     this.chunkNavigator =
       options.navigation && options.navigationRequests
@@ -227,13 +246,18 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.updateShapeHealing(frame.delta);
     this.syncGravityScales();
     this.closeImpactWave();
+    if (frame.visible !== false) this.updateGelSurface();
   }
 
   updateStandalone(delta: number, opts: { dead?: boolean } = {}): void {
     if (this.disposed) return;
     this.ensureMeshesInScene();
     if (opts.dead && !this.dead) this.notifyDeath();
-    if (this.dead) this.updateReleasedLifetime(delta);
+    if (this.dead) {
+      this.updateReleasedLifetime(delta);
+    } else if (this.enabled) {
+      this.updateGelSurface();
+    }
   }
 
   notifyDeath(): void {
@@ -242,6 +266,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     if (this.options.coreBody.isValid()) {
       this.options.coreBody.setGravityScale(1, true);
     }
+    this.gelSurface.object.visible = false;
     this.releaseAll();
   }
 
@@ -373,6 +398,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     if (this.options.coreBody.isValid()) {
       this.options.coreBody.setGravityScale(1, true);
     }
+    this.gelSurface.object.visible = false;
     this.releaseAll();
   }
 
@@ -399,6 +425,9 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.feedingPartIndices.clear();
     this.feedingAssignments.clear();
     this.feedingCoreAssignments.clear();
+    this.gelSamples.length = 0;
+    this.gelSurface.dispose();
+    this.gelMaterial.dispose();
     this.geometry.dispose();
     for (const material of this.materials) material.dispose();
     this.materials.clear();
@@ -483,18 +512,15 @@ export class BlobArmorAnimator implements NpcAnimator {
     const config = BlobConfig.armor;
     const anchor = placement.anchor;
     const radius = radiusForIndex(index, config.minRadius, config.maxRadius);
-    const material = new MeshStandardMaterial({
-      color: ARMOR_COLOR,
-      roughness: ARMOR_ROUGHNESS,
-      metalness: ARMOR_METALNESS,
-    });
+    const material = createGelMaterial();
     this.materials.add(material);
     const mesh = new Mesh(this.geometry, material);
     mesh.name = `${this.options.id}-blob-${index}`;
-    mesh.castShadow = true;
+    mesh.castShadow = false;
     mesh.receiveShadow = true;
-    mesh.scale.setScalar(radius);
+    mesh.scale.setScalar(detachedVisualRadius(radius));
     mesh.position.copy(position);
+    mesh.visible = false;
 
     let part!: BlobArmorPart;
     const damageable: Damageable = {
@@ -701,6 +727,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     if (this.meshesAttachedToScene) return;
     const parent = this.options.visualGroup.parent;
     if (!parent) return;
+    this.gelSurface.attachTo(parent);
     for (const part of this.parts) {
       parent.add(part.mesh);
     }
@@ -829,6 +856,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     const firstRelease = part.state !== "released";
     this.removeCoreJoint(part);
     part.state = "released";
+    part.mesh.visible = true;
     if (firstRelease) {
       part.detachedElapsed = 0;
       this.restorePartVitalityVisual(part);
@@ -1069,7 +1097,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     const eased = progress * progress * (3 - 2 * progress);
     const minimumScale = BlobConfig.armor.detachedWitherMinimumScale;
     const visualScale = 1 - (1 - minimumScale) * eased;
-    part.mesh.scale.setScalar(part.radius * visualScale);
+    part.mesh.scale.setScalar(detachedVisualRadius(part.radius) * visualScale);
     part.mesh.material.color.lerpColors(ARMOR_COLOR, WITHER_COLOR, eased);
     part.mesh.material.roughness =
       ARMOR_ROUGHNESS +
@@ -1078,7 +1106,7 @@ export class BlobArmorAnimator implements NpcAnimator {
   }
 
   private restorePartVitalityVisual(part: BlobArmorPart): void {
-    part.mesh.scale.setScalar(part.radius);
+    part.mesh.scale.setScalar(detachedVisualRadius(part.radius));
     part.mesh.material.color.copy(ARMOR_COLOR);
     part.mesh.material.roughness = ARMOR_ROUGHNESS;
     part.mesh.material.metalness = ARMOR_METALNESS;
@@ -2895,6 +2923,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     const members = new Set(component);
     for (const part of component) {
       part.state = "attached";
+      part.mesh.visible = false;
       part.detachedElapsed = 0;
       part.resistanceFramesRemaining = 0;
       part.cohesionWaveId = null;
@@ -3017,6 +3046,53 @@ export class BlobArmorAnimator implements NpcAnimator {
         part.body.setGravityScale(target, true);
       }
     }
+  }
+
+  private updateGelSurface(): void {
+    if (!this.options.coreBody.isValid()) {
+      this.gelSurface.object.visible = false;
+      return;
+    }
+    const translation = this.options.coreBody.translation();
+    this.gelCenter.set(translation.x, translation.y, translation.z);
+    this.gelSurface.setCenter(this.gelCenter);
+
+    let sampleCount = 0;
+    sampleCount = this.writeGelSample(
+      sampleCount,
+      this.gelCenter,
+      BlobConfig.visual.surfaceCoreRadius,
+    );
+    for (const part of this.parts) {
+      if (part.state === "released" || !part.body.isValid()) continue;
+      const position = part.body.translation();
+      this.gelCenter.set(position.x, position.y, position.z);
+      sampleCount = this.writeGelSample(
+        sampleCount,
+        this.gelCenter,
+        part.radius * BlobConfig.visual.surfaceNodeRadiusScale,
+      );
+    }
+    this.gelSamples.length = sampleCount;
+
+    const corePosition = this.options.coreBody.translation();
+    this.gelCenter.set(corePosition.x, corePosition.y, corePosition.z);
+    this.gelSurface.update(this.gelCenter, this.gelSamples);
+  }
+
+  private writeGelSample(
+    index: number,
+    position: Vector3,
+    radius: number,
+  ): number {
+    const sample = this.gelSamples[index];
+    if (sample) {
+      sample.position.copy(position);
+      sample.radius = radius;
+    } else {
+      this.gelSamples.push({ position: position.clone(), radius });
+    }
+    return index + 1;
   }
 
   private armCohesionFromImpact(
@@ -3244,6 +3320,27 @@ export class BlobArmorAnimator implements NpcAnimator {
       this.reflowActive = false;
     }
   }
+}
+
+function createGelMaterial(): MeshPhysicalMaterial {
+  const visual = BlobConfig.visual;
+  return new MeshPhysicalMaterial({
+    color: visual.surfaceColor,
+    transparent: true,
+    opacity: visual.surfaceOpacity,
+    depthWrite: false,
+    roughness: ARMOR_ROUGHNESS,
+    metalness: ARMOR_METALNESS,
+    clearcoat: 1,
+    clearcoatRoughness: 0.14,
+    transmission: 0.12,
+    thickness: 0.8,
+    ior: 1.34,
+  });
+}
+
+function detachedVisualRadius(physicalRadius: number): number {
+  return physicalRadius * BlobConfig.visual.surfaceNodeRadiusScale;
 }
 
 function feedingBridgeSlots(

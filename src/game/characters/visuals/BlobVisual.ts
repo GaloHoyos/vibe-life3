@@ -7,17 +7,17 @@ import {
 } from "three";
 import { BlobConfig } from "@game/config/blob.config";
 
-/** Visual procedural opaco del cerebro central; la armadura vive fuera de este root. */
+/** Emissive core visible through the organism's translucent skin. */
 export function createBlobCoreVisual(): Object3D {
   const root = new Group();
   root.name = "blob-core";
 
   const material = new MeshStandardMaterial({
-    color: 0xc62d68,
-    emissive: 0x3d071d,
-    emissiveIntensity: 0.4,
-    roughness: 0.52,
-    metalness: 0.02,
+    color: 0xff7550,
+    emissive: 0xff2f18,
+    emissiveIntensity: 1.35,
+    roughness: 0.38,
+    metalness: 0,
   });
   const core = new Mesh(
     new SphereGeometry(BlobConfig.core.radius, 32, 20),

@@ -22,6 +22,16 @@ export const BlobConfig = {
     verticalDamping: 9,
     pushAcceleration: 11,
   },
+  visual: {
+    /** Local metaball skin that wraps the hidden physical nodes. */
+    surfaceResolution: 36,
+    surfaceDomainSize: 5.2,
+    surfaceMaxPolyCount: 30000,
+    surfaceNodeRadiusScale: 2.25,
+    surfaceCoreRadius: 0.72,
+    surfaceColor: 0xa7c5bd,
+    surfaceOpacity: 0.46,
+  },
   armor: {
     /** Volumen multicapa: 6 nodos internos, 12 medios y 18 externos. */
     count: 36,
