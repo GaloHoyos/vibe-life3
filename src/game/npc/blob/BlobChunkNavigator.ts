@@ -24,6 +24,8 @@ interface BlobChunkNavigationState {
   lastCenter: Vector3 | null;
   stuckElapsed: number;
   paused: boolean;
+  recoveryRemaining: number;
+  recoverySide: 1 | -1;
 }
 
 interface BlobChunkNavigatorOptions {
@@ -40,6 +42,9 @@ interface BlobChunkNavigatorOptions {
  */
 export class BlobChunkNavigator {
   private readonly states = new Map<string, BlobChunkNavigationState>();
+  private readonly lastGoal = new Vector3();
+  private readonly goalVelocity = new Vector3();
+  private hasGoalSample = false;
 
   constructor(private readonly options: BlobChunkNavigatorOptions) {}
 
@@ -50,6 +55,7 @@ export class BlobChunkNavigator {
   ): void {
     const elapsed = finiteNavigationElapsed(delta);
     if (elapsed <= 0) return;
+    this.updateGoalVelocity(elapsed, rawGoal);
 
     const activeSignatures = new Set<string>();
     for (const source of components) {
@@ -70,10 +76,16 @@ export class BlobChunkNavigator {
           lastCenter: null,
           stuckElapsed: 0,
           paused: false,
+          recoveryRemaining: 0,
+          recoverySide: members[0].index % 2 === 0 ? 1 : -1,
         };
         this.states.set(signature, state);
       }
       state.retryRemaining = Math.max(0, state.retryRemaining - elapsed);
+      state.recoveryRemaining = Math.max(
+        0,
+        state.recoveryRemaining - elapsed,
+      );
 
       const motion = componentMotion(members);
       if (!motion) continue;
@@ -104,8 +116,15 @@ export class BlobChunkNavigator {
         this.invalidatePath(state);
         this.resetProgress(state, motion.center);
       }
-      this.refreshPath(signature, state, motion.center, rawGoal);
-      const following = this.followPath(state, members, motion, elapsed);
+      const pursuitGoal = this.predictPursuitGoal(motion.center, rawGoal);
+      this.refreshPath(signature, state, motion.center, pursuitGoal);
+      const following = this.followPath(
+        state,
+        members,
+        motion,
+        rawGoal,
+        elapsed,
+      );
       this.updateProgress(state, motion.center, following, elapsed);
     }
 
@@ -121,10 +140,52 @@ export class BlobChunkNavigator {
       this.options.requests.cancel(state.ownerId);
     }
     this.states.clear();
+    this.hasGoalSample = false;
+    this.goalVelocity.set(0, 0, 0);
   }
 
   dispose(): void {
     this.clear();
+  }
+
+  private updateGoalVelocity(elapsed: number, rawGoal: Vector3): void {
+    const config = BlobConfig.armor;
+    if (!this.hasGoalSample) {
+      this.lastGoal.copy(rawGoal);
+      this.goalVelocity.set(0, 0, 0);
+      this.hasGoalSample = true;
+      return;
+    }
+
+    const displacement = rawGoal.clone().sub(this.lastGoal);
+    displacement.y = 0;
+    if (displacement.length() >= config.chunkNavigationGoalTeleportDistance) {
+      this.goalVelocity.set(0, 0, 0);
+    } else {
+      displacement.multiplyScalar(1 / elapsed);
+      const response = 1 - Math.exp(
+        -config.chunkNavigationGoalVelocityResponse * elapsed,
+      );
+      this.goalVelocity.lerp(displacement, response);
+      this.goalVelocity.y = 0;
+    }
+    this.lastGoal.copy(rawGoal);
+  }
+
+  private predictPursuitGoal(center: Vector3, rawGoal: Vector3): Vector3 {
+    const config = BlobConfig.armor;
+    const distance = planarDistance(center, rawGoal);
+    const leadSeconds = Math.min(
+      config.chunkNavigationPredictionMaxSeconds,
+      (distance / Math.max(0.1, config.chunkNavigationCatchupMaxSpeed)) *
+        config.chunkNavigationPredictionScale,
+    );
+    const lead = this.goalVelocity.clone().multiplyScalar(leadSeconds);
+    const maximumLead = config.chunkNavigationPredictionMaxDistance;
+    if (lead.lengthSq() > maximumLead * maximumLead) {
+      lead.setLength(maximumLead);
+    }
+    return rawGoal.clone().add(lead);
   }
 
   private refreshPath(
@@ -174,7 +235,7 @@ export class BlobChunkNavigator {
       profile: NavigationProfiles.blobFragment,
       from,
       to: goal,
-      priority: 0,
+      priority: config.chunkNavigationRequestPriority,
       onResolve: (path) => {
         const current = this.states.get(signature);
         if (current !== state || state.requestSerial !== requestSerial) return;
@@ -191,6 +252,7 @@ export class BlobChunkNavigator {
     state: BlobChunkNavigationState,
     members: readonly BlobChunkNavigationMember[],
     motion: ComponentMotion,
+    rawGoal: Vector3,
     elapsed: number,
   ): boolean {
     const path = state.path;
@@ -216,14 +278,57 @@ export class BlobChunkNavigator {
     );
     const distance = desiredVelocity.length();
     if (distance <= 1e-5) return false;
-    const desiredSpeed = Math.min(
+    const goalDistance = planarDistance(motion.center, rawGoal);
+    const catchup = inverseLerp(
+      config.chunkNavigationCatchupStartDistance,
+      config.chunkNavigationCatchupFullDistance,
+      goalDistance,
+    );
+    const maximumSpeed = lerp(
       config.chunkNavigationMaxSpeed,
+      config.chunkNavigationCatchupMaxSpeed,
+      catchup,
+    );
+    const speedControlDistance = Math.max(
+      distance,
+      goalDistance * config.chunkNavigationGoalSpeedInfluence,
+    );
+    const forwardX = desiredVelocity.x / distance;
+    const forwardZ = desiredVelocity.z / distance;
+    const pursuitSpeed =
+      Math.max(
+        0,
+        this.goalVelocity.x * forwardX + this.goalVelocity.z * forwardZ,
+      ) * config.chunkNavigationGoalVelocityInfluence +
+      config.chunkNavigationClosingSpeed;
+    const desiredSpeed = Math.min(
+      maximumSpeed,
       Math.max(
         config.chunkNavigationMinimumSpeed,
-        distance * config.chunkNavigationPositionGain,
+        speedControlDistance * config.chunkNavigationPositionGain,
+        pursuitSpeed,
       ),
     );
-    desiredVelocity.multiplyScalar(desiredSpeed / distance);
+    if (state.recoveryRemaining > 0) {
+      desiredVelocity.set(
+        forwardX * desiredSpeed * config.chunkNavigationRecoveryForwardScale -
+          forwardZ *
+            state.recoverySide *
+            maximumSpeed *
+            config.chunkNavigationRecoveryLateralScale,
+        0,
+        forwardZ * desiredSpeed * config.chunkNavigationRecoveryForwardScale +
+          forwardX *
+            state.recoverySide *
+            maximumSpeed *
+            config.chunkNavigationRecoveryLateralScale,
+      );
+      if (desiredVelocity.lengthSq() > maximumSpeed * maximumSpeed) {
+        desiredVelocity.setLength(maximumSpeed);
+      }
+    } else {
+      desiredVelocity.multiplyScalar(desiredSpeed / distance);
+    }
     const velocityDelta = desiredVelocity.sub(motion.averageVelocity);
     velocityDelta.y = 0;
     const maxDelta = config.chunkNavigationAcceleration * elapsed;
@@ -259,10 +364,12 @@ export class BlobChunkNavigator {
         state.stuckElapsed = Math.max(0, state.stuckElapsed - elapsed * 2);
       }
       if (state.stuckElapsed >= config.chunkNavigationStuckSeconds) {
-        // El navmesh puede haber cambiado o el racimo puede ser más ancho que
-        // el clearance nominal. Reconsultar desde el COM actual evita empujar
-        // indefinidamente contra el mismo obstáculo físico.
-        this.invalidatePath(state);
+        state.recoverySide = state.recoverySide === 1 ? -1 : 1;
+        state.recoveryRemaining = config.chunkNavigationRecoverySeconds;
+        // Un replan desde el mismo punto suele devolver el mismo corredor. El
+        // sesgo lateral de recovery desplaza primero el COM físico y hace que
+        // la consulta siguiente tenga una alternativa real.
+        this.invalidatePath(state, true);
       }
       state.lastCenter.copy(center);
     } else {
@@ -279,7 +386,10 @@ export class BlobChunkNavigator {
     else state.lastCenter = center.clone();
   }
 
-  private invalidatePath(state: BlobChunkNavigationState): void {
+  private invalidatePath(
+    state: BlobChunkNavigationState,
+    preserveRecovery = false,
+  ): void {
     this.options.requests.cancel(state.ownerId);
     state.requestSerial += 1;
     state.pending = false;
@@ -288,6 +398,9 @@ export class BlobChunkNavigator {
     state.retryRemaining = 0;
     state.goalAtPlan = null;
     state.stuckElapsed = 0;
+    if (!preserveRecovery) {
+      state.recoveryRemaining = 0;
+    }
   }
 }
 
@@ -334,6 +447,15 @@ function navigationComponentSignature(
 
 function planarDistance(a: Vector3, b: Vector3): number {
   return Math.hypot(a.x - b.x, a.z - b.z);
+}
+
+function inverseLerp(minimum: number, maximum: number, value: number): number {
+  if (maximum <= minimum) return value >= maximum ? 1 : 0;
+  return Math.max(0, Math.min(1, (value - minimum) / (maximum - minimum)));
+}
+
+function lerp(from: number, to: number, amount: number): number {
+  return from + (to - from) * amount;
 }
 
 function finiteNavigationElapsed(delta: number): number {

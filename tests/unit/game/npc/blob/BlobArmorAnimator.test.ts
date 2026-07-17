@@ -3,6 +3,7 @@ import {
   Group,
   Mesh,
   MeshPhysicalMaterial,
+  MeshStandardMaterial,
   Quaternion,
   Scene,
   Vector3,
@@ -21,6 +22,7 @@ import {
 import { Raycast } from "@engine/physics/Raycast";
 import { PhysicsGrabController } from "@engine/physics/grab/PhysicsGrabController";
 import type { CharacterMotorSnapshot } from "@engine/physics/character/CharacterMotor";
+import { createBlobCoreVisual } from "@game/characters/visuals/BlobVisual";
 import { BlobConfig } from "@game/config/blob.config";
 import { GravityGunConfig } from "@game/config/gravitygun.config";
 import { WeaponDefinitions } from "@game/config/weapons.config";
@@ -859,7 +861,7 @@ describe("BlobArmorAnimator", () => {
     harness.dispose();
   });
 
-  it("vuelve a pedir una ruta si el racimo queda trabado", async () => {
+  it("se despega lateralmente y vuelve a pedir ruta si queda trabado", async () => {
     const route = deferredChunkRoute({ direct: true });
     const harness = await createHarness({
       navigation: route.navigation,
@@ -905,13 +907,19 @@ describe("BlobArmorAnimator", () => {
       BlobConfig.armor.reassemblyDelaySeconds + 0.1,
     );
 
+    let maximumLateralDisplacement = 0;
     for (let frame = 0; frame < 300; frame += 1) {
       route.processOne();
       harness.animator.updateFromMotor(animationFrame(1 / 60));
       harness.physics.step(1 / 60);
+      maximumLateralDisplacement = Math.max(
+        maximumLateralDisplacement,
+        Math.abs(record.body.translation().z),
+      );
     }
 
     expect(route.enqueued).toBeGreaterThan(1);
+    expect(maximumLateralDisplacement).toBeGreaterThan(1);
     expect(record.body.translation().x).toBeGreaterThan(2.2);
     expect(currentMetadata(harness, record).kind).toBe("dynamic");
 
@@ -2080,7 +2088,75 @@ describe("BlobArmorAnimator", () => {
     harness.dispose();
   });
 
-  it("la muerte libera la red completa y dispose elimina cuerpos, bindings, joints y meshes", async () => {
+  it("marchita con fuerza la biomasa muerta y apaga especialmente el core", async () => {
+    const harness = await createHarness();
+    harness.physics.world.gravity = { x: 0, y: 0, z: 0 };
+    const core = blobCoreMesh(harness);
+    const shell = blobMesh(harness, 0);
+    const coreScale = core.scale.x;
+    const shellScale = shell.scale.x;
+
+    harness.animator.notifyDeath();
+    const duration = Math.max(
+      BlobConfig.armor.deathWitherSeconds,
+      BlobConfig.visual.coreDeathWitherSeconds,
+    ) + BlobConfig.visual.deathSurfaceUpdateInterval;
+    const steps = Math.ceil(duration * 20);
+    for (let step = 0; step < steps; step += 1) {
+      harness.animator.updateStandalone(1 / 20, { dead: true });
+    }
+    const surface = harness.scene.getObjectByName(
+      `${harness.id}-gel-fragment-0`,
+    );
+    expect(surface).toBeInstanceOf(Mesh);
+    if (
+      !(surface instanceof Mesh) ||
+      !(surface.material instanceof MeshPhysicalMaterial)
+    ) {
+      throw new Error("Superficie continua del cadaver no encontrada");
+    }
+
+    expect(shell.scale.x).toBeCloseTo(
+      shellScale * BlobConfig.armor.deathWitherMinimumScale,
+      5,
+    );
+    expect(shell.material.color.getHex()).toBe(
+      BlobConfig.armor.deathWitherColor,
+    );
+    expect(shell.material.roughness).toBeCloseTo(
+      BlobConfig.armor.deathWitherRoughness,
+      5,
+    );
+    expect(surface.material.color.getHex()).toBe(
+      BlobConfig.armor.deathWitherColor,
+    );
+    expect(surface.material.opacity).toBeCloseTo(
+      BlobConfig.visual.deathSurfaceOpacity,
+      5,
+    );
+    expect(core.scale.x).toBeCloseTo(
+      coreScale * BlobConfig.visual.coreDeathMinimumScale,
+      5,
+    );
+    expect(core.material.color.getHex()).toBe(
+      BlobConfig.visual.coreDeathColor,
+    );
+    expect(core.material.emissive.getHex()).toBe(
+      BlobConfig.visual.coreDeathEmissiveColor,
+    );
+    expect(core.material.emissiveIntensity).toBeCloseTo(
+      BlobConfig.visual.coreDeathEmissiveIntensity,
+      5,
+    );
+    expect(core.material.roughness).toBeCloseTo(
+      BlobConfig.visual.coreDeathRoughness,
+      5,
+    );
+
+    harness.dispose();
+  });
+
+  it("la muerte conserva islas uniformes por cercania y libera toda la red", async () => {
     const harness = await createHarness();
     const armor = armorRecords(harness.physics);
     const shellBodies = armor.map((record) => record.body);
@@ -2098,7 +2174,10 @@ describe("BlobArmorAnimator", () => {
     expect(
       harness.scene.getObjectByName(`${harness.id}-gel-surface`)?.visible,
     ).toBe(false);
-    expect(blobMesh(harness, 0).visible).toBe(true);
+    expect(
+      harness.scene.getObjectByName(`${harness.id}-gel-fragment-0`)?.visible,
+    ).toBe(true);
+    expect(blobMesh(harness, 0).visible).toBe(false);
     expect(harness.animator.getDebugSnapshot()).toMatchObject({
       attachedCount: 0,
       coreJointCount: 0,
@@ -2114,6 +2193,27 @@ describe("BlobArmorAnimator", () => {
         (collider) => harness.physics.getColliderMetadata(collider)?.kind === "dynamic",
       ),
     ).toBe(true);
+
+    const firstMesh = blobMesh(harness, 0);
+    const secondMesh = blobMesh(harness, 1);
+    const visualContactDistance =
+      firstMesh.scale.x +
+      secondMesh.scale.x +
+      BlobConfig.visual.surfaceContactPadding * 0.5;
+    placeBody(shellBodies[0], new Vector3(8, 6, 0));
+    placeBody(
+      shellBodies[1],
+      new Vector3(8 + visualContactDistance, 6, 0),
+    );
+    harness.animator.updateStandalone(1 / 20, { dead: true });
+    harness.animator.updateStandalone(1 / 20, { dead: true });
+    const fragmentSurface = harness.scene.getObjectByName(
+      `${harness.id}-gel-fragment-0`,
+    );
+    expect(fragmentSurface).toBeInstanceOf(Mesh);
+    expect(fragmentSurface?.visible).toBe(true);
+    expect(firstMesh.visible).toBe(false);
+    expect(secondMesh.visible).toBe(false);
 
     placeBody(
       shellBodies[0],
@@ -2198,6 +2298,7 @@ async function createHarness(options: {
 
   const scene = new Scene();
   const visualGroup = new Group();
+  visualGroup.add(createBlobCoreVisual());
   scene.add(visualGroup);
   const animator = new BlobArmorAnimator({
     id,
@@ -2828,6 +2929,19 @@ function blobMesh(
     !(object.material instanceof MeshPhysicalMaterial)
   ) {
     throw new Error(`Mesh del blob ${index} no encontrado`);
+  }
+  return object;
+}
+
+function blobCoreMesh(
+  harness: BlobHarness,
+): Mesh<BufferGeometry, MeshStandardMaterial> {
+  const object = harness.visualGroup.getObjectByName("blob-core-brain");
+  if (
+    !(object instanceof Mesh) ||
+    !(object.material instanceof MeshStandardMaterial)
+  ) {
+    throw new Error("Core visual del blob no encontrado");
   }
   return object;
 }

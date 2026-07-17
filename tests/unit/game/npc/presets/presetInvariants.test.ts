@@ -51,8 +51,24 @@ describe("preset invariants", () => {
     expect(blob.movement.acceleration).toBeGreaterThan(
       combine.movement.acceleration,
     );
+    expect(blob.movement.goalReachRadius).toBeLessThan(
+      BlobConfig.predator.coreEmbraceDistance +
+        BlobConfig.predator.embraceContactPadding,
+    );
     expect(BlobConfig.predator.detectionRange).toBeGreaterThanOrEqual(32);
     expect(BlobConfig.predator.embraceRampSeconds).toBeLessThanOrEqual(1);
+  });
+
+  it("reserva a los chunks un burst temporal para alcanzar al cuerpo", () => {
+    expect(BlobConfig.armor.chunkNavigationMaxSpeed).toBeGreaterThan(
+      BlobConfig.predator.moveSpeed,
+    );
+    expect(BlobConfig.armor.chunkNavigationCatchupMaxSpeed).toBeGreaterThan(
+      BlobConfig.predator.moveSpeed,
+    );
+    expect(NavigationProfiles.blobFragment.maxSpeed).toBe(
+      BlobConfig.armor.chunkNavigationCatchupMaxSpeed,
+    );
   });
 
   it.each(builders)("%s: schedules con ids unicos, prioridades validas y tasks", (_name, build) => {

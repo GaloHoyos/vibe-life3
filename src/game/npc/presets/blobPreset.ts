@@ -41,6 +41,7 @@ export function buildBlobPreset(): NpcPreset {
       turnSpeed: 2,
       stepOffset: 0,
       snapToGround: 0,
+      goalReachRadius: BlobConfig.predator.navigationGoalReachRadius,
       canJump: false,
     },
     schedules,

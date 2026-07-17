@@ -271,6 +271,7 @@ export class Npc implements INpc {
       this.navigationProfile,
       {
         hoverHeight: this.preset.movement.hoverHeight,
+        goalReachRadius: this.preset.movement.goalReachRadius,
         separation: !this.preset.movement.flying && !this.preset.movement.directGround,
       },
     );

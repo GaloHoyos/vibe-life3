@@ -38,6 +38,19 @@ export const BlobConfig = {
     surfaceCoreRadius: 0.72,
     surfaceColor: 0xa7c5bd,
     surfaceOpacity: 0.46,
+    /** El cadaver conserva la piel metaball, pero seca y menos translucida. */
+    deathSurfaceOpacity: 0.68,
+    deathSurfaceUpdateInterval: 1 / 15,
+    coreColor: 0xff7550,
+    coreEmissiveColor: 0xff2f18,
+    coreEmissiveIntensity: 1.35,
+    coreRoughness: 0.38,
+    coreDeathColor: 0x2b1715,
+    coreDeathEmissiveColor: 0x0a0101,
+    coreDeathEmissiveIntensity: 0.03,
+    coreDeathRoughness: 1,
+    coreDeathMinimumScale: 0.48,
+    coreDeathWitherSeconds: 2.8,
   },
   armor: {
     /** Volumen multicapa: 6 nodos internos, 12 medios y 18 externos. */
@@ -127,19 +140,43 @@ export const BlobConfig = {
     detachedWitherMinimumScale: 0.78,
     detachedWitherColor: 0x34443f,
     detachedWitherRoughness: 0.92,
+    /** La muerte seca toda la biomasa desde el primer frame. */
+    deathWitherSeconds: 4,
+    deathWitherMinimumScale: 0.58,
+    deathWitherColor: 0x18201e,
+    deathWitherRoughness: 1,
+    deathWitherClearcoat: 0.06,
     /** Pathing pesado por racimo; el magnetismo local resuelve el contacto final. */
-    chunkNavigationMaxSpeed: 2,
-    chunkNavigationMinimumSpeed: 0.45,
-    chunkNavigationAcceleration: 6,
-    chunkNavigationPositionGain: 2.6,
-    chunkNavigationWaypointReachRadius: 0.42,
+    chunkNavigationMaxSpeed: 5.6,
+    /** Burst de alcance: acelera todavía más mientras quedó muy atrás. */
+    chunkNavigationCatchupMaxSpeed: 6.8,
+    chunkNavigationCatchupStartDistance: 3,
+    chunkNavigationCatchupFullDistance: 9,
+    chunkNavigationMinimumSpeed: 0.8,
+    chunkNavigationAcceleration: 12,
+    chunkNavigationPositionGain: 3.2,
+    chunkNavigationGoalSpeedInfluence: 0.45,
+    chunkNavigationGoalVelocityInfluence: 1,
+    chunkNavigationClosingSpeed: 0.65,
+    chunkNavigationWaypointReachRadius: 0.5,
     chunkNavigationSupportProbe: 0.16,
-    chunkNavigationRepathDistance: 0.9,
+    chunkNavigationRepathDistance: 1.1,
+    chunkNavigationRequestPriority: 1,
+    /** Intercepta el core móvil en vez de perseguir siempre su posición vieja. */
+    chunkNavigationGoalVelocityResponse: 8,
+    chunkNavigationPredictionScale: 0.65,
+    chunkNavigationPredictionMaxSeconds: 0.8,
+    chunkNavigationPredictionMaxDistance: 3.5,
+    chunkNavigationGoalTeleportDistance: 4,
     /** Desplazamiento externo que invalida el corredor calculado desde el origen. */
     chunkNavigationOriginRepathDistance: 0.75,
-    chunkNavigationRetrySeconds: 0.7,
-    chunkNavigationMinimumProgressSpeed: 0.08,
-    chunkNavigationStuckSeconds: 1,
+    chunkNavigationRetrySeconds: 0.35,
+    chunkNavigationMinimumProgressSpeed: 0.12,
+    chunkNavigationStuckSeconds: 0.85,
+    /** Al trabarse, se despega de la normal antes de repetir el mismo path. */
+    chunkNavigationRecoverySeconds: 1.7,
+    chunkNavigationRecoveryForwardScale: 0.35,
+    chunkNavigationRecoveryLateralScale: 0.9,
     /** Magnetismo local entre componentes desprendidos; no es navegación. */
     reassemblyAttractionRadius: 1.25,
     reassemblyAttractionAcceleration: 12,
@@ -191,10 +228,27 @@ export const BlobConfig = {
     disengageRange: 42,
     moveSpeed: 5,
     movementAcceleration: 15,
+    /** Debe quedar dentro del umbral de abrazo, no del radio agregado del nav. */
+    navigationGoalReachRadius: 1.2,
     /** Distancia core-superficie de la presa donde empieza el abrazo. */
     coreEmbraceDistance: 1.35,
+    /** Compensa avoidance/colliders sin exigir solapamiento entre cuerpos. */
+    embraceContactPadding: 0.18,
     /** Margen para conservar un abrazo ya iniciado ante empujes y ragdolls. */
     embraceReleasePadding: 0.85,
+    /** Recuperacion de presas inaccesibles o corredores sin progreso. */
+    approachProgressDistance: 0.08,
+    approachStallSeconds: 2.4,
+    approachRecoverySeconds: 1.25,
+    approachRecoveryRadius: 2.6,
+    approachMaxRecoveryAttempts: 2,
+    blockedTargetRetrySeconds: 4,
+    /** Merodeo determinista cuando no hay materia organica disponible. */
+    searchPauseMinSeconds: 0.35,
+    searchPauseMaxSeconds: 0.9,
+    searchRoamMinRadius: 3.5,
+    searchRoamMaxRadius: 7,
+    searchRoamTimeoutSeconds: 5,
     embraceRampSeconds: 0.9,
     /** Cobertura mínima para empezar a triturar una presa viva. */
     damageCoverageThreshold: 0.22,

@@ -27,6 +27,7 @@ import type {
   AnimationFrame,
   NpcAnimator,
 } from "@game/npc/animation/NpcAnimator";
+import { applyBlobCoreDeathVisual } from "@game/characters/visuals/BlobVisual";
 import { BlobConfig } from "@game/config/blob.config";
 import { BlobChunkNavigator } from "@game/npc/blob/BlobChunkNavigator";
 
@@ -157,7 +158,10 @@ const ZERO_ANCHOR = { x: 0, y: 0, z: 0 } as const;
 const ARMOR_COLOR = new Color(BlobConfig.visual.surfaceColor);
 const ARMOR_ROUGHNESS = 0.18;
 const ARMOR_METALNESS = 0;
+const ARMOR_CLEARCOAT = 1;
+const ARMOR_TRANSMISSION = 0.12;
 const WITHER_COLOR = new Color(BlobConfig.armor.detachedWitherColor);
+const DEATH_WITHER_COLOR = new Color(BlobConfig.armor.deathWitherColor);
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const BLOB_CHARACTER_CONTACT = {
   speedScale: BlobConfig.contact.characterSpeedScale,
@@ -224,6 +228,8 @@ export class BlobArmorAnimator implements NpcAnimator {
   private layerSurfaceSpacings = gelLayerSurfaceSpacings();
   private enabled = true;
   private dead = false;
+  private deathElapsed = 0;
+  private deathSurfaceElapsed = 0;
   private disposed = false;
 
   constructor(private readonly options: BlobArmorAnimatorOptions) {
@@ -273,7 +279,22 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.ensureMeshesInScene();
     if (opts.dead && !this.dead) this.notifyDeath();
     if (this.dead) {
-      this.updateReleasedLifetime(delta);
+      const elapsed = finitePhysicsElapsed(delta);
+      this.deathElapsed += elapsed;
+      this.updateReleasedLifetime(elapsed);
+      applyBlobCoreDeathVisual(
+        this.options.visualGroup,
+        this.deathCoreVisualProgress(),
+      );
+      this.deathSurfaceElapsed += elapsed;
+      if (
+        this.deathSurfaceElapsed >=
+        BlobConfig.visual.deathSurfaceUpdateInterval
+      ) {
+        this.deathSurfaceElapsed %=
+          BlobConfig.visual.deathSurfaceUpdateInterval;
+        this.updateGelSurface();
+      }
     } else if (this.enabled) {
       this.updateGelSurface();
     }
@@ -285,8 +306,11 @@ export class BlobArmorAnimator implements NpcAnimator {
     if (this.options.coreBody.isValid()) {
       this.options.coreBody.setGravityScale(1, true);
     }
-    this.hideGelSurfaces();
+    this.deathElapsed = 0;
+    this.deathSurfaceElapsed = 0;
     this.releaseAll();
+    applyBlobCoreDeathVisual(this.options.visualGroup, 0);
+    this.updateGelSurface();
   }
 
   /**
@@ -1093,6 +1117,9 @@ export class BlobArmorAnimator implements NpcAnimator {
       Math.min(lifetime, config.detachedWitherSeconds),
     );
     const witherStart = Math.max(0, lifetime - witherDuration);
+    const deathProgress = this.dead
+      ? this.deathShellVisualProgress()
+      : null;
     const doomed: BlobArmorPart[] = [];
 
     for (const part of this.parts) {
@@ -1102,12 +1129,18 @@ export class BlobArmorAnimator implements NpcAnimator {
         continue;
       }
       part.detachedElapsed += elapsed;
-      const progress = clamp(
-        (part.detachedElapsed - witherStart) / witherDuration,
-        0,
-        1,
-      );
-      if (progress > 0) this.applyPartWitherVisual(part, progress);
+      const progress =
+        deathProgress ??
+        smoothstep(
+          clamp(
+            (part.detachedElapsed - witherStart) / witherDuration,
+            0,
+            1,
+          ),
+        );
+      if (progress > 0) {
+        this.applyPartWitherVisual(part, progress, deathProgress !== null);
+      }
       if (part.detachedElapsed >= lifetime) doomed.push(part);
     }
 
@@ -1117,16 +1150,14 @@ export class BlobArmorAnimator implements NpcAnimator {
   private applyPartWitherVisual(
     part: BlobArmorPart,
     progress: number,
+    death: boolean,
   ): void {
-    const eased = progress * progress * (3 - 2 * progress);
-    const minimumScale = BlobConfig.armor.detachedWitherMinimumScale;
-    const visualScale = 1 - (1 - minimumScale) * eased;
+    const minimumScale = death
+      ? BlobConfig.armor.deathWitherMinimumScale
+      : BlobConfig.armor.detachedWitherMinimumScale;
+    const visualScale = 1 - (1 - minimumScale) * progress;
     part.mesh.scale.setScalar(detachedVisualRadius(part.radius) * visualScale);
-    part.mesh.material.color.lerpColors(ARMOR_COLOR, WITHER_COLOR, eased);
-    part.mesh.material.roughness =
-      ARMOR_ROUGHNESS +
-      (BlobConfig.armor.detachedWitherRoughness - ARMOR_ROUGHNESS) * eased;
-    part.mesh.material.metalness = ARMOR_METALNESS * (1 - eased);
+    applyGelWitherMaterial(part.mesh.material, progress, death);
   }
 
   private restorePartVitalityVisual(part: BlobArmorPart): void {
@@ -1134,6 +1165,30 @@ export class BlobArmorAnimator implements NpcAnimator {
     part.mesh.material.color.copy(ARMOR_COLOR);
     part.mesh.material.roughness = ARMOR_ROUGHNESS;
     part.mesh.material.metalness = ARMOR_METALNESS;
+    part.mesh.material.opacity = BlobConfig.visual.surfaceOpacity;
+    part.mesh.material.clearcoat = ARMOR_CLEARCOAT;
+    part.mesh.material.transmission = ARMOR_TRANSMISSION;
+  }
+
+  private deathShellVisualProgress(): number {
+    return smoothstep(
+      clamp(
+        this.deathElapsed / Math.max(1e-4, BlobConfig.armor.deathWitherSeconds),
+        0,
+        1,
+      ),
+    );
+  }
+
+  private deathCoreVisualProgress(): number {
+    return smoothstep(
+      clamp(
+        this.deathElapsed /
+          Math.max(1e-4, BlobConfig.visual.coreDeathWitherSeconds),
+        0,
+        1,
+      ),
+    );
   }
 
   private removeWitheredParts(doomed: BlobArmorPart[]): void {
@@ -3077,6 +3132,12 @@ export class BlobArmorAnimator implements NpcAnimator {
       this.hideGelSurfaces();
       return;
     }
+    const deathProgress = this.dead
+      ? this.deathShellVisualProgress()
+      : null;
+    if (deathProgress !== null) {
+      applyGelWitherMaterial(this.gelMaterial, deathProgress, true);
+    }
     const visualParts = this.parts.flatMap((part): GelVisualPart[] => {
       if (!part.body.isValid()) return [];
       const position = part.body.translation();
@@ -3111,7 +3172,15 @@ export class BlobArmorAnimator implements NpcAnimator {
         coreTranslation.y,
         coreTranslation.z,
       ),
-      radius: BlobConfig.visual.surfaceCoreRadius,
+      radius:
+        BlobConfig.visual.surfaceCoreRadius *
+        (this.dead
+          ? lerp(
+              1,
+              BlobConfig.visual.coreDeathMinimumScale,
+              this.deathCoreVisualProgress(),
+            )
+          : 1),
     };
     const attached = visualParts.filter(
       ({ part }) => part.state !== "released",
@@ -3127,12 +3196,14 @@ export class BlobArmorAnimator implements NpcAnimator {
     }
 
     let mainSampleCount = 0;
-    mainSampleCount = writeGelSample(
-      this.gelSamples,
-      mainSampleCount,
-      coreVisual.position,
-      coreVisual.radius,
-    );
+    if (!this.dead) {
+      mainSampleCount = writeGelSample(
+        this.gelSamples,
+        mainSampleCount,
+        coreVisual.position,
+        coreVisual.radius,
+      );
+    }
     const fragmentGroups = new Map<number, GelVisualPart[]>();
     for (const visual of visualParts) {
       if (visual.part.state !== "released") {
@@ -3146,7 +3217,7 @@ export class BlobArmorAnimator implements NpcAnimator {
         continue;
       }
       const root = visualSets.find(visual.part.index);
-      if (rootsTouchingMain.has(root)) {
+      if (!this.dead && rootsTouchingMain.has(root)) {
         visual.part.mesh.visible = false;
         mainSampleCount = writeGelSample(
           this.gelSamples,
@@ -3167,7 +3238,7 @@ export class BlobArmorAnimator implements NpcAnimator {
       this.gelCenter,
       this.gelSamples,
       BlobConfig.visual.surfaceDomainSize,
-      coreVisual.position,
+      this.dead ? undefined : coreVisual.position,
     );
 
     const continuousGroups = [...fragmentGroups.values()]
@@ -3189,6 +3260,7 @@ export class BlobArmorAnimator implements NpcAnimator {
       updateFragmentGelMaterial(
         visual.material,
         group.map(({ part }) => part),
+        deathProgress,
       );
       fitGelSurface(
         visual.surface,
@@ -3476,9 +3548,9 @@ function createGelMaterial(): MeshPhysicalMaterial {
     depthWrite: false,
     roughness: ARMOR_ROUGHNESS,
     metalness: ARMOR_METALNESS,
-    clearcoat: 1,
+    clearcoat: ARMOR_CLEARCOAT,
     clearcoatRoughness: 0.14,
-    transmission: 0.12,
+    transmission: ARMOR_TRANSMISSION,
     thickness: 0.8,
     ior: 1.34,
   });
@@ -3575,16 +3647,47 @@ function fitGelSurface(
 function updateFragmentGelMaterial(
   material: MeshPhysicalMaterial,
   parts: readonly BlobArmorPart[],
+  deathProgress: number | null,
 ): void {
+  if (deathProgress !== null) {
+    applyGelWitherMaterial(material, deathProgress, true);
+    return;
+  }
   const averageWither =
     parts.reduce((sum, part) => sum + partWitherVisualProgress(part), 0) /
     Math.max(1, parts.length);
-  material.color.lerpColors(ARMOR_COLOR, WITHER_COLOR, averageWither);
-  material.roughness =
-    ARMOR_ROUGHNESS +
-    (BlobConfig.armor.detachedWitherRoughness - ARMOR_ROUGHNESS) *
-      averageWither;
-  material.metalness = ARMOR_METALNESS * (1 - averageWither);
+  applyGelWitherMaterial(material, averageWither, false);
+}
+
+function applyGelWitherMaterial(
+  material: MeshPhysicalMaterial,
+  progress: number,
+  death: boolean,
+): void {
+  const targetColor = death ? DEATH_WITHER_COLOR : WITHER_COLOR;
+  const targetRoughness = death
+    ? BlobConfig.armor.deathWitherRoughness
+    : BlobConfig.armor.detachedWitherRoughness;
+  material.color.lerpColors(ARMOR_COLOR, targetColor, progress);
+  material.roughness = lerp(ARMOR_ROUGHNESS, targetRoughness, progress);
+  material.metalness = ARMOR_METALNESS * (1 - progress);
+  material.opacity = lerp(
+    BlobConfig.visual.surfaceOpacity,
+    death
+      ? BlobConfig.visual.deathSurfaceOpacity
+      : BlobConfig.visual.surfaceOpacity,
+    progress,
+  );
+  material.clearcoat = lerp(
+    ARMOR_CLEARCOAT,
+    death ? BlobConfig.armor.deathWitherClearcoat : ARMOR_CLEARCOAT,
+    progress,
+  );
+  material.transmission = lerp(
+    ARMOR_TRANSMISSION,
+    death ? 0 : ARMOR_TRANSMISSION,
+    progress,
+  );
 }
 
 function partWitherVisualProgress(part: BlobArmorPart): number {
@@ -3594,8 +3697,9 @@ function partWitherVisualProgress(part: BlobArmorPart): number {
     Math.min(lifetime, BlobConfig.armor.detachedWitherSeconds),
   );
   const start = Math.max(0, lifetime - duration);
-  const progress = clamp((part.detachedElapsed - start) / duration, 0, 1);
-  return progress * progress * (3 - 2 * progress);
+  return smoothstep(
+    clamp((part.detachedElapsed - start) / duration, 0, 1),
+  );
 }
 
 function detachedVisualRadius(physicalRadius: number): number {
@@ -4519,6 +4623,14 @@ function partRadius(part: BlobArmorPart): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function lerp(from: number, to: number, amount: number): number {
+  return from + (to - from) * amount;
+}
+
+function smoothstep(value: number): number {
+  return value * value * (3 - 2 * value);
 }
 
 function rapierDistance(a: RAPIER.Vector, b: RAPIER.Vector): number {

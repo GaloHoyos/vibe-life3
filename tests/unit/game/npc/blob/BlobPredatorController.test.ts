@@ -187,6 +187,7 @@ describe("BlobPredatorController", () => {
     victim.position.x =
       BlobConfig.predator.coreEmbraceDistance +
       victim.actor.radius +
+      BlobConfig.predator.embraceContactPadding +
       BlobConfig.predator.embraceReleasePadding * 0.75;
     predator.update(ctx, locomotion.handle);
     expect(predator.getState()).toBe("blob-embracing");
@@ -194,6 +195,7 @@ describe("BlobPredatorController", () => {
     victim.position.x =
       BlobConfig.predator.coreEmbraceDistance +
       victim.actor.radius +
+      BlobConfig.predator.embraceContactPadding +
       BlobConfig.predator.embraceReleasePadding +
       0.1;
     predator.update(ctx, locomotion.handle);
@@ -304,6 +306,131 @@ describe("BlobPredatorController", () => {
     expect(body.addOrganicMass).toHaveBeenCalledWith(6);
     expect(predator.getState()).toBe("blob-searching");
     expect(body.clearFeedingTarget).toHaveBeenCalled();
+  });
+
+  it("retoma la caza en el mismo pensamiento despues de consumir", () => {
+    const body = new FeedingBodyFake();
+    body.coverage = 1;
+    const predator = new BlobPredatorController(
+      "hunter",
+      body,
+      () => new Vector3(),
+    );
+    const locomotion = locomotionFixture();
+    const corpse = preyFixture({
+      id: "first-meal",
+      position: new Vector3(1, 0, 0),
+      alive: false,
+    });
+    const nextPrey = preyFixture({
+      id: "next-prey",
+      position: new Vector3(8, 0, 0),
+    });
+    const ctx = frame(nonOrganicPlayer(), [corpse.actor, nextPrey.actor]);
+
+    tick(
+      predator,
+      ctx,
+      locomotion.handle,
+      BlobConfig.predator.embraceRampSeconds +
+        BlobConfig.predator.digestionSeconds +
+        0.4,
+    );
+
+    expect(corpse.onConsumed).toHaveBeenCalledTimes(1);
+    expect(nextPrey.matter.isClaimedBy("hunter")).toBe(true);
+    expect(predator.getState()).toBe("blob-approaching");
+    expect(locomotion.lastMove).toEqual(nextPrey.position);
+  });
+
+  it("prueba otro angulo y descarta temporalmente una presa bloqueada", () => {
+    const body = new FeedingBodyFake();
+    const predator = new BlobPredatorController(
+      "hunter",
+      body,
+      () => new Vector3(),
+    );
+    const locomotion = locomotionFixture();
+    locomotion.setStuck(true);
+    const blockedCorpse = preyFixture({
+      id: "blocked-corpse",
+      position: new Vector3(6, 0, 0),
+      alive: false,
+    });
+    const alternative = preyFixture({
+      id: "alternative",
+      position: new Vector3(9, 0, 0),
+    });
+    const ctx = frame(nonOrganicPlayer(), [blockedCorpse.actor, alternative.actor]);
+
+    predator.update(ctx, locomotion.handle);
+    expect(predator.getState()).toBe("blob-repositioning");
+    expect(locomotion.lastMove).not.toEqual(blockedCorpse.position);
+
+    predator.update(ctx, locomotion.handle);
+    predator.update(ctx, locomotion.handle);
+
+    expect(blockedCorpse.matter.isClaimedBy("hunter")).toBe(false);
+    expect(alternative.matter.isClaimedBy("hunter")).toBe(true);
+    expect(predator.getState()).toBe("blob-approaching");
+    expect(locomotion.lastMove).toEqual(alternative.position);
+  });
+
+  it("detecta falta de progreso aunque locomotion no marque stuck", () => {
+    const body = new FeedingBodyFake();
+    const predator = new BlobPredatorController(
+      "hunter",
+      body,
+      () => new Vector3(),
+    );
+    const locomotion = locomotionFixture();
+    const prey = preyFixture({
+      id: "arrival-limbo",
+      position: new Vector3(6, 0, 0),
+    });
+    const ctx = frame(nonOrganicPlayer(), [prey.actor]);
+
+    tick(
+      predator,
+      ctx,
+      locomotion.handle,
+      BlobConfig.predator.approachStallSeconds + 0.2,
+    );
+
+    expect(predator.getState()).toBe("blob-repositioning");
+    expect(locomotion.lastMove).not.toEqual(prey.position);
+    expect(prey.matter.isClaimedBy("hunter")).toBe(true);
+  });
+
+  it("merodea con pausas y cambia de rumbo cuando no encuentra presas", () => {
+    const body = new FeedingBodyFake();
+    const predator = new BlobPredatorController(
+      "hunter-organic",
+      body,
+      () => new Vector3(4, 0, -2),
+    );
+    const locomotion = locomotionFixture();
+    const ctx = frame(nonOrganicPlayer(), []);
+
+    predator.update(ctx, locomotion.handle);
+    const firstGoal = locomotion.lastMove?.clone();
+    expect(predator.getState()).toBe("blob-prowling");
+    expect(firstGoal).not.toBeNull();
+
+    locomotion.setStuck(true);
+    predator.update(ctx, locomotion.handle);
+    expect(predator.getState()).toBe("blob-searching");
+    expect(locomotion.stop).toHaveBeenCalled();
+
+    locomotion.setStuck(false);
+    tick(
+      predator,
+      ctx,
+      locomotion.handle,
+      BlobConfig.predator.searchPauseMaxSeconds + 0.2,
+    );
+    expect(predator.getState()).toBe("blob-prowling");
+    expect(locomotion.lastMove).not.toEqual(firstGoal);
   });
 
   it("libera el claim al disponer el depredador o cuando la presa queda demasiado lejos", () => {
@@ -448,6 +575,7 @@ function nonOrganicActor(
 function locomotionFixture() {
   let lastMove: Vector3 | null = null;
   let lastGait: "walk" | "sprint" | undefined;
+  let stuck = false;
   const moveTo = vi.fn(
     (target: Vector3, options?: { gait?: "walk" | "sprint" }) => {
       lastMove = target.clone();
@@ -459,9 +587,9 @@ function locomotionFixture() {
   const handle: NpcLocomotionHandle = {
     moveTo,
     stop,
-    distanceToTarget: () => Infinity,
+    distanceToTarget: () => Number.POSITIVE_INFINITY,
     hasPath: () => false,
-    isStuck: () => false,
+    isStuck: () => stuck,
     face,
     leap: vi.fn(),
     isLeaping: () => false,
@@ -471,6 +599,9 @@ function locomotionFixture() {
     moveTo,
     stop,
     face,
+    setStuck(value: boolean) {
+      stuck = value;
+    },
     get lastMove() {
       return lastMove;
     },
