@@ -227,6 +227,12 @@ export interface NpcPortalHandle {
     velocity: Vector3,
     yaw: number,
   ): boolean;
+  /**
+   * Physical colliders that form one organism and must share the open hole.
+   * Kinematic motors filter their own queries, while dynamic composites need
+   * the global contact hook.
+   */
+  getPortalColliderHandles?(): readonly number[];
   setColliderExclusions(handles: ReadonlySet<number> | null): void;
 }
 

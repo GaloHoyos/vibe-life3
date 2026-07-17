@@ -98,7 +98,25 @@ interface PortalCapableMotor {
   teleport(position: Vector3, velocity: Vector3): void;
   snapYaw(yaw: number): void;
   setPortalExclusions(handles: ReadonlySet<number> | null): void;
+  getPortalColliderHandles?(): readonly number[];
   /** Conserva la rotación 3D de los componentes internos al cruzar. */
+  teleportThroughPortal?(
+    entry: PortalFrame,
+    exit: PortalFrame,
+    position: Vector3,
+    velocity: Vector3,
+    yaw: number,
+  ): boolean;
+}
+
+interface PortalCompositeAnimation {
+  getPortalColliderHandles?(): readonly number[];
+  setPortalTraversalActive?(active: boolean): void;
+  teleportComposite?(
+    position: Vector3,
+    velocity: Vector3,
+    yaw: number,
+  ): boolean;
   teleportThroughPortal?(
     entry: PortalFrame,
     exit: PortalFrame,
@@ -595,6 +613,9 @@ export class Npc implements INpc {
       return null;
     }
     const motor = this.motor as typeof this.motor & Partial<PortalCapableMotor>;
+    const compositeAnimation = this.animation as
+      | (NpcAnimator & PortalCompositeAnimation)
+      | null;
     const { teleport, snapYaw, setPortalExclusions, getVelocity } = motor;
     if (
       typeof teleport !== 'function' ||
@@ -610,10 +631,22 @@ export class Npc implements INpc {
       getPosition: () => motor.getPosition(),
       getVelocity: () => getVelocity.call(motor),
       teleport: (position, velocity, yaw) => {
+        if (
+          compositeAnimation?.teleportComposite?.(
+            position,
+            velocity,
+            yaw,
+          ) === true
+        ) {
+          this.syncMeshFromMotor();
+          return;
+        }
         teleport.call(motor, position, velocity);
         snapYaw.call(motor, yaw);
+        this.syncMeshFromMotor();
       },
-      ...(typeof motor.teleportThroughPortal === 'function'
+      ...(typeof compositeAnimation?.teleportThroughPortal === 'function' ||
+      typeof motor.teleportThroughPortal === 'function'
         ? {
             teleportThroughPortal: (
               entry: PortalFrame,
@@ -621,10 +654,42 @@ export class Npc implements INpc {
               position: Vector3,
               velocity: Vector3,
               yaw: number,
-            ) => motor.teleportThroughPortal!(entry, exit, position, velocity, yaw),
+            ) => {
+              const traversed =
+                compositeAnimation?.teleportThroughPortal?.(
+                  entry,
+                  exit,
+                  position,
+                  velocity,
+                  yaw,
+                ) === true ||
+                motor.teleportThroughPortal?.(
+                  entry,
+                  exit,
+                  position,
+                  velocity,
+                  yaw,
+                ) === true;
+              if (traversed) this.syncMeshFromMotor();
+              return traversed;
+            },
           }
         : {}),
-      setColliderExclusions: (handles) => setPortalExclusions.call(motor, handles),
+      ...(typeof motor.getPortalColliderHandles === 'function' ||
+      typeof compositeAnimation?.getPortalColliderHandles === 'function'
+        ? {
+            getPortalColliderHandles: () => [
+              ...new Set([
+                ...(motor.getPortalColliderHandles?.() ?? []),
+                ...(compositeAnimation?.getPortalColliderHandles?.() ?? []),
+              ]),
+            ],
+          }
+        : {}),
+      setColliderExclusions: (handles) => {
+        setPortalExclusions.call(motor, handles);
+        compositeAnimation?.setPortalTraversalActive?.(handles !== null);
+      },
     };
   }
 
@@ -743,7 +808,17 @@ export class Npc implements INpc {
   }
 
   getAiDebugSnapshot(): NpcAiDebugSnapshot {
-    const motorSnap = this.motor.syncFromPhysics();
+    const motorSnap = this.disposed
+      ? {
+          position: this.position.clone(),
+          velocity: new Vector3(),
+          desiredVelocity: new Vector3(),
+          grounded: false,
+          yaw: this.mesh.rotation.y,
+          targetYaw: this.mesh.rotation.y,
+          distanceToTarget: Number.POSITIVE_INFINITY,
+        }
+      : this.motor.syncFromPhysics();
     const brainSnap = this.brain.snapshot();
     const runtimeState = this.behavior?.getState() ?? brainSnap.schedule ?? 'idle';
     const locomotionDebug = this.locomotion.debug();
@@ -752,7 +827,7 @@ export class Npc implements INpc {
       state: runtimeState,
       stateKey: runtimeState,
       lastTransitionReason: brainSnap.previousSchedule,
-      position: this.motor.getPosition().clone(),
+      position: motorSnap.position.clone(),
       isAlive: this.isAlive(),
       health: this.health.current,
       maxHealth: this.health.max,
@@ -768,7 +843,7 @@ export class Npc implements INpc {
         speed: motorSnap.velocity.length(),
         desiredSpeed: motorSnap.desiredVelocity.length(),
         grounded: motorSnap.grounded,
-        crouched: this.motor.isCrouched?.() ?? false,
+        crouched: this.disposed ? false : (this.motor.isCrouched?.() ?? false),
         distanceToTarget: motorSnap.distanceToTarget,
         yaw: motorSnap.yaw,
         targetYaw: motorSnap.targetYaw,

@@ -2011,12 +2011,14 @@ export class Game {
     // todos los bodies) → limpiar la escena (preservando las luces) → cargar.
     // En el primer load (menú/boot) todo está vacío, así que es no-op.
     this.npcs.forEach((npc) => npc.dispose());
+    this.npcs = [];
     this.crashingGunships.clear();
     this.collapsingStriders.clear();
     this.weaponPickups.forEach((pickup) => pickup.dispose());
     this.itemPickups.forEach((pickup) => pickup.dispose());
     this.ammoPickups.forEach((pickup) => pickup.dispose());
     this.player?.dispose();
+    this.player = null;
     this.playerModel?.dispose();
     this.playerModel = null;
     services.resolve(GameTokens.WeaponEffects).clear();

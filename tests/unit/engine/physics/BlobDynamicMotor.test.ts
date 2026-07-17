@@ -72,6 +72,24 @@ describe("BlobDynamicMotor", () => {
     expect(motor.body.linvel()).toMatchObject({ x: 1.25, y: -2, z: -0.5 });
   });
 
+  it("expone un teleport coherente para el tránsito compuesto del blob", async () => {
+    const physics = await createPhysics();
+    const motor = createMotor(physics);
+    const destination = new Vector3(8, 2, -3);
+    const velocity = new Vector3(1.5, 4, -0.75);
+
+    motor.teleport(destination, velocity);
+    motor.snapYaw(Math.PI / 3);
+
+    expect(motor.getPosition().distanceTo(destination)).toBeLessThan(1e-6);
+    expect(motor.getVelocity().distanceTo(velocity)).toBeLessThan(1e-6);
+    expect(motor.getYaw()).toBeCloseTo(Math.PI / 3, 6);
+    expect(motor.getPortalColliderHandles()).toEqual([motor.collider.handle]);
+    expect(() => motor.setPortalExclusions(new Set([42]))).not.toThrow();
+
+    motor.dispose();
+  });
+
   it("dispose remueve el cuerpo y es idempotente", async () => {
     const physics = await createPhysics();
     const motor = createMotor(physics);

@@ -32,6 +32,9 @@ function makeSystem(): PortalGunSystem {
     npcStates: new Map(),
     npcFrame: 0,
     eventBus: new EventBus<GameEventMap>(),
+    traveller: {
+      setExternalTraversalColliders: vi.fn(),
+    },
   });
   return system;
 }
@@ -95,6 +98,35 @@ describe("PortalGunSystem — tránsito de NPCs terrestres", () => {
 
     system.updateNpcTraversal(1.1, []);
     expect(exclusions.at(-1)).toBeNull();
+  });
+
+  it("abre el mismo hueco fisico para todos los colliders de un NPC compuesto", () => {
+    const system = makeSystem();
+    const position = new Vector3(0, 1.2, 0.4);
+    const { handle } = makeHandle(position);
+    handle.getPortalColliderHandles = () => [101, 102, 103];
+    const traveller = (
+      system as unknown as {
+        traveller: {
+          setExternalTraversalColliders: ReturnType<typeof vi.fn>;
+        };
+      }
+    ).traveller;
+
+    system.updateNpcTraversal(1, [handle]);
+
+    expect(traveller.setExternalTraversalColliders).toHaveBeenCalledWith(
+      handle.id,
+      [101, 102, 103],
+      new Set(["a"]),
+    );
+
+    position.set(20, 1.2, 20);
+    system.updateNpcTraversal(1.1, [handle]);
+    expect(traveller.setExternalTraversalColliders).toHaveBeenLastCalledWith(
+      handle.id,
+      null,
+    );
   });
 
   it("prefers an atomic full-frame traversal for composite NPCs", () => {

@@ -1,5 +1,6 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import {
+  Euler,
   Group,
   Mesh,
   MeshPhysicalMaterial,
@@ -21,6 +22,12 @@ import {
 } from "@engine/physics/PhysicsWorld";
 import { Raycast } from "@engine/physics/Raycast";
 import { PhysicsGrabController } from "@engine/physics/grab/PhysicsGrabController";
+import type { PortalFrame } from "@engine/portals/PortalFrame";
+import {
+  transformDirectionThroughPortal,
+  transformPointThroughPortal,
+  transformQuaternionThroughPortal,
+} from "@engine/portals/PortalMath";
 import type { CharacterMotorSnapshot } from "@engine/physics/character/CharacterMotor";
 import { createBlobCoreVisual } from "@game/characters/visuals/BlobVisual";
 import { BlobConfig } from "@game/config/blob.config";
@@ -40,6 +47,147 @@ interface ArmorRecord {
 }
 
 describe("BlobArmorAnimator", () => {
+  it("atraviesa un portal como un solo organismo sin arrastrar chunks lejanos", async () => {
+    const harness = await createHarness();
+    const armor = armorRecords(harness.physics);
+    const initialSnapshot = harness.animator.getDebugSnapshot();
+    const releasedIndex = layerIndices(
+      initialSnapshot,
+      maximumLayer(initialSnapshot),
+    )[0];
+    const released = armor[releasedIndex];
+    released.metadata.damageable!.applyDamage(1);
+    expect(
+      advanceUntil(
+        harness,
+        () => currentMetadata(harness, released).kind === "dynamic",
+        1,
+      ),
+    ).toBe(true);
+    const releasedPosition = new Vector3(14, 4, 6);
+    placeBody(released.body, releasedPosition);
+    stopBody(released.body);
+
+    const travelling = armor.find(
+      (_, index) =>
+        index !== releasedIndex &&
+        harness.animator
+          .getDebugSnapshot()
+          .attachedIndices.includes(index),
+    )!;
+    harness.coreBody.setLinvel({ x: 0.8, y: -1.2, z: -2.4 }, true);
+    harness.coreBody.setAngvel({ x: 0.2, y: -0.35, z: 0.5 }, true);
+    travelling.body.setLinvel({ x: -0.4, y: 0.7, z: -1.1 }, true);
+    travelling.body.setAngvel({ x: 0.6, y: 0.1, z: -0.25 }, true);
+
+    const entry: PortalFrame = {
+      position: new Vector3(0, 3, 0),
+      quaternion: new Quaternion(),
+      halfWidth: 0.65,
+      halfHeight: 1.1,
+    };
+    const exit: PortalFrame = {
+      position: new Vector3(9, 2, -4),
+      quaternion: new Quaternion().setFromEuler(
+        new Euler(0, Math.PI / 2, 0),
+      ),
+      halfWidth: 0.65,
+      halfHeight: 1.1,
+    };
+    const destination = new Vector3(10.55, 2.2, -4);
+    const exitVelocity = new Vector3(3.2, -1.2, 0.8);
+    const coreBefore = vectorFromRapier(harness.coreBody.translation());
+    const coreVelocityBefore = vectorFromRapier(harness.coreBody.linvel());
+    const partBefore = vectorFromRapier(travelling.body.translation());
+    const partVelocityBefore = vectorFromRapier(travelling.body.linvel());
+    const partAngularBefore = vectorFromRapier(travelling.body.angvel());
+    const partRotationBefore = quaternionFromRapier(travelling.body.rotation());
+    const positionCorrection = destination
+      .clone()
+      .sub(transformPointThroughPortal(coreBefore, entry, exit));
+    const velocityCorrection = exitVelocity
+      .clone()
+      .sub(
+        transformDirectionThroughPortal(
+          coreVelocityBefore,
+          entry,
+          exit,
+        ),
+      );
+    const expectedPartPosition = transformPointThroughPortal(
+      partBefore,
+      entry,
+      exit,
+    ).add(positionCorrection);
+    const expectedPartVelocity = transformDirectionThroughPortal(
+      partVelocityBefore,
+      entry,
+      exit,
+    ).add(velocityCorrection);
+    const expectedPartAngular = transformDirectionThroughPortal(
+      partAngularBefore,
+      entry,
+      exit,
+    );
+    const expectedPartRotation = transformQuaternionThroughPortal(
+      partRotationBefore,
+      entry,
+      exit,
+    );
+    const jointCount = harness.physics.world.impulseJoints.len();
+
+    expect(
+      harness.animator.teleportThroughPortal(
+        entry,
+        exit,
+        destination,
+        exitVelocity,
+        0,
+      ),
+    ).toBe(true);
+
+    expect(
+      vectorFromRapier(harness.coreBody.translation()).distanceTo(destination),
+    ).toBeLessThan(1e-5);
+    expect(
+      vectorFromRapier(harness.coreBody.linvel()).distanceTo(exitVelocity),
+    ).toBeLessThan(1e-5);
+    expect(
+      vectorFromRapier(travelling.body.translation()).distanceTo(
+        expectedPartPosition,
+      ),
+    ).toBeLessThan(1e-5);
+    expect(
+      vectorFromRapier(travelling.body.linvel()).distanceTo(
+        expectedPartVelocity,
+      ),
+    ).toBeLessThan(1e-5);
+    expect(
+      vectorFromRapier(travelling.body.angvel()).distanceTo(
+        expectedPartAngular,
+      ),
+    ).toBeLessThan(1e-5);
+    expect(
+      1 -
+        Math.abs(
+          quaternionFromRapier(travelling.body.rotation()).dot(
+            expectedPartRotation,
+          ),
+        ),
+    ).toBeLessThan(1e-5);
+    expect(
+      vectorFromRapier(released.body.translation()).distanceTo(
+        releasedPosition,
+      ),
+    ).toBeLessThan(1e-5);
+    expect(harness.physics.world.impulseJoints.len()).toBe(jointCount);
+    expect(harness.animator.getPortalColliderHandles()).not.toContain(
+      released.collider.handle,
+    );
+
+    harness.dispose();
+  });
+
   it("construye un gel 3D grande de 36 blobs chicos con sólo la capa interna anclada al cerebro", async () => {
     const harness = await createHarness();
     const snapshot = harness.animator.getDebugSnapshot();
@@ -3005,4 +3153,13 @@ function expectAnchorsClose(
 
 function vectorFromRapier(value: RAPIER.Vector): Vector3 {
   return new Vector3(value.x, value.y, value.z);
+}
+
+function quaternionFromRapier(value: {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+}): Quaternion {
+  return new Quaternion(value.x, value.y, value.z, value.w);
 }

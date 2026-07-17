@@ -125,6 +125,8 @@ export const BlobConfig = {
     cohesionLoadPatchProtectionSeconds: 0.55,
     cohesionLoadInitialGraceSeconds: 0.65,
     cohesionReflowLoadGraceSeconds: 0.75,
+    /** Prevents portal compression from being mistaken for structural damage. */
+    portalTraversalLoadGraceSeconds: 0.9,
     /** Carga sostenida sobre sectores sin suelo debajo (bordes/precipicios). */
     hangingLoadSupportProbe: 0.12,
     hangingLoadGroundProbeDepth: 3.1,

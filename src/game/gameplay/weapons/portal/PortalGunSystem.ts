@@ -417,7 +417,10 @@ export class PortalGunSystem implements Disposable {
 
     for (const [id, state] of this.npcStates) {
       if (state.seenFrame !== this.npcFrame) {
-        if (state.excluding) state.handle.setColliderExclusions(null);
+        if (state.excluding) {
+          state.handle.setColliderExclusions(null);
+          this.clearNpcExternalTraversal(state.handle);
+        }
         this.npcStates.delete(id);
       }
     }
@@ -432,6 +435,7 @@ export class PortalGunSystem implements Disposable {
     },
   ): void {
     const excluded = new Set<number>();
+    const insideSlots = new Set<PortalSlot>();
     const nextEngaged: Record<PortalSlot, boolean> = { a: false, b: false };
     for (const [slot, portal] of this.portals) {
       const frame = portal.frame;
@@ -456,6 +460,9 @@ export class PortalGunSystem implements Disposable {
         continue;
       }
       nextEngaged[slot] = true;
+      const hx = TMP_LOCAL.x / frame.halfWidth;
+      const hy = TMP_LOCAL.y / frame.halfHeight;
+      if (hx * hx + hy * hy <= 1) insideSlots.add(slot);
       for (const collider of portal.backingColliders) {
         excluded.add(collider.handle);
       }
@@ -464,8 +471,17 @@ export class PortalGunSystem implements Disposable {
     const wantsExclusions = excluded.size > 0;
     if (wantsExclusions) {
       handle.setColliderExclusions(excluded);
+      const colliderHandles = handle.getPortalColliderHandles?.();
+      if (colliderHandles) {
+        this.traveller.setExternalTraversalColliders(
+          handle.id,
+          colliderHandles,
+          insideSlots,
+        );
+      }
     } else if (state.excluding) {
       handle.setColliderExclusions(null);
+      this.clearNpcExternalTraversal(handle);
     }
     state.excluding = wantsExclusions;
     state.engaged = nextEngaged;
@@ -473,9 +489,17 @@ export class PortalGunSystem implements Disposable {
 
   private resetNpcTraversalStates(): void {
     for (const state of this.npcStates.values()) {
-      if (state.excluding) state.handle.setColliderExclusions(null);
+      if (state.excluding) {
+        state.handle.setColliderExclusions(null);
+        this.clearNpcExternalTraversal(state.handle);
+      }
     }
     this.npcStates.clear();
+  }
+
+  private clearNpcExternalTraversal(handle: NpcPortalHandle): void {
+    if (typeof handle.getPortalColliderHandles !== "function") return;
+    this.traveller.setExternalTraversalColliders(handle.id, null);
   }
 
   private teleportNpc(

@@ -84,6 +84,11 @@ interface DynamicState {
   engaged: Record<PortalSlot, boolean>;
 }
 
+interface ExternalTraversalState {
+  colliderHandles: Set<number>;
+  insideSlots: Set<PortalSlot>;
+}
+
 // El parche se hunde un poco DETRÁS de la superficie: así los raycasts (armas,
 // colocación de portales) pegan primero en la superficie real y nunca en el
 // parche invisible; el prop cae ese poquito hasta apoyarse en él.
@@ -159,6 +164,15 @@ export class PortalTravellerSystem {
     a: new Set(),
     b: new Set(),
   };
+  private readonly externalTraversalStates = new Map<
+    string,
+    ExternalTraversalState
+  >();
+  private externalHolePassHandles = new Set<number>();
+  private externalInsideHoleHandles: Record<PortalSlot, Set<number>> = {
+    a: new Set(),
+    b: new Set(),
+  };
   private readonly dynamicStates = new Map<number, DynamicState>();
   /** Clon activo por handle del cuerpo primario que está cruzando. */
   private readonly clones = new Map<number, CloneRecord>();
@@ -203,6 +217,26 @@ export class PortalTravellerSystem {
     if (frame && this.pair.linked) {
       this.wakeDynamicBodiesNear(frame.position);
     }
+  }
+
+  /**
+   * Shares the physical aperture with a composite body whose owner performs
+   * its own atomic teleport. This only affects contact filtering.
+   */
+  setExternalTraversalColliders(
+    ownerId: string,
+    colliderHandles: readonly number[] | null,
+    insideSlots: ReadonlySet<PortalSlot> = new Set(),
+  ): void {
+    if (!colliderHandles || colliderHandles.length === 0) {
+      this.externalTraversalStates.delete(ownerId);
+    } else {
+      this.externalTraversalStates.set(ownerId, {
+        colliderHandles: new Set(colliderHandles),
+        insideSlots: new Set(insideSlots),
+      });
+    }
+    this.rebuildExternalTraversalLookups();
   }
 
   update(elapsed: number, delta: number): void {
@@ -614,6 +648,9 @@ export class PortalTravellerSystem {
     this.dynamicStates.clear();
     this.holePassHandles = new Set();
     this.insideHoleHandles = { a: new Set(), b: new Set() };
+    this.externalTraversalStates.clear();
+    this.externalHolePassHandles = new Set();
+    this.externalInsideHoleHandles = { a: new Set(), b: new Set() };
     this.refreshBackingHooks();
   }
 
@@ -882,7 +919,10 @@ export class PortalTravellerSystem {
     collider1: number,
     collider2: number,
   ): RAPIER.SolverFlags | null => {
-    if (this.holePassHandles.size === 0) {
+    if (
+      this.holePassHandles.size === 0 &&
+      this.externalHolePassHandles.size === 0
+    ) {
       return RAPIER.SolverFlags.COMPUTE_IMPULSE;
     }
     // Parche de apertura del slot X vs prop metido en el óvalo del hermano:
@@ -890,14 +930,24 @@ export class PortalTravellerSystem {
     const apertureSlot1 = this.apertureSlotByHandle.get(collider1);
     if (
       apertureSlot1 !== undefined &&
-      this.insideHoleHandles[apertureSlot1 === "a" ? "b" : "a"].has(collider2)
+      (this.insideHoleHandles[apertureSlot1 === "a" ? "b" : "a"].has(
+        collider2,
+      ) ||
+        this.externalInsideHoleHandles[
+          apertureSlot1 === "a" ? "b" : "a"
+        ].has(collider2))
     ) {
       return null;
     }
     const apertureSlot2 = this.apertureSlotByHandle.get(collider2);
     if (
       apertureSlot2 !== undefined &&
-      this.insideHoleHandles[apertureSlot2 === "a" ? "b" : "a"].has(collider1)
+      (this.insideHoleHandles[apertureSlot2 === "a" ? "b" : "a"].has(
+        collider1,
+      ) ||
+        this.externalInsideHoleHandles[
+          apertureSlot2 === "a" ? "b" : "a"
+        ].has(collider1))
     ) {
       return null;
     }
@@ -907,8 +957,25 @@ export class PortalTravellerSystem {
       return RAPIER.SolverFlags.COMPUTE_IMPULSE;
     }
     const other = backingIs1 ? collider2 : collider1;
-    return this.holePassHandles.has(other)
+    return this.holePassHandles.has(other) ||
+      this.externalHolePassHandles.has(other)
       ? null
       : RAPIER.SolverFlags.COMPUTE_IMPULSE;
   };
+
+  private rebuildExternalTraversalLookups(): void {
+    const holePass = new Set<number>();
+    const inside: Record<PortalSlot, Set<number>> = {
+      a: new Set(),
+      b: new Set(),
+    };
+    for (const state of this.externalTraversalStates.values()) {
+      for (const handle of state.colliderHandles) {
+        holePass.add(handle);
+        for (const slot of state.insideSlots) inside[slot].add(handle);
+      }
+    }
+    this.externalHolePassHandles = holePass;
+    this.externalInsideHoleHandles = inside;
+  }
 }

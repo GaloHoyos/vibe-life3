@@ -162,6 +162,34 @@ export class BlobDynamicMotor implements NpcMotor {
     return new Vector3(velocity.x, velocity.y, velocity.z);
   }
 
+  teleport(position: Vector3, velocity: Vector3): void {
+    if (this.disposed || !this.body.isValid()) return;
+    this.body.setTranslation(position, true);
+    this.body.setLinvel(velocity, true);
+    this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    this.desiredVelocity.set(0, 0, 0);
+    this.appliedVelocityDelta.set(0, 0, 0);
+    this.distanceToTarget = Number.POSITIVE_INFINITY;
+  }
+
+  snapYaw(yaw: number): void {
+    if (!Number.isFinite(yaw)) return;
+    this.yaw = yaw;
+    this.targetYaw = yaw;
+    this.forward.set(0, 0, 1).applyAxisAngle(Y_AXIS, yaw);
+    if (!this.disposed && this.body.isValid()) {
+      this.tmpQuaternion.setFromAxisAngle(Y_AXIS, yaw);
+      this.body.setRotation(this.tmpQuaternion, true);
+    }
+  }
+
+  /** The global portal hook filters contacts for this dynamic core. */
+  setPortalExclusions(_handles: ReadonlySet<number> | null): void {}
+
+  getPortalColliderHandles(): readonly number[] {
+    return this.collider.isValid() ? [this.collider.handle] : [];
+  }
+
   syncFromPhysics(): CharacterMotorSnapshot {
     this.syncOrientationFromBody();
     const velocity = this.getVelocity();

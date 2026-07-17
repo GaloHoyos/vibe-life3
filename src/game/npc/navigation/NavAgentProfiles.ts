@@ -114,7 +114,7 @@ export const NavigationProfiles = {
     canCrouch: false,
     canDrop: false,
     canOpenDoors: false,
-    canUsePortals: false,
+    canUsePortals: true,
     jumpSpeed: 0,
     maxJumpDistance: 0,
     safeDropHeight: 0,

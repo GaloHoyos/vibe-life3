@@ -40,6 +40,8 @@ describe("preset invariants", () => {
     expect(navigationProfileForPreset(buildBlobPreset())).toBe(
       NavigationProfiles.blobBody,
     );
+    expect(NavigationProfiles.blobBody.canUsePortals).toBe(true);
+    expect(NavigationProfiles.blobFragment.canUsePortals).toBe(false);
   });
 
   it("keeps the Blob mobile, responsive and durable enough for a soldier", () => {

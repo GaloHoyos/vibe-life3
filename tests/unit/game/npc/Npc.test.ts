@@ -262,7 +262,10 @@ describe("Npc.dispose", () => {
       throw new Error("rigid body already removed");
     });
     motor.getPosition = invalidBodyRead;
+    motor.syncFromPhysics = invalidBodyRead;
     expect(() => npc.syncFromPhysics()).not.toThrow();
+    expect(() => npc.getAiDebugSnapshot()).not.toThrow();
+    expect(npc.getAiDebugSnapshot().position).toEqual(new Vector3());
     expect(invalidBodyRead).not.toHaveBeenCalled();
   });
 });

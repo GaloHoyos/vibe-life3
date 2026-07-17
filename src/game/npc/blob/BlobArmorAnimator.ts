@@ -22,6 +22,12 @@ import {
 } from "@engine/physics/PhysicsWorld";
 import { Raycast } from "@engine/physics/Raycast";
 import { CHARACTER_MEDIUM_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
+import type { PortalFrame } from "@engine/portals/PortalFrame";
+import {
+  transformDirectionThroughPortal,
+  transformPointThroughPortal,
+  transformQuaternionThroughPortal,
+} from "@engine/portals/PortalMath";
 import type { Damageable } from "@shared/types/lifecycle";
 import type {
   AnimationFrame,
@@ -203,6 +209,7 @@ export class BlobArmorAnimator implements NpcAnimator {
   private loadSheddingCooldownRemaining = 0;
   private loadFatigueGraceRemaining: number =
     BlobConfig.armor.cohesionLoadInitialGraceSeconds;
+  private portalTraversalActive = false;
   private readonly previousHeldVelocities = new Map<number, Vector3>();
   private readonly maneuverAccelerationVector = new Vector3();
   private heldBodyManeuverAcceleration = 0;
@@ -256,6 +263,103 @@ export class BlobArmorAnimator implements NpcAnimator {
         : null;
     this.buildArmor();
     this.rebuildMainShapeAssignments();
+  }
+
+  getPortalColliderHandles(): readonly number[] {
+    return this.parts
+      .filter(
+        (part) =>
+          part.state !== "released" &&
+          part.body.isValid() &&
+          part.collider.isValid(),
+      )
+      .map((part) => part.collider.handle);
+  }
+
+  setPortalTraversalActive(active: boolean): void {
+    if (this.disposed || this.dead || this.portalTraversalActive === active) {
+      return;
+    }
+    this.portalTraversalActive = active;
+    this.loadFatigueGraceRemaining = Math.max(
+      this.loadFatigueGraceRemaining,
+      BlobConfig.armor.portalTraversalLoadGraceSeconds,
+    );
+    this.resetPortalLoadState();
+    if (active) this.clearFeedingTarget();
+  }
+
+  teleportThroughPortal(
+    entry: PortalFrame,
+    exit: PortalFrame,
+    position: Vector3,
+    velocity: Vector3,
+    _yaw: number,
+  ): boolean {
+    const core = this.options.coreBody;
+    if (this.disposed || this.dead || !core.isValid()) return false;
+
+    const mappedCorePosition = transformPointThroughPortal(
+      vectorFromRapier(core.translation()),
+      entry,
+      exit,
+    );
+    const positionCorrection = position.clone().sub(mappedCorePosition);
+    const mappedCoreVelocity = transformDirectionThroughPortal(
+      vectorFromRapier(core.linvel()),
+      entry,
+      exit,
+    );
+    const velocityCorrection = velocity.clone().sub(mappedCoreVelocity);
+    const mainParts = this.parts.filter(
+      (part) => part.state !== "released" && part.body.isValid(),
+    );
+
+    transformBodyThroughPortal(
+      core,
+      entry,
+      exit,
+      positionCorrection,
+      velocityCorrection,
+    );
+    for (const part of mainParts) {
+      transformBodyThroughPortal(
+        part.body,
+        entry,
+        exit,
+        positionCorrection,
+        velocityCorrection,
+      );
+    }
+
+    this.chunkNavigator?.clear();
+    this.previousHeldVelocities.clear();
+    this.resetPortalLoadState();
+    this.armMainShapeHealing(false);
+    this.scheduleReflow();
+    if (this.meshesAttachedToScene) this.updateGelSurface();
+    return true;
+  }
+
+  teleportComposite(
+    position: Vector3,
+    velocity: Vector3,
+    _yaw: number,
+  ): boolean {
+    const core = this.options.coreBody;
+    if (this.disposed || this.dead || !core.isValid()) return false;
+    const offset = position.clone().sub(vectorFromRapier(core.translation()));
+    moveBodyByOffset(core, offset, velocity);
+    for (const part of this.parts) {
+      if (part.state !== "released" && part.body.isValid()) {
+        moveBodyByOffset(part.body, offset, velocity);
+      }
+    }
+    this.chunkNavigator?.clear();
+    this.previousHeldVelocities.clear();
+    this.resetPortalLoadState();
+    if (this.meshesAttachedToScene) this.updateGelSurface();
+    return true;
   }
 
   updateFromMotor(frame: AnimationFrame): void {
@@ -395,7 +499,14 @@ export class BlobArmorAnimator implements NpcAnimator {
     radius: number,
     requestedCoverage01: number,
   ): void {
-    if (this.disposed || this.dead || !this.enabled) return;
+    if (
+      this.disposed ||
+      this.dead ||
+      !this.enabled ||
+      this.portalTraversalActive
+    ) {
+      return;
+    }
     const requestedCoverage = clamp(requestedCoverage01, 0, 1);
     if (!this.feedingTarget) {
       this.feedingTarget = {
@@ -851,6 +962,7 @@ export class BlobArmorAnimator implements NpcAnimator {
 
   private releaseAll(): void {
     this.chunkNavigator?.clear();
+    this.portalTraversalActive = false;
     for (const part of this.parts) {
       this.removeCoreJoint(part);
     }
@@ -937,6 +1049,12 @@ export class BlobArmorAnimator implements NpcAnimator {
       ? Math.min(Math.max(0, delta), 1 / 20)
       : 0;
     const config = BlobConfig.armor;
+    if (this.portalTraversalActive) {
+      this.loadFatigueGraceRemaining = Math.max(
+        this.loadFatigueGraceRemaining,
+        config.portalTraversalLoadGraceSeconds,
+      );
+    }
     this.loadSheddingCooldownRemaining = Math.max(
       0,
       this.loadSheddingCooldownRemaining - elapsed,
@@ -1105,6 +1223,19 @@ export class BlobArmorAnimator implements NpcAnimator {
       (bond) => bond.joint?.isValid(),
     );
     this.reconcileMainBodyConnectivity();
+  }
+
+  private resetPortalLoadState(): void {
+    this.maneuverLoadFatigue = 0;
+    this.heldBodyManeuverAcceleration = 0;
+    this.maneuverAccelerationVector.set(0, 0, 0);
+    for (const part of this.parts) part.hangingLoadFatigue = 0;
+    for (const bond of this.cohesionBonds) {
+      bond.loadFatigue = 0;
+      bond.lastRelativeVelocity.copy(
+        relativeVelocityVector(bond.partA, bond.partB),
+      );
+    }
   }
 
   private updateReleasedLifetime(delta: number): void {
@@ -4615,6 +4746,56 @@ function finitePhysicsElapsed(delta: number): number {
   return Number.isFinite(delta)
     ? Math.min(Math.max(0, delta), 1 / 20)
     : 0;
+}
+
+function transformBodyThroughPortal(
+  body: RAPIER.RigidBody,
+  entry: PortalFrame,
+  exit: PortalFrame,
+  positionCorrection: Vector3,
+  velocityCorrection: Vector3,
+): void {
+  const position = transformPointThroughPortal(
+    vectorFromRapier(body.translation()),
+    entry,
+    exit,
+  ).add(positionCorrection);
+  const velocity = transformDirectionThroughPortal(
+    vectorFromRapier(body.linvel()),
+    entry,
+    exit,
+  ).add(velocityCorrection);
+  const angularVelocity = transformDirectionThroughPortal(
+    vectorFromRapier(body.angvel()),
+    entry,
+    exit,
+  );
+  const sourceRotation = body.rotation();
+  const rotation = transformQuaternionThroughPortal(
+    new Quaternion(
+      sourceRotation.x,
+      sourceRotation.y,
+      sourceRotation.z,
+      sourceRotation.w,
+    ),
+    entry,
+    exit,
+  );
+  body.setTranslation(position, true);
+  body.setLinvel(velocity, true);
+  body.setAngvel(angularVelocity, true);
+  body.setRotation(rotation, true);
+}
+
+function moveBodyByOffset(
+  body: RAPIER.RigidBody,
+  offset: Vector3,
+  velocity: Vector3,
+): void {
+  const position = vectorFromRapier(body.translation()).add(offset);
+  body.setTranslation(position, true);
+  body.setLinvel(velocity, true);
+  body.setAngvel({ x: 0, y: 0, z: 0 }, true);
 }
 
 function partRadius(part: BlobArmorPart): number {
