@@ -56,6 +56,7 @@ export const BlobPhysicsTestLevel: LevelDefinition = {
     { id: "blob-pickup-shotgun", weaponId: "shotgun", position: [-2, 0.65, 8.5] },
     { id: "blob-pickup-ice", weaponId: "iceGun", position: [0, 0.65, 8.5] },
     { id: "blob-pickup-gravity", weaponId: "gravityGun", position: [2, 0.65, 8.5] },
+    { id: "blob-pickup-portal", weaponId: "portalGun", position: [3, 0.65, 8.5] },
     { id: "blob-pickup-rpg", weaponId: "rpg", position: [4, 0.65, 8.5] },
     { id: "blob-pickup-grenade-1", weaponId: "grenade", position: [5.5, 0.65, 8.5] },
     { id: "blob-pickup-grenade-2", weaponId: "grenade", position: [6.3, 0.65, 8.5] },

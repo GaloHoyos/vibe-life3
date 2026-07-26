@@ -162,6 +162,19 @@ export const BlobConfig = {
     cohesionReflowLoadGraceSeconds: 0.75,
     /** Prevents portal compression from being mistaken for structural damage. */
     portalTraversalLoadGraceSeconds: 0.9,
+    /**
+     * Funnel into a wall-portal mouth. Nav waypoints run at floor level, so a
+     * puddled blob would grind against the wall below the oval forever: the
+     * anchored network outweighs any impulse on the core alone. Instead the
+     * whole body flows toward the mouth together, like the feeding field.
+     */
+    portalFunnelRiseThreshold: 0.45,
+    portalFunnelEngageDepth: 1.15,
+    /** Turns off when the blob moves away from the disc (it just exited). */
+    portalFunnelRecedeSpeed: 0.3,
+    portalFunnelPullRadius: 2.6,
+    portalFunnelMaxSpeed: 2.4,
+    portalFunnelAcceleration: 26,
     /** Carga sostenida sobre sectores sin suelo debajo (bordes/precipicios). */
     hangingLoadSupportProbe: 0.12,
     hangingLoadGroundProbeDepth: 3.1,

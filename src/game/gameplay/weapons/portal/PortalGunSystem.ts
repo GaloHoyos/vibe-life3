@@ -30,6 +30,7 @@ import {
 import {
   enforceExitClearance,
   portalNormal,
+  portalUp,
   segmentCrossesPortal,
   transformDirectionThroughPortal,
   transformPointThroughPortal,
@@ -117,6 +118,7 @@ const TMP_LOCAL = new Vector3();
 const TMP_INV_Q = new Quaternion();
 const TMP_EXIT_POS = new Vector3();
 const TMP_VELOCITY = new Vector3();
+const TMP_EXIT_LATERAL = new Vector3();
 
 /**
  * Runtime portal pair: placement, visuals and lifecycle. Traversal and the
@@ -418,6 +420,7 @@ export class PortalGunSystem implements Disposable {
     for (const [id, state] of this.npcStates) {
       if (state.seenFrame !== this.npcFrame) {
         if (state.excluding) {
+          state.handle.setPortalTraversalFrames?.(null, null);
           state.handle.setColliderExclusions(null);
           this.clearNpcExternalTraversal(state.handle);
         }
@@ -437,6 +440,8 @@ export class PortalGunSystem implements Disposable {
     const excluded = new Set<number>();
     const insideSlots = new Set<PortalSlot>();
     const nextEngaged: Record<PortalSlot, boolean> = { a: false, b: false };
+    let engagedSlot: PortalSlot | null = null;
+    let engagedDistanceSq = Infinity;
     for (const [slot, portal] of this.portals) {
       const frame = portal.frame;
       TMP_DELTA.copy(position).sub(frame.position);
@@ -460,6 +465,11 @@ export class PortalGunSystem implements Disposable {
         continue;
       }
       nextEngaged[slot] = true;
+      const distanceSq = TMP_DELTA.lengthSq();
+      if (distanceSq < engagedDistanceSq) {
+        engagedDistanceSq = distanceSq;
+        engagedSlot = slot;
+      }
       const hx = TMP_LOCAL.x / frame.halfWidth;
       const hy = TMP_LOCAL.y / frame.halfHeight;
       if (hx * hx + hy * hy <= 1) insideSlots.add(slot);
@@ -470,6 +480,13 @@ export class PortalGunSystem implements Disposable {
 
     const wantsExclusions = excluded.size > 0;
     if (wantsExclusions) {
+      const entryFrame = engagedSlot ? this.pair.get(engagedSlot) : null;
+      const exitFrame = engagedSlot ? this.pair.exitFor(engagedSlot) : null;
+      if (entryFrame && exitFrame) {
+        handle.setPortalTraversalFrames?.(entryFrame, exitFrame);
+      } else {
+        handle.setPortalTraversalFrames?.(null, null);
+      }
       handle.setColliderExclusions(excluded);
       const colliderHandles = handle.getPortalColliderHandles?.();
       if (colliderHandles) {
@@ -480,6 +497,7 @@ export class PortalGunSystem implements Disposable {
         );
       }
     } else if (state.excluding) {
+      handle.setPortalTraversalFrames?.(null, null);
       handle.setColliderExclusions(null);
       this.clearNpcExternalTraversal(handle);
     }
@@ -490,6 +508,7 @@ export class PortalGunSystem implements Disposable {
   private resetNpcTraversalStates(): void {
     for (const state of this.npcStates.values()) {
       if (state.excluding) {
+        state.handle.setPortalTraversalFrames?.(null, null);
         state.handle.setColliderExclusions(null);
         this.clearNpcExternalTraversal(state.handle);
       }
@@ -527,6 +546,31 @@ export class PortalGunSystem implements Disposable {
         TMP_EXIT_NORMAL,
         PortalConfig.traversal.minExitSpeed - alongNormal,
       );
+    }
+
+    // Salida vertical (piso/techo): además de la altura, correrse fuera del
+    // óvalo. Un cuerpo balístico (blob) aterrizaría sobre el disco que acaba
+    // de salir y haría ping-pong infinito entre el par.
+    if (Math.abs(TMP_EXIT_NORMAL.y) > 0.7) {
+      TMP_EXIT_LATERAL.set(TMP_VELOCITY.x, 0, TMP_VELOCITY.z);
+      if (TMP_EXIT_LATERAL.lengthSq() < 0.25) {
+        portalUp(exit, TMP_EXIT_LATERAL);
+        TMP_EXIT_LATERAL.y = 0;
+      }
+      if (TMP_EXIT_LATERAL.lengthSq() > 1e-6) {
+        TMP_EXIT_LATERAL.normalize();
+        TMP_EXIT_POS.addScaledVector(
+          TMP_EXIT_LATERAL,
+          Math.max(exit.halfWidth, exit.halfHeight) + handle.radius,
+        );
+        const planarSpeed =
+          TMP_VELOCITY.x * TMP_EXIT_LATERAL.x +
+          TMP_VELOCITY.z * TMP_EXIT_LATERAL.z;
+        TMP_VELOCITY.addScaledVector(
+          TMP_EXIT_LATERAL,
+          Math.max(0, 2 - planarSpeed),
+        );
+      }
     }
 
     // Yaw de salida: mirando hacia donde sale; si la velocidad planar es

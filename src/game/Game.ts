@@ -25,6 +25,7 @@ import { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
 import { installIceConsole } from "@game/debug/IceConsole";
 import { installNpcConsole } from "@game/debug/NpcConsole";
 import { installPlayerConsole } from "@game/debug/PlayerConsole";
+import { installPortalConsole } from "@game/debug/PortalConsole";
 import { installPlayerModelConsole } from "@game/debug/PlayerModelConsole";
 import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
 import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
@@ -154,6 +155,7 @@ export class Game {
   private uninstallPlayerConsole: (() => void) | null = null;
   private uninstallIceConsole: (() => void) | null = null;
   private uninstallPlayerModelConsole: (() => void) | null = null;
+  private uninstallPortalConsole: (() => void) | null = null;
   private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
@@ -292,6 +294,8 @@ export class Game {
     this.uninstallIceConsole = null;
     this.uninstallPlayerModelConsole?.();
     this.uninstallPlayerModelConsole = null;
+    this.uninstallPortalConsole?.();
+    this.uninstallPortalConsole = null;
 
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
@@ -1224,6 +1228,9 @@ export class Game {
     );
     this.uninstallPlayerModelConsole = installPlayerModelConsole(
       () => this.playerModel,
+    );
+    this.uninstallPortalConsole = installPortalConsole(() =>
+      s.resolve(GameTokens.Portals),
     );
 
     const debugMenu = new DebugMenu(this.root, input, controls, eventBus);

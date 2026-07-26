@@ -1,10 +1,15 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import {
+  type BufferGeometry,
   Color,
+  Matrix4,
   Mesh,
   MeshPhysicalMaterial,
+  MeshStandardMaterial,
+  Plane,
   Quaternion,
   SphereGeometry,
+  Sprite,
   Vector3,
   type Group,
 } from "three";
@@ -24,6 +29,7 @@ import { Raycast } from "@engine/physics/Raycast";
 import { CHARACTER_MEDIUM_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
 import type { PortalFrame } from "@engine/portals/PortalFrame";
 import {
+  portalNormal,
   transformDirectionThroughPortal,
   transformPointThroughPortal,
   transformQuaternionThroughPortal,
@@ -168,6 +174,19 @@ export interface BlobArmorDebugSnapshot {
 }
 
 const ZERO_ANCHOR = { x: 0, y: 0, z: 0 } as const;
+/** Corte apenas dentro de la pared: el gel solapa el quad y no deja rendija. */
+const PORTAL_CLIP_EPSILON = 0.02;
+/** Plano "en el infinito": clipping siempre asignado, sin recompilar shaders. */
+const NEUTRAL_CLIP_CONSTANT = 1e9;
+const ROT_Y_180_MATRIX = new Matrix4().makeRotationY(Math.PI);
+const UNIT_SCALE = new Vector3(1, 1, 1);
+const TMP_MIRROR_ENTRY_INV = new Matrix4();
+const TMP_MIRROR_EXIT = new Matrix4();
+const TMP_MIRROR_POINT = new Vector3();
+const TMP_PLANE_NORMAL = new Vector3();
+const TMP_PLANE_POINT = new Vector3();
+const TMP_FUNNEL_TARGET = new Vector3();
+const TMP_FUNNEL_DELTA = new Vector3();
 const ARMOR_COLOR = new Color(BlobConfig.visual.surfaceColor);
 const ARMOR_ROUGHNESS = 0.18;
 const ARMOR_METALNESS = 0;
@@ -199,6 +218,30 @@ export class BlobArmorAnimator implements NpcAnimator {
   private readonly neuralTendrils: BlobNeuralTendrils;
   private readonly neuralTargets: NeuralTendrilTarget[] = [];
   private readonly neuralBrainPosition = new Vector3();
+  // Espejo visual durante el cruce de portales: el cuerpo se dibuja recortado
+  // en la boca de entrada y un clon mapeado emerge por la de salida.
+  private portalEntryFrame: PortalFrame | null = null;
+  private portalExitFrame: PortalFrame | null = null;
+  private readonly entryClipPlane = new Plane(
+    new Vector3(0, 1, 0),
+    NEUTRAL_CLIP_CONSTANT,
+  );
+  private readonly exitClipPlane = new Plane(
+    new Vector3(0, 1, 0),
+    NEUTRAL_CLIP_CONSTANT,
+  );
+  private readonly portalDeltaMatrix = new Matrix4();
+  private mirrorSurface: DynamicBlobSurface | null = null;
+  private mirrorGelMaterial: MeshPhysicalMaterial | null = null;
+  private readonly mirrorSamples: DynamicBlobSample[] = [];
+  private readonly mirrorCenter = new Vector3();
+  private readonly mirrorCorePoint = new Vector3();
+  private primaryBrain: Mesh<BufferGeometry, MeshStandardMaterial> | null =
+    null;
+  private primaryHalo: Sprite | null = null;
+  private mirrorBrain: Mesh<BufferGeometry, MeshStandardMaterial> | null =
+    null;
+  private mirrorHalo: Sprite | null = null;
   private readonly gelSamples: DynamicBlobSample[] = [];
   private readonly gelCenter = new Vector3();
   private readonly fragmentGelVisuals: FragmentGelVisual[] = [];
@@ -266,6 +309,9 @@ export class BlobArmorAnimator implements NpcAnimator {
       name: `${options.id}-neural-tendrils`,
       seed: stringSeed(options.id),
     });
+    this.gelMaterial.clippingPlanes = [this.entryClipPlane];
+    this.neuralTendrils.object.material.clippingPlanes = [this.entryClipPlane];
+    this.bindOrganClipPlanes();
     this.raycast = new Raycast(options.physics);
     this.chunkNavigator =
       options.navigation && options.navigationRequests
@@ -296,12 +342,33 @@ export class BlobArmorAnimator implements NpcAnimator {
       return;
     }
     this.portalTraversalActive = active;
+    if (!active) {
+      this.portalEntryFrame = null;
+      this.portalExitFrame = null;
+      this.deactivatePortalMirror();
+    }
     this.loadFatigueGraceRemaining = Math.max(
       this.loadFatigueGraceRemaining,
       BlobConfig.armor.portalTraversalLoadGraceSeconds,
     );
     this.resetPortalLoadState();
     if (active) this.clearFeedingTarget();
+  }
+
+  /** Live pair while straddling a portal; drives the mirrored visual. */
+  setPortalTraversalFrames(
+    entry: PortalFrame | null,
+    exit: PortalFrame | null,
+  ): void {
+    if (this.disposed) return;
+    if (!entry || !exit || this.dead || !this.enabled) {
+      this.portalEntryFrame = null;
+      this.portalExitFrame = null;
+      this.deactivatePortalMirror();
+      return;
+    }
+    this.portalEntryFrame = entry;
+    this.portalExitFrame = exit;
   }
 
   teleportThroughPortal(
@@ -350,6 +417,10 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.chunkNavigator?.clear();
     this.previousHeldVelocities.clear();
     this.neuralTendrils.reset();
+    // El nucleo ya vive del otro lado: el espejo pasa a mostrar la cola que
+    // todavia asoma por el portal de origen.
+    this.portalEntryFrame = exit;
+    this.portalExitFrame = entry;
     this.resetPortalLoadState();
     this.armMainShapeHealing(false);
     this.scheduleReflow();
@@ -389,6 +460,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.updateReleasedLifetime(frame.delta);
     this.updateReassembly(frame.delta);
     this.updateChunkNavigation(frame.delta);
+    this.updatePortalFunnel(finitePhysicsElapsed(frame.delta));
     this.updateReflow(frame.delta);
     this.updateShapeRelaxation(frame.delta);
     this.updateShapeHealing(frame.delta);
@@ -616,6 +688,21 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.gelMaterial.dispose();
     this.neuralTendrils.dispose();
     this.neuralTargets.length = 0;
+    this.mirrorSurface?.dispose();
+    this.mirrorSurface = null;
+    this.mirrorGelMaterial?.dispose();
+    this.mirrorGelMaterial = null;
+    this.mirrorSamples.length = 0;
+    if (this.mirrorBrain) {
+      this.mirrorBrain.removeFromParent();
+      this.mirrorBrain.material.dispose();
+      this.mirrorBrain = null;
+    }
+    if (this.mirrorHalo) {
+      this.mirrorHalo.removeFromParent();
+      this.mirrorHalo.material.dispose();
+      this.mirrorHalo = null;
+    }
     for (const visual of this.fragmentGelVisuals) {
       visual.surface.dispose();
       visual.material.dispose();
@@ -1032,6 +1119,9 @@ export class BlobArmorAnimator implements NpcAnimator {
   private releaseAll(): void {
     this.chunkNavigator?.clear();
     this.portalTraversalActive = false;
+    this.portalEntryFrame = null;
+    this.portalExitFrame = null;
+    this.deactivatePortalMirror();
     for (const part of this.parts) {
       this.removeCoreJoint(part);
     }
@@ -3476,6 +3566,259 @@ export class BlobArmorAnimator implements NpcAnimator {
     ) {
       this.fragmentGelVisuals[index].surface.object.visible = false;
     }
+    this.updatePortalMirror();
+  }
+
+  /**
+   * Embudo físico hacia la boca de un portal de pared enganchado. Los
+   * waypoints del navmesh corren a nivel de piso: un blob aplastado molería
+   * contra la pared debajo del óvalo para siempre, y los resortes de la red
+   * acuñada pesan más que cualquier impulso sobre el core solo. Todo el
+   * cuerpo fluye junto hacia la boca, como el campo de alimentación.
+   */
+  private updatePortalFunnel(elapsed: number): void {
+    const entry = this.portalEntryFrame;
+    const core = this.options.coreBody;
+    if (!entry || elapsed <= 0 || !core.isValid()) return;
+    if (this.options.physics.isHeldBody(core.handle)) return;
+    const config = BlobConfig.armor;
+    const corePosition = core.translation();
+    if (
+      entry.position.y - corePosition.y <=
+      config.portalFunnelRiseThreshold
+    ) {
+      return;
+    }
+    portalNormal(entry, TMP_PLANE_NORMAL);
+    const depth =
+      (corePosition.x - entry.position.x) * TMP_PLANE_NORMAL.x +
+      (corePosition.y - entry.position.y) * TMP_PLANE_NORMAL.y +
+      (corePosition.z - entry.position.z) * TMP_PLANE_NORMAL.z;
+    if (depth < -0.2 || depth > config.portalFunnelEngageDepth) return;
+    const coreVelocity = core.linvel();
+    const approach = -(
+      coreVelocity.x * TMP_PLANE_NORMAL.x +
+      coreVelocity.y * TMP_PLANE_NORMAL.y +
+      coreVelocity.z * TMP_PLANE_NORMAL.z
+    );
+    // Recién salido del par, el blob se aleja del disco: no re-succionarlo.
+    if (approach < -config.portalFunnelRecedeSpeed) return;
+
+    TMP_FUNNEL_TARGET.copy(entry.position).addScaledVector(
+      TMP_PLANE_NORMAL,
+      -0.15,
+    );
+    this.applyPortalFunnelPull(core, elapsed);
+    for (const part of this.parts) {
+      if (part.state !== "attached" || !part.body.isValid()) continue;
+      if (this.options.physics.isHeldBody(part.body.handle)) continue;
+      this.applyPortalFunnelPull(part.body, elapsed);
+    }
+  }
+
+  private applyPortalFunnelPull(
+    body: RAPIER.RigidBody,
+    elapsed: number,
+  ): void {
+    const config = BlobConfig.armor;
+    const position = body.translation();
+    TMP_FUNNEL_DELTA.set(
+      TMP_FUNNEL_TARGET.x - position.x,
+      TMP_FUNNEL_TARGET.y - position.y,
+      TMP_FUNNEL_TARGET.z - position.z,
+    );
+    const distance = TMP_FUNNEL_DELTA.length();
+    if (distance <= 0.08 || distance > config.portalFunnelPullRadius) return;
+    TMP_FUNNEL_DELTA.multiplyScalar(1 / distance);
+    const velocity = body.linvel();
+    const along =
+      velocity.x * TMP_FUNNEL_DELTA.x +
+      velocity.y * TMP_FUNNEL_DELTA.y +
+      velocity.z * TMP_FUNNEL_DELTA.z;
+    if (along >= config.portalFunnelMaxSpeed) return;
+    const deltaV = Math.min(
+      config.portalFunnelAcceleration * elapsed,
+      config.portalFunnelMaxSpeed - along,
+    );
+    const mass = body.mass();
+    body.applyImpulse(
+      {
+        x: TMP_FUNNEL_DELTA.x * deltaV * mass,
+        y: TMP_FUNNEL_DELTA.y * deltaV * mass,
+        z: TMP_FUNNEL_DELTA.z * deltaV * mass,
+      },
+      true,
+    );
+  }
+
+  /** Ancla los planos de corte a los materiales del cuerpo principal. */
+  private bindOrganClipPlanes(): void {
+    const brain = this.options.visualGroup.getObjectByName("blob-core-brain");
+    if (brain instanceof Mesh && brain.material instanceof MeshStandardMaterial) {
+      this.primaryBrain = brain as Mesh<BufferGeometry, MeshStandardMaterial>;
+      brain.material.clippingPlanes = [this.entryClipPlane];
+    }
+    const halo = this.options.visualGroup.getObjectByName("blob-core-halo");
+    if (halo instanceof Sprite) {
+      this.primaryHalo = halo;
+      halo.material.clippingPlanes = [this.entryClipPlane];
+    }
+  }
+
+  /**
+   * Seamless crossing: while the organism straddles a linked portal pair the
+   * primary visual is clipped at the entry mouth and a mapped copy (gel skin,
+   * brain and halo) emerges from the exit, clipped inversely. Physics stays
+   * single-space; this is display only.
+   */
+  private updatePortalMirror(): void {
+    const entry = this.portalEntryFrame;
+    const exit = this.portalExitFrame;
+    if (!entry || !exit || this.dead || !this.enabled) {
+      this.deactivatePortalMirror();
+      return;
+    }
+    this.ensurePortalMirror();
+    if (!this.mirrorSurface || !this.mirrorGelMaterial) return;
+
+    portalNormal(entry, TMP_PLANE_NORMAL);
+    TMP_PLANE_POINT.copy(entry.position).addScaledVector(
+      TMP_PLANE_NORMAL,
+      -PORTAL_CLIP_EPSILON,
+    );
+    this.entryClipPlane.setFromNormalAndCoplanarPoint(
+      TMP_PLANE_NORMAL,
+      TMP_PLANE_POINT,
+    );
+    portalNormal(exit, TMP_PLANE_NORMAL);
+    TMP_PLANE_POINT.copy(exit.position).addScaledVector(
+      TMP_PLANE_NORMAL,
+      -PORTAL_CLIP_EPSILON,
+    );
+    this.exitClipPlane.setFromNormalAndCoplanarPoint(
+      TMP_PLANE_NORMAL,
+      TMP_PLANE_POINT,
+    );
+
+    // Mismo mapeo que transformPointThroughPortal: exit * rotY(pi) * entry^-1.
+    TMP_MIRROR_ENTRY_INV
+      .compose(entry.position, entry.quaternion, UNIT_SCALE)
+      .invert();
+    TMP_MIRROR_EXIT.compose(exit.position, exit.quaternion, UNIT_SCALE);
+    this.portalDeltaMatrix
+      .copy(TMP_MIRROR_EXIT)
+      .multiply(ROT_Y_180_MATRIX)
+      .multiply(TMP_MIRROR_ENTRY_INV);
+
+    let count = 0;
+    for (const sample of this.gelSamples) {
+      transformPointThroughPortal(sample.position, entry, exit, TMP_MIRROR_POINT);
+      count = writeGelSample(
+        this.mirrorSamples,
+        count,
+        TMP_MIRROR_POINT,
+        sample.radius,
+      );
+    }
+    this.mirrorSamples.length = count;
+    syncPortalMirrorGelMaterial(this.mirrorGelMaterial, this.gelMaterial);
+    const core = this.options.coreBody.translation();
+    TMP_MIRROR_POINT.set(core.x, core.y, core.z);
+    transformPointThroughPortal(
+      TMP_MIRROR_POINT,
+      entry,
+      exit,
+      this.mirrorCorePoint,
+    );
+    fitGelSurface(
+      this.mirrorSurface,
+      this.mirrorCenter,
+      this.mirrorSamples,
+      BlobConfig.visual.fragmentSurfaceMinDomainSize,
+      this.mirrorCorePoint,
+    );
+    this.updateOrganMirror();
+  }
+
+  private updateOrganMirror(): void {
+    if (this.mirrorBrain && this.primaryBrain) {
+      this.primaryBrain.updateWorldMatrix(true, false);
+      this.mirrorBrain.matrix
+        .copy(this.portalDeltaMatrix)
+        .multiply(this.primaryBrain.matrixWorld);
+      this.mirrorBrain.matrixWorldNeedsUpdate = true;
+      this.mirrorBrain.visible = this.primaryBrain.visible;
+      this.mirrorBrain.material.color.copy(this.primaryBrain.material.color);
+      this.mirrorBrain.material.emissive.copy(
+        this.primaryBrain.material.emissive,
+      );
+      this.mirrorBrain.material.emissiveIntensity =
+        this.primaryBrain.material.emissiveIntensity;
+      this.mirrorBrain.material.roughness = this.primaryBrain.material.roughness;
+    }
+    if (this.mirrorHalo && this.primaryHalo) {
+      this.primaryHalo.updateWorldMatrix(true, false);
+      this.mirrorHalo.matrix
+        .copy(this.portalDeltaMatrix)
+        .multiply(this.primaryHalo.matrixWorld);
+      this.mirrorHalo.matrixWorldNeedsUpdate = true;
+      this.mirrorHalo.visible = this.primaryHalo.visible;
+      this.mirrorHalo.material.opacity = this.primaryHalo.material.opacity;
+    }
+  }
+
+  private ensurePortalMirror(): void {
+    const parent = this.options.visualGroup.parent;
+    if (!parent) return;
+    if (!this.mirrorSurface) {
+      const visual = BlobConfig.visual;
+      this.mirrorGelMaterial = createGelMaterial();
+      this.mirrorGelMaterial.clippingPlanes = [this.exitClipPlane];
+      this.mirrorSurface = new DynamicBlobSurface(this.mirrorGelMaterial, {
+        name: `${this.options.id}-gel-portal-mirror`,
+        resolution: visual.surfaceResolution,
+        domainSize: visual.surfaceDomainSize,
+        maxPolyCount: visual.surfaceMaxPolyCount,
+      });
+      this.mirrorSurface.object.castShadow = false;
+      this.mirrorSurface.object.receiveShadow = true;
+      this.mirrorSurface.object.renderOrder = 1;
+    }
+    this.mirrorSurface.attachTo(parent);
+    if (!this.mirrorBrain && this.primaryBrain) {
+      const material = this.primaryBrain.material.clone();
+      material.clippingPlanes = [this.exitClipPlane];
+      const mirror = new Mesh(this.primaryBrain.geometry, material);
+      mirror.name = `${this.options.id}-brain-portal-mirror`;
+      mirror.matrixAutoUpdate = false;
+      mirror.castShadow = false;
+      mirror.receiveShadow = false;
+      this.mirrorBrain = mirror;
+    }
+    if (this.mirrorBrain && this.mirrorBrain.parent !== parent) {
+      parent.add(this.mirrorBrain);
+    }
+    if (!this.mirrorHalo && this.primaryHalo) {
+      const material = this.primaryHalo.material.clone();
+      material.clippingPlanes = [this.exitClipPlane];
+      const mirror = new Sprite(material);
+      mirror.name = `${this.options.id}-halo-portal-mirror`;
+      mirror.matrixAutoUpdate = false;
+      this.mirrorHalo = mirror;
+    }
+    if (this.mirrorHalo && this.mirrorHalo.parent !== parent) {
+      parent.add(this.mirrorHalo);
+    }
+  }
+
+  private deactivatePortalMirror(): void {
+    this.entryClipPlane.normal.set(0, 1, 0);
+    this.entryClipPlane.constant = NEUTRAL_CLIP_CONSTANT;
+    this.exitClipPlane.normal.set(0, 1, 0);
+    this.exitClipPlane.constant = NEUTRAL_CLIP_CONSTANT;
+    if (this.mirrorSurface) this.mirrorSurface.object.visible = false;
+    if (this.mirrorBrain) this.mirrorBrain.visible = false;
+    if (this.mirrorHalo) this.mirrorHalo.visible = false;
   }
 
   private getFragmentGelVisual(index: number): FragmentGelVisual {
@@ -3508,6 +3851,7 @@ export class BlobArmorAnimator implements NpcAnimator {
   private hideGelSurfaces(): void {
     this.gelSurface.object.visible = false;
     this.neuralTendrils.object.visible = false;
+    this.deactivatePortalMirror();
     for (const visual of this.fragmentGelVisuals) {
       visual.surface.object.visible = false;
     }
@@ -3889,6 +4233,19 @@ function applyGelWitherMaterial(
     death ? 0 : ARMOR_TRANSMISSION,
     progress,
   );
+}
+
+/** El clon del otro lado replica el estado vivo del gel (wither incluido). */
+function syncPortalMirrorGelMaterial(
+  mirror: MeshPhysicalMaterial,
+  source: MeshPhysicalMaterial,
+): void {
+  mirror.color.copy(source.color);
+  mirror.roughness = source.roughness;
+  mirror.metalness = source.metalness;
+  mirror.opacity = source.opacity;
+  mirror.clearcoat = source.clearcoat;
+  mirror.transmission = source.transmission;
 }
 
 function partWitherVisualProgress(part: BlobArmorPart): number {

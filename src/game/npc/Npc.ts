@@ -112,6 +112,10 @@ interface PortalCapableMotor {
 interface PortalCompositeAnimation {
   getPortalColliderHandles?(): readonly number[];
   setPortalTraversalActive?(active: boolean): void;
+  setPortalTraversalFrames?(
+    entry: PortalFrame | null,
+    exit: PortalFrame | null,
+  ): void;
   teleportComposite?(
     position: Vector3,
     velocity: Vector3,
@@ -689,6 +693,9 @@ export class Npc implements INpc {
       setColliderExclusions: (handles) => {
         setPortalExclusions.call(motor, handles);
         compositeAnimation?.setPortalTraversalActive?.(handles !== null);
+      },
+      setPortalTraversalFrames: (entry, exit) => {
+        compositeAnimation?.setPortalTraversalFrames?.(entry, exit);
       },
     };
   }

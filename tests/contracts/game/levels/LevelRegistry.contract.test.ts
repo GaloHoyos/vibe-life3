@@ -72,7 +72,16 @@ describe("LevelRegistry contracts", () => {
       expect.objectContaining({ characterId: "blob" }),
     ]);
     expect(weaponIds).toEqual(
-      new Set(["crowbar", "pistol", "shotgun", "iceGun", "gravityGun", "grenade", "rpg"]),
+      new Set([
+        "crowbar",
+        "pistol",
+        "shotgun",
+        "iceGun",
+        "gravityGun",
+        "portalGun",
+        "grenade",
+        "rpg",
+      ]),
     );
     expect(level.dynamicBoxes.length).toBeGreaterThan(0);
   });

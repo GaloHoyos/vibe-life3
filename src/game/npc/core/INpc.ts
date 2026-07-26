@@ -234,6 +234,14 @@ export interface NpcPortalHandle {
    */
   getPortalColliderHandles?(): readonly number[];
   setColliderExclusions(handles: ReadonlySet<number> | null): void;
+  /**
+   * Live portal pair while the organism straddles it, so composites can
+   * mirror their visual across the mouth (seamless crossing). Null clears.
+   */
+  setPortalTraversalFrames?(
+    entry: PortalFrame | null,
+    exit: PortalFrame | null,
+  ): void;
 }
 
 /**
