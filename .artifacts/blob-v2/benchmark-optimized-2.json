@@ -1,0 +1,177 @@
+{
+  "runner": "win32/x64 node v20.20.2",
+  "seconds": 5,
+  "warmupSeconds": 1,
+  "warmupDrainFrames": 1,
+  "finalDrainFrames": 1,
+  "meshingBudgetMs": 3.25,
+  "frames": 300,
+  "blobs": 2,
+  "requestedBiomassPerBlob": 250,
+  "initialLivingFragments": 12,
+  "livingFragmentsAtEnd": 12,
+  "simulationMs": {
+    "average": 1.936,
+    "p95": 4.005,
+    "maximum": 7.423
+  },
+  "meshingMs": {
+    "average": 2.953,
+    "p95": 3.398,
+    "maximum": 4.381
+  },
+  "meshingJobsMs": {
+    "average": 0.827,
+    "p95": 2.256,
+    "maximum": 3.843
+  },
+  "meshingJobsByResolution": {
+    "24": {
+      "average": 0.507,
+      "p95": 0.548,
+      "maximum": 1.762
+    },
+    "32": {
+      "average": 2.101,
+      "p95": 2.387,
+      "maximum": 3.843
+    }
+  },
+  "polygonizationMs": {
+    "average": 0.455,
+    "p95": 0.96,
+    "maximum": 1.918
+  },
+  "fieldAndSetupMs": {
+    "average": 0.372,
+    "p95": 1.322,
+    "maximum": 2.208
+  },
+  "meshingJobsOver8Ms": 0,
+  "slowestMeshingJobs": [
+    {
+      "resolution": 32,
+      "durationMs": 3.843,
+      "polygonizationMs": 1.635,
+      "polygonizationVertices": 9960,
+      "fieldAndSetupMs": 2.208
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.201,
+      "polygonizationMs": 1.512,
+      "polygonizationVertices": 8772,
+      "fieldAndSetupMs": 1.69
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.188,
+      "polygonizationMs": 1.896,
+      "polygonizationVertices": 9720,
+      "fieldAndSetupMs": 1.293
+    },
+    {
+      "resolution": 32,
+      "durationMs": 2.944,
+      "polygonizationMs": 1.918,
+      "polygonizationVertices": 8928,
+      "fieldAndSetupMs": 1.026
+    },
+    {
+      "resolution": 32,
+      "durationMs": 2.846,
+      "polygonizationMs": 1.462,
+      "polygonizationVertices": 9972,
+      "fieldAndSetupMs": 1.385
+    }
+  ],
+  "surfaceVerticesByResolution": {
+    "24": {
+      "maximum": 3240,
+      "average": 3001
+    },
+    "32": {
+      "maximum": 10008,
+      "average": 9402
+    }
+  },
+  "combinedFrameMs": {
+    "average": 5.334,
+    "p95": 7.445,
+    "maximum": 10.68
+  },
+  "pendingVisualJobs": 0,
+  "telemetry": [
+    {
+      "simulation": {
+        "samples": 300,
+        "averageMs": 0.603904666666662,
+        "p95Ms": 2.0195000000001073,
+        "maximumMs": 2.845399999999927
+      },
+      "meshing": {
+        "samples": 575,
+        "averageMs": 0.7821384347826054,
+        "p95Ms": 1.9676999999996951,
+        "maximumMs": 3.2013999999999214
+      },
+      "presentation": {
+        "samples": 300,
+        "averageMs": 0.06887666666666444,
+        "p95Ms": 0.11459999999988213,
+        "maximumMs": 0.21519999999986794
+      },
+      "visualJobWait": {
+        "samples": 575,
+        "averageMs": 1.5391128695652274,
+        "p95Ms": 2.7651999999998225,
+        "maximumMs": 3.6882000000000517
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6344800,
+        "estimatedGpuBytes": 2642016
+      }
+    },
+    {
+      "simulation": {
+        "samples": 300,
+        "averageMs": 0.5139610000000205,
+        "p95Ms": 1.0518999999999323,
+        "maximumMs": 3.133600000000115
+      },
+      "meshing": {
+        "samples": 489,
+        "averageMs": 0.8807642126789371,
+        "p95Ms": 2.315699999999879,
+        "maximumMs": 3.843199999999797
+      },
+      "presentation": {
+        "samples": 300,
+        "averageMs": 0.05004999999999086,
+        "p95Ms": 0.0848999999999478,
+        "maximumMs": 0.17250000000001364
+      },
+      "visualJobWait": {
+        "samples": 489,
+        "averageMs": 1.3663333333333327,
+        "p95Ms": 2.5913000000000466,
+        "maximumMs": 4.77139999999963
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6344800,
+        "estimatedGpuBytes": 2642016
+      }
+    }
+  ],
+  "heapUsedMb": 61.4,
+  "acceptance": {
+    "mode": "smoke",
+    "skipped": true,
+    "passed": null,
+    "criteria": []
+  }
+}

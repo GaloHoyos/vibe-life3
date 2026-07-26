@@ -1,0 +1,3943 @@
+{
+  "schemaVersion": 2,
+  "kind": "screenshot",
+  "id": "reattach",
+  "command": "reattach",
+  "status": "passed",
+  "generatedAt": "2026-07-14T13:32:56.382Z",
+  "contract": {
+    "level": "blob-test",
+    "subjectId": "blob-lab-subject",
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "deviceScaleFactor": 1,
+    "browserSeed": "0xb10b2026",
+    "organismSeed": "0x51f15e",
+    "epoch": "2026-07-14T12:00:00.000Z",
+    "simulationStepSeconds": 0.03333333333333333,
+    "baselineSettleSteps": 75,
+    "cameras": {
+      "turntable": {
+        "position": [
+          0,
+          1,
+          -2.5
+        ],
+        "yaw": 0,
+        "pitch": 0
+      },
+      "witherPocket": {
+        "position": [
+          26.5,
+          1.2,
+          -8.5
+        ],
+        "yaw": 0,
+        "pitch": 0
+      }
+    },
+    "video": {
+      "sequenceSeconds": 15.2,
+      "trimWindowSeconds": 14.5,
+      "minimumSeconds": 10,
+      "maximumSeconds": 15,
+      "tickMs": 100,
+      "stepsPerTick": 3
+    },
+    "golden": {
+      "root": "tests/golden/blob-v2",
+      "maximumChangedPixelRatio": 0.01,
+      "changedPixelChannelDelta": 8
+    }
+  },
+  "camera": {
+    "position": [
+      0,
+      1,
+      -2.5
+    ],
+    "yaw": 0,
+    "pitch": 0
+  },
+  "clock": {
+    "baselineSettleSteps": 75,
+    "baselineSimulationTime": 2.500000000000001,
+    "fixedSteps": 30,
+    "expectedSimulationTime": 3.500000000000001,
+    "observedSimulationTime": 3.4999999999999973,
+    "observedActionSimulationTime": 0.9999999999999964
+  },
+  "assertions": [
+    {
+      "name": "fixed action simulation clock",
+      "expected": 3.500000000000001,
+      "actual": 3.4999999999999973,
+      "passed": true
+    },
+    {
+      "name": "deterministic settled baseline",
+      "expected": 2.5,
+      "actual": 2.500000000000001,
+      "passed": true
+    },
+    {
+      "name": "browser page errors",
+      "expected": 0,
+      "actual": 0,
+      "passed": true
+    },
+    {
+      "name": "runtime telemetry sampled",
+      "expected": "> 0 simulation samples",
+      "actual": 111,
+      "passed": true
+    },
+    {
+      "name": "subject available",
+      "expected": "blob-lab-subject",
+      "actual": [
+        "blob-lab-subject"
+      ],
+      "passed": true
+    },
+    {
+      "name": "biomass accounting",
+      "expected": 192,
+      "actual": 192,
+      "passed": true
+    },
+    {
+      "name": "core health bounded",
+      "expected": "0-150",
+      "actual": 150,
+      "passed": true
+    },
+    {
+      "name": "finite core position",
+      "expected": true,
+      "actual": [
+        -0.09995495331719541,
+        0.5319825735293449,
+        -8.848106062274564
+      ],
+      "passed": true
+    },
+    {
+      "name": "marching surfaces ready",
+      "expected": true,
+      "actual": [
+        {
+          "id": 1,
+          "hasBuild": true,
+          "pending": false
+        }
+      ],
+      "passed": true
+    },
+    {
+      "name": "fallback skin hidden",
+      "expected": 0,
+      "actual": 0,
+      "passed": true
+    },
+    {
+      "name": "evidence overlays hidden",
+      "expected": {
+        "hud": "none",
+        "subtitles": "none"
+      },
+      "actual": {
+        "hud": "none",
+        "subtitles": "none"
+      },
+      "passed": true
+    },
+    {
+      "name": "reattach state observed",
+      "expected": true,
+      "actual": true,
+      "passed": true
+    },
+    {
+      "name": "fragmentReattached event",
+      "expected": true,
+      "actual": true,
+      "passed": true
+    },
+    {
+      "name": "PNG golden pixel diff",
+      "expected": "<= 1% changed pixels",
+      "actual": {
+        "mode": "compared",
+        "changedPixels": 1,
+        "changedPixelRatio": 0.0000010850694444444444,
+        "maximumChannelDelta": 65
+      },
+      "passed": true
+    }
+  ],
+  "preparation": {
+    "before": {
+      "version": 83,
+      "simulationTime": 2.500000000000001,
+      "interpolationAlpha": 0,
+      "organismState": "Hunt",
+      "traversalState": "Ground",
+      "overrideState": "Frozen",
+      "biomass": {
+        "initial": 192,
+        "maximum": 250,
+        "total": 192,
+        "attached": 192,
+        "fragments": 0,
+        "created": 192,
+        "lost": 0
+      },
+      "core": {
+        "state": "Covered",
+        "health": 150,
+        "maximumHealth": 150,
+        "damageMultiplier": 2.5,
+        "position": {
+          "x": -0.09619560971330493,
+          "y": 0.5327283467798204,
+          "z": -8.868570106743558
+        },
+        "radius": 0.35
+      },
+      "cells": 192,
+      "islands": [
+        {
+          "id": 1,
+          "generation": 1,
+          "kind": "main",
+          "fragmentId": null,
+          "biomass": 192,
+          "mergeRequested": false
+        }
+      ],
+      "wounds": [],
+      "fragments": [],
+      "particleCount": 192,
+      "particleBounds": {
+        "min": {
+          "x": -1.746910705177813,
+          "y": 0.5319825735293449,
+          "z": -10.779980044792884
+        },
+        "max": {
+          "x": 1.8384802648906013,
+          "y": 0.7057717473241517,
+          "z": -7.402091876835175
+        },
+        "span": {
+          "x": 3.5853909700684143,
+          "y": 0.17378917379480685,
+          "z": 3.3778881679577095
+        }
+      },
+      "particleFingerprint": {
+        "hash": "630c6d93",
+        "speedSquared": 5.857262473517654
+      },
+      "scriptedSplit": {
+        "active": false,
+        "mergeRequested": false,
+        "islandIds": []
+      }
+    },
+    "beforeTelemetry": {
+      "simulation": {
+        "samples": 81,
+        "averageMs": 1.225925929752397,
+        "p95Ms": 2.5,
+        "maximumMs": 5.899999976158142
+      },
+      "meshing": {
+        "samples": 3,
+        "averageMs": 4.4333332777023315,
+        "p95Ms": 7.899999976158142,
+        "maximumMs": 7.899999976158142
+      },
+      "presentation": {
+        "samples": 6,
+        "averageMs": 0.3999999761581421,
+        "p95Ms": 0.6999999284744263,
+        "maximumMs": 0.6999999284744263
+      },
+      "visualJobWait": {
+        "samples": 3,
+        "averageMs": 1.6666667064030964,
+        "p95Ms": 2,
+        "maximumMs": 2
+      },
+      "resources": {
+        "surfaces": 1,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 1969568,
+        "estimatedGpuBytes": 920608
+      }
+    },
+    "beforeDiagnostics": {
+      "motion": {
+        "target": null,
+        "wantsMove": false
+      },
+      "traversal": {
+        "kind": "none",
+        "linkId": null,
+        "crossedFraction": 0,
+        "requiredFraction": 0,
+        "coreReleased": false,
+        "rejectedReason": null,
+        "channelAssignments": {}
+      },
+      "pose": {
+        "active": false,
+        "id": null,
+        "kind": null,
+        "phase": null,
+        "progress": 0,
+        "strength": 0,
+        "targetCount": 0
+      },
+      "presentation": {
+        "frozen": false,
+        "disposed": false,
+        "activeSurfaceCount": 1,
+        "fallbackCellCount": 0,
+        "visibleTendonCount": 0,
+        "surfaces": [
+          {
+            "islandId": 1,
+            "id": 1,
+            "generation": 1,
+            "resolution": 32,
+            "hasBuild": true,
+            "pending": false,
+            "completedRevision": -1,
+            "domainCenter": [
+              0,
+              0.625,
+              -9.125
+            ],
+            "domainSize": [
+              6,
+              2.75,
+              5.75
+            ],
+            "drawCount": 8052,
+            "geometryFingerprint": "7e191dcb",
+            "latestIslandCenter": [
+              0.05841902400448873,
+              0.5445674892076806,
+              -9.023939115027451
+            ],
+            "builtIslandCenter": [
+              0.05841902400448873,
+              0.5445674892076806,
+              -9.023939115027451
+            ],
+            "meshPosition": [
+              0.11270037763793272,
+              0.0922716532201795,
+              0.2496167269312961
+            ],
+            "meshScale": [
+              3,
+              1.375,
+              2.8750000000000004
+            ]
+          }
+        ]
+      }
+    },
+    "actionResult": {
+      "version": 87,
+      "simulationTime": 2.500000000000001,
+      "interpolationAlpha": 0,
+      "organismState": "Hunt",
+      "traversalState": "Ground",
+      "overrideState": "None",
+      "biomass": {
+        "initial": 192,
+        "maximum": 250,
+        "total": 192,
+        "attached": 180,
+        "fragments": 12,
+        "created": 192,
+        "lost": 0
+      },
+      "core": {
+        "state": "Breached",
+        "health": 150,
+        "maximumHealth": 150,
+        "damageMultiplier": 2.5,
+        "position": {
+          "x": -0.09619560971330493,
+          "y": 0.5327283467798204,
+          "z": -8.868570106743558
+        },
+        "radius": 0.35
+      },
+      "cells": 192,
+      "islands": [
+        {
+          "id": 1,
+          "generation": 1,
+          "kind": "main",
+          "fragmentId": null,
+          "biomass": 180,
+          "mergeRequested": false
+        },
+        {
+          "id": 2,
+          "generation": 2,
+          "kind": "combat-fragment",
+          "fragmentId": 1,
+          "biomass": 12,
+          "mergeRequested": false
+        }
+      ],
+      "wounds": [
+        {
+          "id": 1,
+          "point": {
+            "x": 0.25380439028669505,
+            "y": 0.5327283467798204,
+            "z": -8.868570106743558
+          },
+          "normal": {
+            "x": 1,
+            "y": 0,
+            "z": 0
+          },
+          "radius": 0.43000000000000005,
+          "state": "Breached",
+          "cohesionEnergy": 40,
+          "cohesionThreshold": 36,
+          "repairDeficit": 12,
+          "detachedBiomass": 12,
+          "fragmentId": 1,
+          "createdAt": 2.500000000000001,
+          "lastImpactAt": 2.500000000000001,
+          "openedAt": 2.500000000000001,
+          "reattachProgress": 0,
+          "sourceWoundId": null
+        }
+      ],
+      "fragments": [
+        {
+          "id": 1,
+          "islandId": 2,
+          "generation": 2,
+          "woundId": 1,
+          "state": "Detaching",
+          "biomass": 12,
+          "cellIds": [
+            181,
+            182,
+            183,
+            184,
+            185,
+            186,
+            187,
+            188,
+            189,
+            190,
+            191,
+            192
+          ],
+          "position": {
+            "x": 0.11380439028669506,
+            "y": 0.5327283467798204,
+            "z": -8.868570106743558
+          },
+          "velocity": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0
+          },
+          "detachedAt": 2.500000000000001,
+          "stateStartedAt": 2.500000000000001,
+          "age": 0,
+          "reattachProgress": 0,
+          "witherProgress": 0,
+          "damageRemainder": 0,
+          "needsPath": false
+        }
+      ],
+      "particleCount": 192,
+      "particleBounds": {
+        "min": {
+          "x": -1.746910705177813,
+          "y": 0.5212290168878705,
+          "z": -10.779980044792884
+        },
+        "max": {
+          "x": 1.8384802648906013,
+          "y": 0.7057717473241517,
+          "z": -7.402091876835175
+        },
+        "span": {
+          "x": 3.5853909700684143,
+          "y": 0.18454273043628122,
+          "z": 3.3778881679577095
+        }
+      },
+      "particleFingerprint": {
+        "hash": "3d3794cd",
+        "speedSquared": 8.334081000818374
+      },
+      "scriptedSplit": {
+        "active": false,
+        "mergeRequested": false,
+        "islandIds": []
+      }
+    },
+    "afterScenario": {
+      "version": 87,
+      "simulationTime": 2.500000000000001,
+      "interpolationAlpha": 0,
+      "organismState": "Hunt",
+      "traversalState": "Ground",
+      "overrideState": "None",
+      "biomass": {
+        "initial": 192,
+        "maximum": 250,
+        "total": 192,
+        "attached": 180,
+        "fragments": 12,
+        "created": 192,
+        "lost": 0
+      },
+      "core": {
+        "state": "Breached",
+        "health": 150,
+        "maximumHealth": 150,
+        "damageMultiplier": 2.5,
+        "position": {
+          "x": -0.09619560971330493,
+          "y": 0.5327283467798204,
+          "z": -8.868570106743558
+        },
+        "radius": 0.35
+      },
+      "cells": 192,
+      "islands": [
+        {
+          "id": 1,
+          "generation": 1,
+          "kind": "main",
+          "fragmentId": null,
+          "biomass": 180,
+          "mergeRequested": false
+        },
+        {
+          "id": 2,
+          "generation": 2,
+          "kind": "combat-fragment",
+          "fragmentId": 1,
+          "biomass": 12,
+          "mergeRequested": false
+        }
+      ],
+      "wounds": [
+        {
+          "id": 1,
+          "point": {
+            "x": 0.25380439028669505,
+            "y": 0.5327283467798204,
+            "z": -8.868570106743558
+          },
+          "normal": {
+            "x": 1,
+            "y": 0,
+            "z": 0
+          },
+          "radius": 0.43000000000000005,
+          "state": "Breached",
+          "cohesionEnergy": 40,
+          "cohesionThreshold": 36,
+          "repairDeficit": 12,
+          "detachedBiomass": 12,
+          "fragmentId": 1,
+          "createdAt": 2.500000000000001,
+          "lastImpactAt": 2.500000000000001,
+          "openedAt": 2.500000000000001,
+          "reattachProgress": 0,
+          "sourceWoundId": null
+        }
+      ],
+      "fragments": [
+        {
+          "id": 1,
+          "islandId": 2,
+          "generation": 2,
+          "woundId": 1,
+          "state": "Detaching",
+          "biomass": 12,
+          "cellIds": [
+            181,
+            182,
+            183,
+            184,
+            185,
+            186,
+            187,
+            188,
+            189,
+            190,
+            191,
+            192
+          ],
+          "position": {
+            "x": 0.11380439028669506,
+            "y": 0.5327283467798204,
+            "z": -8.868570106743558
+          },
+          "velocity": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0
+          },
+          "detachedAt": 2.500000000000001,
+          "stateStartedAt": 2.500000000000001,
+          "age": 0,
+          "reattachProgress": 0,
+          "witherProgress": 0,
+          "damageRemainder": 0,
+          "needsPath": false
+        }
+      ],
+      "particleCount": 192,
+      "particleBounds": {
+        "min": {
+          "x": -1.746910705177813,
+          "y": 0.5212290168878705,
+          "z": -10.779980044792884
+        },
+        "max": {
+          "x": 1.8384802648906013,
+          "y": 0.7057717473241517,
+          "z": -7.402091876835175
+        },
+        "span": {
+          "x": 3.5853909700684143,
+          "y": 0.18454273043628122,
+          "z": 3.3778881679577095
+        }
+      },
+      "particleFingerprint": {
+        "hash": "3d3794cd",
+        "speedSquared": 8.334081000818374
+      },
+      "scriptedSplit": {
+        "active": false,
+        "mergeRequested": false,
+        "islandIds": []
+      }
+    },
+    "afterTelemetry": {
+      "simulation": {
+        "samples": 81,
+        "averageMs": 1.225925929752397,
+        "p95Ms": 2.5,
+        "maximumMs": 5.899999976158142
+      },
+      "meshing": {
+        "samples": 3,
+        "averageMs": 4.4333332777023315,
+        "p95Ms": 7.899999976158142,
+        "maximumMs": 7.899999976158142
+      },
+      "presentation": {
+        "samples": 6,
+        "averageMs": 0.3999999761581421,
+        "p95Ms": 0.6999999284744263,
+        "maximumMs": 0.6999999284744263
+      },
+      "visualJobWait": {
+        "samples": 3,
+        "averageMs": 1.6666667064030964,
+        "p95Ms": 2,
+        "maximumMs": 2
+      },
+      "resources": {
+        "surfaces": 1,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 1969568,
+        "estimatedGpuBytes": 920608
+      }
+    },
+    "afterDiagnostics": {
+      "motion": {
+        "target": null,
+        "wantsMove": false
+      },
+      "traversal": {
+        "kind": "none",
+        "linkId": null,
+        "crossedFraction": 0,
+        "requiredFraction": 0,
+        "coreReleased": false,
+        "rejectedReason": null,
+        "channelAssignments": {}
+      },
+      "pose": {
+        "active": false,
+        "id": null,
+        "kind": null,
+        "phase": null,
+        "progress": 0,
+        "strength": 0,
+        "targetCount": 0
+      },
+      "presentation": {
+        "frozen": false,
+        "disposed": false,
+        "activeSurfaceCount": 1,
+        "fallbackCellCount": 0,
+        "visibleTendonCount": 0,
+        "surfaces": [
+          {
+            "islandId": 1,
+            "id": 1,
+            "generation": 1,
+            "resolution": 32,
+            "hasBuild": true,
+            "pending": false,
+            "completedRevision": -1,
+            "domainCenter": [
+              0,
+              0.625,
+              -9.125
+            ],
+            "domainSize": [
+              6,
+              2.75,
+              5.75
+            ],
+            "drawCount": 8052,
+            "geometryFingerprint": "7e191dcb",
+            "latestIslandCenter": [
+              0.05841902400448873,
+              0.5445674892076806,
+              -9.023939115027451
+            ],
+            "builtIslandCenter": [
+              0.05841902400448873,
+              0.5445674892076806,
+              -9.023939115027451
+            ],
+            "meshPosition": [
+              0.11270037763793272,
+              0.0922716532201795,
+              0.2496167269312961
+            ],
+            "meshScale": [
+              3,
+              1.375,
+              2.8750000000000004
+            ]
+          },
+          {
+            "islandId": 2
+          }
+        ]
+      }
+    },
+    "events": [],
+    "playerPosition": [
+      0,
+      1,
+      -2.5
+    ]
+  },
+  "samples": [
+    {
+      "fixedSteps": 3,
+      "snapshot": {
+        "version": 90,
+        "simulationTime": 2.6000000000000005,
+        "interpolationAlpha": 0,
+        "organismState": "Hunt",
+        "traversalState": "Ground",
+        "overrideState": "None",
+        "biomass": {
+          "initial": 192,
+          "maximum": 250,
+          "total": 192,
+          "attached": 180,
+          "fragments": 12,
+          "created": 192,
+          "lost": 0
+        },
+        "core": {
+          "state": "Exposed",
+          "health": 150,
+          "maximumHealth": 150,
+          "damageMultiplier": 2.5,
+          "position": {
+            "x": -0.10215517769530288,
+            "y": 0.5319825735293449,
+            "z": -8.854991202409092
+          },
+          "radius": 0.35
+        },
+        "cells": 192,
+        "islands": [
+          {
+            "id": 1,
+            "generation": 1,
+            "kind": "main",
+            "fragmentId": null,
+            "biomass": 180,
+            "mergeRequested": false
+          },
+          {
+            "id": 2,
+            "generation": 2,
+            "kind": "combat-fragment",
+            "fragmentId": 1,
+            "biomass": 12,
+            "mergeRequested": false
+          }
+        ],
+        "wounds": [
+          {
+            "id": 1,
+            "point": {
+              "x": 0.25380439028669505,
+              "y": 0.5327283467798204,
+              "z": -8.868570106743558
+            },
+            "normal": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "radius": 0.43000000000000005,
+            "state": "Reattaching",
+            "cohesionEnergy": 40,
+            "cohesionThreshold": 36,
+            "repairDeficit": 12,
+            "detachedBiomass": 12,
+            "fragmentId": 1,
+            "createdAt": 2.500000000000001,
+            "lastImpactAt": 2.500000000000001,
+            "openedAt": 2.500000000000001,
+            "reattachProgress": 0.11111111111111072,
+            "sourceWoundId": null
+          }
+        ],
+        "fragments": [
+          {
+            "id": 1,
+            "islandId": 2,
+            "generation": 2,
+            "woundId": 1,
+            "state": "Reattaching",
+            "biomass": 12,
+            "cellIds": [
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192
+            ],
+            "position": {
+              "x": 0.06573179371742541,
+              "y": 0.6287682787732503,
+              "z": -8.867233731733156
+            },
+            "velocity": {
+              "x": -0.49893551000342623,
+              "y": 3.436292445760586,
+              "z": 0
+            },
+            "detachedAt": 2.500000000000001,
+            "stateStartedAt": 2.533333333333334,
+            "age": 0.09999999999999964,
+            "reattachProgress": 0.11111111111111072,
+            "witherProgress": 0,
+            "damageRemainder": 0,
+            "needsPath": false
+          }
+        ],
+        "particleCount": 192,
+        "particleBounds": {
+          "min": {
+            "x": -1.7613171567678148,
+            "y": 0.5319825735293449,
+            "z": -10.786852824210305
+          },
+          "max": {
+            "x": 1.836593271893949,
+            "y": 0.8640167725950165,
+            "z": -7.390620119316386
+          },
+          "span": {
+            "x": 3.5979104286617636,
+            "y": 0.33203419906567166,
+            "z": 3.3962327048939187
+          }
+        },
+        "particleFingerprint": {
+          "hash": "0578b63e",
+          "speedSquared": 49.03429883834823
+        },
+        "scriptedSplit": {
+          "active": false,
+          "mergeRequested": false,
+          "islandIds": []
+        }
+      },
+      "telemetry": {
+        "simulation": {
+          "samples": 84,
+          "averageMs": 1.2321428599811735,
+          "p95Ms": 2.5,
+          "maximumMs": 5.899999976158142
+        },
+        "meshing": {
+          "samples": 3,
+          "averageMs": 4.4333332777023315,
+          "p95Ms": 7.899999976158142,
+          "maximumMs": 7.899999976158142
+        },
+        "presentation": {
+          "samples": 6,
+          "averageMs": 0.3999999761581421,
+          "p95Ms": 0.6999999284744263,
+          "maximumMs": 0.6999999284744263
+        },
+        "visualJobWait": {
+          "samples": 3,
+          "averageMs": 1.6666667064030964,
+          "p95Ms": 2,
+          "maximumMs": 2
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "diagnostics": {
+        "motion": {
+          "target": null,
+          "wantsMove": false
+        },
+        "traversal": {
+          "kind": "none",
+          "linkId": null,
+          "crossedFraction": 0,
+          "requiredFraction": 0,
+          "coreReleased": false,
+          "rejectedReason": null,
+          "channelAssignments": {}
+        },
+        "pose": {
+          "active": false,
+          "id": null,
+          "kind": null,
+          "phase": null,
+          "progress": 0,
+          "strength": 0,
+          "targetCount": 0
+        },
+        "presentation": {
+          "frozen": false,
+          "disposed": false,
+          "activeSurfaceCount": 1,
+          "fallbackCellCount": 0,
+          "visibleTendonCount": 0,
+          "surfaces": [
+            {
+              "islandId": 1,
+              "id": 1,
+              "generation": 1,
+              "resolution": 32,
+              "hasBuild": true,
+              "pending": false,
+              "completedRevision": -1,
+              "domainCenter": [
+                0,
+                0.625,
+                -9.125
+              ],
+              "domainSize": [
+                6,
+                2.75,
+                5.75
+              ],
+              "drawCount": 8052,
+              "geometryFingerprint": "7e191dcb",
+              "latestIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "builtIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "meshPosition": [
+                0.11270037763793272,
+                0.0922716532201795,
+                0.2496167269312961
+              ],
+              "meshScale": [
+                3,
+                1.375,
+                2.8750000000000004
+              ]
+            },
+            {
+              "islandId": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixedSteps": 6,
+      "snapshot": {
+        "version": 93,
+        "simulationTime": 2.7,
+        "interpolationAlpha": 0,
+        "organismState": "Hunt",
+        "traversalState": "Ground",
+        "overrideState": "None",
+        "biomass": {
+          "initial": 192,
+          "maximum": 250,
+          "total": 192,
+          "attached": 180,
+          "fragments": 12,
+          "created": 192,
+          "lost": 0
+        },
+        "core": {
+          "state": "Exposed",
+          "health": 150,
+          "maximumHealth": 150,
+          "damageMultiplier": 2.5,
+          "position": {
+            "x": -0.11654325403971458,
+            "y": 0.5319825735293449,
+            "z": -8.846158119220542
+          },
+          "radius": 0.35
+        },
+        "cells": 192,
+        "islands": [
+          {
+            "id": 1,
+            "generation": 1,
+            "kind": "main",
+            "fragmentId": null,
+            "biomass": 180,
+            "mergeRequested": false
+          },
+          {
+            "id": 2,
+            "generation": 2,
+            "kind": "combat-fragment",
+            "fragmentId": 1,
+            "biomass": 12,
+            "mergeRequested": false
+          }
+        ],
+        "wounds": [
+          {
+            "id": 1,
+            "point": {
+              "x": 0.25380439028669505,
+              "y": 0.5327283467798204,
+              "z": -8.868570106743558
+            },
+            "normal": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "radius": 0.43000000000000005,
+            "state": "Reattaching",
+            "cohesionEnergy": 40,
+            "cohesionThreshold": 36,
+            "repairDeficit": 12,
+            "detachedBiomass": 12,
+            "fragmentId": 1,
+            "createdAt": 2.500000000000001,
+            "lastImpactAt": 2.500000000000001,
+            "openedAt": 2.500000000000001,
+            "reattachProgress": 0.2777777777777768,
+            "sourceWoundId": null
+          }
+        ],
+        "fragments": [
+          {
+            "id": 1,
+            "islandId": 2,
+            "generation": 2,
+            "woundId": 1,
+            "state": "Reattaching",
+            "biomass": 12,
+            "cellIds": [
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192
+            ],
+            "position": {
+              "x": -0.027305491553873934,
+              "y": 0.5772886392556587,
+              "z": -8.85879130442122
+            },
+            "velocity": {
+              "x": -0.49893551000342623,
+              "y": 3.436292445760586,
+              "z": 0
+            },
+            "detachedAt": 2.500000000000001,
+            "stateStartedAt": 2.533333333333334,
+            "age": 0.1999999999999993,
+            "reattachProgress": 0.2777777777777768,
+            "witherProgress": 0,
+            "damageRemainder": 0,
+            "needsPath": false
+          }
+        ],
+        "particleCount": 192,
+        "particleBounds": {
+          "min": {
+            "x": -1.7700341408587725,
+            "y": 0.5319825735293449,
+            "z": -10.794016689339418
+          },
+          "max": {
+            "x": 1.8281093805224022,
+            "y": 0.9913329956540876,
+            "z": -7.381776903602409
+          },
+          "span": {
+            "x": 3.598143521381175,
+            "y": 0.45935042212474275,
+            "z": 3.4122397857370093
+          }
+        },
+        "particleFingerprint": {
+          "hash": "6c9646fa",
+          "speedSquared": 33.70716509922243
+        },
+        "scriptedSplit": {
+          "active": false,
+          "mergeRequested": false,
+          "islandIds": []
+        }
+      },
+      "telemetry": {
+        "simulation": {
+          "samples": 87,
+          "averageMs": 1.2183908073381446,
+          "p95Ms": 2.5,
+          "maximumMs": 5.899999976158142
+        },
+        "meshing": {
+          "samples": 3,
+          "averageMs": 4.4333332777023315,
+          "p95Ms": 7.899999976158142,
+          "maximumMs": 7.899999976158142
+        },
+        "presentation": {
+          "samples": 6,
+          "averageMs": 0.3999999761581421,
+          "p95Ms": 0.6999999284744263,
+          "maximumMs": 0.6999999284744263
+        },
+        "visualJobWait": {
+          "samples": 3,
+          "averageMs": 1.6666667064030964,
+          "p95Ms": 2,
+          "maximumMs": 2
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "diagnostics": {
+        "motion": {
+          "target": null,
+          "wantsMove": false
+        },
+        "traversal": {
+          "kind": "none",
+          "linkId": null,
+          "crossedFraction": 0,
+          "requiredFraction": 0,
+          "coreReleased": false,
+          "rejectedReason": null,
+          "channelAssignments": {}
+        },
+        "pose": {
+          "active": false,
+          "id": null,
+          "kind": null,
+          "phase": null,
+          "progress": 0,
+          "strength": 0,
+          "targetCount": 0
+        },
+        "presentation": {
+          "frozen": false,
+          "disposed": false,
+          "activeSurfaceCount": 1,
+          "fallbackCellCount": 0,
+          "visibleTendonCount": 0,
+          "surfaces": [
+            {
+              "islandId": 1,
+              "id": 1,
+              "generation": 1,
+              "resolution": 32,
+              "hasBuild": true,
+              "pending": false,
+              "completedRevision": -1,
+              "domainCenter": [
+                0,
+                0.625,
+                -9.125
+              ],
+              "domainSize": [
+                6,
+                2.75,
+                5.75
+              ],
+              "drawCount": 8052,
+              "geometryFingerprint": "7e191dcb",
+              "latestIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "builtIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "meshPosition": [
+                0.11270037763793272,
+                0.0922716532201795,
+                0.2496167269312961
+              ],
+              "meshScale": [
+                3,
+                1.375,
+                2.8750000000000004
+              ]
+            },
+            {
+              "islandId": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixedSteps": 9,
+      "snapshot": {
+        "version": 96,
+        "simulationTime": 2.8,
+        "interpolationAlpha": 0,
+        "organismState": "Hunt",
+        "traversalState": "Ground",
+        "overrideState": "None",
+        "biomass": {
+          "initial": 192,
+          "maximum": 250,
+          "total": 192,
+          "attached": 180,
+          "fragments": 12,
+          "created": 192,
+          "lost": 0
+        },
+        "core": {
+          "state": "Exposed",
+          "health": 150,
+          "maximumHealth": 150,
+          "damageMultiplier": 2.5,
+          "position": {
+            "x": -0.12051547930232272,
+            "y": 0.5319825735293449,
+            "z": -8.845447583500988
+          },
+          "radius": 0.35
+        },
+        "cells": 192,
+        "islands": [
+          {
+            "id": 1,
+            "generation": 1,
+            "kind": "main",
+            "fragmentId": null,
+            "biomass": 180,
+            "mergeRequested": false
+          },
+          {
+            "id": 2,
+            "generation": 2,
+            "kind": "combat-fragment",
+            "fragmentId": 1,
+            "biomass": 12,
+            "mergeRequested": false
+          }
+        ],
+        "wounds": [
+          {
+            "id": 1,
+            "point": {
+              "x": 0.25380439028669505,
+              "y": 0.5327283467798204,
+              "z": -8.868570106743558
+            },
+            "normal": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "radius": 0.43000000000000005,
+            "state": "Reattaching",
+            "cohesionEnergy": 40,
+            "cohesionThreshold": 36,
+            "repairDeficit": 12,
+            "detachedBiomass": 12,
+            "fragmentId": 1,
+            "createdAt": 2.500000000000001,
+            "lastImpactAt": 2.500000000000001,
+            "openedAt": 2.500000000000001,
+            "reattachProgress": 0.44444444444444287,
+            "sourceWoundId": null
+          }
+        ],
+        "fragments": [
+          {
+            "id": 1,
+            "islandId": 2,
+            "generation": 2,
+            "woundId": 1,
+            "state": "Reattaching",
+            "biomass": 12,
+            "cellIds": [
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192
+            ],
+            "position": {
+              "x": -0.09985501587137575,
+              "y": 0.5422370328501155,
+              "z": -8.848914869970937
+            },
+            "velocity": {
+              "x": -0.49893551000342623,
+              "y": 3.436292445760586,
+              "z": 0
+            },
+            "detachedAt": 2.500000000000001,
+            "stateStartedAt": 2.533333333333334,
+            "age": 0.29999999999999893,
+            "reattachProgress": 0.44444444444444287,
+            "witherProgress": 0,
+            "damageRemainder": 0,
+            "needsPath": false
+          }
+        ],
+        "particleCount": 192,
+        "particleBounds": {
+          "min": {
+            "x": -1.7701130653977823,
+            "y": 0.5319825735293449,
+            "z": -10.8013195182929
+          },
+          "max": {
+            "x": 1.8152515769605728,
+            "y": 0.9900280927757384,
+            "z": -7.376212142414383
+          },
+          "span": {
+            "x": 3.585364642358355,
+            "y": 0.4580455192463936,
+            "z": 3.4251073758785164
+          }
+        },
+        "particleFingerprint": {
+          "hash": "77c7bd94",
+          "speedSquared": 17.90249624923207
+        },
+        "scriptedSplit": {
+          "active": false,
+          "mergeRequested": false,
+          "islandIds": []
+        }
+      },
+      "telemetry": {
+        "simulation": {
+          "samples": 90,
+          "averageMs": 1.2055555582046509,
+          "p95Ms": 2.5,
+          "maximumMs": 5.899999976158142
+        },
+        "meshing": {
+          "samples": 3,
+          "averageMs": 4.4333332777023315,
+          "p95Ms": 7.899999976158142,
+          "maximumMs": 7.899999976158142
+        },
+        "presentation": {
+          "samples": 6,
+          "averageMs": 0.3999999761581421,
+          "p95Ms": 0.6999999284744263,
+          "maximumMs": 0.6999999284744263
+        },
+        "visualJobWait": {
+          "samples": 3,
+          "averageMs": 1.6666667064030964,
+          "p95Ms": 2,
+          "maximumMs": 2
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "diagnostics": {
+        "motion": {
+          "target": null,
+          "wantsMove": false
+        },
+        "traversal": {
+          "kind": "none",
+          "linkId": null,
+          "crossedFraction": 0,
+          "requiredFraction": 0,
+          "coreReleased": false,
+          "rejectedReason": null,
+          "channelAssignments": {}
+        },
+        "pose": {
+          "active": false,
+          "id": null,
+          "kind": null,
+          "phase": null,
+          "progress": 0,
+          "strength": 0,
+          "targetCount": 0
+        },
+        "presentation": {
+          "frozen": false,
+          "disposed": false,
+          "activeSurfaceCount": 1,
+          "fallbackCellCount": 0,
+          "visibleTendonCount": 0,
+          "surfaces": [
+            {
+              "islandId": 1,
+              "id": 1,
+              "generation": 1,
+              "resolution": 32,
+              "hasBuild": true,
+              "pending": false,
+              "completedRevision": -1,
+              "domainCenter": [
+                0,
+                0.625,
+                -9.125
+              ],
+              "domainSize": [
+                6,
+                2.75,
+                5.75
+              ],
+              "drawCount": 8052,
+              "geometryFingerprint": "7e191dcb",
+              "latestIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "builtIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "meshPosition": [
+                0.11270037763793272,
+                0.0922716532201795,
+                0.2496167269312961
+              ],
+              "meshScale": [
+                3,
+                1.375,
+                2.8750000000000004
+              ]
+            },
+            {
+              "islandId": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixedSteps": 12,
+      "snapshot": {
+        "version": 99,
+        "simulationTime": 2.8999999999999995,
+        "interpolationAlpha": 0,
+        "organismState": "Hunt",
+        "traversalState": "Ground",
+        "overrideState": "None",
+        "biomass": {
+          "initial": 192,
+          "maximum": 250,
+          "total": 192,
+          "attached": 180,
+          "fragments": 12,
+          "created": 192,
+          "lost": 0
+        },
+        "core": {
+          "state": "Exposed",
+          "health": 150,
+          "maximumHealth": 150,
+          "damageMultiplier": 2.5,
+          "position": {
+            "x": -0.11883932471413478,
+            "y": 0.5319825735293449,
+            "z": -8.837741081666696
+          },
+          "radius": 0.35
+        },
+        "cells": 192,
+        "islands": [
+          {
+            "id": 1,
+            "generation": 1,
+            "kind": "main",
+            "fragmentId": null,
+            "biomass": 180,
+            "mergeRequested": false
+          },
+          {
+            "id": 2,
+            "generation": 2,
+            "kind": "combat-fragment",
+            "fragmentId": 1,
+            "biomass": 12,
+            "mergeRequested": false
+          }
+        ],
+        "wounds": [
+          {
+            "id": 1,
+            "point": {
+              "x": 0.25380439028669505,
+              "y": 0.5327283467798204,
+              "z": -8.868570106743558
+            },
+            "normal": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "radius": 0.43000000000000005,
+            "state": "Reattaching",
+            "cohesionEnergy": 40,
+            "cohesionThreshold": 36,
+            "repairDeficit": 12,
+            "detachedBiomass": 12,
+            "fragmentId": 1,
+            "createdAt": 2.500000000000001,
+            "lastImpactAt": 2.500000000000001,
+            "openedAt": 2.500000000000001,
+            "reattachProgress": 0.6111111111111089,
+            "sourceWoundId": null
+          }
+        ],
+        "fragments": [
+          {
+            "id": 1,
+            "islandId": 2,
+            "generation": 2,
+            "woundId": 1,
+            "state": "Reattaching",
+            "biomass": 12,
+            "cellIds": [
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192
+            ],
+            "position": {
+              "x": -0.1161073598721817,
+              "y": 0.5328687613718807,
+              "z": -8.840677942703156
+            },
+            "velocity": {
+              "x": -0.49893551000342623,
+              "y": 3.436292445760586,
+              "z": 0
+            },
+            "detachedAt": 2.500000000000001,
+            "stateStartedAt": 2.533333333333334,
+            "age": 0.3999999999999986,
+            "reattachProgress": 0.6111111111111089,
+            "witherProgress": 0,
+            "damageRemainder": 0,
+            "needsPath": false
+          }
+        ],
+        "particleCount": 192,
+        "particleBounds": {
+          "min": {
+            "x": -1.7725120094999736,
+            "y": 0.5319825735293449,
+            "z": -10.80874716718043
+          },
+          "max": {
+            "x": 1.7960191121111473,
+            "y": 0.9888065310230889,
+            "z": -7.37549139815837
+          },
+          "span": {
+            "x": 3.568531121611121,
+            "y": 0.45682395749374405,
+            "z": 3.43325576902206
+          }
+        },
+        "particleFingerprint": {
+          "hash": "eb6ea809",
+          "speedSquared": 9.329584827526029
+        },
+        "scriptedSplit": {
+          "active": false,
+          "mergeRequested": false,
+          "islandIds": []
+        }
+      },
+      "telemetry": {
+        "simulation": {
+          "samples": 93,
+          "averageMs": 1.2247311851029754,
+          "p95Ms": 3,
+          "maximumMs": 5.899999976158142
+        },
+        "meshing": {
+          "samples": 3,
+          "averageMs": 4.4333332777023315,
+          "p95Ms": 7.899999976158142,
+          "maximumMs": 7.899999976158142
+        },
+        "presentation": {
+          "samples": 6,
+          "averageMs": 0.3999999761581421,
+          "p95Ms": 0.6999999284744263,
+          "maximumMs": 0.6999999284744263
+        },
+        "visualJobWait": {
+          "samples": 3,
+          "averageMs": 1.6666667064030964,
+          "p95Ms": 2,
+          "maximumMs": 2
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "diagnostics": {
+        "motion": {
+          "target": null,
+          "wantsMove": false
+        },
+        "traversal": {
+          "kind": "none",
+          "linkId": null,
+          "crossedFraction": 0,
+          "requiredFraction": 0,
+          "coreReleased": false,
+          "rejectedReason": null,
+          "channelAssignments": {}
+        },
+        "pose": {
+          "active": false,
+          "id": null,
+          "kind": null,
+          "phase": null,
+          "progress": 0,
+          "strength": 0,
+          "targetCount": 0
+        },
+        "presentation": {
+          "frozen": false,
+          "disposed": false,
+          "activeSurfaceCount": 1,
+          "fallbackCellCount": 0,
+          "visibleTendonCount": 0,
+          "surfaces": [
+            {
+              "islandId": 1,
+              "id": 1,
+              "generation": 1,
+              "resolution": 32,
+              "hasBuild": true,
+              "pending": false,
+              "completedRevision": -1,
+              "domainCenter": [
+                0,
+                0.625,
+                -9.125
+              ],
+              "domainSize": [
+                6,
+                2.75,
+                5.75
+              ],
+              "drawCount": 8052,
+              "geometryFingerprint": "7e191dcb",
+              "latestIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "builtIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "meshPosition": [
+                0.11270037763793272,
+                0.0922716532201795,
+                0.2496167269312961
+              ],
+              "meshScale": [
+                3,
+                1.375,
+                2.8750000000000004
+              ]
+            },
+            {
+              "islandId": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixedSteps": 15,
+      "snapshot": {
+        "version": 102,
+        "simulationTime": 2.999999999999999,
+        "interpolationAlpha": 0,
+        "organismState": "Hunt",
+        "traversalState": "Ground",
+        "overrideState": "None",
+        "biomass": {
+          "initial": 192,
+          "maximum": 250,
+          "total": 192,
+          "attached": 180,
+          "fragments": 12,
+          "created": 192,
+          "lost": 0
+        },
+        "core": {
+          "state": "Exposed",
+          "health": 150,
+          "maximumHealth": 150,
+          "damageMultiplier": 2.5,
+          "position": {
+            "x": -0.12232398632539195,
+            "y": 0.5319825735293449,
+            "z": -8.837740413769822
+          },
+          "radius": 0.35
+        },
+        "cells": 192,
+        "islands": [
+          {
+            "id": 1,
+            "generation": 1,
+            "kind": "main",
+            "fragmentId": null,
+            "biomass": 180,
+            "mergeRequested": false
+          },
+          {
+            "id": 2,
+            "generation": 2,
+            "kind": "combat-fragment",
+            "fragmentId": 1,
+            "biomass": 12,
+            "mergeRequested": false
+          }
+        ],
+        "wounds": [
+          {
+            "id": 1,
+            "point": {
+              "x": 0.25380439028669505,
+              "y": 0.5327283467798204,
+              "z": -8.868570106743558
+            },
+            "normal": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "radius": 0.43000000000000005,
+            "state": "Reattaching",
+            "cohesionEnergy": 40,
+            "cohesionThreshold": 36,
+            "repairDeficit": 12,
+            "detachedBiomass": 12,
+            "fragmentId": 1,
+            "createdAt": 2.500000000000001,
+            "lastImpactAt": 2.500000000000001,
+            "openedAt": 2.500000000000001,
+            "reattachProgress": 0.777777777777775,
+            "sourceWoundId": null
+          }
+        ],
+        "fragments": [
+          {
+            "id": 1,
+            "islandId": 2,
+            "generation": 2,
+            "woundId": 1,
+            "state": "Reattaching",
+            "biomass": 12,
+            "cellIds": [
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192
+            ],
+            "position": {
+              "x": -0.12175840666848763,
+              "y": 0.5320008078470925,
+              "z": -8.83744545881432
+            },
+            "velocity": {
+              "x": -0.49893551000342623,
+              "y": 3.436292445760586,
+              "z": 0
+            },
+            "detachedAt": 2.500000000000001,
+            "stateStartedAt": 2.533333333333334,
+            "age": 0.4999999999999982,
+            "reattachProgress": 0.777777777777775,
+            "witherProgress": 0,
+            "damageRemainder": 0,
+            "needsPath": false
+          }
+        ],
+        "particleCount": 192,
+        "particleBounds": {
+          "min": {
+            "x": -1.7765697722279328,
+            "y": 0.5319825735293449,
+            "z": -10.81289017091285
+          },
+          "max": {
+            "x": 1.773985685777602,
+            "y": 0.9602313743063557,
+            "z": -7.376926190421718
+          },
+          "span": {
+            "x": 3.550555458005535,
+            "y": 0.4282488007770109,
+            "z": 3.435963980491132
+          }
+        },
+        "particleFingerprint": {
+          "hash": "33b606ac",
+          "speedSquared": 4.592176205878011
+        },
+        "scriptedSplit": {
+          "active": false,
+          "mergeRequested": false,
+          "islandIds": []
+        }
+      },
+      "telemetry": {
+        "simulation": {
+          "samples": 96,
+          "averageMs": 1.211458335320155,
+          "p95Ms": 3,
+          "maximumMs": 5.899999976158142
+        },
+        "meshing": {
+          "samples": 3,
+          "averageMs": 4.4333332777023315,
+          "p95Ms": 7.899999976158142,
+          "maximumMs": 7.899999976158142
+        },
+        "presentation": {
+          "samples": 6,
+          "averageMs": 0.3999999761581421,
+          "p95Ms": 0.6999999284744263,
+          "maximumMs": 0.6999999284744263
+        },
+        "visualJobWait": {
+          "samples": 3,
+          "averageMs": 1.6666667064030964,
+          "p95Ms": 2,
+          "maximumMs": 2
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "diagnostics": {
+        "motion": {
+          "target": null,
+          "wantsMove": false
+        },
+        "traversal": {
+          "kind": "none",
+          "linkId": null,
+          "crossedFraction": 0,
+          "requiredFraction": 0,
+          "coreReleased": false,
+          "rejectedReason": null,
+          "channelAssignments": {}
+        },
+        "pose": {
+          "active": false,
+          "id": null,
+          "kind": null,
+          "phase": null,
+          "progress": 0,
+          "strength": 0,
+          "targetCount": 0
+        },
+        "presentation": {
+          "frozen": false,
+          "disposed": false,
+          "activeSurfaceCount": 1,
+          "fallbackCellCount": 0,
+          "visibleTendonCount": 0,
+          "surfaces": [
+            {
+              "islandId": 1,
+              "id": 1,
+              "generation": 1,
+              "resolution": 32,
+              "hasBuild": true,
+              "pending": false,
+              "completedRevision": -1,
+              "domainCenter": [
+                0,
+                0.625,
+                -9.125
+              ],
+              "domainSize": [
+                6,
+                2.75,
+                5.75
+              ],
+              "drawCount": 8052,
+              "geometryFingerprint": "7e191dcb",
+              "latestIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "builtIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "meshPosition": [
+                0.11270037763793272,
+                0.0922716532201795,
+                0.2496167269312961
+              ],
+              "meshScale": [
+                3,
+                1.375,
+                2.8750000000000004
+              ]
+            },
+            {
+              "islandId": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixedSteps": 18,
+      "snapshot": {
+        "version": 105,
+        "simulationTime": 3.0999999999999988,
+        "interpolationAlpha": 0,
+        "organismState": "Hunt",
+        "traversalState": "Ground",
+        "overrideState": "None",
+        "biomass": {
+          "initial": 192,
+          "maximum": 250,
+          "total": 192,
+          "attached": 180,
+          "fragments": 12,
+          "created": 192,
+          "lost": 0
+        },
+        "core": {
+          "state": "Exposed",
+          "health": 150,
+          "maximumHealth": 150,
+          "damageMultiplier": 2.5,
+          "position": {
+            "x": -0.11972198319246388,
+            "y": 0.5319825735293449,
+            "z": -8.841761573485766
+          },
+          "radius": 0.35
+        },
+        "cells": 192,
+        "islands": [
+          {
+            "id": 1,
+            "generation": 1,
+            "kind": "main",
+            "fragmentId": null,
+            "biomass": 180,
+            "mergeRequested": false
+          },
+          {
+            "id": 2,
+            "generation": 2,
+            "kind": "combat-fragment",
+            "fragmentId": 1,
+            "biomass": 12,
+            "mergeRequested": false
+          }
+        ],
+        "wounds": [
+          {
+            "id": 1,
+            "point": {
+              "x": 0.25380439028669505,
+              "y": 0.5327283467798204,
+              "z": -8.868570106743558
+            },
+            "normal": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "radius": 0.43000000000000005,
+            "state": "Reattaching",
+            "cohesionEnergy": 40,
+            "cohesionThreshold": 36,
+            "repairDeficit": 12,
+            "detachedBiomass": 12,
+            "fragmentId": 1,
+            "createdAt": 2.500000000000001,
+            "lastImpactAt": 2.500000000000001,
+            "openedAt": 2.500000000000001,
+            "reattachProgress": 0.9444444444444411,
+            "sourceWoundId": null
+          }
+        ],
+        "fragments": [
+          {
+            "id": 1,
+            "islandId": 2,
+            "generation": 2,
+            "woundId": 1,
+            "state": "Reattaching",
+            "biomass": 12,
+            "cellIds": [
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192
+            ],
+            "position": {
+              "x": -0.1213111585956224,
+              "y": 0.5319825922889311,
+              "z": -8.8401853906822
+            },
+            "velocity": {
+              "x": -0.49893551000342623,
+              "y": 3.436292445760586,
+              "z": 0
+            },
+            "detachedAt": 2.500000000000001,
+            "stateStartedAt": 2.533333333333334,
+            "age": 0.5999999999999979,
+            "reattachProgress": 0.9444444444444411,
+            "witherProgress": 0,
+            "damageRemainder": 0,
+            "needsPath": false
+          }
+        ],
+        "particleCount": 192,
+        "particleBounds": {
+          "min": {
+            "x": -1.777764311069796,
+            "y": 0.5319825735293449,
+            "z": -10.813274546449735
+          },
+          "max": {
+            "x": 1.7521951616397522,
+            "y": 0.9356810107546534,
+            "z": -7.3809703614571225
+          },
+          "span": {
+            "x": 3.5299594727095482,
+            "y": 0.4036984372253085,
+            "z": 3.4323041849926126
+          }
+        },
+        "particleFingerprint": {
+          "hash": "151eabc6",
+          "speedSquared": 3.2191146204025247
+        },
+        "scriptedSplit": {
+          "active": false,
+          "mergeRequested": false,
+          "islandIds": []
+        }
+      },
+      "telemetry": {
+        "simulation": {
+          "samples": 99,
+          "averageMs": 1.1989899018798211,
+          "p95Ms": 3,
+          "maximumMs": 5.899999976158142
+        },
+        "meshing": {
+          "samples": 3,
+          "averageMs": 4.4333332777023315,
+          "p95Ms": 7.899999976158142,
+          "maximumMs": 7.899999976158142
+        },
+        "presentation": {
+          "samples": 6,
+          "averageMs": 0.3999999761581421,
+          "p95Ms": 0.6999999284744263,
+          "maximumMs": 0.6999999284744263
+        },
+        "visualJobWait": {
+          "samples": 3,
+          "averageMs": 1.6666667064030964,
+          "p95Ms": 2,
+          "maximumMs": 2
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "diagnostics": {
+        "motion": {
+          "target": null,
+          "wantsMove": false
+        },
+        "traversal": {
+          "kind": "none",
+          "linkId": null,
+          "crossedFraction": 0,
+          "requiredFraction": 0,
+          "coreReleased": false,
+          "rejectedReason": null,
+          "channelAssignments": {}
+        },
+        "pose": {
+          "active": false,
+          "id": null,
+          "kind": null,
+          "phase": null,
+          "progress": 0,
+          "strength": 0,
+          "targetCount": 0
+        },
+        "presentation": {
+          "frozen": false,
+          "disposed": false,
+          "activeSurfaceCount": 1,
+          "fallbackCellCount": 0,
+          "visibleTendonCount": 0,
+          "surfaces": [
+            {
+              "islandId": 1,
+              "id": 1,
+              "generation": 1,
+              "resolution": 32,
+              "hasBuild": true,
+              "pending": false,
+              "completedRevision": -1,
+              "domainCenter": [
+                0,
+                0.625,
+                -9.125
+              ],
+              "domainSize": [
+                6,
+                2.75,
+                5.75
+              ],
+              "drawCount": 8052,
+              "geometryFingerprint": "7e191dcb",
+              "latestIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "builtIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "meshPosition": [
+                0.11270037763793272,
+                0.0922716532201795,
+                0.2496167269312961
+              ],
+              "meshScale": [
+                3,
+                1.375,
+                2.8750000000000004
+              ]
+            },
+            {
+              "islandId": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixedSteps": 21,
+      "snapshot": {
+        "version": 108,
+        "simulationTime": 3.1999999999999984,
+        "interpolationAlpha": 0,
+        "organismState": "Hunt",
+        "traversalState": "Ground",
+        "overrideState": "None",
+        "biomass": {
+          "initial": 192,
+          "maximum": 250,
+          "total": 192,
+          "attached": 192,
+          "fragments": 0,
+          "created": 192,
+          "lost": 0
+        },
+        "core": {
+          "state": "Covered",
+          "health": 150,
+          "maximumHealth": 150,
+          "damageMultiplier": 2.5,
+          "position": {
+            "x": -0.10997677561749941,
+            "y": 0.5319825735293449,
+            "z": -8.830157111057565
+          },
+          "radius": 0.35
+        },
+        "cells": 192,
+        "islands": [
+          {
+            "id": 1,
+            "generation": 1,
+            "kind": "main",
+            "fragmentId": null,
+            "biomass": 192,
+            "mergeRequested": false
+          }
+        ],
+        "wounds": [
+          {
+            "id": 1,
+            "point": {
+              "x": 0.25380439028669505,
+              "y": 0.5327283467798204,
+              "z": -8.868570106743558
+            },
+            "normal": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "radius": 0.43000000000000005,
+            "state": "Closed",
+            "cohesionEnergy": 0,
+            "cohesionThreshold": 36,
+            "repairDeficit": 0,
+            "detachedBiomass": 12,
+            "fragmentId": null,
+            "createdAt": 2.500000000000001,
+            "lastImpactAt": 2.500000000000001,
+            "openedAt": 2.500000000000001,
+            "reattachProgress": 1,
+            "sourceWoundId": null
+          }
+        ],
+        "fragments": [
+          {
+            "id": 1,
+            "islandId": 2,
+            "generation": 2,
+            "woundId": 1,
+            "state": "Attached",
+            "biomass": 12,
+            "cellIds": [
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192
+            ],
+            "position": {
+              "x": -0.11774907926800525,
+              "y": 0.5319825735293449,
+              "z": -8.8429655935989
+            },
+            "velocity": {
+              "x": -0.49893551000342623,
+              "y": 3.436292445760586,
+              "z": 0
+            },
+            "detachedAt": 2.500000000000001,
+            "stateStartedAt": 3.166666666666665,
+            "age": 0.6999999999999975,
+            "reattachProgress": 1,
+            "witherProgress": 0,
+            "damageRemainder": 0,
+            "needsPath": false
+          }
+        ],
+        "particleCount": 192,
+        "particleBounds": {
+          "min": {
+            "x": -1.7761997066496757,
+            "y": 0.5319825735293449,
+            "z": -10.81029241321926
+          },
+          "max": {
+            "x": 1.7441563804491877,
+            "y": 0.9144381059823661,
+            "z": -7.385690096456697
+          },
+          "span": {
+            "x": 3.5203560870988637,
+            "y": 0.3824555324530212,
+            "z": 3.424602316762563
+          }
+        },
+        "particleFingerprint": {
+          "hash": "bb3ac311",
+          "speedSquared": 15.52914786795714
+        },
+        "scriptedSplit": {
+          "active": false,
+          "mergeRequested": false,
+          "islandIds": []
+        }
+      },
+      "telemetry": {
+        "simulation": {
+          "samples": 102,
+          "averageMs": 1.2000000032724119,
+          "p95Ms": 2.5,
+          "maximumMs": 5.899999976158142
+        },
+        "meshing": {
+          "samples": 3,
+          "averageMs": 4.4333332777023315,
+          "p95Ms": 7.899999976158142,
+          "maximumMs": 7.899999976158142
+        },
+        "presentation": {
+          "samples": 6,
+          "averageMs": 0.3999999761581421,
+          "p95Ms": 0.6999999284744263,
+          "maximumMs": 0.6999999284744263
+        },
+        "visualJobWait": {
+          "samples": 3,
+          "averageMs": 1.6666667064030964,
+          "p95Ms": 2,
+          "maximumMs": 2
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "diagnostics": {
+        "motion": {
+          "target": null,
+          "wantsMove": false
+        },
+        "traversal": {
+          "kind": "none",
+          "linkId": null,
+          "crossedFraction": 0,
+          "requiredFraction": 0,
+          "coreReleased": false,
+          "rejectedReason": null,
+          "channelAssignments": {}
+        },
+        "pose": {
+          "active": false,
+          "id": null,
+          "kind": null,
+          "phase": null,
+          "progress": 0,
+          "strength": 0,
+          "targetCount": 0
+        },
+        "presentation": {
+          "frozen": false,
+          "disposed": false,
+          "activeSurfaceCount": 1,
+          "fallbackCellCount": 0,
+          "visibleTendonCount": 0,
+          "surfaces": [
+            {
+              "islandId": 1,
+              "id": 1,
+              "generation": 1,
+              "resolution": 32,
+              "hasBuild": true,
+              "pending": false,
+              "completedRevision": -1,
+              "domainCenter": [
+                0,
+                0.625,
+                -9.125
+              ],
+              "domainSize": [
+                6,
+                2.75,
+                5.75
+              ],
+              "drawCount": 8052,
+              "geometryFingerprint": "7e191dcb",
+              "latestIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "builtIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "meshPosition": [
+                0.11270037763793272,
+                0.0922716532201795,
+                0.2496167269312961
+              ],
+              "meshScale": [
+                3,
+                1.375,
+                2.8750000000000004
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixedSteps": 24,
+      "snapshot": {
+        "version": 111,
+        "simulationTime": 3.299999999999998,
+        "interpolationAlpha": 0,
+        "organismState": "Hunt",
+        "traversalState": "Ground",
+        "overrideState": "None",
+        "biomass": {
+          "initial": 192,
+          "maximum": 250,
+          "total": 192,
+          "attached": 192,
+          "fragments": 0,
+          "created": 192,
+          "lost": 0
+        },
+        "core": {
+          "state": "Covered",
+          "health": 150,
+          "maximumHealth": 150,
+          "damageMultiplier": 2.5,
+          "position": {
+            "x": -0.11223292499487053,
+            "y": 0.5319825735293449,
+            "z": -8.809050006842128
+          },
+          "radius": 0.35
+        },
+        "cells": 192,
+        "islands": [
+          {
+            "id": 1,
+            "generation": 1,
+            "kind": "main",
+            "fragmentId": null,
+            "biomass": 192,
+            "mergeRequested": false
+          }
+        ],
+        "wounds": [
+          {
+            "id": 1,
+            "point": {
+              "x": 0.25380439028669505,
+              "y": 0.5327283467798204,
+              "z": -8.868570106743558
+            },
+            "normal": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "radius": 0.43000000000000005,
+            "state": "Closed",
+            "cohesionEnergy": 0,
+            "cohesionThreshold": 36,
+            "repairDeficit": 0,
+            "detachedBiomass": 12,
+            "fragmentId": null,
+            "createdAt": 2.500000000000001,
+            "lastImpactAt": 2.500000000000001,
+            "openedAt": 2.500000000000001,
+            "reattachProgress": 1,
+            "sourceWoundId": null
+          }
+        ],
+        "fragments": [
+          {
+            "id": 1,
+            "islandId": 2,
+            "generation": 2,
+            "woundId": 1,
+            "state": "Attached",
+            "biomass": 12,
+            "cellIds": [
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192
+            ],
+            "position": {
+              "x": -0.11774907926800525,
+              "y": 0.5319825735293449,
+              "z": -8.8429655935989
+            },
+            "velocity": {
+              "x": -0.49893551000342623,
+              "y": 3.436292445760586,
+              "z": 0
+            },
+            "detachedAt": 2.500000000000001,
+            "stateStartedAt": 3.166666666666665,
+            "age": 0.7999999999999972,
+            "reattachProgress": 1,
+            "witherProgress": 0,
+            "damageRemainder": 0,
+            "needsPath": false
+          }
+        ],
+        "particleCount": 192,
+        "particleBounds": {
+          "min": {
+            "x": -1.773647876747107,
+            "y": 0.5319825735293449,
+            "z": -10.813086109758263
+          },
+          "max": {
+            "x": 1.7364032523956077,
+            "y": 0.8674388564421506,
+            "z": -7.389599060410498
+          },
+          "span": {
+            "x": 3.510051129142715,
+            "y": 0.3354562829128057,
+            "z": 3.4234870493477647
+          }
+        },
+        "particleFingerprint": {
+          "hash": "84b968ca",
+          "speedSquared": 14.894290588667412
+        },
+        "scriptedSplit": {
+          "active": false,
+          "mergeRequested": false,
+          "islandIds": []
+        }
+      },
+      "telemetry": {
+        "simulation": {
+          "samples": 105,
+          "averageMs": 1.1847619079408191,
+          "p95Ms": 2.5,
+          "maximumMs": 5.899999976158142
+        },
+        "meshing": {
+          "samples": 3,
+          "averageMs": 4.4333332777023315,
+          "p95Ms": 7.899999976158142,
+          "maximumMs": 7.899999976158142
+        },
+        "presentation": {
+          "samples": 6,
+          "averageMs": 0.3999999761581421,
+          "p95Ms": 0.6999999284744263,
+          "maximumMs": 0.6999999284744263
+        },
+        "visualJobWait": {
+          "samples": 3,
+          "averageMs": 1.6666667064030964,
+          "p95Ms": 2,
+          "maximumMs": 2
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "diagnostics": {
+        "motion": {
+          "target": null,
+          "wantsMove": false
+        },
+        "traversal": {
+          "kind": "none",
+          "linkId": null,
+          "crossedFraction": 0,
+          "requiredFraction": 0,
+          "coreReleased": false,
+          "rejectedReason": null,
+          "channelAssignments": {}
+        },
+        "pose": {
+          "active": false,
+          "id": null,
+          "kind": null,
+          "phase": null,
+          "progress": 0,
+          "strength": 0,
+          "targetCount": 0
+        },
+        "presentation": {
+          "frozen": false,
+          "disposed": false,
+          "activeSurfaceCount": 1,
+          "fallbackCellCount": 0,
+          "visibleTendonCount": 0,
+          "surfaces": [
+            {
+              "islandId": 1,
+              "id": 1,
+              "generation": 1,
+              "resolution": 32,
+              "hasBuild": true,
+              "pending": false,
+              "completedRevision": -1,
+              "domainCenter": [
+                0,
+                0.625,
+                -9.125
+              ],
+              "domainSize": [
+                6,
+                2.75,
+                5.75
+              ],
+              "drawCount": 8052,
+              "geometryFingerprint": "7e191dcb",
+              "latestIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "builtIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "meshPosition": [
+                0.11270037763793272,
+                0.0922716532201795,
+                0.2496167269312961
+              ],
+              "meshScale": [
+                3,
+                1.375,
+                2.8750000000000004
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixedSteps": 27,
+      "snapshot": {
+        "version": 114,
+        "simulationTime": 3.3999999999999977,
+        "interpolationAlpha": 0,
+        "organismState": "Hunt",
+        "traversalState": "Ground",
+        "overrideState": "None",
+        "biomass": {
+          "initial": 192,
+          "maximum": 250,
+          "total": 192,
+          "attached": 192,
+          "fragments": 0,
+          "created": 192,
+          "lost": 0
+        },
+        "core": {
+          "state": "Covered",
+          "health": 150,
+          "maximumHealth": 150,
+          "damageMultiplier": 2.5,
+          "position": {
+            "x": -0.14826594449008285,
+            "y": 0.5319825735293449,
+            "z": -8.82070364356524
+          },
+          "radius": 0.35
+        },
+        "cells": 192,
+        "islands": [
+          {
+            "id": 1,
+            "generation": 1,
+            "kind": "main",
+            "fragmentId": null,
+            "biomass": 192,
+            "mergeRequested": false
+          }
+        ],
+        "wounds": [
+          {
+            "id": 1,
+            "point": {
+              "x": 0.25380439028669505,
+              "y": 0.5327283467798204,
+              "z": -8.868570106743558
+            },
+            "normal": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "radius": 0.43000000000000005,
+            "state": "Closed",
+            "cohesionEnergy": 0,
+            "cohesionThreshold": 36,
+            "repairDeficit": 0,
+            "detachedBiomass": 12,
+            "fragmentId": null,
+            "createdAt": 2.500000000000001,
+            "lastImpactAt": 2.500000000000001,
+            "openedAt": 2.500000000000001,
+            "reattachProgress": 1,
+            "sourceWoundId": null
+          }
+        ],
+        "fragments": [
+          {
+            "id": 1,
+            "islandId": 2,
+            "generation": 2,
+            "woundId": 1,
+            "state": "Attached",
+            "biomass": 12,
+            "cellIds": [
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192
+            ],
+            "position": {
+              "x": -0.11774907926800525,
+              "y": 0.5319825735293449,
+              "z": -8.8429655935989
+            },
+            "velocity": {
+              "x": -0.49893551000342623,
+              "y": 3.436292445760586,
+              "z": 0
+            },
+            "detachedAt": 2.500000000000001,
+            "stateStartedAt": 3.166666666666665,
+            "age": 0.8999999999999968,
+            "reattachProgress": 1,
+            "witherProgress": 0,
+            "damageRemainder": 0,
+            "needsPath": false
+          }
+        ],
+        "particleCount": 192,
+        "particleBounds": {
+          "min": {
+            "x": -1.769533212727654,
+            "y": 0.5319825735293449,
+            "z": -10.818327205144893
+          },
+          "max": {
+            "x": 1.725293416106424,
+            "y": 0.8071463645820072,
+            "z": -7.384568448517458
+          },
+          "span": {
+            "x": 3.494826628834078,
+            "y": 0.2751637910526623,
+            "z": 3.4337587566274355
+          }
+        },
+        "particleFingerprint": {
+          "hash": "b11acddb",
+          "speedSquared": 15.259141671405361
+        },
+        "scriptedSplit": {
+          "active": false,
+          "mergeRequested": false,
+          "islandIds": []
+        }
+      },
+      "telemetry": {
+        "simulation": {
+          "samples": 108,
+          "averageMs": 1.172222226858139,
+          "p95Ms": 2.5,
+          "maximumMs": 5.899999976158142
+        },
+        "meshing": {
+          "samples": 3,
+          "averageMs": 4.4333332777023315,
+          "p95Ms": 7.899999976158142,
+          "maximumMs": 7.899999976158142
+        },
+        "presentation": {
+          "samples": 6,
+          "averageMs": 0.3999999761581421,
+          "p95Ms": 0.6999999284744263,
+          "maximumMs": 0.6999999284744263
+        },
+        "visualJobWait": {
+          "samples": 3,
+          "averageMs": 1.6666667064030964,
+          "p95Ms": 2,
+          "maximumMs": 2
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "diagnostics": {
+        "motion": {
+          "target": null,
+          "wantsMove": false
+        },
+        "traversal": {
+          "kind": "none",
+          "linkId": null,
+          "crossedFraction": 0,
+          "requiredFraction": 0,
+          "coreReleased": false,
+          "rejectedReason": null,
+          "channelAssignments": {}
+        },
+        "pose": {
+          "active": false,
+          "id": null,
+          "kind": null,
+          "phase": null,
+          "progress": 0,
+          "strength": 0,
+          "targetCount": 0
+        },
+        "presentation": {
+          "frozen": false,
+          "disposed": false,
+          "activeSurfaceCount": 1,
+          "fallbackCellCount": 0,
+          "visibleTendonCount": 0,
+          "surfaces": [
+            {
+              "islandId": 1,
+              "id": 1,
+              "generation": 1,
+              "resolution": 32,
+              "hasBuild": true,
+              "pending": false,
+              "completedRevision": -1,
+              "domainCenter": [
+                0,
+                0.625,
+                -9.125
+              ],
+              "domainSize": [
+                6,
+                2.75,
+                5.75
+              ],
+              "drawCount": 8052,
+              "geometryFingerprint": "7e191dcb",
+              "latestIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "builtIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "meshPosition": [
+                0.11270037763793272,
+                0.0922716532201795,
+                0.2496167269312961
+              ],
+              "meshScale": [
+                3,
+                1.375,
+                2.8750000000000004
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixedSteps": 30,
+      "snapshot": {
+        "version": 117,
+        "simulationTime": 3.4999999999999973,
+        "interpolationAlpha": 0,
+        "organismState": "Hunt",
+        "traversalState": "Ground",
+        "overrideState": "None",
+        "biomass": {
+          "initial": 192,
+          "maximum": 250,
+          "total": 192,
+          "attached": 192,
+          "fragments": 0,
+          "created": 192,
+          "lost": 0
+        },
+        "core": {
+          "state": "Covered",
+          "health": 150,
+          "maximumHealth": 150,
+          "damageMultiplier": 2.5,
+          "position": {
+            "x": -0.09995495331719541,
+            "y": 0.5319825735293449,
+            "z": -8.848106062274564
+          },
+          "radius": 0.35
+        },
+        "cells": 192,
+        "islands": [
+          {
+            "id": 1,
+            "generation": 1,
+            "kind": "main",
+            "fragmentId": null,
+            "biomass": 192,
+            "mergeRequested": false
+          }
+        ],
+        "wounds": [
+          {
+            "id": 1,
+            "point": {
+              "x": 0.25380439028669505,
+              "y": 0.5327283467798204,
+              "z": -8.868570106743558
+            },
+            "normal": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "radius": 0.43000000000000005,
+            "state": "Closed",
+            "cohesionEnergy": 0,
+            "cohesionThreshold": 36,
+            "repairDeficit": 0,
+            "detachedBiomass": 12,
+            "fragmentId": null,
+            "createdAt": 2.500000000000001,
+            "lastImpactAt": 2.500000000000001,
+            "openedAt": 2.500000000000001,
+            "reattachProgress": 1,
+            "sourceWoundId": null
+          }
+        ],
+        "fragments": [
+          {
+            "id": 1,
+            "islandId": 2,
+            "generation": 2,
+            "woundId": 1,
+            "state": "Attached",
+            "biomass": 12,
+            "cellIds": [
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192
+            ],
+            "position": {
+              "x": -0.11774907926800525,
+              "y": 0.5319825735293449,
+              "z": -8.8429655935989
+            },
+            "velocity": {
+              "x": -0.49893551000342623,
+              "y": 3.436292445760586,
+              "z": 0
+            },
+            "detachedAt": 2.500000000000001,
+            "stateStartedAt": 3.166666666666665,
+            "age": 0.9999999999999964,
+            "reattachProgress": 1,
+            "witherProgress": 0,
+            "damageRemainder": 0,
+            "needsPath": false
+          }
+        ],
+        "particleCount": 192,
+        "particleBounds": {
+          "min": {
+            "x": -1.7652214565435511,
+            "y": 0.5319825735293449,
+            "z": -10.824669430568829
+          },
+          "max": {
+            "x": 1.720055456000063,
+            "y": 0.756605669323524,
+            "z": -7.381735062807757
+          },
+          "span": {
+            "x": 3.485276912543614,
+            "y": 0.22462309579417916,
+            "z": 3.4429343677610715
+          }
+        },
+        "particleFingerprint": {
+          "hash": "31ad4655",
+          "speedSquared": 6.786051166996352
+        },
+        "scriptedSplit": {
+          "active": false,
+          "mergeRequested": false,
+          "islandIds": []
+        }
+      },
+      "telemetry": {
+        "simulation": {
+          "samples": 111,
+          "averageMs": 1.1720720765826937,
+          "p95Ms": 2.5,
+          "maximumMs": 5.899999976158142
+        },
+        "meshing": {
+          "samples": 3,
+          "averageMs": 4.4333332777023315,
+          "p95Ms": 7.899999976158142,
+          "maximumMs": 7.899999976158142
+        },
+        "presentation": {
+          "samples": 6,
+          "averageMs": 0.3999999761581421,
+          "p95Ms": 0.6999999284744263,
+          "maximumMs": 0.6999999284744263
+        },
+        "visualJobWait": {
+          "samples": 3,
+          "averageMs": 1.6666667064030964,
+          "p95Ms": 2,
+          "maximumMs": 2
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "diagnostics": {
+        "motion": {
+          "target": null,
+          "wantsMove": false
+        },
+        "traversal": {
+          "kind": "none",
+          "linkId": null,
+          "crossedFraction": 0,
+          "requiredFraction": 0,
+          "coreReleased": false,
+          "rejectedReason": null,
+          "channelAssignments": {}
+        },
+        "pose": {
+          "active": false,
+          "id": null,
+          "kind": null,
+          "phase": null,
+          "progress": 0,
+          "strength": 0,
+          "targetCount": 0
+        },
+        "presentation": {
+          "frozen": false,
+          "disposed": false,
+          "activeSurfaceCount": 1,
+          "fallbackCellCount": 0,
+          "visibleTendonCount": 0,
+          "surfaces": [
+            {
+              "islandId": 1,
+              "id": 1,
+              "generation": 1,
+              "resolution": 32,
+              "hasBuild": true,
+              "pending": false,
+              "completedRevision": -1,
+              "domainCenter": [
+                0,
+                0.625,
+                -9.125
+              ],
+              "domainSize": [
+                6,
+                2.75,
+                5.75
+              ],
+              "drawCount": 8052,
+              "geometryFingerprint": "7e191dcb",
+              "latestIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "builtIslandCenter": [
+                0.05841902400448873,
+                0.5445674892076806,
+                -9.023939115027451
+              ],
+              "meshPosition": [
+                0.11270037763793272,
+                0.0922716532201795,
+                0.2496167269312961
+              ],
+              "meshScale": [
+                3,
+                1.375,
+                2.8750000000000004
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "semanticSnapshot": {
+    "version": 117,
+    "simulationTime": 3.4999999999999973,
+    "interpolationAlpha": 0,
+    "organismState": "Hunt",
+    "traversalState": "Ground",
+    "overrideState": "None",
+    "biomass": {
+      "initial": 192,
+      "maximum": 250,
+      "total": 192,
+      "attached": 192,
+      "fragments": 0,
+      "created": 192,
+      "lost": 0
+    },
+    "core": {
+      "state": "Covered",
+      "health": 150,
+      "maximumHealth": 150,
+      "damageMultiplier": 2.5,
+      "position": {
+        "x": -0.09995495331719541,
+        "y": 0.5319825735293449,
+        "z": -8.848106062274564
+      },
+      "radius": 0.35
+    },
+    "cells": 192,
+    "islands": [
+      {
+        "id": 1,
+        "generation": 1,
+        "kind": "main",
+        "fragmentId": null,
+        "biomass": 192,
+        "mergeRequested": false
+      }
+    ],
+    "wounds": [
+      {
+        "id": 1,
+        "point": {
+          "x": 0.25380439028669505,
+          "y": 0.5327283467798204,
+          "z": -8.868570106743558
+        },
+        "normal": {
+          "x": 1,
+          "y": 0,
+          "z": 0
+        },
+        "radius": 0.43000000000000005,
+        "state": "Closed",
+        "cohesionEnergy": 0,
+        "cohesionThreshold": 36,
+        "repairDeficit": 0,
+        "detachedBiomass": 12,
+        "fragmentId": null,
+        "createdAt": 2.500000000000001,
+        "lastImpactAt": 2.500000000000001,
+        "openedAt": 2.500000000000001,
+        "reattachProgress": 1,
+        "sourceWoundId": null
+      }
+    ],
+    "fragments": [
+      {
+        "id": 1,
+        "islandId": 2,
+        "generation": 2,
+        "woundId": 1,
+        "state": "Attached",
+        "biomass": 12,
+        "cellIds": [
+          181,
+          182,
+          183,
+          184,
+          185,
+          186,
+          187,
+          188,
+          189,
+          190,
+          191,
+          192
+        ],
+        "position": {
+          "x": -0.11774907926800525,
+          "y": 0.5319825735293449,
+          "z": -8.8429655935989
+        },
+        "velocity": {
+          "x": -0.49893551000342623,
+          "y": 3.436292445760586,
+          "z": 0
+        },
+        "detachedAt": 2.500000000000001,
+        "stateStartedAt": 3.166666666666665,
+        "age": 0.9999999999999964,
+        "reattachProgress": 1,
+        "witherProgress": 0,
+        "damageRemainder": 0,
+        "needsPath": false
+      }
+    ],
+    "particleCount": 192,
+    "particleBounds": {
+      "min": {
+        "x": -1.7652214565435511,
+        "y": 0.5319825735293449,
+        "z": -10.824669430568829
+      },
+      "max": {
+        "x": 1.720055456000063,
+        "y": 0.756605669323524,
+        "z": -7.381735062807757
+      },
+      "span": {
+        "x": 3.485276912543614,
+        "y": 0.22462309579417916,
+        "z": 3.4429343677610715
+      }
+    },
+    "particleFingerprint": {
+      "hash": "31ad4655",
+      "speedSquared": 6.786051166996352
+    },
+    "scriptedSplit": {
+      "active": false,
+      "mergeRequested": false,
+      "islandIds": []
+    }
+  },
+  "semanticTelemetry": {
+    "simulation": {
+      "samples": 111,
+      "averageMs": 1.1720720765826937,
+      "p95Ms": 2.5,
+      "maximumMs": 5.899999976158142
+    },
+    "meshing": {
+      "samples": 3,
+      "averageMs": 4.4333332777023315,
+      "p95Ms": 7.899999976158142,
+      "maximumMs": 7.899999976158142
+    },
+    "presentation": {
+      "samples": 6,
+      "averageMs": 0.3999999761581421,
+      "p95Ms": 0.6999999284744263,
+      "maximumMs": 0.6999999284744263
+    },
+    "visualJobWait": {
+      "samples": 3,
+      "averageMs": 1.6666667064030964,
+      "p95Ms": 2,
+      "maximumMs": 2
+    },
+    "resources": {
+      "surfaces": 1,
+      "pendingVisualJobs": 0,
+      "estimatedCpuBytes": 1969568,
+      "estimatedGpuBytes": 920608
+    }
+  },
+  "semanticDiagnostics": {
+    "motion": {
+      "target": null,
+      "wantsMove": false
+    },
+    "traversal": {
+      "kind": "none",
+      "linkId": null,
+      "crossedFraction": 0,
+      "requiredFraction": 0,
+      "coreReleased": false,
+      "rejectedReason": null,
+      "channelAssignments": {}
+    },
+    "pose": {
+      "active": false,
+      "id": null,
+      "kind": null,
+      "phase": null,
+      "progress": 0,
+      "strength": 0,
+      "targetCount": 0
+    },
+    "presentation": {
+      "frozen": false,
+      "disposed": false,
+      "activeSurfaceCount": 1,
+      "fallbackCellCount": 0,
+      "visibleTendonCount": 0,
+      "surfaces": [
+        {
+          "islandId": 1,
+          "id": 1,
+          "generation": 1,
+          "resolution": 32,
+          "hasBuild": true,
+          "pending": false,
+          "completedRevision": -1,
+          "domainCenter": [
+            0,
+            0.625,
+            -9.125
+          ],
+          "domainSize": [
+            6,
+            2.75,
+            5.75
+          ],
+          "drawCount": 8052,
+          "geometryFingerprint": "7e191dcb",
+          "latestIslandCenter": [
+            0.05841902400448873,
+            0.5445674892076806,
+            -9.023939115027451
+          ],
+          "builtIslandCenter": [
+            0.05841902400448873,
+            0.5445674892076806,
+            -9.023939115027451
+          ],
+          "meshPosition": [
+            0.11270037763793272,
+            0.0922716532201795,
+            0.2496167269312961
+          ],
+          "meshScale": [
+            3,
+            1.375,
+            2.8750000000000004
+          ]
+        }
+      ]
+    }
+  },
+  "finalRuntime": {
+    "href": "http://127.0.0.1:4173/?level=blob-test&evidence=blob-v2",
+    "sourceIds": [
+      "blob-lab-subject"
+    ],
+    "snapshot": {
+      "version": 118,
+      "simulationTime": 3.4999999999999973,
+      "interpolationAlpha": 0,
+      "organismState": "Hunt",
+      "traversalState": "Ground",
+      "overrideState": "Frozen",
+      "biomass": {
+        "initial": 192,
+        "maximum": 250,
+        "total": 192,
+        "attached": 192,
+        "fragments": 0,
+        "created": 192,
+        "lost": 0
+      },
+      "core": {
+        "state": "Covered",
+        "health": 150,
+        "maximumHealth": 150,
+        "damageMultiplier": 2.5,
+        "position": {
+          "x": -0.09995495331719541,
+          "y": 0.5319825735293449,
+          "z": -8.848106062274564
+        },
+        "radius": 0.35
+      },
+      "cells": 192,
+      "islands": [
+        {
+          "id": 1,
+          "generation": 1,
+          "kind": "main",
+          "fragmentId": null,
+          "biomass": 192,
+          "mergeRequested": false
+        }
+      ],
+      "wounds": [
+        {
+          "id": 1,
+          "point": {
+            "x": 0.25380439028669505,
+            "y": 0.5327283467798204,
+            "z": -8.868570106743558
+          },
+          "normal": {
+            "x": 1,
+            "y": 0,
+            "z": 0
+          },
+          "radius": 0.43000000000000005,
+          "state": "Closed",
+          "cohesionEnergy": 0,
+          "cohesionThreshold": 36,
+          "repairDeficit": 0,
+          "detachedBiomass": 12,
+          "fragmentId": null,
+          "createdAt": 2.500000000000001,
+          "lastImpactAt": 2.500000000000001,
+          "openedAt": 2.500000000000001,
+          "reattachProgress": 1,
+          "sourceWoundId": null
+        }
+      ],
+      "fragments": [
+        {
+          "id": 1,
+          "islandId": 2,
+          "generation": 2,
+          "woundId": 1,
+          "state": "Attached",
+          "biomass": 12,
+          "cellIds": [
+            181,
+            182,
+            183,
+            184,
+            185,
+            186,
+            187,
+            188,
+            189,
+            190,
+            191,
+            192
+          ],
+          "position": {
+            "x": -0.11774907926800525,
+            "y": 0.5319825735293449,
+            "z": -8.8429655935989
+          },
+          "velocity": {
+            "x": -0.49893551000342623,
+            "y": 3.436292445760586,
+            "z": 0
+          },
+          "detachedAt": 2.500000000000001,
+          "stateStartedAt": 3.166666666666665,
+          "age": 0.9999999999999964,
+          "reattachProgress": 1,
+          "witherProgress": 0,
+          "damageRemainder": 0,
+          "needsPath": false
+        }
+      ],
+      "particleCount": 192,
+      "particleBounds": {
+        "min": {
+          "x": -1.7652214565435511,
+          "y": 0.5319825735293449,
+          "z": -10.824669430568829
+        },
+        "max": {
+          "x": 1.720055456000063,
+          "y": 0.756605669323524,
+          "z": -7.381735062807757
+        },
+        "span": {
+          "x": 3.485276912543614,
+          "y": 0.22462309579417916,
+          "z": 3.4429343677610715
+        }
+      },
+      "particleFingerprint": {
+        "hash": "31ad4655",
+        "speedSquared": 6.786051166996352
+      },
+      "scriptedSplit": {
+        "active": false,
+        "mergeRequested": false,
+        "islandIds": []
+      }
+    },
+    "telemetry": {
+      "simulation": {
+        "samples": 111,
+        "averageMs": 1.1720720765826937,
+        "p95Ms": 2.5,
+        "maximumMs": 5.899999976158142
+      },
+      "meshing": {
+        "samples": 4,
+        "averageMs": 4.324999958276749,
+        "p95Ms": 7.899999976158142,
+        "maximumMs": 7.899999976158142
+      },
+      "presentation": {
+        "samples": 19,
+        "averageMs": 0.178947367166218,
+        "p95Ms": 0.6999999284744263,
+        "maximumMs": 0.6999999284744263
+      },
+      "visualJobWait": {
+        "samples": 4,
+        "averageMs": 1.5000000298023224,
+        "p95Ms": 2,
+        "maximumMs": 2
+      },
+      "resources": {
+        "surfaces": 1,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 1969568,
+        "estimatedGpuBytes": 920608
+      }
+    },
+    "blobDiagnostics": {
+      "motion": {
+        "target": null,
+        "wantsMove": false
+      },
+      "traversal": {
+        "kind": "none",
+        "linkId": null,
+        "crossedFraction": 0,
+        "requiredFraction": 0,
+        "coreReleased": false,
+        "rejectedReason": null,
+        "channelAssignments": {}
+      },
+      "pose": {
+        "active": false,
+        "id": null,
+        "kind": null,
+        "phase": null,
+        "progress": 0,
+        "strength": 0,
+        "targetCount": 0
+      },
+      "presentation": {
+        "frozen": false,
+        "disposed": false,
+        "activeSurfaceCount": 1,
+        "fallbackCellCount": 0,
+        "visibleTendonCount": 0,
+        "surfaces": [
+          {
+            "islandId": 1,
+            "id": 1,
+            "generation": 1,
+            "resolution": 32,
+            "hasBuild": true,
+            "pending": false,
+            "completedRevision": 1876411980,
+            "domainCenter": [
+              -0.125,
+              0.625,
+              -9.125
+            ],
+            "domainSize": [
+              5.75,
+              2.75,
+              5.75
+            ],
+            "drawCount": 8400,
+            "geometryFingerprint": "dc135417",
+            "latestIslandCenter": [
+              0.026657535403686365,
+              0.5420454910220951,
+              -9.026198363381848
+            ],
+            "builtIslandCenter": [
+              0.026657535403686365,
+              0.5420454910220951,
+              -9.026198363381848
+            ],
+            "meshPosition": [
+              -0.025045046682804592,
+              0.09301742647065514,
+              -0.27689393772543625
+            ],
+            "meshScale": [
+              2.875,
+              1.375,
+              2.875
+            ]
+          }
+        ]
+      }
+    },
+    "events": [
+      {
+        "type": "fragmentDetached",
+        "fragmentId": 1,
+        "woundId": 1,
+        "biomass": 12
+      },
+      {
+        "type": "coreExposed",
+        "woundId": 1
+      },
+      {
+        "type": "fragmentReattached",
+        "fragmentId": 1,
+        "woundId": 1,
+        "biomass": 12
+      },
+      {
+        "type": "coreCovered"
+      }
+    ],
+    "playerPosition": [
+      -0.000007799489139870275,
+      0.9300969243049622,
+      -2.5
+    ],
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "deviceScaleFactor": 1,
+    "browserClock": {
+      "dateNow": 1784030400000,
+      "dateIso": "2026-07-14T12:00:00.000Z",
+      "performanceNow": 11871.799999952316
+    },
+    "evidenceOverlays": {
+      "hud": "none",
+      "subtitles": "none"
+    },
+    "gate": {
+      "seed": 2970296358,
+      "epochMs": 1784030400000,
+      "subjectId": "blob-lab-subject",
+      "queuedFrames": 1,
+      "gateOpen": false,
+      "executedCallbacks": 21,
+      "pulses": 3,
+      "completedPulses": 3,
+      "queuedCallbacks": [
+        {
+          "name": "tick",
+          "stack": "Error: queued requestAnimationFrame\n    at globalThis.requestAnimationFrame (<anonymous>:60:14)\n    at tick (http://127.0.0.1:4173/src/engine/core/GameLoop.ts:29:27)\n    at <anonymous>:41:5"
+        }
+      ],
+      "randomState": 1249527704
+    },
+    "canvas": {
+      "width": 1280,
+      "height": 720,
+      "cssWidth": 1280,
+      "cssHeight": 720
+    },
+    "webgl": {
+      "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    }
+  },
+  "golden": {
+    "mode": "compared",
+    "passed": true,
+    "threshold": {
+      "maximumChangedPixelRatio": 0.01,
+      "changedPixelChannelDelta": 8
+    },
+    "dimensionsMatch": true,
+    "actualDimensions": {
+      "width": 1280,
+      "height": 720
+    },
+    "expectedDimensions": {
+      "width": 1280,
+      "height": 720
+    },
+    "pixels": 921600,
+    "changedPixels": 1,
+    "changedPixelRatio": 0.0000010850694444444444,
+    "maximumChannelDelta": 65,
+    "artifact": {
+      "file": "tests/golden/blob-v2/reattach.png",
+      "bytes": 786855,
+      "sha256": "9992cee9d2687486e5d9aa552ed03c9b6850631cac402f89fee9b3ce58a6a642"
+    }
+  },
+  "diagnostics": {
+    "console": [
+      {
+        "type": "debug",
+        "text": "[vite] connecting...",
+        "location": {
+          "url": "http://127.0.0.1:4173/@vite/client",
+          "line": 494,
+          "column": 8,
+          "lineNumber": 494,
+          "columnNumber": 8
+        }
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connected.",
+        "location": {
+          "url": "http://127.0.0.1:4173/@vite/client",
+          "line": 617,
+          "column": 14,
+          "lineNumber": 617,
+          "columnNumber": 14
+        }
+      },
+      {
+        "type": "warning",
+        "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio",
+        "location": {
+          "url": "http://127.0.0.1:4173/src/engine/audio/core/AudioSystem.ts",
+          "line": 52,
+          "column": 0,
+          "lineNumber": 52,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "info",
+        "text": "[LevelLoader] NavigationService: humanoid:364, humanoid-limited:360, headcrab:404, blob:400, strider:181 (304 ms)",
+        "location": {
+          "url": "http://127.0.0.1:4173/src/game/levels/LevelLoader.ts",
+          "line": 213,
+          "column": 12,
+          "lineNumber": 213,
+          "columnNumber": 12
+        }
+      },
+      {
+        "type": "info",
+        "text": "[TacticalMapAnalyzer] tactical map {cover: 95, firing: 73, chokepoints: 0}",
+        "location": {
+          "url": "http://127.0.0.1:4173/src/game/npc/ai/TacticalMap.ts",
+          "line": 214,
+          "column": 12,
+          "lineNumber": 214,
+          "columnNumber": 12
+        }
+      },
+      {
+        "type": "info",
+        "text": "[AssetManager] Loading model \"zombie\" from http://127.0.0.1:4173/src/models/characters/zombie/zombie.glb",
+        "location": {
+          "url": "http://127.0.0.1:4173/src/engine/assets/AssetManager.ts",
+          "line": 42,
+          "column": 16,
+          "lineNumber": 42,
+          "columnNumber": 16
+        }
+      },
+      {
+        "type": "info",
+        "text": "[AssetManager] Model \"zombie\" loaded. Skeleton: true. Clips ignored: 1",
+        "location": {
+          "url": "http://127.0.0.1:4173/src/engine/assets/AssetManager.ts",
+          "line": 47,
+          "column": 16,
+          "lineNumber": 47,
+          "columnNumber": 16
+        }
+      }
+    ],
+    "pageErrors": [],
+    "requestFailures": []
+  },
+  "artifacts": {
+    "screenshot": {
+      "file": "reattach.png",
+      "bytes": 786832,
+      "sha256": "648c2a4f97fea439d8c1dd22f9aba9690496a61313dd5565499a46168cb60c5d"
+    },
+    "golden": {
+      "file": "tests/golden/blob-v2/reattach.png",
+      "bytes": 786855,
+      "sha256": "9992cee9d2687486e5d9aa552ed03c9b6850631cac402f89fee9b3ce58a6a642"
+    }
+  }
+}

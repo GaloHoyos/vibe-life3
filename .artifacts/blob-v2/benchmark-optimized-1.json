@@ -1,0 +1,177 @@
+{
+  "runner": "win32/x64 node v20.20.2",
+  "seconds": 5,
+  "warmupSeconds": 1,
+  "warmupDrainFrames": 1,
+  "finalDrainFrames": 1,
+  "meshingBudgetMs": 3.25,
+  "frames": 300,
+  "blobs": 2,
+  "requestedBiomassPerBlob": 250,
+  "initialLivingFragments": 12,
+  "livingFragmentsAtEnd": 12,
+  "simulationMs": {
+    "average": 1.906,
+    "p95": 3.807,
+    "maximum": 7.17
+  },
+  "meshingMs": {
+    "average": 2.946,
+    "p95": 3.193,
+    "maximum": 4.099
+  },
+  "meshingJobsMs": {
+    "average": 0.814,
+    "p95": 2.26,
+    "maximum": 3.339
+  },
+  "meshingJobsByResolution": {
+    "24": {
+      "average": 0.496,
+      "p95": 0.541,
+      "maximum": 1.631
+    },
+    "32": {
+      "average": 2.098,
+      "p95": 2.41,
+      "maximum": 3.339
+    }
+  },
+  "polygonizationMs": {
+    "average": 0.446,
+    "p95": 0.952,
+    "maximum": 2.211
+  },
+  "fieldAndSetupMs": {
+    "average": 0.368,
+    "p95": 1.306,
+    "maximum": 1.521
+  },
+  "meshingJobsOver8Ms": 0,
+  "slowestMeshingJobs": [
+    {
+      "resolution": 32,
+      "durationMs": 3.339,
+      "polygonizationMs": 2.211,
+      "polygonizationVertices": 11028,
+      "fieldAndSetupMs": 1.128
+    },
+    {
+      "resolution": 32,
+      "durationMs": 2.975,
+      "polygonizationMs": 1.937,
+      "polygonizationVertices": 10752,
+      "fieldAndSetupMs": 1.038
+    },
+    {
+      "resolution": 32,
+      "durationMs": 2.957,
+      "polygonizationMs": 1.944,
+      "polygonizationVertices": 10836,
+      "fieldAndSetupMs": 1.014
+    },
+    {
+      "resolution": 32,
+      "durationMs": 2.906,
+      "polygonizationMs": 1.868,
+      "polygonizationVertices": 9000,
+      "fieldAndSetupMs": 1.038
+    },
+    {
+      "resolution": 32,
+      "durationMs": 2.744,
+      "polygonizationMs": 1.712,
+      "polygonizationVertices": 8880,
+      "fieldAndSetupMs": 1.032
+    }
+  ],
+  "surfaceVerticesByResolution": {
+    "24": {
+      "maximum": 3240,
+      "average": 2998
+    },
+    "32": {
+      "maximum": 10008,
+      "average": 9402
+    }
+  },
+  "combinedFrameMs": {
+    "average": 5.282,
+    "p95": 7.243,
+    "maximum": 10.682
+  },
+  "pendingVisualJobs": 0,
+  "telemetry": [
+    {
+      "simulation": {
+        "samples": 300,
+        "averageMs": 0.6043096666666589,
+        "p95Ms": 1.9839999999999236,
+        "maximumMs": 3.1731999999999516
+      },
+      "meshing": {
+        "samples": 581,
+        "averageMs": 0.7750375215146252,
+        "p95Ms": 1.9517000000000735,
+        "maximumMs": 2.9745000000000346
+      },
+      "presentation": {
+        "samples": 300,
+        "averageMs": 0.06678166666666509,
+        "p95Ms": 0.11140000000000327,
+        "maximumMs": 0.15650000000005093
+      },
+      "visualJobWait": {
+        "samples": 581,
+        "averageMs": 1.5490626506024103,
+        "p95Ms": 2.7865999999999076,
+        "maximumMs": 3.5812000000000808
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6344800,
+        "estimatedGpuBytes": 2642016
+      }
+    },
+    {
+      "simulation": {
+        "samples": 300,
+        "averageMs": 0.5195599999999843,
+        "p95Ms": 1.057299999999941,
+        "maximumMs": 2.98700000000008
+      },
+      "meshing": {
+        "samples": 497,
+        "averageMs": 0.8593239436619776,
+        "p95Ms": 2.3094999999998436,
+        "maximumMs": 3.3392000000000053
+      },
+      "presentation": {
+        "samples": 300,
+        "averageMs": 0.05088366666665479,
+        "p95Ms": 0.08490000000006148,
+        "maximumMs": 0.1334999999999127
+      },
+      "visualJobWait": {
+        "samples": 497,
+        "averageMs": 1.3860110663983876,
+        "p95Ms": 2.635099999999966,
+        "maximumMs": 3.8760999999999513
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6344800,
+        "estimatedGpuBytes": 2642016
+      }
+    }
+  ],
+  "heapUsedMb": 79.24,
+  "acceptance": {
+    "mode": "smoke",
+    "skipped": true,
+    "passed": null,
+    "criteria": []
+  }
+}

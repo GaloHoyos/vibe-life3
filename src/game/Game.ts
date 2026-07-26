@@ -25,6 +25,7 @@ import { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
 import { installIceConsole } from "@game/debug/IceConsole";
 import { installNpcConsole } from "@game/debug/NpcConsole";
 import { installPlayerConsole } from "@game/debug/PlayerConsole";
+import { installPortalConsole } from "@game/debug/PortalConsole";
 import { installPlayerModelConsole } from "@game/debug/PlayerModelConsole";
 import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
 import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
@@ -154,6 +155,7 @@ export class Game {
   private uninstallPlayerConsole: (() => void) | null = null;
   private uninstallIceConsole: (() => void) | null = null;
   private uninstallPlayerModelConsole: (() => void) | null = null;
+  private uninstallPortalConsole: (() => void) | null = null;
   private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
@@ -292,6 +294,8 @@ export class Game {
     this.uninstallIceConsole = null;
     this.uninstallPlayerModelConsole?.();
     this.uninstallPlayerModelConsole = null;
+    this.uninstallPortalConsole?.();
+    this.uninstallPortalConsole = null;
 
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
@@ -1225,6 +1229,9 @@ export class Game {
     this.uninstallPlayerModelConsole = installPlayerModelConsole(
       () => this.playerModel,
     );
+    this.uninstallPortalConsole = installPortalConsole(() =>
+      s.resolve(GameTokens.Portals),
+    );
 
     const debugMenu = new DebugMenu(this.root, input, controls, eventBus);
     debugMenu.register(new StatsModule());
@@ -1452,22 +1459,31 @@ export class Game {
     if (this.tacticalMap && this.navigation && this.squadDirector) {
       const playerSnapshot: ActorSnapshot = {
         id: "player",
+        characterId: "player",
         position: playerPosition,
         faction: "player",
         entity: player,
         isAlive: player.isAlive(),
         radius: 0.35,
         health01: player.health.max > 0 ? player.health.current / player.health.max : 0,
+        organicMatter: player.getOrganicMatterHandle(),
       };
-      const npcSnapshots: ActorSnapshot[] = this.npcs.map((npc) => ({
-        id: npc.id,
-        position: npc.position,
-        faction: npc.faction,
-        entity: npc,
-        isAlive: npc.isAlive(),
-        radius: npc.radius,
-        health01: npc.health.max > 0 ? npc.health.current / npc.health.max : 0,
-      }));
+      const npcSnapshots: ActorSnapshot[] = this.npcs.map((npc) => {
+        const organicMatter = npc.getOrganicMatterHandle?.() ?? null;
+        return {
+          id: npc.id,
+          characterId: npc.characterId,
+          position: organicMatter && !npc.isAlive()
+            ? organicMatter.getPosition()
+            : npc.position,
+          faction: npc.faction,
+          entity: npc,
+          isAlive: npc.isAlive(),
+          radius: npc.radius,
+          health01: npc.health.max > 0 ? npc.health.current / npc.health.max : 0,
+          ...(organicMatter ? { organicMatter } : {}),
+        };
+      });
       const npcIndex = new ActorSpatialIndex(npcSnapshots);
       const playerSquad = s.resolve(GameTokens.PlayerSquad);
       playerSquad.update(
@@ -2002,12 +2018,14 @@ export class Game {
     // todos los bodies) → limpiar la escena (preservando las luces) → cargar.
     // En el primer load (menú/boot) todo está vacío, así que es no-op.
     this.npcs.forEach((npc) => npc.dispose());
+    this.npcs = [];
     this.crashingGunships.clear();
     this.collapsingStriders.clear();
     this.weaponPickups.forEach((pickup) => pickup.dispose());
     this.itemPickups.forEach((pickup) => pickup.dispose());
     this.ammoPickups.forEach((pickup) => pickup.dispose());
     this.player?.dispose();
+    this.player = null;
     this.playerModel?.dispose();
     this.playerModel = null;
     services.resolve(GameTokens.WeaponEffects).clear();

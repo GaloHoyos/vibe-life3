@@ -63,6 +63,28 @@ describe("LevelRegistry contracts", () => {
     expect(level.npcs).toHaveLength(0);
     expect(level.triggers).toHaveLength(0);
   });
+
+  it("keeps blob-physics-test equipped for damage and physics coverage", () => {
+    const level = getLevel("blob-physics-test");
+    const weaponIds = new Set(level.weaponPickups.map((pickup) => pickup.weaponId));
+
+    expect(level.npcs).toEqual([
+      expect.objectContaining({ characterId: "blob" }),
+    ]);
+    expect(weaponIds).toEqual(
+      new Set([
+        "crowbar",
+        "pistol",
+        "shotgun",
+        "iceGun",
+        "gravityGun",
+        "portalGun",
+        "grenade",
+        "rpg",
+      ]),
+    );
+    expect(level.dynamicBoxes.length).toBeGreaterThan(0);
+  });
 });
 
 function expectValidLevel(level: LevelDefinition, levelIds: ReadonlySet<string>): void {

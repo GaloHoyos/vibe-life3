@@ -1,4 +1,5 @@
 import type { NavAgentProfile } from "@engine/ai/navigation/NavigationTypes";
+import { BlobConfig } from "@game/config/blob.config";
 import type { NpcPreset } from "@game/npc/presets/NpcPreset";
 
 const BASE_AREA_COSTS = {
@@ -69,6 +70,53 @@ export const NavigationProfiles = {
     maxJumpDistance: 4,
     safeDropHeight: 4,
     maxTraversalLinks: 96,
+  }),
+  /**
+   * Los racimos usan el clearance ya bakeado de headcrab, pero no heredan
+   * links de salto/caída: su follower conserva gravedad y sólo camina.
+   */
+  blobFragment: profile({
+    id: "blob-fragment",
+    domain: "smallGround",
+    radius: 0.3,
+    standingHeight: 0.55,
+    navigationHeight: 0.55,
+    maxSlopeDegrees: 50,
+    stepHeight: 0.25,
+    maxSpeed: BlobConfig.armor.chunkNavigationCatchupMaxSpeed,
+    acceleration: BlobConfig.armor.chunkNavigationAcceleration,
+    canJump: false,
+    canCrouch: false,
+    canDrop: false,
+    canOpenDoors: false,
+    canUsePortals: false,
+    jumpSpeed: 0,
+    maxJumpDistance: 0,
+    safeDropHeight: 0,
+    fallbackProfileId: "headcrab",
+  }),
+  /**
+   * El corredor admite compresión del gel. La ruta guía al cerebro dinámico;
+   * el collider real y la cubierta de resortes conservan la autoridad física.
+   */
+  blobBody: profile({
+    id: "blob-body",
+    domain: "largeGround",
+    radius: BlobConfig.armor.navigationRadius,
+    standingHeight: BlobConfig.armor.navigationHeight,
+    navigationHeight: BlobConfig.armor.navigationHeight,
+    maxSlopeDegrees: 38,
+    stepHeight: 0.25,
+    maxSpeed: BlobConfig.predator.moveSpeed,
+    acceleration: BlobConfig.predator.movementAcceleration,
+    canJump: false,
+    canCrouch: false,
+    canDrop: false,
+    canOpenDoors: false,
+    canUsePortals: true,
+    jumpSpeed: 0,
+    maxJumpDistance: 0,
+    safeDropHeight: 0,
   }),
   manhack: profile({
     id: "manhack",
@@ -160,6 +208,8 @@ export function navigationProfileForPreset(preset: NpcPreset): NavAgentProfile {
       return NavigationProfiles.strider;
     case "floorTurret":
       return NavigationProfiles.stationary;
+    case "blob":
+      return NavigationProfiles.blobBody;
     case "headcrab":
       return NavigationProfiles.headcrab;
     case "zombie":

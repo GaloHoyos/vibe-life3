@@ -149,6 +149,8 @@ export interface NpcMovementProfile {
   turnSpeed: number;
   stepOffset: number;
   snapToGround: number;
+  /** Radio preciso de llegada; omitido usa el derivado del nav agent. */
+  goalReachRadius?: number;
   /** Habilita planning de jump portals. */
   canJump: boolean;
   /**

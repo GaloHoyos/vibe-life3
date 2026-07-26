@@ -170,6 +170,68 @@ describe("PhysicsGrabController — shadow hold", () => {
     expect(body.linvel().z).toBeCloseTo(-20, 5);
   });
 
+  it("respeta un nuevo gravityScale de restitución si el dueño cambia mientras está held", async () => {
+    const { physics, raycast } = await makeWorld();
+    const body = makeBox(physics, new Vector3(0, 1.6, 0));
+    body.setGravityScale(0.2, true);
+    const grab = new PhysicsGrabController(physics, raycast, TUNING);
+
+    grab.grab(body, new Quaternion());
+    physics.setHeldRestoreGravityScale(body.handle, 1);
+    grab.release();
+
+    expect(body.gravityScale()).toBeCloseTo(1, 6);
+    expect(physics.isHeldBody(body.handle)).toBe(false);
+  });
+
+  it("limpia el registro held si el rigid body se remueve directamente", async () => {
+    const { physics, raycast } = await makeWorld();
+    const body = makeBox(physics, new Vector3(0, 1.6, 0));
+    const handle = body.handle;
+    const grab = new PhysicsGrabController(physics, raycast, TUNING);
+
+    grab.grab(body, new Quaternion());
+    expect(physics.isHeldBody(handle)).toBe(true);
+    physics.removeBody(body);
+
+    expect(physics.isHeldBody(handle)).toBe(false);
+    expect(() => grab.release()).not.toThrow();
+  });
+
+  it("usa impactOwnerId para acercar un fragmento a su cuerpo original", async () => {
+    const { physics, raycast } = await makeWorld();
+    const fragment = makeBox(physics, new Vector3(0, 1.6, 0));
+    const shellPart = makeBox(physics, new Vector3(0, 1.6, 0.8));
+    physics.registerCollider(fragment.collider(0), {
+      id: "blob-chunk-0",
+      impactOwnerId: "blob-1",
+      kind: "dynamic",
+    });
+    physics.registerCollider(shellPart.collider(0), {
+      id: "blob-shell-1",
+      ownerId: "blob-1",
+      kind: "npc",
+    });
+    physics.updateQueryPipeline();
+
+    const grab = new PhysicsGrabController(physics, raycast, TUNING);
+    grab.grab(fragment, new Quaternion());
+    grab.update(
+      1 / 60,
+      new Vector3(0, 1.6, 0),
+      new Vector3(0, 0, 1),
+      new Quaternion(),
+    );
+
+    // Sin excluir al owner original, el shell de z=0.8 clampearía el target
+    // a 0.9 m y la velocidad quedaría en 10.8 m/s. El target libre satura el
+    // shadow controller en sus 14 m/s configurados.
+    expect(fragment.linvel().z).toBeCloseTo(TUNING.maxLinearSpeed, 5);
+    expect(grab.isHolding()).toBe(true);
+
+    grab.release();
+  });
+
   it("release transforma la velocidad cuando el hold está mapeado por el portal", async () => {
     const { physics, raycast } = await makeWorld();
     const pair = new PortalPairState();

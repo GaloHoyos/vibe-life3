@@ -1,8 +1,14 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Euler, Quaternion, Vector3 } from "three";
 import { createCapsuleCollider } from "@engine/physics/Colliders";
+import { ACTOR_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { CharacterMotorSnapshot, NpcMotor, SliceHit } from "./NpcMotor";
+import {
+  applyCharacterContactDamping,
+  isPassThroughCharacterContact,
+  sampleCharacterMedium,
+} from "./CharacterContactMedium";
 
 export interface KinematicFlyerConfig {
   id: string;
@@ -41,6 +47,7 @@ export class KinematicFlyerMotor implements NpcMotor {
   private enabled = true;
   private alive = true;
   private speedMultiplier = 1;
+  private contactSpeedMultiplier = 1;
   private yaw = 0;
   private targetYaw = 0;
   private distanceToTarget = Number.POSITIVE_INFINITY;
@@ -62,11 +69,14 @@ export class KinematicFlyerMotor implements NpcMotor {
       createCapsuleCollider(config.radius, halfHeight)
         .setDensity(density)
         .setFriction(0.7)
-        .setRestitution(0.12),
+        .setRestitution(0.12)
+        .setCollisionGroups(ACTOR_COLLISION_GROUPS),
       this.body,
     );
     physics.registerCollider(this.collider, config.metadata);
     this.controller = physics.createCharacterController(0.04);
+    this.controller.setApplyImpulsesToDynamicBodies(true);
+    this.controller.setCharacterMass(config.mass);
   }
 
   update(
@@ -103,7 +113,10 @@ export class KinematicFlyerMotor implements NpcMotor {
     if (wantsMove && directionToTarget.lengthSq() > 0.0001) {
       const d = directionToTarget.length();
       directionToTarget.divideScalar(d);
-      const max = this.config.maxSpeed * this.speedMultiplier;
+      const max =
+        this.config.maxSpeed *
+        this.speedMultiplier *
+        this.contactSpeedMultiplier;
       const arriveSpeed = Math.min(max, d * 1.8);
       this.desiredVelocity.copy(directionToTarget).multiplyScalar(arriveSpeed);
     } else {
@@ -125,11 +138,23 @@ export class KinematicFlyerMotor implements NpcMotor {
     );
     const corrected = this.controller.computedMovement();
     const current = this.body.translation();
-    this.body.setNextKinematicTranslation({
+    const next = {
       x: current.x + corrected.x,
       y: current.y + corrected.y,
       z: current.z + corrected.z,
+    };
+    this.body.setNextKinematicTranslation(next);
+    const medium = sampleCharacterMedium({
+      physics: this.physics,
+      collider: this.collider,
+      position: next,
+      rotation: this.body.rotation(),
+      velocity: this.velocity,
+      delta,
+      characterMass: this.config.mass,
     });
+    this.contactSpeedMultiplier = medium?.speedScale ?? 1;
+    applyCharacterContactDamping(this.velocity, medium, delta);
     this.body.setNextKinematicRotation(this.tmpRotation.setFromAxisAngle(Y_AXIS, this.yaw));
 
     const invDelta = delta > 0 ? 1 / delta : 0;
@@ -227,6 +252,7 @@ export class KinematicFlyerMotor implements NpcMotor {
 
   private shouldCollideWith(collider: RAPIER.Collider): boolean {
     if (collider.handle === this.collider.handle || collider.isSensor()) return false;
+    if (isPassThroughCharacterContact(this.physics, collider)) return false;
     const metadata = this.physics.getColliderMetadata(collider);
     return metadata?.damageable !== this.config.metadata.damageable;
   }

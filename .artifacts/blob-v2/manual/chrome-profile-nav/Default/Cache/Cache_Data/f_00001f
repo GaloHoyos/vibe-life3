@@ -1,0 +1,143 @@
+export const PortalConfig = {
+  ellipse: {
+    // Forma del óvalo de Valve (aspect 108:64 ≈ 1.69) dimensionada al jugador
+    // ya normalizado (1.80 m alto × 0.70 m ancho): óvalo 2.20 × 1.30 m. Se entra
+    // parado con headroom, sin quedar desproporcionadamente alto.
+    halfWidth: 0.65,
+    halfHeight: 1.1
+  },
+  placement: {
+    range: 60,
+    /** Lift over the surface for fit probes; toi must land near it. */
+    probeLift: 0.1,
+    probeMaxDistance: 0.2,
+    probeToiMin: 0.08,
+    probeToiMax: 0.12,
+    /** Min alignment (dot) between probe hit normal and portal normal. */
+    normalAlignMin: 0.99,
+    /** Below this |normal.y| the surface counts as wall (up = world up). */
+    wallNormalYMax: 0.75,
+    /** Paso radial (m) de la búsqueda de bump al colocar el portal. */
+    bumpStep: 0.12,
+    /** Muestras angulares por anillo de la búsqueda de bump. */
+    bumpAngularSamples: 12,
+    /** Holgura mínima (m) con el portal par (1 unidad de Source ≈ 0.019 m). */
+    siblingSeparationPad: 0.02
+  },
+  traversal: {
+    /** Per-entity seconds before the same body can teleport again. */
+    cooldownSeconds: 0.15,
+    /**
+     * Cooldown del JUGADOR: 0 como en Portal — volver a entrar al portal
+     * inmediatamente después de salir teleporta de nuevo, sin ventana muerta.
+     * (Si se sube, el transit devuelve la cápsula al frente durante la
+     * ventana; jamás ignora un cruce, que era lo que dejaba salir del mundo.)
+     */
+    playerCooldownSeconds: 0,
+    /**
+     * The player teleports when crossing the EXACT portal plane (offset 0,
+     * like Portal/Lague): a point crossed just behind the entry plane maps to
+     * just IN FRONT of the exit plane, so the player never lands buried in
+     * the exit wall. The near-plane "blink" that this offset used to hide is
+     * now covered by the extruded surface plug (`surfacePlugDepth`).
+     */
+    playerTriggerOffset: 0,
+    /**
+     * Same idea for dynamic bodies, but larger: they have no collision
+     * filter against the backing wall, so they must teleport BEFORE the
+     * solver resolves the contact (or they bounce off and never cross).
+     */
+    dynamicTriggerOffset: 0.25,
+    /**
+     * Min exit speed along the exit normal. For the player it only applies to
+     * VERTICAL exits (floor/ceiling, where falling back behind the plane
+     * drops you out of the world); wall exits keep the incoming speed intact
+     * so slow walk-throughs stay fluid. Dynamics/NPCs use it on every exit.
+     */
+    minExitSpeed: 1.5,
+    /** Distance to a linked portal that enables wall pass-through filtering. */
+    passThroughProximity: 1.5,
+    /** Ellipse margin factor for the crossing test. */
+    crossingMargin: 1.15,
+    /**
+     * Margen de perdon solo para entrada del PLAYER: no cambia su collider real,
+     * pero evita que el borde del ovalo se sienta pixel-perfect.
+     */
+    playerRadiusForgiveness: 0.12,
+    /** Distancia frontal (m) donde un portal de pared empieza a centrar al player. */
+    playerFunnelDepth: 0.75,
+    /** Peso del centrado suave antes de tocar el plano del portal. */
+    playerFunnelStrength: 0.9,
+    /** Radius of the ball query that collects dynamic-body candidates. */
+    dynamicQueryRadius: 2,
+    /** Push-out along the exit normal for teleported dynamic bodies. */
+    dynamicExitClearance: 0.35,
+    /**
+     * Salida por pared: si el mapeo exacto deja los pies del jugador embebidos
+     * en el piso (entrar por un portal elevado desde abajo mapea la cápsula por
+     * debajo del centro del portal de salida), se lo sube a apoyar los pies. Se
+     * busca piso hasta esta distancia bajo los pies mapeados; más allá, la
+     * salida se considera aérea (caída legítima) y no se ajusta.
+     */
+    exitGroundSnap: 0.5
+  },
+  view: {
+    renderScale: 1,
+    maxViewDistance: 45,
+    /**
+     * Profundidad (m) del "tapón" extruido dentro de la pared detrás del
+     * disco. Debe superar la distancia de la cámara a la esquina de su near
+     * plane (near 0.05, fov <= 90 → ~0.115): cuando el near plane rebana el
+     * disco y la pared al cruzar, el interior del tapón sigue cubriendo la
+     * vista. En paredes más finas que esto la tapa trasera asoma del otro lado.
+     */
+    surfacePlugDepth: 0.13
+  },
+  colors: {
+    a: 4171775,
+    b: 16751167
+  },
+  /**
+   * Traversal de props estilo Portal: en vez de teleportar el cuerpo entero
+   * cuando su centro cruza, el portal tiene un AGUJERO físico real (parche con
+   * óvalo recortado) y el objeto se representa a la vez de los dos lados (clon
+   * espejado) para volcarse sobre el borde y caer. Ver `PortalTravellerSystem`.
+   */
+  dynamicClone: {
+    /** Si está OFF, se usa el teleport por cruce del centro (comportamiento viejo). */
+    enabled: true,
+    /** Radio (m) del parche de apertura coplanar con la superficie del portal. */
+    apertureRadius: 2.2,
+    /** Espesor (m) del parche hundido en la superficie (borde de pivoteo). */
+    apertureThickness: 0.1,
+    /**
+     * Velocidad mínima (m/s) hacia adentro del plano para que un objeto se
+     * considere "cruzando" un portal de PARED (no de piso). Debajo de esto, un
+     * objeto apoyado quieto cerca de un portal de pared NO se suprime ni clona
+     * (evita que se caiga por el piso si piso y pared comparten collider).
+     */
+    suppressMinIntoSpeed: 1.2,
+    /**
+     * Lookahead (s) que extiende la zona de supresión según la velocidad de
+     * entrada: un punt de gravity gun (~40 m/s) recorre la zona base en menos
+     * de un frame y rebotaría contra la pared antes de quedar suprimido.
+     */
+    suppressLookaheadSeconds: 0.1,
+    /** Peso del blend de posición del clon hacia el primary al reconciliar. */
+    blendPosition: 0.5,
+    /** Peso del blend de rotación (slerp) del clon hacia el primary. */
+    blendRotation: 0.5
+  },
+  npcTraversal: {
+    enabled: true,
+    /** Costo A* del edge warp (equivalente en metros de caminata). */
+    warpEdgeCost: 2,
+    /** El waypoint de cruce queda esta distancia DETRÁS del plano del disco. */
+    crossingDepth: 0.55,
+    /** Máxima altura del borde inferior del disco sobre el piso para que un
+     * NPC terrestre pueda entrar caminando por un portal de pared. */
+    maxEntryLipHeight: 0.7
+  }
+};
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInBvcnRhbC5jb25maWcudHMiXSwic291cmNlc0NvbnRlbnQiOlsiLyoqXHJcbiAqIFR1bmluZyBkYXRhLWRyaXZlbiBkZSBsYSBwb3J0YWwgZ3VuIHkgc3VzIHBvcnRhbGVzLlxyXG4gKiBTbG90IFwiYVwiID0gcG9ydGFsIGF6dWwgKExNQiksIHNsb3QgXCJiXCIgPSBwb3J0YWwgbmFyYW5qYSAoUk1CKS5cclxuICovXHJcbmV4cG9ydCBjb25zdCBQb3J0YWxDb25maWcgPSB7XHJcbiAgZWxsaXBzZToge1xyXG4gICAgLy8gRm9ybWEgZGVsIMOzdmFsbyBkZSBWYWx2ZSAoYXNwZWN0IDEwODo2NCDiiYggMS42OSkgZGltZW5zaW9uYWRhIGFsIGp1Z2Fkb3JcclxuICAgIC8vIHlhIG5vcm1hbGl6YWRvICgxLjgwIG0gYWx0byDDlyAwLjcwIG0gYW5jaG8pOiDDs3ZhbG8gMi4yMCDDlyAxLjMwIG0uIFNlIGVudHJhXHJcbiAgICAvLyBwYXJhZG8gY29uIGhlYWRyb29tLCBzaW4gcXVlZGFyIGRlc3Byb3BvcmNpb25hZGFtZW50ZSBhbHRvLlxyXG4gICAgaGFsZldpZHRoOiAwLjY1LFxyXG4gICAgaGFsZkhlaWdodDogMS4xLFxyXG4gIH0sXHJcbiAgcGxhY2VtZW50OiB7XHJcbiAgICByYW5nZTogNjAsXHJcbiAgICAvKiogTGlmdCBvdmVyIHRoZSBzdXJmYWNlIGZvciBmaXQgcHJvYmVzOyB0b2kgbXVzdCBsYW5kIG5lYXIgaXQuICovXHJcbiAgICBwcm9iZUxpZnQ6IDAuMSxcclxuICAgIHByb2JlTWF4RGlzdGFuY2U6IDAuMixcclxuICAgIHByb2JlVG9pTWluOiAwLjA4LFxyXG4gICAgcHJvYmVUb2lNYXg6IDAuMTIsXHJcbiAgICAvKiogTWluIGFsaWdubWVudCAoZG90KSBiZXR3ZWVuIHByb2JlIGhpdCBub3JtYWwgYW5kIHBvcnRhbCBub3JtYWwuICovXHJcbiAgICBub3JtYWxBbGlnbk1pbjogMC45OSxcclxuICAgIC8qKiBCZWxvdyB0aGlzIHxub3JtYWwueXwgdGhlIHN1cmZhY2UgY291bnRzIGFzIHdhbGwgKHVwID0gd29ybGQgdXApLiAqL1xyXG4gICAgd2FsbE5vcm1hbFlNYXg6IDAuNzUsXHJcbiAgICAvKiogUGFzbyByYWRpYWwgKG0pIGRlIGxhIGLDunNxdWVkYSBkZSBidW1wIGFsIGNvbG9jYXIgZWwgcG9ydGFsLiAqL1xyXG4gICAgYnVtcFN0ZXA6IDAuMTIsXHJcbiAgICAvKiogTXVlc3RyYXMgYW5ndWxhcmVzIHBvciBhbmlsbG8gZGUgbGEgYsO6c3F1ZWRhIGRlIGJ1bXAuICovXHJcbiAgICBidW1wQW5ndWxhclNhbXBsZXM6IDEyLFxyXG4gICAgLyoqIEhvbGd1cmEgbcOtbmltYSAobSkgY29uIGVsIHBvcnRhbCBwYXIgKDEgdW5pZGFkIGRlIFNvdXJjZSDiiYggMC4wMTkgbSkuICovXHJcbiAgICBzaWJsaW5nU2VwYXJhdGlvblBhZDogMC4wMixcclxuICB9LFxyXG4gIHRyYXZlcnNhbDoge1xyXG4gICAgLyoqIFBlci1lbnRpdHkgc2Vjb25kcyBiZWZvcmUgdGhlIHNhbWUgYm9keSBjYW4gdGVsZXBvcnQgYWdhaW4uICovXHJcbiAgICBjb29sZG93blNlY29uZHM6IDAuMTUsXHJcbiAgICAvKipcclxuICAgICAqIENvb2xkb3duIGRlbCBKVUdBRE9SOiAwIGNvbW8gZW4gUG9ydGFsIOKAlCB2b2x2ZXIgYSBlbnRyYXIgYWwgcG9ydGFsXHJcbiAgICAgKiBpbm1lZGlhdGFtZW50ZSBkZXNwdcOpcyBkZSBzYWxpciB0ZWxlcG9ydGEgZGUgbnVldm8sIHNpbiB2ZW50YW5hIG11ZXJ0YS5cclxuICAgICAqIChTaSBzZSBzdWJlLCBlbCB0cmFuc2l0IGRldnVlbHZlIGxhIGPDoXBzdWxhIGFsIGZyZW50ZSBkdXJhbnRlIGxhXHJcbiAgICAgKiB2ZW50YW5hOyBqYW3DoXMgaWdub3JhIHVuIGNydWNlLCBxdWUgZXJhIGxvIHF1ZSBkZWphYmEgc2FsaXIgZGVsIG11bmRvLilcclxuICAgICAqL1xyXG4gICAgcGxheWVyQ29vbGRvd25TZWNvbmRzOiAwLFxyXG4gICAgLyoqXHJcbiAgICAgKiBUaGUgcGxheWVyIHRlbGVwb3J0cyB3aGVuIGNyb3NzaW5nIHRoZSBFWEFDVCBwb3J0YWwgcGxhbmUgKG9mZnNldCAwLFxyXG4gICAgICogbGlrZSBQb3J0YWwvTGFndWUpOiBhIHBvaW50IGNyb3NzZWQganVzdCBiZWhpbmQgdGhlIGVudHJ5IHBsYW5lIG1hcHMgdG9cclxuICAgICAqIGp1c3QgSU4gRlJPTlQgb2YgdGhlIGV4aXQgcGxhbmUsIHNvIHRoZSBwbGF5ZXIgbmV2ZXIgbGFuZHMgYnVyaWVkIGluXHJcbiAgICAgKiB0aGUgZXhpdCB3YWxsLiBUaGUgbmVhci1wbGFuZSBcImJsaW5rXCIgdGhhdCB0aGlzIG9mZnNldCB1c2VkIHRvIGhpZGUgaXNcclxuICAgICAqIG5vdyBjb3ZlcmVkIGJ5IHRoZSBleHRydWRlZCBzdXJmYWNlIHBsdWcgKGBzdXJmYWNlUGx1Z0RlcHRoYCkuXHJcbiAgICAgKi9cclxuICAgIHBsYXllclRyaWdnZXJPZmZzZXQ6IDAsXHJcbiAgICAvKipcclxuICAgICAqIFNhbWUgaWRlYSBmb3IgZHluYW1pYyBib2RpZXMsIGJ1dCBsYXJnZXI6IHRoZXkgaGF2ZSBubyBjb2xsaXNpb25cclxuICAgICAqIGZpbHRlciBhZ2FpbnN0IHRoZSBiYWNraW5nIHdhbGwsIHNvIHRoZXkgbXVzdCB0ZWxlcG9ydCBCRUZPUkUgdGhlXHJcbiAgICAgKiBzb2x2ZXIgcmVzb2x2ZXMgdGhlIGNvbnRhY3QgKG9yIHRoZXkgYm91bmNlIG9mZiBhbmQgbmV2ZXIgY3Jvc3MpLlxyXG4gICAgICovXHJcbiAgICBkeW5hbWljVHJpZ2dlck9mZnNldDogMC4yNSxcclxuICAgIC8qKlxyXG4gICAgICogTWluIGV4aXQgc3BlZWQgYWxvbmcgdGhlIGV4aXQgbm9ybWFsLiBGb3IgdGhlIHBsYXllciBpdCBvbmx5IGFwcGxpZXMgdG9cclxuICAgICAqIFZFUlRJQ0FMIGV4aXRzIChmbG9vci9jZWlsaW5nLCB3aGVyZSBmYWxsaW5nIGJhY2sgYmVoaW5kIHRoZSBwbGFuZVxyXG4gICAgICogZHJvcHMgeW91IG91dCBvZiB0aGUgd29ybGQpOyB3YWxsIGV4aXRzIGtlZXAgdGhlIGluY29taW5nIHNwZWVkIGludGFjdFxyXG4gICAgICogc28gc2xvdyB3YWxrLXRocm91Z2hzIHN0YXkgZmx1aWQuIER5bmFtaWNzL05QQ3MgdXNlIGl0IG9uIGV2ZXJ5IGV4aXQuXHJcbiAgICAgKi9cclxuICAgIG1pbkV4aXRTcGVlZDogMS41LFxyXG4gICAgLyoqIERpc3RhbmNlIHRvIGEgbGlua2VkIHBvcnRhbCB0aGF0IGVuYWJsZXMgd2FsbCBwYXNzLXRocm91Z2ggZmlsdGVyaW5nLiAqL1xyXG4gICAgcGFzc1Rocm91Z2hQcm94aW1pdHk6IDEuNSxcclxuICAgIC8qKiBFbGxpcHNlIG1hcmdpbiBmYWN0b3IgZm9yIHRoZSBjcm9zc2luZyB0ZXN0LiAqL1xyXG4gICAgY3Jvc3NpbmdNYXJnaW46IDEuMTUsXHJcbiAgICAvKipcclxuICAgICAqIE1hcmdlbiBkZSBwZXJkb24gc29sbyBwYXJhIGVudHJhZGEgZGVsIFBMQVlFUjogbm8gY2FtYmlhIHN1IGNvbGxpZGVyIHJlYWwsXHJcbiAgICAgKiBwZXJvIGV2aXRhIHF1ZSBlbCBib3JkZSBkZWwgb3ZhbG8gc2Ugc2llbnRhIHBpeGVsLXBlcmZlY3QuXHJcbiAgICAgKi9cclxuICAgIHBsYXllclJhZGl1c0ZvcmdpdmVuZXNzOiAwLjEyLFxyXG4gICAgLyoqIERpc3RhbmNpYSBmcm9udGFsIChtKSBkb25kZSB1biBwb3J0YWwgZGUgcGFyZWQgZW1waWV6YSBhIGNlbnRyYXIgYWwgcGxheWVyLiAqL1xyXG4gICAgcGxheWVyRnVubmVsRGVwdGg6IDAuNzUsXHJcbiAgICAvKiogUGVzbyBkZWwgY2VudHJhZG8gc3VhdmUgYW50ZXMgZGUgdG9jYXIgZWwgcGxhbm8gZGVsIHBvcnRhbC4gKi9cclxuICAgIHBsYXllckZ1bm5lbFN0cmVuZ3RoOiAwLjksXHJcbiAgICAvKiogUmFkaXVzIG9mIHRoZSBiYWxsIHF1ZXJ5IHRoYXQgY29sbGVjdHMgZHluYW1pYy1ib2R5IGNhbmRpZGF0ZXMuICovXHJcbiAgICBkeW5hbWljUXVlcnlSYWRpdXM6IDIsXHJcbiAgICAvKiogUHVzaC1vdXQgYWxvbmcgdGhlIGV4aXQgbm9ybWFsIGZvciB0ZWxlcG9ydGVkIGR5bmFtaWMgYm9kaWVzLiAqL1xyXG4gICAgZHluYW1pY0V4aXRDbGVhcmFuY2U6IDAuMzUsXHJcbiAgICAvKipcclxuICAgICAqIFNhbGlkYSBwb3IgcGFyZWQ6IHNpIGVsIG1hcGVvIGV4YWN0byBkZWphIGxvcyBwaWVzIGRlbCBqdWdhZG9yIGVtYmViaWRvc1xyXG4gICAgICogZW4gZWwgcGlzbyAoZW50cmFyIHBvciB1biBwb3J0YWwgZWxldmFkbyBkZXNkZSBhYmFqbyBtYXBlYSBsYSBjw6Fwc3VsYSBwb3JcclxuICAgICAqIGRlYmFqbyBkZWwgY2VudHJvIGRlbCBwb3J0YWwgZGUgc2FsaWRhKSwgc2UgbG8gc3ViZSBhIGFwb3lhciBsb3MgcGllcy4gU2VcclxuICAgICAqIGJ1c2NhIHBpc28gaGFzdGEgZXN0YSBkaXN0YW5jaWEgYmFqbyBsb3MgcGllcyBtYXBlYWRvczsgbcOhcyBhbGzDoSwgbGFcclxuICAgICAqIHNhbGlkYSBzZSBjb25zaWRlcmEgYcOpcmVhIChjYcOtZGEgbGVnw610aW1hKSB5IG5vIHNlIGFqdXN0YS5cclxuICAgICAqL1xyXG4gICAgZXhpdEdyb3VuZFNuYXA6IDAuNSxcclxuICB9LFxyXG4gIHZpZXc6IHtcclxuICAgIHJlbmRlclNjYWxlOiAxLFxyXG4gICAgbWF4Vmlld0Rpc3RhbmNlOiA0NSxcclxuICAgIC8qKlxyXG4gICAgICogUHJvZnVuZGlkYWQgKG0pIGRlbCBcInRhcMOzblwiIGV4dHJ1aWRvIGRlbnRybyBkZSBsYSBwYXJlZCBkZXRyw6FzIGRlbFxyXG4gICAgICogZGlzY28uIERlYmUgc3VwZXJhciBsYSBkaXN0YW5jaWEgZGUgbGEgY8OhbWFyYSBhIGxhIGVzcXVpbmEgZGUgc3UgbmVhclxyXG4gICAgICogcGxhbmUgKG5lYXIgMC4wNSwgZm92IDw9IDkwIOKGkiB+MC4xMTUpOiBjdWFuZG8gZWwgbmVhciBwbGFuZSByZWJhbmEgZWxcclxuICAgICAqIGRpc2NvIHkgbGEgcGFyZWQgYWwgY3J1emFyLCBlbCBpbnRlcmlvciBkZWwgdGFww7NuIHNpZ3VlIGN1YnJpZW5kbyBsYVxyXG4gICAgICogdmlzdGEuIEVuIHBhcmVkZXMgbcOhcyBmaW5hcyBxdWUgZXN0byBsYSB0YXBhIHRyYXNlcmEgYXNvbWEgZGVsIG90cm8gbGFkby5cclxuICAgICAqL1xyXG4gICAgc3VyZmFjZVBsdWdEZXB0aDogMC4xMyxcclxuICB9LFxyXG4gIGNvbG9yczoge1xyXG4gICAgYTogMHgzZmE3ZmYsXHJcbiAgICBiOiAweGZmOWEzZixcclxuICB9LFxyXG4gIC8qKlxyXG4gICAqIFRyYXZlcnNhbCBkZSBwcm9wcyBlc3RpbG8gUG9ydGFsOiBlbiB2ZXogZGUgdGVsZXBvcnRhciBlbCBjdWVycG8gZW50ZXJvXHJcbiAgICogY3VhbmRvIHN1IGNlbnRybyBjcnV6YSwgZWwgcG9ydGFsIHRpZW5lIHVuIEFHVUpFUk8gZsOtc2ljbyByZWFsIChwYXJjaGUgY29uXHJcbiAgICogw7N2YWxvIHJlY29ydGFkbykgeSBlbCBvYmpldG8gc2UgcmVwcmVzZW50YSBhIGxhIHZleiBkZSBsb3MgZG9zIGxhZG9zIChjbG9uXHJcbiAgICogZXNwZWphZG8pIHBhcmEgdm9sY2Fyc2Ugc29icmUgZWwgYm9yZGUgeSBjYWVyLiBWZXIgYFBvcnRhbFRyYXZlbGxlclN5c3RlbWAuXHJcbiAgICovXHJcbiAgZHluYW1pY0Nsb25lOiB7XHJcbiAgICAvKiogU2kgZXN0w6EgT0ZGLCBzZSB1c2EgZWwgdGVsZXBvcnQgcG9yIGNydWNlIGRlbCBjZW50cm8gKGNvbXBvcnRhbWllbnRvIHZpZWpvKS4gKi9cclxuICAgIGVuYWJsZWQ6IHRydWUsXHJcbiAgICAvKiogUmFkaW8gKG0pIGRlbCBwYXJjaGUgZGUgYXBlcnR1cmEgY29wbGFuYXIgY29uIGxhIHN1cGVyZmljaWUgZGVsIHBvcnRhbC4gKi9cclxuICAgIGFwZXJ0dXJlUmFkaXVzOiAyLjIsXHJcbiAgICAvKiogRXNwZXNvciAobSkgZGVsIHBhcmNoZSBodW5kaWRvIGVuIGxhIHN1cGVyZmljaWUgKGJvcmRlIGRlIHBpdm90ZW8pLiAqL1xyXG4gICAgYXBlcnR1cmVUaGlja25lc3M6IDAuMSxcclxuICAgIC8qKlxyXG4gICAgICogVmVsb2NpZGFkIG3DrW5pbWEgKG0vcykgaGFjaWEgYWRlbnRybyBkZWwgcGxhbm8gcGFyYSBxdWUgdW4gb2JqZXRvIHNlXHJcbiAgICAgKiBjb25zaWRlcmUgXCJjcnV6YW5kb1wiIHVuIHBvcnRhbCBkZSBQQVJFRCAobm8gZGUgcGlzbykuIERlYmFqbyBkZSBlc3RvLCB1blxyXG4gICAgICogb2JqZXRvIGFwb3lhZG8gcXVpZXRvIGNlcmNhIGRlIHVuIHBvcnRhbCBkZSBwYXJlZCBOTyBzZSBzdXByaW1lIG5pIGNsb25hXHJcbiAgICAgKiAoZXZpdGEgcXVlIHNlIGNhaWdhIHBvciBlbCBwaXNvIHNpIHBpc28geSBwYXJlZCBjb21wYXJ0ZW4gY29sbGlkZXIpLlxyXG4gICAgICovXHJcbiAgICBzdXBwcmVzc01pbkludG9TcGVlZDogMS4yLFxyXG4gICAgLyoqXHJcbiAgICAgKiBMb29rYWhlYWQgKHMpIHF1ZSBleHRpZW5kZSBsYSB6b25hIGRlIHN1cHJlc2nDs24gc2Vnw7puIGxhIHZlbG9jaWRhZCBkZVxyXG4gICAgICogZW50cmFkYTogdW4gcHVudCBkZSBncmF2aXR5IGd1biAofjQwIG0vcykgcmVjb3JyZSBsYSB6b25hIGJhc2UgZW4gbWVub3NcclxuICAgICAqIGRlIHVuIGZyYW1lIHkgcmVib3RhcsOtYSBjb250cmEgbGEgcGFyZWQgYW50ZXMgZGUgcXVlZGFyIHN1cHJpbWlkby5cclxuICAgICAqL1xyXG4gICAgc3VwcHJlc3NMb29rYWhlYWRTZWNvbmRzOiAwLjEsXHJcbiAgICAvKiogUGVzbyBkZWwgYmxlbmQgZGUgcG9zaWNpw7NuIGRlbCBjbG9uIGhhY2lhIGVsIHByaW1hcnkgYWwgcmVjb25jaWxpYXIuICovXHJcbiAgICBibGVuZFBvc2l0aW9uOiAwLjUsXHJcbiAgICAvKiogUGVzbyBkZWwgYmxlbmQgZGUgcm90YWNpw7NuIChzbGVycCkgZGVsIGNsb24gaGFjaWEgZWwgcHJpbWFyeS4gKi9cclxuICAgIGJsZW5kUm90YXRpb246IDAuNSxcclxuICB9LFxyXG4gIG5wY1RyYXZlcnNhbDoge1xyXG4gICAgZW5hYmxlZDogdHJ1ZSxcclxuICAgIC8qKiBDb3N0byBBKiBkZWwgZWRnZSB3YXJwIChlcXVpdmFsZW50ZSBlbiBtZXRyb3MgZGUgY2FtaW5hdGEpLiAqL1xyXG4gICAgd2FycEVkZ2VDb3N0OiAyLFxyXG4gICAgLyoqIEVsIHdheXBvaW50IGRlIGNydWNlIHF1ZWRhIGVzdGEgZGlzdGFuY2lhIERFVFLDgVMgZGVsIHBsYW5vIGRlbCBkaXNjby4gKi9cclxuICAgIGNyb3NzaW5nRGVwdGg6IDAuNTUsXHJcbiAgICAvKiogTcOheGltYSBhbHR1cmEgZGVsIGJvcmRlIGluZmVyaW9yIGRlbCBkaXNjbyBzb2JyZSBlbCBwaXNvIHBhcmEgcXVlIHVuXHJcbiAgICAgKiBOUEMgdGVycmVzdHJlIHB1ZWRhIGVudHJhciBjYW1pbmFuZG8gcG9yIHVuIHBvcnRhbCBkZSBwYXJlZC4gKi9cclxuICAgIG1heEVudHJ5TGlwSGVpZ2h0OiAwLjcsXHJcbiAgfSxcclxufSBhcyBjb25zdDtcclxuIl0sIm1hcHBpbmdzIjoiQUFJTyxhQUFNLGVBQWU7QUFBQSxFQUMxQixTQUFTO0FBQUE7QUFBQTtBQUFBO0FBQUEsSUFJUCxXQUFXO0FBQUEsSUFDWCxZQUFZO0FBQUEsRUFDZDtBQUFBLEVBQ0EsV0FBVztBQUFBLElBQ1QsT0FBTztBQUFBO0FBQUEsSUFFUCxXQUFXO0FBQUEsSUFDWCxrQkFBa0I7QUFBQSxJQUNsQixhQUFhO0FBQUEsSUFDYixhQUFhO0FBQUE7QUFBQSxJQUViLGdCQUFnQjtBQUFBO0FBQUEsSUFFaEIsZ0JBQWdCO0FBQUE7QUFBQSxJQUVoQixVQUFVO0FBQUE7QUFBQSxJQUVWLG9CQUFvQjtBQUFBO0FBQUEsSUFFcEIsc0JBQXNCO0FBQUEsRUFDeEI7QUFBQSxFQUNBLFdBQVc7QUFBQTtBQUFBLElBRVQsaUJBQWlCO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsSUFPakIsdUJBQXVCO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQSxJQVF2QixxQkFBcUI7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsSUFNckIsc0JBQXNCO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsSUFPdEIsY0FBYztBQUFBO0FBQUEsSUFFZCxzQkFBc0I7QUFBQTtBQUFBLElBRXRCLGdCQUFnQjtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsSUFLaEIseUJBQXlCO0FBQUE7QUFBQSxJQUV6QixtQkFBbUI7QUFBQTtBQUFBLElBRW5CLHNCQUFzQjtBQUFBO0FBQUEsSUFFdEIsb0JBQW9CO0FBQUE7QUFBQSxJQUVwQixzQkFBc0I7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBLElBUXRCLGdCQUFnQjtBQUFBLEVBQ2xCO0FBQUEsRUFDQSxNQUFNO0FBQUEsSUFDSixhQUFhO0FBQUEsSUFDYixpQkFBaUI7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBLElBUWpCLGtCQUFrQjtBQUFBLEVBQ3BCO0FBQUEsRUFDQSxRQUFRO0FBQUEsSUFDTixHQUFHO0FBQUEsSUFDSCxHQUFHO0FBQUEsRUFDTDtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBLEVBT0EsY0FBYztBQUFBO0FBQUEsSUFFWixTQUFTO0FBQUE7QUFBQSxJQUVULGdCQUFnQjtBQUFBO0FBQUEsSUFFaEIsbUJBQW1CO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsSUFPbkIsc0JBQXNCO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBLElBTXRCLDBCQUEwQjtBQUFBO0FBQUEsSUFFMUIsZUFBZTtBQUFBO0FBQUEsSUFFZixlQUFlO0FBQUEsRUFDakI7QUFBQSxFQUNBLGNBQWM7QUFBQSxJQUNaLFNBQVM7QUFBQTtBQUFBLElBRVQsY0FBYztBQUFBO0FBQUEsSUFFZCxlQUFlO0FBQUE7QUFBQTtBQUFBLElBR2YsbUJBQW1CO0FBQUEsRUFDckI7QUFDRjsiLCJuYW1lcyI6W119

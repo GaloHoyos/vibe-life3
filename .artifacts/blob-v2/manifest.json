@@ -1,0 +1,1465 @@
+{
+  "schemaVersion": 2,
+  "harness": "blob-v2-playwright-evidence",
+  "generatedAt": "2026-07-14T13:29:48.054Z",
+  "contract": {
+    "level": "blob-test",
+    "subjectId": "blob-lab-subject",
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "deviceScaleFactor": 1,
+    "browserSeed": "0xb10b2026",
+    "organismSeed": "0x51f15e",
+    "epoch": "2026-07-14T12:00:00.000Z",
+    "simulationStepSeconds": 0.03333333333333333,
+    "baselineSettleSteps": 75,
+    "cameras": {
+      "turntable": {
+        "position": [
+          0,
+          1,
+          -2.5
+        ],
+        "yaw": 0,
+        "pitch": 0
+      },
+      "witherPocket": {
+        "position": [
+          26.5,
+          1.2,
+          -8.5
+        ],
+        "yaw": 0,
+        "pitch": 0
+      }
+    },
+    "video": {
+      "sequenceSeconds": 15.2,
+      "trimWindowSeconds": 14.5,
+      "minimumSeconds": 10,
+      "maximumSeconds": 15,
+      "tickMs": 100,
+      "stepsPerTick": 3
+    },
+    "golden": {
+      "root": "tests/golden/blob-v2",
+      "maximumChangedPixelRatio": 0.01,
+      "changedPixelChannelDelta": 8
+    }
+  },
+  "playwrightVersion": "1.61.1",
+  "chromiumVersion": "149.0.7827.55",
+  "artifactLayout": {
+    "screenshots": "screenshots",
+    "videos": "videos",
+    "goldens": "tests/golden/blob-v2"
+  },
+  "requested": {
+    "screenshots": [
+      "idle",
+      "movement",
+      "climb",
+      "grate-flow",
+      "digest",
+      "growth",
+      "breach",
+      "core-exposed",
+      "return",
+      "reattach",
+      "wither",
+      "death",
+      "freeze",
+      "portal",
+      "poses"
+    ],
+    "videos": [
+      "locomotion-climb",
+      "grate-flow",
+      "split-return-reattach",
+      "split-wither"
+    ],
+    "goldenMode": "compare"
+  },
+  "screenshots": [
+    {
+      "id": "idle",
+      "command": "idle",
+      "status": "passed",
+      "assertions": 14,
+      "simulationTime": 2.7666666666666666,
+      "telemetry": {
+        "simulation": {
+          "samples": 89,
+          "averageMs": 1.3000000045540627,
+          "p95Ms": 2.899999976158142,
+          "maximumMs": 6
+        },
+        "meshing": {
+          "samples": 4,
+          "averageMs": 2.925000011920929,
+          "p95Ms": 4.5,
+          "maximumMs": 4.5
+        },
+        "presentation": {
+          "samples": 19,
+          "averageMs": 0.12105264161762438,
+          "p95Ms": 0.8000000715255737,
+          "maximumMs": 0.8000000715255737
+        },
+        "visualJobWait": {
+          "samples": 4,
+          "averageMs": 1.2249999940395355,
+          "p95Ms": 2,
+          "maximumMs": 2
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 0,
+        "changedPixelRatio": 0,
+        "maximumChannelDelta": 4,
+        "artifact": {
+          "file": "tests/golden/blob-v2/idle.png",
+          "bytes": 787347,
+          "sha256": "47ad2d8ccd811664b96ef09d26f85c53228218e3be0b584f00eb76ae251c8fd4"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "idle.png",
+          "bytes": 787394,
+          "sha256": "359ae4af884263489b1b820cdd6aecb035cf2725c51628e6d4111e35e7fe5334"
+        },
+        "sidecar": {
+          "file": "idle.json",
+          "bytes": 41359,
+          "sha256": "751f95f7b5c97b50dff99fcfdfe3dba7aa859cef6174a8225b3fbcc916bd0b75"
+        }
+      }
+    },
+    {
+      "id": "movement",
+      "command": "movement",
+      "status": "passed",
+      "assertions": 15,
+      "simulationTime": 3.4999999999999973,
+      "telemetry": {
+        "simulation": {
+          "samples": 113,
+          "averageMs": 1.251327429197531,
+          "p95Ms": 3.1999999284744263,
+          "maximumMs": 6
+        },
+        "meshing": {
+          "samples": 5,
+          "averageMs": 3.4200000047683714,
+          "p95Ms": 4.800000071525574,
+          "maximumMs": 4.800000071525574
+        },
+        "presentation": {
+          "samples": 21,
+          "averageMs": 0.1047619070325579,
+          "p95Ms": 0.3999999761581421,
+          "maximumMs": 0.7000000476837158
+        },
+        "visualJobWait": {
+          "samples": 5,
+          "averageMs": 1.1200000047683716,
+          "p95Ms": 1.7000000476837158,
+          "maximumMs": 1.7000000476837158
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 3,
+        "changedPixelRatio": 0.0000032552083333333335,
+        "maximumChannelDelta": 13,
+        "artifact": {
+          "file": "tests/golden/blob-v2/movement.png",
+          "bytes": 766920,
+          "sha256": "f7ac847674fc3c378f99625e25a8c9e165168654266fdbd6f57980d56d4a632e"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "movement.png",
+          "bytes": 766883,
+          "sha256": "17e00ff3762468bbf51db62198cd23c62e6815e75f20d52f8b92439b0ad65b4a"
+        },
+        "sidecar": {
+          "file": "movement.json",
+          "bytes": 76356,
+          "sha256": "82d78f48189cdc6009e4c71741458d0cfd66fd4ed667a7e253779c787e3fb263"
+        }
+      }
+    },
+    {
+      "id": "climb",
+      "command": "climb",
+      "status": "passed",
+      "assertions": 17,
+      "simulationTime": 3.0999999999999988,
+      "telemetry": {
+        "simulation": {
+          "samples": 101,
+          "averageMs": 1.3118811833976518,
+          "p95Ms": 2.600000023841858,
+          "maximumMs": 6.100000023841858
+        },
+        "meshing": {
+          "samples": 5,
+          "averageMs": 3.459999990463257,
+          "p95Ms": 5,
+          "maximumMs": 5
+        },
+        "presentation": {
+          "samples": 21,
+          "averageMs": 0.12380953629811604,
+          "p95Ms": 0.30000007152557373,
+          "maximumMs": 0.7000000476837158
+        },
+        "visualJobWait": {
+          "samples": 5,
+          "averageMs": 1.140000057220459,
+          "p95Ms": 1.7000000476837158,
+          "maximumMs": 1.7000000476837158
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 1,
+        "changedPixelRatio": 0.0000010850694444444444,
+        "maximumChannelDelta": 65,
+        "artifact": {
+          "file": "tests/golden/blob-v2/climb.png",
+          "bytes": 790129,
+          "sha256": "08a1ba95fc92448e8d89916dc56e1f6494452f5ba355cccd9fcb77d606a091e7"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "climb.png",
+          "bytes": 790113,
+          "sha256": "8f8a977719dea5e72868404b62dc29480a7757f5026d2a0e1a978867a653c689"
+        },
+        "sidecar": {
+          "file": "climb.json",
+          "bytes": 58691,
+          "sha256": "8ad01c0f8c245360885d748e958829d543e014563c8f953f2fa7ab7d2eab327a"
+        }
+      }
+    },
+    {
+      "id": "grate-flow",
+      "command": "flow",
+      "status": "passed",
+      "assertions": 17,
+      "simulationTime": 3.0999999999999988,
+      "telemetry": {
+        "simulation": {
+          "samples": 100,
+          "averageMs": 1.2820000016689301,
+          "p95Ms": 2.5,
+          "maximumMs": 6.100000023841858
+        },
+        "meshing": {
+          "samples": 5,
+          "averageMs": 3.240000009536743,
+          "p95Ms": 5.799999952316284,
+          "maximumMs": 5.799999952316284
+        },
+        "presentation": {
+          "samples": 20,
+          "averageMs": 0.12000000476837158,
+          "p95Ms": 0.40000009536743164,
+          "maximumMs": 0.6000000238418579
+        },
+        "visualJobWait": {
+          "samples": 5,
+          "averageMs": 1.1199999809265138,
+          "p95Ms": 1.7999999523162842,
+          "maximumMs": 1.7999999523162842
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 3,
+        "changedPixelRatio": 0.0000032552083333333335,
+        "maximumChannelDelta": 65,
+        "artifact": {
+          "file": "tests/golden/blob-v2/grate-flow.png",
+          "bytes": 791135,
+          "sha256": "659177cc73233cfc81333663631f84dd29c1655bf2d480d485e738370698cd65"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "grate-flow.png",
+          "bytes": 791094,
+          "sha256": "c0b6c98a7249ebf957bb9e96db7bc9ab1d0649df0ae4a1ac01c11067e67ab76e"
+        },
+        "sidecar": {
+          "file": "grate-flow.json",
+          "bytes": 93412,
+          "sha256": "6b684469f416093126ab4dd9a3f03d01b52259b0908ab08655d3cd456367deae"
+        }
+      }
+    },
+    {
+      "id": "digest",
+      "command": "digest",
+      "status": "passed",
+      "assertions": 15,
+      "simulationTime": 3.0999999999999988,
+      "telemetry": {
+        "simulation": {
+          "samples": 101,
+          "averageMs": 1.177227728437669,
+          "p95Ms": 2.4000000953674316,
+          "maximumMs": 6.100000023841858
+        },
+        "meshing": {
+          "samples": 5,
+          "averageMs": 3.439999985694885,
+          "p95Ms": 5.600000023841858,
+          "maximumMs": 5.600000023841858
+        },
+        "presentation": {
+          "samples": 22,
+          "averageMs": 0.13636363636363635,
+          "p95Ms": 0.3999999761581421,
+          "maximumMs": 0.7999999523162842
+        },
+        "visualJobWait": {
+          "samples": 5,
+          "averageMs": 1.1999999761581421,
+          "p95Ms": 1.7999999523162842,
+          "maximumMs": 1.7999999523162842
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 0,
+        "changedPixelRatio": 0,
+        "maximumChannelDelta": 1,
+        "artifact": {
+          "file": "tests/golden/blob-v2/digest.png",
+          "bytes": 807329,
+          "sha256": "fac7e32f55bf9d9f09f9aea6b2b1bfeb31e375f15c51fbcfd7aefaf7f00b4158"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "digest.png",
+          "bytes": 807339,
+          "sha256": "ff29ea6f7b56fd099d95c825989cac4fcb7b5634361832fcfc070f8a8a87195e"
+        },
+        "sidecar": {
+          "file": "digest.json",
+          "bytes": 56587,
+          "sha256": "705a63a4f5bfb19e949825450394e37cdefd796850f160260405a17e59b516ab"
+        }
+      }
+    },
+    {
+      "id": "growth",
+      "command": "growth",
+      "status": "passed",
+      "assertions": 15,
+      "simulationTime": 2.6000000000000005,
+      "telemetry": {
+        "simulation": {
+          "samples": 87,
+          "averageMs": 1.2172413790363006,
+          "p95Ms": 2.399999976158142,
+          "maximumMs": 6.299999952316284
+        },
+        "meshing": {
+          "samples": 5,
+          "averageMs": 3.3600000143051147,
+          "p95Ms": 5.300000071525574,
+          "maximumMs": 5.300000071525574
+        },
+        "presentation": {
+          "samples": 22,
+          "averageMs": 0.13636362010782416,
+          "p95Ms": 0.30000007152557373,
+          "maximumMs": 0.7999999523162842
+        },
+        "visualJobWait": {
+          "samples": 5,
+          "averageMs": 1.1200000047683716,
+          "p95Ms": 1.899999976158142,
+          "maximumMs": 1.899999976158142
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 3,
+        "changedPixelRatio": 0.0000032552083333333335,
+        "maximumChannelDelta": 36,
+        "artifact": {
+          "file": "tests/golden/blob-v2/growth.png",
+          "bytes": 787587,
+          "sha256": "7da16b94ab781ec10fd9173c846d8d3efd89dec5fac5d1c0e84e3e949e98b8b9"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "growth.png",
+          "bytes": 787576,
+          "sha256": "ea592cdd6a33e83cca11a86d67e4d2dee24ad882fa07d1311d8e5b72605d8581"
+        },
+        "sidecar": {
+          "file": "growth.json",
+          "bytes": 32793,
+          "sha256": "d8ea1b872c06c25fd5f4c431bc0d31ed703ba811b32e4f1801d759a35d0e08d0"
+        }
+      }
+    },
+    {
+      "id": "breach",
+      "command": "breach",
+      "status": "passed",
+      "assertions": 15,
+      "simulationTime": 2.7,
+      "telemetry": {
+        "simulation": {
+          "samples": 89,
+          "averageMs": 1.2191011182377847,
+          "p95Ms": 2.600000023841858,
+          "maximumMs": 6
+        },
+        "meshing": {
+          "samples": 9,
+          "averageMs": 2.2222222089767456,
+          "p95Ms": 4.399999976158142,
+          "maximumMs": 4.399999976158142
+        },
+        "presentation": {
+          "samples": 14,
+          "averageMs": 0.21428568874086654,
+          "p95Ms": 0.6999999284744263,
+          "maximumMs": 0.6999999284744263
+        },
+        "visualJobWait": {
+          "samples": 9,
+          "averageMs": 1.2222222222222223,
+          "p95Ms": 1.899999976158142,
+          "maximumMs": 1.899999976158142
+        },
+        "resources": {
+          "surfaces": 2,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 2700224,
+          "estimatedGpuBytes": 1208608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 7,
+        "changedPixelRatio": 0.000007595486111111111,
+        "maximumChannelDelta": 41,
+        "artifact": {
+          "file": "tests/golden/blob-v2/breach.png",
+          "bytes": 788224,
+          "sha256": "df7441cc352f175e6e1cfef087bb83791ad58eb456cf448a1e701756589395a6"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "breach.png",
+          "bytes": 788123,
+          "sha256": "664df45ce6213d334532ef68cfa05e5755be6928c1c7931bc9b6d83901442da1"
+        },
+        "sidecar": {
+          "file": "breach.json",
+          "bytes": 46928,
+          "sha256": "f09491161c23831fc0a5b603b9967c473bb0d99eb937dc5aaecdbb03608fba2c"
+        }
+      }
+    },
+    {
+      "id": "core-exposed",
+      "command": "core-exposed",
+      "status": "passed",
+      "assertions": 14,
+      "simulationTime": 2.6000000000000005,
+      "telemetry": {
+        "simulation": {
+          "samples": 84,
+          "averageMs": 1.2559523781140645,
+          "p95Ms": 2.5,
+          "maximumMs": 6.199999928474426
+        },
+        "meshing": {
+          "samples": 4,
+          "averageMs": 3.625,
+          "p95Ms": 6.299999952316284,
+          "maximumMs": 6.299999952316284
+        },
+        "presentation": {
+          "samples": 13,
+          "averageMs": 0.22307693041287935,
+          "p95Ms": 0.6000000238418579,
+          "maximumMs": 0.6000000238418579
+        },
+        "visualJobWait": {
+          "samples": 4,
+          "averageMs": 1.550000011920929,
+          "p95Ms": 2,
+          "maximumMs": 2
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 896,
+        "changedPixelRatio": 0.0009722222222222222,
+        "maximumChannelDelta": 101,
+        "artifact": {
+          "file": "tests/golden/blob-v2/core-exposed.png",
+          "bytes": 788214,
+          "sha256": "c670f31c454b43bc0a303fc809df76d5ea3d4457022a6511d755479809299621"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "core-exposed.png",
+          "bytes": 787599,
+          "sha256": "24028e4ca2980f0040a83d2706b58c59a183cc9abfc47863f153b8a43b6875d9"
+        },
+        "sidecar": {
+          "file": "core-exposed.json",
+          "bytes": 39729,
+          "sha256": "7f9ca93aca5cf061e3fb5b6d94843bbdb7eca8578aebd4ac73cc1c2bd78dc24b"
+        }
+      }
+    },
+    {
+      "id": "return",
+      "command": "split-return",
+      "status": "passed",
+      "assertions": 14,
+      "simulationTime": 3.299999999999998,
+      "telemetry": {
+        "simulation": {
+          "samples": 107,
+          "averageMs": 1.236448595456988,
+          "p95Ms": 2.299999952316284,
+          "maximumMs": 6.299999952316284
+        },
+        "meshing": {
+          "samples": 5,
+          "averageMs": 3.040000009536743,
+          "p95Ms": 5.300000071525574,
+          "maximumMs": 5.300000071525574
+        },
+        "presentation": {
+          "samples": 21,
+          "averageMs": 0.1285714308420817,
+          "p95Ms": 0.30000007152557373,
+          "maximumMs": 0.5999999046325684
+        },
+        "visualJobWait": {
+          "samples": 5,
+          "averageMs": 1.0199999809265137,
+          "p95Ms": 1.600000023841858,
+          "maximumMs": 1.600000023841858
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 0,
+        "changedPixelRatio": 0,
+        "maximumChannelDelta": 5,
+        "artifact": {
+          "file": "tests/golden/blob-v2/return.png",
+          "bytes": 787055,
+          "sha256": "888bebc7ec9c8942e33d8937e9ddf7f8c609dcd63656568a45f7e25b6dd3ed11"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "return.png",
+          "bytes": 787019,
+          "sha256": "776661854338e529f9216a838e42b3814679f1967542db060240374d3041b2af"
+        },
+        "sidecar": {
+          "file": "return.json",
+          "bytes": 86553,
+          "sha256": "ade8833736d777b75912649889e7146a15b4e862e039fa66854ff651881a05a1"
+        }
+      }
+    },
+    {
+      "id": "reattach",
+      "command": "reattach",
+      "status": "passed",
+      "assertions": 14,
+      "simulationTime": 3.4999999999999973,
+      "telemetry": {
+        "simulation": {
+          "samples": 111,
+          "averageMs": 1.1720720765826937,
+          "p95Ms": 2.5,
+          "maximumMs": 5.899999976158142
+        },
+        "meshing": {
+          "samples": 4,
+          "averageMs": 4.324999958276749,
+          "p95Ms": 7.899999976158142,
+          "maximumMs": 7.899999976158142
+        },
+        "presentation": {
+          "samples": 19,
+          "averageMs": 0.178947367166218,
+          "p95Ms": 0.6999999284744263,
+          "maximumMs": 0.6999999284744263
+        },
+        "visualJobWait": {
+          "samples": 4,
+          "averageMs": 1.5000000298023224,
+          "p95Ms": 2,
+          "maximumMs": 2
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 1,
+        "changedPixelRatio": 0.0000010850694444444444,
+        "maximumChannelDelta": 65,
+        "artifact": {
+          "file": "tests/golden/blob-v2/reattach.png",
+          "bytes": 786855,
+          "sha256": "9992cee9d2687486e5d9aa552ed03c9b6850631cac402f89fee9b3ce58a6a642"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "reattach.png",
+          "bytes": 786832,
+          "sha256": "648c2a4f97fea439d8c1dd22f9aba9690496a61313dd5565499a46168cb60c5d"
+        },
+        "sidecar": {
+          "file": "reattach.json",
+          "bytes": 101205,
+          "sha256": "d94566f95968dc3922346c151f4bae091bfee05e0441fdb12a3fbe91579afecf"
+        }
+      }
+    },
+    {
+      "id": "wither",
+      "command": "split-wither",
+      "status": "passed",
+      "assertions": 16,
+      "simulationTime": 14.49999999999996,
+      "telemetry": {
+        "simulation": {
+          "samples": 444,
+          "averageMs": 0.9887387379332706,
+          "p95Ms": 1.6999999284744263,
+          "maximumMs": 6.200000047683716
+        },
+        "meshing": {
+          "samples": 5,
+          "averageMs": 3.1399999856948853,
+          "p95Ms": 4.600000023841858,
+          "maximumMs": 4.600000023841858
+        },
+        "presentation": {
+          "samples": 22,
+          "averageMs": 0.14999998157674616,
+          "p95Ms": 0.2999999523162842,
+          "maximumMs": 0.7999999523162842
+        },
+        "visualJobWait": {
+          "samples": 5,
+          "averageMs": 1.0599999904632569,
+          "p95Ms": 1.5999999046325684,
+          "maximumMs": 1.5999999046325684
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 0,
+        "changedPixelRatio": 0,
+        "maximumChannelDelta": 0,
+        "artifact": {
+          "file": "tests/golden/blob-v2/wither.png",
+          "bytes": 976010,
+          "sha256": "1dab843f816a563d0e9852e7f246ec7db3c75acda95f95b98a79d692c7fc085d"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "wither.png",
+          "bytes": 976010,
+          "sha256": "1dab843f816a563d0e9852e7f246ec7db3c75acda95f95b98a79d692c7fc085d"
+        },
+        "sidecar": {
+          "file": "wither.json",
+          "bytes": 195120,
+          "sha256": "68c0ea270e64daa27b5eb87fb6831bd095c3528c8ebc6498ff7edbde2214d4bb"
+        }
+      }
+    },
+    {
+      "id": "death",
+      "command": "death",
+      "status": "passed",
+      "assertions": 17,
+      "simulationTime": 2.500000000000001,
+      "telemetry": {
+        "simulation": {
+          "samples": 82,
+          "averageMs": 1.269512192505162,
+          "p95Ms": 2.399999976158142,
+          "maximumMs": 6
+        },
+        "meshing": {
+          "samples": 18,
+          "averageMs": 2.927777760558658,
+          "p95Ms": 4.800000071525574,
+          "maximumMs": 4.800000071525574
+        },
+        "presentation": {
+          "samples": 21,
+          "averageMs": 0.19523810772668748,
+          "p95Ms": 0.7000000476837158,
+          "maximumMs": 0.8000000715255737
+        },
+        "visualJobWait": {
+          "samples": 18,
+          "averageMs": 0.8555555674764845,
+          "p95Ms": 1.7000000476837158,
+          "maximumMs": 1.7000000476837158
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 1586,
+        "changedPixelRatio": 0.0017209201388888888,
+        "maximumChannelDelta": 127,
+        "artifact": {
+          "file": "tests/golden/blob-v2/death.png",
+          "bytes": 789863,
+          "sha256": "908516e323c47426a0f0f8b53deeafa1449091fc9f83d0ee4e6e96118cc3c023"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "death.png",
+          "bytes": 789712,
+          "sha256": "33660d855ff0c098c81db708c6bc4ae297a5b5f41456ca0bf417dc071f85b59a"
+        },
+        "sidecar": {
+          "file": "death.json",
+          "bytes": 33881,
+          "sha256": "717fb6d75c1a9bec22185dd91788403f6b8c95c2ad8a21a110f2a4cc062c19a0"
+        }
+      }
+    },
+    {
+      "id": "freeze",
+      "command": "freeze",
+      "status": "passed",
+      "assertions": 15,
+      "simulationTime": 2.500000000000001,
+      "telemetry": {
+        "simulation": {
+          "samples": 82,
+          "averageMs": 1.22926829355519,
+          "p95Ms": 2.399999976158142,
+          "maximumMs": 5.699999928474426
+        },
+        "meshing": {
+          "samples": 5,
+          "averageMs": 3.2200000047683717,
+          "p95Ms": 5.100000023841858,
+          "maximumMs": 5.100000023841858
+        },
+        "presentation": {
+          "samples": 21,
+          "averageMs": 0.11428571315038771,
+          "p95Ms": 0.30000007152557373,
+          "maximumMs": 0.7000000476837158
+        },
+        "visualJobWait": {
+          "samples": 5,
+          "averageMs": 1.0600000381469727,
+          "p95Ms": 1.5,
+          "maximumMs": 1.5
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 1,
+        "changedPixelRatio": 0.0000010850694444444444,
+        "maximumChannelDelta": 65,
+        "artifact": {
+          "file": "tests/golden/blob-v2/freeze.png",
+          "bytes": 787581,
+          "sha256": "f3ebd379d515df4c86717ea2f7459f0eb3c0e1942b02995d94b9b3b5538d4ba6"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "freeze.png",
+          "bytes": 787502,
+          "sha256": "3db9392f4419a061e16f311a80225cede8e71891fe72db005c47c736cd3106ce"
+        },
+        "sidecar": {
+          "file": "freeze.json",
+          "bytes": 27759,
+          "sha256": "fba9f9bab83ed8f6fdf2d8d0b10fdb35c20221544a85c24aa4b267433d199dd7"
+        }
+      }
+    },
+    {
+      "id": "portal",
+      "command": "portal",
+      "status": "passed",
+      "assertions": 15,
+      "simulationTime": 3.0999999999999988,
+      "telemetry": {
+        "simulation": {
+          "samples": 99,
+          "averageMs": 1.2717171702722105,
+          "p95Ms": 2.6999999284744263,
+          "maximumMs": 6.100000023841858
+        },
+        "meshing": {
+          "samples": 5,
+          "averageMs": 12.340000009536743,
+          "p95Ms": 46.89999997615814,
+          "maximumMs": 46.89999997615814
+        },
+        "presentation": {
+          "samples": 19,
+          "averageMs": 0.1999999723936382,
+          "p95Ms": 1.0999999046325684,
+          "maximumMs": 1.0999999046325684
+        },
+        "visualJobWait": {
+          "samples": 5,
+          "averageMs": 1.200000023841858,
+          "p95Ms": 2.399999976158142,
+          "maximumMs": 2.399999976158142
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 0,
+        "changedPixelRatio": 0,
+        "maximumChannelDelta": 4,
+        "artifact": {
+          "file": "tests/golden/blob-v2/portal.png",
+          "bytes": 789771,
+          "sha256": "8062624d9ea12200c7d4d17fc39a520eda5d393ecc2d01fce6df3c350bf6403a"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "portal.png",
+          "bytes": 789762,
+          "sha256": "27a97afbc1cbcc667e66fcdefad929e7e4622aec43f41a20dfa2021f0f1e704d"
+        },
+        "sidecar": {
+          "file": "portal.json",
+          "bytes": 56763,
+          "sha256": "f6274e5769334f6d6fb9baf49948ad760b3a6edfe0be456864b82df9fee96969"
+        }
+      }
+    },
+    {
+      "id": "poses",
+      "command": "pose",
+      "status": "passed",
+      "assertions": 17,
+      "simulationTime": 3.0999999999999988,
+      "telemetry": {
+        "simulation": {
+          "samples": 99,
+          "averageMs": 1.3848484874975802,
+          "p95Ms": 3.600000023841858,
+          "maximumMs": 6.100000023841858
+        },
+        "meshing": {
+          "samples": 5,
+          "averageMs": 10.9599999666214,
+          "p95Ms": 27,
+          "maximumMs": 27
+        },
+        "presentation": {
+          "samples": 21,
+          "averageMs": 0.17142857256389799,
+          "p95Ms": 0.6000000238418579,
+          "maximumMs": 1
+        },
+        "visualJobWait": {
+          "samples": 5,
+          "averageMs": 1.4200000047683716,
+          "p95Ms": 2.100000023841858,
+          "maximumMs": 2.100000023841858
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "golden": {
+        "mode": "compared",
+        "passed": true,
+        "threshold": {
+          "maximumChangedPixelRatio": 0.01,
+          "changedPixelChannelDelta": 8
+        },
+        "dimensionsMatch": true,
+        "actualDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "expectedDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "pixels": 921600,
+        "changedPixels": 1,
+        "changedPixelRatio": 0.0000010850694444444444,
+        "maximumChannelDelta": 29,
+        "artifact": {
+          "file": "tests/golden/blob-v2/poses.png",
+          "bytes": 809006,
+          "sha256": "3b713e664f57338bf8433a2b3b4ce6f3659900e2b5573bbe2f409ac87059e816"
+        }
+      },
+      "artifacts": {
+        "screenshot": {
+          "file": "poses.png",
+          "bytes": 808999,
+          "sha256": "5e48373c55330ad2031b7c150c01d1e57641e3201b90bd1e0ea3cce9b70d0705"
+        },
+        "sidecar": {
+          "file": "poses.json",
+          "bytes": 56703,
+          "sha256": "675ffecdff7b530891e2c48e938a1ed605085f72bfc970a1f09926f41be9441a"
+        }
+      }
+    }
+  ],
+  "videos": [
+    {
+      "id": "locomotion-climb",
+      "status": "passed",
+      "durationSeconds": 14.2,
+      "recordedSequenceSeconds": 16.41915710000001,
+      "sequenceStartOffsetSeconds": 11.382955799999996,
+      "assertions": 13,
+      "telemetry": {
+        "simulation": {
+          "samples": 539,
+          "averageMs": 1.2781076026537865,
+          "p95Ms": 1.899999976158142,
+          "maximumMs": 40
+        },
+        "meshing": {
+          "samples": 51,
+          "averageMs": 3.0882353034673953,
+          "p95Ms": 4.5,
+          "maximumMs": 6
+        },
+        "presentation": {
+          "samples": 57,
+          "averageMs": 0.11929824686886971,
+          "p95Ms": 0.30000007152557373,
+          "maximumMs": 0.5999999046325684
+        },
+        "visualJobWait": {
+          "samples": 51,
+          "averageMs": 1.1705882338916553,
+          "p95Ms": 1.899999976158142,
+          "maximumMs": 3.100000023841858
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "artifacts": {
+        "video": {
+          "file": "locomotion-climb.webm",
+          "bytes": 1645800,
+          "sha256": "3ca347db400c2890f206d325a530eed48e1313263ba23278f9aea57b8fd56675"
+        },
+        "sidecar": {
+          "file": "locomotion-climb.json",
+          "bytes": 202499,
+          "sha256": "3deed85c117ed9479edc16b38a429835dd05117efeb2c535ec409d4ab5c4bfd7"
+        }
+      }
+    },
+    {
+      "id": "grate-flow",
+      "status": "passed",
+      "durationSeconds": 13.96,
+      "recordedSequenceSeconds": 16.83794199999998,
+      "sequenceStartOffsetSeconds": 11.262205400000035,
+      "assertions": 11,
+      "telemetry": {
+        "simulation": {
+          "samples": 539,
+          "averageMs": 1.157513914833706,
+          "p95Ms": 1.8000000715255737,
+          "maximumMs": 6.199999928474426
+        },
+        "meshing": {
+          "samples": 46,
+          "averageMs": 3.180434786755106,
+          "p95Ms": 5.299999952316284,
+          "maximumMs": 5.700000047683716
+        },
+        "presentation": {
+          "samples": 57,
+          "averageMs": 0.10701753382097211,
+          "p95Ms": 0.2999999523162842,
+          "maximumMs": 0.7000000476837158
+        },
+        "visualJobWait": {
+          "samples": 46,
+          "averageMs": 0.9978260890297268,
+          "p95Ms": 1.8000000715255737,
+          "maximumMs": 2.100000023841858
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "artifacts": {
+        "video": {
+          "file": "grate-flow.webm",
+          "bytes": 1459485,
+          "sha256": "068bf446345bef12e19752a31b95d0fc307e25b9d54dbf509f857eabb6ebfb4f"
+        },
+        "sidecar": {
+          "file": "grate-flow.json",
+          "bytes": 199300,
+          "sha256": "071cdea38ec70d82f6f4a835d0a39e7b96146008fe374ba3422bda056487d7b8"
+        }
+      }
+    },
+    {
+      "id": "split-return-reattach",
+      "status": "passed",
+      "durationSeconds": 13.6,
+      "recordedSequenceSeconds": 16.426271800000045,
+      "sequenceStartOffsetSeconds": 11.087044399999956,
+      "assertions": 11,
+      "telemetry": {
+        "simulation": {
+          "samples": 537,
+          "averageMs": 1.1478584738417044,
+          "p95Ms": 2.100000023841858,
+          "maximumMs": 6.899999976158142
+        },
+        "meshing": {
+          "samples": 50,
+          "averageMs": 3.9419999933242797,
+          "p95Ms": 6.200000047683716,
+          "maximumMs": 36.699999928474426
+        },
+        "presentation": {
+          "samples": 57,
+          "averageMs": 0.15438596407572427,
+          "p95Ms": 0.6000000238418579,
+          "maximumMs": 1.3000000715255737
+        },
+        "visualJobWait": {
+          "samples": 50,
+          "averageMs": 1.0479999995231628,
+          "p95Ms": 2.799999952316284,
+          "maximumMs": 3.0999999046325684
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "artifacts": {
+        "video": {
+          "file": "split-return-reattach.webm",
+          "bytes": 1676392,
+          "sha256": "459b47545e06db32102e03cf2beba507296444ff8c92eb6d0f83aa1abec153cf"
+        },
+        "sidecar": {
+          "file": "split-return-reattach.json",
+          "bytes": 259692,
+          "sha256": "f1752860eca29bc0643809d094277c169489f8382d83dfec18f79758fc803da5"
+        }
+      }
+    },
+    {
+      "id": "split-wither",
+      "status": "passed",
+      "durationSeconds": 13.96,
+      "recordedSequenceSeconds": 16.237527200000013,
+      "sequenceStartOffsetSeconds": 11.260149499999999,
+      "assertions": 11,
+      "telemetry": {
+        "simulation": {
+          "samples": 539,
+          "averageMs": 1.1536178108933683,
+          "p95Ms": 1.7999999523162842,
+          "maximumMs": 5.900000095367432
+        },
+        "meshing": {
+          "samples": 69,
+          "averageMs": 2.9159420314042466,
+          "p95Ms": 4.300000071525574,
+          "maximumMs": 5.700000047683716
+        },
+        "presentation": {
+          "samples": 72,
+          "averageMs": 0.14999999271498787,
+          "p95Ms": 0.3999999761581421,
+          "maximumMs": 0.8000000715255737
+        },
+        "visualJobWait": {
+          "samples": 69,
+          "averageMs": 1.0999999910161116,
+          "p95Ms": 2.100000023841858,
+          "maximumMs": 6.199999928474426
+        },
+        "resources": {
+          "surfaces": 1,
+          "pendingVisualJobs": 0,
+          "estimatedCpuBytes": 1969568,
+          "estimatedGpuBytes": 920608
+        }
+      },
+      "artifacts": {
+        "video": {
+          "file": "split-wither.webm",
+          "bytes": 1299335,
+          "sha256": "fcdfc0d11258238f827235aa4b79e5c5434417def6032b78fd7a04733554d9e1"
+        },
+        "sidecar": {
+          "file": "split-wither.json",
+          "bytes": 382149,
+          "sha256": "0c46c550bedd2a6a31db6c5ced9028414fe423f15dc376030d65cda05c5b70c2"
+        }
+      }
+    }
+  ],
+  "baseURL": "http://127.0.0.1:4173/",
+  "summary": {
+    "screenshots": {
+      "total": 15,
+      "passed": 15,
+      "failed": 0
+    },
+    "videos": {
+      "total": 4,
+      "passed": 4,
+      "failed": 0
+    }
+  }
+}

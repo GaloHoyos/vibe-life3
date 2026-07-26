@@ -3,6 +3,11 @@ import { Vector3 } from "three";
 import { createCapsuleCollider } from "@engine/physics/Colliders";
 import { ACTOR_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
+import {
+  isPassThroughCharacterContact,
+  sampleCharacterMedium,
+  type ResolvedCharacterContact,
+} from "./CharacterContactMedium";
 
 export interface KinematicCharacterBaseOptions {
   physics: PhysicsWorld;
@@ -19,6 +24,8 @@ export interface KinematicCharacterBaseOptions {
   stepMaxClimb?: number;
   /** Snap-to-ground threshold. */
   snapToGround?: number;
+  /** Masa virtual usada al transferir impulso a rigid bodies dinámicos. */
+  dynamicPushMass?: number;
 }
 
 /**
@@ -39,6 +46,8 @@ export abstract class KinematicCharacterBase {
   protected readonly controller: RAPIER.KinematicCharacterController;
   protected readonly velocity = new Vector3();
   protected grounded = false;
+  protected contactSpeedMultiplier = 1;
+  private readonly characterMass: number;
 
   constructor(
     protected readonly physics: PhysicsWorld,
@@ -58,6 +67,12 @@ export abstract class KinematicCharacterBase {
     physics.registerCollider(this.collider, options.metadata);
 
     this.controller = physics.createCharacterController(options.offset ?? 0.03);
+    const dynamicPushMass = Math.max(0, options.dynamicPushMass ?? 0);
+    this.characterMass = dynamicPushMass;
+    if (dynamicPushMass > 0) {
+      this.controller.setApplyImpulsesToDynamicBodies(true);
+      this.controller.setCharacterMass(dynamicPushMass);
+    }
     this.controller.enableAutostep(
       options.stepOffset ?? 0.45,
       options.stepMaxClimb ?? options.radius * 0.65,
@@ -74,7 +89,11 @@ export abstract class KinematicCharacterBase {
   protected stepMovement(
     delta: number,
     filter?: (collider: RAPIER.Collider) => boolean,
-  ): { corrected: Vector3; grounded: boolean } {
+  ): {
+    corrected: Vector3;
+    grounded: boolean;
+    medium: ResolvedCharacterContact | null;
+  } {
     const desired = this.velocity.clone().multiplyScalar(delta);
     // filterGroups explícito: computeColliderMovement NO respeta los collision
     // groups del collider movido por sí solo. Sin esto la cápsula choca con
@@ -85,15 +104,28 @@ export abstract class KinematicCharacterBase {
       desired,
       RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
       this.collider.collisionGroups(),
-      filter,
+      (collider) =>
+        !isPassThroughCharacterContact(this.physics, collider) &&
+        (filter?.(collider) ?? true),
     );
     const out = this.controller.computedMovement();
     const current = this.body.translation();
-    this.body.setNextKinematicTranslation({
+    const next = {
       x: current.x + out.x,
       y: current.y + out.y,
       z: current.z + out.z,
+    };
+    this.body.setNextKinematicTranslation(next);
+    const medium = sampleCharacterMedium({
+      physics: this.physics,
+      collider: this.collider,
+      position: next,
+      rotation: this.body.rotation(),
+      velocity: this.velocity,
+      delta,
+      characterMass: this.characterMass,
     });
+    this.contactSpeedMultiplier = medium?.speedScale ?? 1;
     this.grounded = this.controller.computedGrounded();
     if (this.grounded && this.velocity.y < 0) {
       this.velocity.y = 0;
@@ -101,6 +133,7 @@ export abstract class KinematicCharacterBase {
     return {
       corrected: new Vector3(out.x, out.y, out.z),
       grounded: this.grounded,
+      medium,
     };
   }
 

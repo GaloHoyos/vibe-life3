@@ -251,6 +251,7 @@ export class LevelLoader {
         NavigationProfiles.humanoid,
         NavigationProfiles.humanoidLimited,
         NavigationProfiles.headcrab,
+        NavigationProfiles.blobBody,
         NavigationProfiles.strider,
       ],
     });

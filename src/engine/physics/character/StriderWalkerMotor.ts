@@ -1,9 +1,15 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Euler, MathUtils, Quaternion, Vector3 } from "three";
 import { createBoxCollider, createCapsuleCollider } from "@engine/physics/Colliders";
+import { ACTOR_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { CharacterMotorSnapshot, NpcMotor, SliceHit } from "./NpcMotor";
+import {
+  applyCharacterContactDamping,
+  isPassThroughCharacterContact,
+  sampleCharacterMedium,
+} from "./CharacterContactMedium";
 
 export type StriderLegName = "left" | "right" | "rear";
 export type StriderLegPhase = "planted" | "swinging";
@@ -105,6 +111,7 @@ export class StriderWalkerMotor implements NpcMotor {
   private enabled = true;
   private alive = true;
   private speedMultiplier = 1;
+  private contactSpeedMultiplier = 1;
   private yaw = 0;
   private targetYaw = 0;
   private distanceToTarget = Number.POSITIVE_INFINITY;
@@ -132,11 +139,14 @@ export class StriderWalkerMotor implements NpcMotor {
       createCapsuleCollider(config.radius, halfHeight)
         .setDensity(density)
         .setFriction(0.9)
-        .setRestitution(0.05),
+        .setRestitution(0.05)
+        .setCollisionGroups(ACTOR_COLLISION_GROUPS),
       this.body,
     );
     physics.registerCollider(this.collider, rootMetadata);
     this.controller = physics.createCharacterController(0.05);
+    this.controller.setApplyImpulsesToDynamicBodies(true);
+    this.controller.setCharacterMass(config.mass);
 
     this.legs = createLegs(config.position, this.yaw, this.standHeight, (point) =>
       this.groundPointAt(point, config.position.y - this.standHeight),
@@ -182,7 +192,10 @@ export class StriderWalkerMotor implements NpcMotor {
 
     if (wantsMove && this.distanceToTarget > 0.01) {
       tmpTarget.normalize();
-      const maxSpeed = this.config.maxSpeed * this.speedMultiplier;
+      const maxSpeed =
+        this.config.maxSpeed *
+        this.speedMultiplier *
+        this.contactSpeedMultiplier;
       const arrive = Math.min(maxSpeed, this.distanceToTarget * 0.85);
       this.desiredVelocity.copy(tmpTarget).multiplyScalar(arrive);
     } else {
@@ -215,6 +228,17 @@ export class StriderWalkerMotor implements NpcMotor {
     tmpCorrected.set(corrected.x, corrected.y, corrected.z);
     const nextPosition = position.clone().add(tmpCorrected);
     this.body.setNextKinematicTranslation(nextPosition);
+    const medium = sampleCharacterMedium({
+      physics: this.physics,
+      collider: this.collider,
+      position: nextPosition,
+      rotation: this.body.rotation(),
+      velocity: this.velocity,
+      delta,
+      characterMass: this.config.mass,
+    });
+    this.contactSpeedMultiplier = medium?.speedScale ?? 1;
+    applyCharacterContactDamping(this.velocity, medium, delta);
     this.body.setNextKinematicRotation(tmpQuat.setFromAxisAngle(Y_AXIS, this.yaw));
     this.grounded = Math.abs(nextPosition.y - desiredY) < 0.35;
 
@@ -495,7 +519,10 @@ export class StriderWalkerMotor implements NpcMotor {
       this.body,
       (collider) => {
         const meta = this.physics.getColliderMetadata(collider);
-        return meta?.id !== this.config.id;
+        return (
+          meta?.id !== this.config.id &&
+          !isPassThroughCharacterContact(this.physics, collider)
+        );
       },
     );
     if (!hit) return null;
@@ -506,6 +533,7 @@ export class StriderWalkerMotor implements NpcMotor {
 
   private shouldCollideWith(collider: RAPIER.Collider): boolean {
     if (collider.handle === this.collider.handle || collider.isSensor()) return false;
+    if (isPassThroughCharacterContact(this.physics, collider)) return false;
     const metadata = this.physics.getColliderMetadata(collider);
     return metadata?.damageable !== this.config.metadata.damageable;
   }

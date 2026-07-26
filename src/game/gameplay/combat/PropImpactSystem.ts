@@ -94,6 +94,15 @@ export class PropImpactSystem {
       if (hit.metadata?.kind !== "npc" && hit.metadata?.kind !== "ragdoll") {
         return;
       }
+      // Fragmentos desprendidos de un actor pueden nacer rozando su cuerpo.
+      // impactOwnerId evita que se conviertan en proyectiles contra su propio
+      // dueño sin hacerlos pasar por otra hitbox de ese actor en LOS/raycasts.
+      if (
+        metadata.impactOwnerId !== undefined &&
+        metadata.impactOwnerId === (hit.metadata.ownerId ?? hit.metadata.id)
+      ) {
+        return;
+      }
 
       const damageOverride = metadata.impactDamageOverride;
       const damage = damageOverride ?? this.computePhysicsDamage(

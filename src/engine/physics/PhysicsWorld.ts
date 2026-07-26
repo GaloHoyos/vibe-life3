@@ -18,6 +18,12 @@ export interface PhysicsMetadata {
    * del propio NPC) para no chocar con el cuerpo propio. Default = `id`.
    */
   ownerId?: string;
+  /**
+   * Actor al que este prop desprendido no debe aplicar daño por impacto.
+   * Es independiente de ownerId: el fragmento sigue siendo debris para LOS,
+   * raycasts y targeting, no otra hitbox del actor original.
+   */
+  impactOwnerId?: string;
   kind: 'static' | 'dynamic' | 'door' | 'npc' | 'player' | 'ragdoll' | 'weaponPickup';
   damageable?: Damageable;
   /** Character preset id for actor-owned colliders. Used by hit effects. */
@@ -47,6 +53,27 @@ export interface PhysicsMetadata {
   explosionDamageable?: Damageable;
   /** Tamaño del blocker temporal para el Tile Cache de navegación. */
   navigationObstacleSize?: [number, number, number];
+  /**
+   * Respuesta de una cápsula de personaje al tocar esta superficie. Permite
+   * modelar medios blandos o viscosos sin acoplar el controller a contenido
+   * concreto del juego.
+   */
+  characterContact?: {
+    /** Escala de velocidad mientras persiste el contacto. */
+    speedScale: number;
+    /** Amortiguación horizontal exponencial, en 1/s. */
+    damping: number;
+    /** Fracción del impacto vertical que conserva el aterrizaje. */
+    landingImpactScale: number;
+    /** El actor atraviesa el collider y la respuesta se resuelve como un medio. */
+    passThrough?: boolean;
+    /** Cantidad aproximada de colliders superpuestos para inmersión completa. */
+    fullImmersionCount?: number;
+    /** Amortiguación vertical descendente, en 1/s. */
+    verticalDamping?: number;
+    /** Aceleración transmitida a las partes dinámicas apartadas por el actor. */
+    pushAcceleration?: number;
+  };
   bodyPart?: {
     name: string;
     damageMultiplier: number;
@@ -64,6 +91,14 @@ export interface PhysicsBoxOptions {
   size: Vector3;
   /** Orientacion del cuerpo. Si se omite, queda alineado a los ejes. */
   rotation?: Quaternion;
+  mass?: number;
+  metadata?: Partial<PhysicsMetadata>;
+}
+
+export interface PhysicsSphereOptions {
+  id: string;
+  position: Vector3;
+  radius: number;
   mass?: number;
   metadata?: Partial<PhysicsMetadata>;
 }
@@ -123,6 +158,8 @@ export class PhysicsWorld {
    * cuerpo figure acá no deben escribirle velocidades.
    */
   private readonly heldBodyHandles = new Set<number>();
+  /** Gravedad que debe recuperar un body si su dueño cambia mientras está held. */
+  private readonly heldRestoreGravityScales = new Map<number, number>();
   private initialized = false;
   private hooks: RAPIER.PhysicsHooks | null = null;
   // Rapier-compat solo aplica hooks via `stepWithEvents`, que exige una
@@ -152,18 +189,33 @@ export class PhysicsWorld {
     this.metadataByCollider.clear();
     this.bodyVisuals.clear();
     this.heldBodyHandles.clear();
+    this.heldRestoreGravityScales.clear();
   }
 
   markHeld(body: RAPIER.RigidBody, held: boolean): void {
     if (held) {
+      this.heldRestoreGravityScales.delete(body.handle);
       this.heldBodyHandles.add(body.handle);
     } else {
       this.heldBodyHandles.delete(body.handle);
+      this.heldRestoreGravityScales.delete(body.handle);
     }
   }
 
   isHeldBody(handle: number): boolean {
     return this.heldBodyHandles.has(handle);
+  }
+
+  setHeldRestoreGravityScale(handle: number, gravityScale: number): void {
+    if (this.heldBodyHandles.has(handle)) {
+      this.heldRestoreGravityScales.set(handle, gravityScale);
+    }
+  }
+
+  takeHeldRestoreGravityScale(handle: number): number | undefined {
+    const gravityScale = this.heldRestoreGravityScales.get(handle);
+    this.heldRestoreGravityScales.delete(handle);
+    return gravityScale;
   }
 
   createStaticBox(options: PhysicsBoxOptions): RAPIER.RigidBody {
@@ -237,6 +289,31 @@ export class PhysicsWorld {
       id: options.id,
       kind: 'dynamic',
       navigationObstacleSize: [options.size.x, options.size.y, options.size.z],
+      ...options.metadata,
+    });
+    return rigidBody;
+  }
+
+  createDynamicSphere(options: PhysicsSphereOptions, mesh: Object3D): RAPIER.RigidBody {
+    const rigidBody = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(
+        options.position.x,
+        options.position.y,
+        options.position.z,
+      ),
+    );
+    const volume = Math.max((4 / 3) * Math.PI * options.radius ** 3, 0.001);
+    const density = (options.mass ?? 1) / volume;
+    const collider = this.world.createCollider(
+      RAPIER.ColliderDesc.ball(options.radius).setDensity(density),
+      rigidBody,
+    );
+    const diameter = options.radius * 2;
+    this.bindings.push({ mesh, rigidBody });
+    this.registerCollider(collider, {
+      id: options.id,
+      kind: 'dynamic',
+      navigationObstacleSize: [diameter, diameter, diameter],
       ...options.metadata,
     });
     return rigidBody;
@@ -413,6 +490,8 @@ export class PhysicsWorld {
       this.bindings.splice(index, 1);
     }
     this.bodyVisuals.delete(body.handle);
+    this.heldBodyHandles.delete(body.handle);
+    this.heldRestoreGravityScales.delete(body.handle);
     for (let i = 0; i < body.numColliders(); i += 1) {
       this.metadataByCollider.delete(body.collider(i).handle);
     }

@@ -55,6 +55,7 @@ async function setup(impactDamageOverride?: number) {
     system,
     bus,
     prop,
+    npcCollider,
     applyDamage,
     hits: recordEvents(bus, "weapon.hit"),
     impacts: recordEvents(bus, "prop.impact"),
@@ -127,6 +128,41 @@ describe("PropImpactSystem", () => {
     system.update(1 / 60, 1);
 
     expect(applyDamage).not.toHaveBeenCalled();
+  });
+
+  it("un fragmento no daña al NPC del que se desprendió", async () => {
+    const { physics, system, prop, npcCollider, applyDamage, impacts } =
+      await setup();
+    const ownerId = "blob-1";
+    physics.registerCollider(prop.collider(0), {
+      id: "blob-1-chunk-0",
+      impactOwnerId: ownerId,
+      kind: "dynamic",
+    });
+    physics.registerCollider(npcCollider, {
+      id: "blob-1",
+      kind: "npc",
+      damageable: { applyDamage, isAlive: () => true },
+    });
+
+    system.update(1 / 60, 1);
+
+    expect(applyDamage).not.toHaveBeenCalled();
+    expect(impacts).toHaveLength(0);
+  });
+
+  it("un fragmento desprendido todavía puede dañar a otro NPC", async () => {
+    const { physics, system, prop, applyDamage, impacts } = await setup();
+    physics.registerCollider(prop.collider(0), {
+      id: "blob-1-chunk-0",
+      impactOwnerId: "blob-1",
+      kind: "dynamic",
+    });
+
+    system.update(1 / 60, 1);
+
+    expect(applyDamage).toHaveBeenCalledTimes(1);
+    expect(impacts).toHaveLength(1);
   });
 
   it("respeta un daño de impacto fijo sin escalarlo por masa ni hitbox", async () => {

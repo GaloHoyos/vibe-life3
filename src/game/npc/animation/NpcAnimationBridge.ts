@@ -11,7 +11,11 @@ import type { CharacterDefinition } from "@engine/characters/CharacterDefinition
 import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Damageable } from "@shared/types/lifecycle";
 import { NpcDebugFlags } from "@game/npc/core/NpcDebugFlags";
-import type { AnimationFrame, NpcAnimator } from "./NpcAnimator";
+import type {
+  AnimationFrame,
+  NpcAnimator,
+  PhysicalBodyPullSettings,
+} from "./NpcAnimator";
 
 export type { AnimationFrame } from "./NpcAnimator";
 
@@ -53,6 +57,7 @@ export class NpcAnimationBridge implements NpcAnimator {
   private weaponPose: WeaponHandedness = "none";
   private aimWeight = 0;
   private shotJustFired = false;
+  private disposed = false;
 
   constructor(
     id: string,
@@ -82,6 +87,7 @@ export class NpcAnimationBridge implements NpcAnimator {
 
   /** Actualiza animator + active ragdoll usando un snapshot del motor. */
   updateFromMotor(frame: AnimationFrame): void {
+    if (this.disposed) return;
     const velocity = frame.snapshot.velocity;
     this.acceleration.copy(velocity).sub(this.previousVelocity);
     this.previousVelocity.copy(velocity);
@@ -128,6 +134,7 @@ export class NpcAnimationBridge implements NpcAnimator {
    * lean). El collider fÃ­sico no cambia.
    */
   setCrouch(amount: number): void {
+    if (this.disposed) return;
     const base = Math.max(0, Math.min(1, amount));
     // Un gesto crouch activo pisa el estado de crouch del motor.
     this.targetCrouch = this.gestureCrouchTimer > 0 ? 1 : base;
@@ -138,7 +145,7 @@ export class NpcAnimationBridge implements NpcAnimator {
    * PostureLayer) por `duration` segundos; el resto van al `GestureLayer`.
    */
   playGesture(id: GestureId, duration: number): void {
-    if (duration <= 0) return;
+    if (this.disposed || duration <= 0) return;
     if (id === "crouch") {
       this.gestureCrouchTimer = duration;
       this.targetCrouch = 1;
@@ -148,6 +155,7 @@ export class NpcAnimationBridge implements NpcAnimator {
   }
 
   setLeanSide(amount: number): void {
+    if (this.disposed) return;
     this.targetLeanSide = Math.max(-1, Math.min(1, amount));
   }
 
@@ -156,6 +164,7 @@ export class NpcAnimationBridge implements NpcAnimator {
    * `pose` define quÃ© manos van al arma. `target=null` desactiva el aim.
    */
   setAiming(target: Vector3 | null, pose: WeaponHandedness = "twoHanded"): void {
+    if (this.disposed) return;
     if (!target) {
       this.aimActive = false;
       this.weaponPose = "none";
@@ -167,16 +176,19 @@ export class NpcAnimationBridge implements NpcAnimator {
   }
 
   setActivity(activity: AnimationActivity): void {
+    if (this.disposed) return;
     this.activity = activity;
   }
 
   /** Llamar despuÃ©s de cada disparo: emite un pulse de recoil corto. */
   notifyShot(): void {
+    if (this.disposed) return;
     this.shotJustFired = true;
   }
 
   /** Llamar al iniciar reload. DispararÃ¡ el ReloadLayer (F5). */
   notifyReload(duration: number): void {
+    if (this.disposed) return;
     this.animator.triggerReload(duration);
   }
 
@@ -274,6 +286,7 @@ export class NpcAnimationBridge implements NpcAnimator {
    * (NPC muerto en ragdoll pasivo, o cualquier estado que detenga el motor).
    */
   updateStandalone(delta: number, opts: { dead?: boolean } = {}): void {
+    if (this.disposed) return;
     const input: AnimationInput = {
       deltaTime: delta,
       time: performance.now() / 1000,
@@ -298,11 +311,13 @@ export class NpcAnimationBridge implements NpcAnimator {
   }
 
   notifyHit(direction: Vector3, intensityFraction: number): void {
+    if (this.disposed) return;
     this.animator.triggerHit(direction);
     this.hitReaction.flinchFrom(direction, intensityFraction);
   }
 
   notifyAttack(): void {
+    if (this.disposed) return;
     this.animator.triggerAttack();
   }
 
@@ -311,6 +326,7 @@ export class NpcAnimationBridge implements NpcAnimator {
     velocity: Vector3,
     partName: string | undefined,
   ): void {
+    if (this.disposed) return;
     this.isDead = true;
     this.animator.dieWithVelocity(direction, velocity, partName);
     this.disable();
@@ -320,5 +336,32 @@ export class NpcAnimationBridge implements NpcAnimator {
   disable(): void {
     this.proceduralEnabled = false;
     this.hitReactionEnabled = false;
+  }
+
+  /** Centro de masa del ragdoll, no la posicion congelada del motor. */
+  getPhysicalCenter(): Vector3 | null {
+    return this.animator.getPhysicalCenter();
+  }
+
+  pullPhysicalBodyToward(
+    target: Vector3,
+    delta: number,
+    settings: PhysicalBodyPullSettings,
+  ): void {
+    this.animator.pullPhysicalBodyToward(
+      target,
+      delta,
+      settings.positionGain,
+      settings.maxSpeed,
+      settings.acceleration,
+    );
+  }
+
+  /** Propaga el cleanup fisico completo. Seguro ante llamadas repetidas. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.disable();
+    this.animator.dispose();
   }
 }

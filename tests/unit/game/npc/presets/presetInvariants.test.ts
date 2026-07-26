@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { NpcPreset } from "@game/npc/presets/NpcPreset";
 import { buildAlyxPreset } from "@game/npc/presets/alyxPreset";
+import { buildBlobPreset } from "@game/npc/presets/blobPreset";
 import { buildCombinePreset } from "@game/npc/presets/combinePreset";
 import { buildGunshipPreset } from "@game/npc/presets/gunshipPreset";
 import { buildHeadcrabPreset } from "@game/npc/presets/headcrabPreset";
@@ -10,9 +11,15 @@ import { buildRebelPreset } from "@game/npc/presets/rebelPreset";
 import { buildStriderPreset } from "@game/npc/presets/striderPreset";
 import { buildTurretPreset } from "@game/npc/presets/turretPreset";
 import { buildZombiePreset } from "@game/npc/presets/zombiePreset";
+import { BlobConfig } from "@game/config/blob.config";
+import {
+  NavigationProfiles,
+  navigationProfileForPreset,
+} from "@game/npc/navigation/NavAgentProfiles";
 
 const builders: Array<[string, () => NpcPreset]> = [
   ["alyx", () => buildAlyxPreset()],
+  ["blob", () => buildBlobPreset()],
   ["combine", () => buildCombinePreset()],
   ["combine+patrol", () => buildCombinePreset({ hasPatrol: true })],
   ["gunship", () => buildGunshipPreset()],
@@ -29,6 +36,49 @@ const builders: Array<[string, () => NpcPreset]> = [
 ];
 
 describe("preset invariants", () => {
+  it("routes the complete Blob through its large dynamic-body profile", () => {
+    expect(navigationProfileForPreset(buildBlobPreset())).toBe(
+      NavigationProfiles.blobBody,
+    );
+    expect(NavigationProfiles.blobBody.canUsePortals).toBe(true);
+    expect(NavigationProfiles.blobFragment.canUsePortals).toBe(false);
+    expect(NavigationProfiles.blobBody.radius).toBe(
+      BlobConfig.armor.navigationRadius,
+    );
+    expect(NavigationProfiles.blobBody.radius).toBeLessThan(
+      BlobConfig.armor.aggregateRadius,
+    );
+  });
+
+  it("keeps the Blob mobile, responsive and durable enough for a soldier", () => {
+    const blob = buildBlobPreset();
+    const combine = buildCombinePreset();
+
+    expect(blob.maxHealth).toBeGreaterThanOrEqual(combine.maxHealth * 2);
+    expect(blob.movement.walkSpeed).toBeGreaterThanOrEqual(5);
+    expect(blob.movement.acceleration).toBeGreaterThan(
+      combine.movement.acceleration,
+    );
+    expect(blob.movement.goalReachRadius).toBeLessThan(
+      BlobConfig.predator.coreEmbraceDistance +
+        BlobConfig.predator.embraceContactPadding,
+    );
+    expect(BlobConfig.predator.detectionRange).toBeGreaterThanOrEqual(32);
+    expect(BlobConfig.predator.embraceRampSeconds).toBeLessThanOrEqual(1);
+  });
+
+  it("reserva a los chunks un burst temporal para alcanzar al cuerpo", () => {
+    expect(BlobConfig.armor.chunkNavigationMaxSpeed).toBeGreaterThan(
+      BlobConfig.predator.moveSpeed,
+    );
+    expect(BlobConfig.armor.chunkNavigationCatchupMaxSpeed).toBeGreaterThan(
+      BlobConfig.predator.moveSpeed,
+    );
+    expect(NavigationProfiles.blobFragment.maxSpeed).toBe(
+      BlobConfig.armor.chunkNavigationCatchupMaxSpeed,
+    );
+  });
+
   it.each(builders)("%s: schedules con ids unicos, prioridades validas y tasks", (_name, build) => {
     const preset = build();
     expect(preset.schedules.length).toBeGreaterThan(0);

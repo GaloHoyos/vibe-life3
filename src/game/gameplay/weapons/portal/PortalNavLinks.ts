@@ -52,7 +52,12 @@ export function computePortalNavigationLinks(
             bidirectional: false,
             cost: PortalConfig.npcTraversal.warpEdgeCost,
             width: entry.halfWidth * 2,
-            profileIds: ["humanoid", "humanoid-limited", "headcrab"],
+            profileIds: [
+              "humanoid",
+              "humanoid-limited",
+              "headcrab",
+              "blob-body",
+            ],
             portalId: `portalgun-${slot}`,
           });
         }

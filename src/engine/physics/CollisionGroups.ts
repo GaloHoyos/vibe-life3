@@ -8,6 +8,7 @@ export const CollisionGroup = {
   Default: 0x0001,
   Actor: 0x0002,
   Ragdoll: 0x0004,
+  CharacterMedium: 0x0008,
 } as const;
 
 const ALL_GROUPS = 0xffff;
@@ -18,6 +19,12 @@ export function interactionGroups(membership: number, filter: number): number {
 
 /** Live player/NPC capsules: collide with everything (world sees them as always). */
 export const ACTOR_COLLISION_GROUPS = interactionGroups(CollisionGroup.Actor, ALL_GROUPS);
+
+/** Medio semipermeable: interactúa con mundo/props, pero no bloquea actores vivos. */
+export const CHARACTER_MEDIUM_COLLISION_GROUPS = interactionGroups(
+  CollisionGroup.CharacterMedium,
+  ALL_GROUPS & ~CollisionGroup.Actor,
+);
 
 /** Ragdoll parts: collide with world and other ragdolls, never with live actor capsules. */
 export const RAGDOLL_COLLISION_GROUPS = interactionGroups(
