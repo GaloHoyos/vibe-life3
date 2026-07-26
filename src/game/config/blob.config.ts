@@ -36,14 +36,14 @@ export const BlobConfig = {
     surfaceContactPadding: 0.04,
     surfaceNodeRadiusScale: 2.25,
     surfaceCoreRadius: 0.72,
-    surfaceColor: 0xa7c5bd,
-    surfaceOpacity: 0.46,
+    surfaceColor: 0xcfc7b6,
+    surfaceOpacity: 0.6,
     /** El cadaver conserva la piel metaball, pero seca y menos translucida. */
-    deathSurfaceOpacity: 0.68,
+    deathSurfaceOpacity: 0.72,
     deathSurfaceUpdateInterval: 1 / 15,
-    coreColor: 0xff7550,
-    coreEmissiveColor: 0xff2f18,
-    coreEmissiveIntensity: 1.35,
+    coreColor: 0xff8a63,
+    coreEmissiveColor: 0xff3a16,
+    coreEmissiveIntensity: 1.1,
     coreRoughness: 0.38,
     coreDeathColor: 0x2b1715,
     coreDeathEmissiveColor: 0x0a0101,
@@ -51,6 +51,38 @@ export const BlobConfig = {
     coreDeathRoughness: 1,
     coreDeathMinimumScale: 0.48,
     coreDeathWitherSeconds: 2.8,
+    /** Ember gradient shared by the neural discharges (root -> tip). */
+    coreVeinHotColor: 0xffc487,
+    coreVeinColor: 0xff7a33,
+    /** Additive glow billboard that diffuses the brain light through the skin. */
+    coreHaloColor: 0xff6a38,
+    coreHaloOpacity: 0.55,
+    coreHaloSize: 1.55,
+    /** Slow heartbeat: angular speed (rad/s) plus per-channel amplitudes. */
+    corePulseSpeed: 3.2,
+    corePulseScaleAmplitude: 0.045,
+    corePulseHaloAmplitude: 0.16,
+    /**
+     * Neural discharges: dynamic filaments that fire from the brain to random
+     * attached shell spheres, travel as a bright pulse and fade out.
+     */
+    neuralSlotCount: 8,
+    neuralRingCount: 14,
+    neuralRadialSegments: 5,
+    neuralThickness: 0.022,
+    neuralTipThickness: 0.009,
+    neuralIdleSecondsMin: 0.12,
+    neuralIdleSecondsMax: 0.8,
+    neuralTravelSeconds: 0.32,
+    neuralHoldSeconds: 0.42,
+    neuralFadeSeconds: 0.3,
+    /** Trailing glow behind the pulse head, as a fraction of the path. */
+    neuralTailLength: 0.65,
+    /** Lateral undulation of the filament, as a fraction of its span. */
+    neuralWaveAmplitude: 0.12,
+    neuralWaveSpeed: 2.8,
+    /** Extra activations fired at once when the organism takes damage. */
+    neuralDamageBurstCount: 3,
   },
   armor: {
     /** Volumen multicapa: 6 nodos internos, 12 medios y 18 externos. */
@@ -143,12 +175,12 @@ export const BlobConfig = {
     detachedLifetimeSeconds: 20,
     detachedWitherSeconds: 4,
     detachedWitherMinimumScale: 0.78,
-    detachedWitherColor: 0x34443f,
+    detachedWitherColor: 0x4a443a,
     detachedWitherRoughness: 0.92,
     /** La muerte seca toda la biomasa desde el primer frame. */
     deathWitherSeconds: 4,
     deathWitherMinimumScale: 0.58,
-    deathWitherColor: 0x18201e,
+    deathWitherColor: 0x211d18,
     deathWitherRoughness: 1,
     deathWitherClearcoat: 0.06,
     /** Pathing pesado por racimo; el magnetismo local resuelve el contacto final. */

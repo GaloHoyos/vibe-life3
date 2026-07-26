@@ -1,4 +1,5 @@
 import type { MaterialKey } from '@engine/render/material/Materials';
+import { makeSeededRandom } from '@shared/math/Random';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import type {
   DynamicBoxDefinition,
@@ -38,15 +39,6 @@ export interface PropArtifact {
 
 function staticOnly(boxes: StaticBoxDefinition[]): PropArtifact {
   return { staticBoxes: boxes, dynamicBoxes: [] };
-}
-
-/** LCG determinista para jitter reproducible por seed. */
-function makeRand(seed: number): () => number {
-  let s = seed >>> 0 || 1;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 0xffffffff;
-  };
 }
 
 export interface CrateSpec extends PropBase {
@@ -98,7 +90,7 @@ export function crateStack(spec: CrateStackSpec): PropArtifact {
   const gap = 0.06;
   const material = spec.material ?? 'crate';
   const baseY = spec.baseY ?? 0;
-  const rand = makeRand(spec.seed ?? 1);
+  const rand = makeSeededRandom(spec.seed ?? 1);
   const boxes: StaticBoxDefinition[] = [];
   for (let layer = 0; layer < layers; layer += 1) {
     const lr = Math.max(1, rows - layer);

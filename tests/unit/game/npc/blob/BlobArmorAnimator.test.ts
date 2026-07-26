@@ -245,7 +245,8 @@ describe("BlobArmorAnimator", () => {
 
     expect(harness.coreBody.mass()).toBeCloseTo(BlobConfig.core.mass, 4);
     expect(harness.physics.getBodyCount()).toBe(BlobConfig.armor.count + 1);
-    expect(harness.scene.children).toHaveLength(BlobConfig.armor.count + 2);
+    // visualGroup + superficie de gel + filamentos neuronales + esferas.
+    expect(harness.scene.children).toHaveLength(BlobConfig.armor.count + 3);
     expect(new Set(snapshot.bodyHandles).size).toBe(BlobConfig.armor.count);
     expect(armor).toHaveLength(BlobConfig.armor.count);
 
@@ -344,7 +345,7 @@ describe("BlobArmorAnimator", () => {
     expect(grown.layers).toHaveLength(BlobConfig.armor.count + 7);
     expect(armor).toHaveLength(BlobConfig.armor.count + 7);
     expect(harness.physics.getBodyCount()).toBe(BlobConfig.armor.count + 8);
-    expect(harness.scene.children).toHaveLength(BlobConfig.armor.count + 9);
+    expect(harness.scene.children).toHaveLength(BlobConfig.armor.count + 10);
     expect(
       grown.bodyHandles.filter((handle) => !initialHandles.has(handle)),
     ).toHaveLength(7);
@@ -2240,8 +2241,10 @@ describe("BlobArmorAnimator", () => {
     const harness = await createHarness();
     harness.physics.world.gravity = { x: 0, y: 0, z: 0 };
     const core = blobCoreMesh(harness);
+    const organ = harness.visualGroup.getObjectByName("blob-core-organ");
+    if (!organ) throw new Error("Grupo blob-core-organ no encontrado");
     const shell = blobMesh(harness, 0);
-    const coreScale = core.scale.x;
+    const organScale = organ.scale.x;
     const shellScale = shell.scale.x;
 
     harness.animator.notifyDeath();
@@ -2282,8 +2285,8 @@ describe("BlobArmorAnimator", () => {
       BlobConfig.visual.deathSurfaceOpacity,
       5,
     );
-    expect(core.scale.x).toBeCloseTo(
-      coreScale * BlobConfig.visual.coreDeathMinimumScale,
+    expect(organ.scale.x).toBeCloseTo(
+      organScale * BlobConfig.visual.coreDeathMinimumScale,
       5,
     );
     expect(core.material.color.getHex()).toBe(

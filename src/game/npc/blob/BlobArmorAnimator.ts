@@ -33,7 +33,14 @@ import type {
   AnimationFrame,
   NpcAnimator,
 } from "@game/npc/animation/NpcAnimator";
-import { applyBlobCoreDeathVisual } from "@game/characters/visuals/BlobVisual";
+import {
+  applyBlobCoreDeathVisual,
+  updateBlobCorePulseVisual,
+} from "@game/characters/visuals/BlobVisual";
+import {
+  BlobNeuralTendrils,
+  type NeuralTendrilTarget,
+} from "@game/characters/visuals/BlobNeuralTendrils";
 import { BlobConfig } from "@game/config/blob.config";
 import { BlobChunkNavigator } from "@game/npc/blob/BlobChunkNavigator";
 
@@ -189,6 +196,9 @@ export class BlobArmorAnimator implements NpcAnimator {
   private readonly geometry = new SphereGeometry(1, 18, 14);
   private readonly gelMaterial: MeshPhysicalMaterial;
   private readonly gelSurface: DynamicBlobSurface;
+  private readonly neuralTendrils: BlobNeuralTendrils;
+  private readonly neuralTargets: NeuralTendrilTarget[] = [];
+  private readonly neuralBrainPosition = new Vector3();
   private readonly gelSamples: DynamicBlobSample[] = [];
   private readonly gelCenter = new Vector3();
   private readonly fragmentGelVisuals: FragmentGelVisual[] = [];
@@ -237,6 +247,7 @@ export class BlobArmorAnimator implements NpcAnimator {
   private dead = false;
   private deathElapsed = 0;
   private deathSurfaceElapsed = 0;
+  private pulseElapsed = 0;
   private disposed = false;
 
   constructor(private readonly options: BlobArmorAnimatorOptions) {
@@ -251,6 +262,10 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.gelSurface.object.castShadow = false;
     this.gelSurface.object.receiveShadow = true;
     this.gelSurface.object.renderOrder = 1;
+    this.neuralTendrils = new BlobNeuralTendrils({
+      name: `${options.id}-neural-tendrils`,
+      seed: stringSeed(options.id),
+    });
     this.raycast = new Raycast(options.physics);
     this.chunkNavigator =
       options.navigation && options.navigationRequests
@@ -334,6 +349,7 @@ export class BlobArmorAnimator implements NpcAnimator {
 
     this.chunkNavigator?.clear();
     this.previousHeldVelocities.clear();
+    this.neuralTendrils.reset();
     this.resetPortalLoadState();
     this.armMainShapeHealing(false);
     this.scheduleReflow();
@@ -357,6 +373,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     }
     this.chunkNavigator?.clear();
     this.previousHeldVelocities.clear();
+    this.neuralTendrils.reset();
     this.resetPortalLoadState();
     if (this.meshesAttachedToScene) this.updateGelSurface();
     return true;
@@ -366,6 +383,8 @@ export class BlobArmorAnimator implements NpcAnimator {
     if (this.disposed) return;
     this.ensureMeshesInScene();
     if (!this.enabled || this.dead) return;
+    this.pulseElapsed += finitePhysicsElapsed(frame.delta);
+    updateBlobCorePulseVisual(this.options.visualGroup, this.pulseElapsed);
     this.updateDetachment(frame.delta);
     this.updateReleasedLifetime(frame.delta);
     this.updateReassembly(frame.delta);
@@ -375,7 +394,10 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.updateShapeHealing(frame.delta);
     this.syncGravityScales();
     this.closeImpactWave();
-    if (frame.visible !== false) this.updateGelSurface();
+    if (frame.visible !== false) {
+      this.updateNeuralTendrils(finitePhysicsElapsed(frame.delta), 0);
+      this.updateGelSurface();
+    }
   }
 
   updateStandalone(delta: number, opts: { dead?: boolean } = {}): void {
@@ -390,6 +412,13 @@ export class BlobArmorAnimator implements NpcAnimator {
         this.options.visualGroup,
         this.deathCoreVisualProgress(),
       );
+      this.pulseElapsed += elapsed;
+      updateBlobCorePulseVisual(
+        this.options.visualGroup,
+        this.pulseElapsed,
+        this.deathCoreVisualProgress(),
+      );
+      this.updateNeuralTendrils(elapsed, this.deathCoreVisualProgress());
       this.deathSurfaceElapsed += elapsed;
       if (
         this.deathSurfaceElapsed >=
@@ -400,6 +429,9 @@ export class BlobArmorAnimator implements NpcAnimator {
         this.updateGelSurface();
       }
     } else if (this.enabled) {
+      this.pulseElapsed += finitePhysicsElapsed(delta);
+      updateBlobCorePulseVisual(this.options.visualGroup, this.pulseElapsed);
+      this.updateNeuralTendrils(finitePhysicsElapsed(delta), 0);
       this.updateGelSurface();
     }
   }
@@ -582,6 +614,8 @@ export class BlobArmorAnimator implements NpcAnimator {
     this.gelSamples.length = 0;
     this.gelSurface.dispose();
     this.gelMaterial.dispose();
+    this.neuralTendrils.dispose();
+    this.neuralTargets.length = 0;
     for (const visual of this.fragmentGelVisuals) {
       visual.surface.dispose();
       visual.material.dispose();
@@ -632,7 +666,41 @@ export class BlobArmorAnimator implements NpcAnimator {
   notifyShot(): void {}
   notifyReload(): void {}
   notifyAttack(): void {}
-  notifyHit(): void {}
+
+  notifyHit(): void {
+    if (this.disposed || this.dead || !this.enabled) return;
+    this.neuralTendrils.burst(BlobConfig.visual.neuralDamageBurstCount);
+  }
+
+  /** Feeds live world endpoints (brain + attached spheres) to the discharges. */
+  private updateNeuralTendrils(elapsed: number, deathProgress: number): void {
+    if (!this.options.coreBody.isValid()) {
+      this.neuralTendrils.object.visible = false;
+      return;
+    }
+    let count = 0;
+    for (const part of this.parts) {
+      if (part.state !== "attached" || !part.body.isValid()) continue;
+      let target = this.neuralTargets[count];
+      if (!target) {
+        target = { id: part.index, position: new Vector3() };
+        this.neuralTargets[count] = target;
+      }
+      target.id = part.index;
+      const translation = part.body.translation();
+      target.position.set(translation.x, translation.y, translation.z);
+      count += 1;
+    }
+    this.neuralTargets.length = count;
+    const core = this.options.coreBody.translation();
+    this.neuralBrainPosition.set(core.x, core.y, core.z);
+    this.neuralTendrils.update(
+      elapsed,
+      this.neuralBrainPosition,
+      this.neuralTargets,
+      1 - deathProgress,
+    );
+  }
 
   private buildArmor(): void {
     const config = BlobConfig.armor;
@@ -887,6 +955,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     const parent = this.options.visualGroup.parent;
     if (!parent) return;
     this.gelSurface.attachTo(parent);
+    this.neuralTendrils.attachTo(parent);
     for (const part of this.parts) {
       parent.add(part.mesh);
     }
@@ -3438,6 +3507,7 @@ export class BlobArmorAnimator implements NpcAnimator {
 
   private hideGelSurfaces(): void {
     this.gelSurface.object.visible = false;
+    this.neuralTendrils.object.visible = false;
     for (const visual of this.fragmentGelVisuals) {
       visual.surface.object.visible = false;
     }
@@ -4746,6 +4816,15 @@ function finitePhysicsElapsed(delta: number): number {
   return Number.isFinite(delta)
     ? Math.min(Math.max(0, delta), 1 / 20)
     : 0;
+}
+
+/** Deterministic per-NPC seed so each blob fires with its own rhythm. */
+function stringSeed(value: string): number {
+  let hash = 7;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return hash;
 }
 
 function transformBodyThroughPortal(
