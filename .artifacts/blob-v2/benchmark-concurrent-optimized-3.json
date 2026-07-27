@@ -1,0 +1,189 @@
+{
+  "runner": "win32/x64 node v20.20.2",
+  "seconds": 5,
+  "warmupSeconds": 1,
+  "warmupDrainFrames": 2,
+  "finalDrainFrames": 2,
+  "meshingBudgetMs": 2.75,
+  "frames": 300,
+  "blobs": 2,
+  "requestedBiomassPerBlob": 250,
+  "initialLivingFragments": 12,
+  "livingFragmentsAtEnd": 12,
+  "simulationMs": {
+    "average": 2.247,
+    "p95": 4.503,
+    "maximum": 9.671
+  },
+  "meshingMs": {
+    "average": 2.536,
+    "p95": 3.434,
+    "maximum": 5.101
+  },
+  "meshingJobsMs": {
+    "average": 1.07,
+    "p95": 2.476,
+    "maximum": 5.033
+  },
+  "meshingJobsByResolution": {
+    "24": {
+      "average": 0.543,
+      "p95": 0.758,
+      "maximum": 3.666
+    },
+    "32": {
+      "average": 2.301,
+      "p95": 3.402,
+      "maximum": 5.033
+    }
+  },
+  "polygonizationMs": {
+    "average": 0.565,
+    "p95": 1.118,
+    "maximum": 3.278
+  },
+  "fieldAndSetupMs": {
+    "average": 0.504,
+    "p95": 1.421,
+    "maximum": 2.964
+  },
+  "meshingJobsOver8Ms": 0,
+  "slowestMeshingJobs": [
+    {
+      "resolution": 32,
+      "durationMs": 5.033,
+      "polygonizationMs": 3.278,
+      "polygonizationVertices": 9216,
+      "fieldAndSetupMs": 1.755
+    },
+    {
+      "resolution": 32,
+      "durationMs": 4.197,
+      "polygonizationMs": 1.806,
+      "polygonizationVertices": 9744,
+      "fieldAndSetupMs": 2.391
+    },
+    {
+      "resolution": 32,
+      "durationMs": 4.093,
+      "polygonizationMs": 1.995,
+      "polygonizationVertices": 10020,
+      "fieldAndSetupMs": 2.098
+    },
+    {
+      "resolution": 32,
+      "durationMs": 4.059,
+      "polygonizationMs": 1.762,
+      "polygonizationVertices": 10008,
+      "fieldAndSetupMs": 2.297
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.92,
+      "polygonizationMs": 0.956,
+      "polygonizationVertices": 9996,
+      "fieldAndSetupMs": 2.964
+    }
+  ],
+  "surfaceVerticesByResolution": {
+    "24": {
+      "maximum": 3240,
+      "average": 3007
+    },
+    "32": {
+      "maximum": 10008,
+      "average": 9402
+    }
+  },
+  "combinedFrameMs": {
+    "average": 5.361,
+    "p95": 7.651,
+    "maximum": 12.891
+  },
+  "runtimeDiagnostics": {
+    "measuredWallMs": 1613.954,
+    "measuredCpuMs": 2016,
+    "cpuToWallRatio": 1.249,
+    "eventLoopUtilization": 1,
+    "gc": {
+      "samples": 0,
+      "average": 0,
+      "p95": 0,
+      "maximum": 0
+    }
+  },
+  "pendingVisualJobs": 0,
+  "telemetry": [
+    {
+      "simulation": {
+        "samples": 300,
+        "averageMs": 0.616931999999994,
+        "p95Ms": 1.7276999999999134,
+        "maximumMs": 3.645200000000159
+      },
+      "meshing": {
+        "samples": 368,
+        "averageMs": 1.0304285326086862,
+        "p95Ms": 2.282899999999927,
+        "maximumMs": 5.033300000000054
+      },
+      "presentation": {
+        "samples": 300,
+        "averageMs": 0.10038366666665828,
+        "p95Ms": 0.1517999999998665,
+        "maximumMs": 1.2313999999998941
+      },
+      "visualJobWait": {
+        "samples": 368,
+        "averageMs": 1.043122554347829,
+        "p95Ms": 2.3659000000000106,
+        "maximumMs": 3.2333000000003267
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6344800,
+        "estimatedGpuBytes": 2642016
+      }
+    },
+    {
+      "simulation": {
+        "samples": 300,
+        "averageMs": 0.6006196666666699,
+        "p95Ms": 1.593499999999949,
+        "maximumMs": 4.594900000000052
+      },
+      "meshing": {
+        "samples": 336,
+        "averageMs": 1.1127982142857296,
+        "p95Ms": 2.5898999999999432,
+        "maximumMs": 4.197100000000091
+      },
+      "presentation": {
+        "samples": 300,
+        "averageMs": 0.07469166666667888,
+        "p95Ms": 0.11100000000010368,
+        "maximumMs": 1.4488000000001193
+      },
+      "visualJobWait": {
+        "samples": 336,
+        "averageMs": 0.9931002976190496,
+        "p95Ms": 2.138300000000072,
+        "maximumMs": 5.032600000000002
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6344800,
+        "estimatedGpuBytes": 2642016
+      }
+    }
+  ],
+  "heapUsedMb": 71.48,
+  "acceptance": {
+    "mode": "smoke",
+    "skipped": true,
+    "passed": null,
+    "criteria": []
+  }
+}

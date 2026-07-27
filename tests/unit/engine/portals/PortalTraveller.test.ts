@@ -144,6 +144,48 @@ describe("PortalTravellerSystem — aperture hole", () => {
     traveller.dispose();
   });
 
+  it("abre el hueco fisico para un organismo compuesto con teleport propio", async () => {
+    const { physics, floor } = await makeWorld();
+    const pair = new PortalPairState();
+    const entry = floorPortal(0, 0);
+    const exit = wallPortal(9, 2);
+    pair.set("a", entry);
+    pair.set("b", exit);
+    const traveller = new PortalTravellerSystem(
+      physics,
+      new Scene(),
+      pair,
+      OPTIONS,
+    );
+    traveller.setPortal("a", entry, [floor]);
+    traveller.setPortal("b", exit, []);
+
+    const body = physics.createDynamicSphere(
+      {
+        id: "composite-node",
+        position: new Vector3(0, 1, 0),
+        radius: 0.2,
+        mass: 1,
+        metadata: {
+          kind: "npc",
+          selfPortalTraversal: true,
+        },
+      },
+      new Object3D(),
+    );
+    const collider = body.collider(0);
+    traveller.setExternalTraversalColliders(
+      "composite",
+      [collider.handle],
+      new Set(["a"]),
+    );
+
+    simulate(physics, traveller, 120);
+
+    expect(body.translation().y).toBeLessThan(-1);
+    traveller.dispose();
+  });
+
   it("a box falls through a floor portal whose pair sits right beside it", async () => {
     const { physics, floor } = await makeWorld();
     const pair = new PortalPairState();
@@ -547,8 +589,15 @@ describe("PortalTravellerSystem — dual-body clone", () => {
 
     const dt = 1 / 60;
     let maxChildren = 0;
+    let sawScaleSync = false;
     for (let i = 0; i < 240; i += 1) {
       traveller.update(i * dt, dt);
+      if (!sawScaleSync && scene.children.length >= 2) {
+        visual.scale.set(0.72, 0.81, 0.9);
+        traveller.update(i * dt, 0);
+        const clone = scene.children.find((child) => child !== visual);
+        sawScaleSync = clone?.scale.equals(visual.scale) ?? false;
+      }
       physics.step(dt);
       const t = body.translation();
       visual.position.set(t.x, t.y, t.z); // pickup syncs its own mesh
@@ -557,6 +606,7 @@ describe("PortalTravellerSystem — dual-body clone", () => {
 
     // The clone visual was added alongside the original during the crossing…
     expect(maxChildren).toBeGreaterThanOrEqual(2);
+    expect(sawScaleSync).toBe(true);
     // …and removed on collapse (only the original remains).
     expect(scene.children.length).toBe(1);
 

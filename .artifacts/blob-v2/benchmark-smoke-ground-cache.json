@@ -1,0 +1,739 @@
+{
+  "runner": "win32/x64 node v20.20.2",
+  "seconds": 15,
+  "warmupSeconds": 1,
+  "warmupDrainFrames": 2,
+  "finalDrainFrames": 2,
+  "meshingBudgetMs": 2.5,
+  "frames": 900,
+  "blobs": 2,
+  "requestedBiomassPerBlob": 250,
+  "initialLivingFragments": 12,
+  "minimumLivingFragmentsDuringRun": 12,
+  "minimumBiomassPerBlobDuringRun": 250,
+  "livingFragmentsAtEnd": 12,
+  "finalBiomassPerBlob": [
+    250,
+    250
+  ],
+  "finalCorePositions": [
+    {
+      "x": -3.4099376016571066,
+      "y": 0.12346610727388502,
+      "z": 0.6743268593155379
+    },
+    {
+      "x": 2.684501176638673,
+      "y": 0.1217766958866125,
+      "z": -0.013885911837052699
+    }
+  ],
+  "maximumFragmentIdAtEnd": [
+    15,
+    14
+  ],
+  "finalFragmentStates": [
+    [
+      {
+        "id": 1,
+        "state": "Attached",
+        "age": 16,
+        "biomass": 8,
+        "distanceToCore": 0.436,
+        "position": {
+          "x": -3.1106268225967284,
+          "y": 0.12317112928761019,
+          "z": 0.35765681278736905
+        },
+        "velocity": {
+          "x": -2.1507800341988226,
+          "y": 0.3389084165805478,
+          "z": 0.029980388900099353
+        },
+        "needsPath": false
+      },
+      {
+        "id": 2,
+        "state": "Attached",
+        "age": 16,
+        "biomass": 8,
+        "distanceToCore": 0.441,
+        "position": {
+          "x": -3.0505745009276484,
+          "y": 0.12192879476380705,
+          "z": 0.4189206594088278
+        },
+        "velocity": {
+          "x": 1.7225709486896168,
+          "y": 0.3249115522935511,
+          "z": -1.4822363094026858
+        },
+        "needsPath": false
+      },
+      {
+        "id": 3,
+        "state": "Attached",
+        "age": 16,
+        "biomass": 8,
+        "distanceToCore": 0.327,
+        "position": {
+          "x": -3.2555908018620445,
+          "y": 0.12212437394371799,
+          "z": 0.38558573491048775
+        },
+        "velocity": {
+          "x": -0.1726291120056711,
+          "y": -0.051279460863619675,
+          "z": 2.25699453146556
+        },
+        "needsPath": false
+      },
+      {
+        "id": 4,
+        "state": "Attached",
+        "age": 16,
+        "biomass": 8,
+        "distanceToCore": 0.442,
+        "position": {
+          "x": -3.099844245765631,
+          "y": 0.12317112928761019,
+          "z": 0.3596819964639145
+        },
+        "velocity": {
+          "x": -1.4014569934186394,
+          "y": 0.40545787281720397,
+          "z": -1.5814941631292523
+        },
+        "needsPath": false
+      },
+      {
+        "id": 5,
+        "state": "Attached",
+        "age": 16,
+        "biomass": 8,
+        "distanceToCore": 0.477,
+        "position": {
+          "x": -3.0519106628531643,
+          "y": 0.12317112928761019,
+          "z": 0.35970302589668346
+        },
+        "velocity": {
+          "x": 2.194871083584302,
+          "y": 0.10743770167612854,
+          "z": 0.4596798625552406
+        },
+        "needsPath": false
+      },
+      {
+        "id": 6,
+        "state": "Attached",
+        "age": 16,
+        "biomass": 8,
+        "distanceToCore": 0.393,
+        "position": {
+          "x": -3.1625775839961934,
+          "y": 0.12317112928761019,
+          "z": 0.36845504930282386
+        },
+        "velocity": {
+          "x": -1.869488515279869,
+          "y": -0.0012339348700776687,
+          "z": 1.27662551427519
+        },
+        "needsPath": false
+      },
+      {
+        "id": 7,
+        "state": "Attached",
+        "age": 8.067,
+        "biomass": 8,
+        "distanceToCore": 0.107,
+        "position": {
+          "x": -3.373122204169339,
+          "y": 0.12211772869808135,
+          "z": 0.5742486169116341
+        },
+        "velocity": {
+          "x": 1.6796880724518504,
+          "y": -0.06605978236420507,
+          "z": -1.5095812047483825
+        },
+        "needsPath": false
+      },
+      {
+        "id": 8,
+        "state": "Attached",
+        "age": 8.033,
+        "biomass": 8,
+        "distanceToCore": 0.117,
+        "position": {
+          "x": -3.3931128975974323,
+          "y": 0.12258640760297887,
+          "z": 0.5589894236775186
+        },
+        "velocity": {
+          "x": -1.4238023604277883,
+          "y": -0.06506023724632631,
+          "z": -1.755106676360828
+        },
+        "needsPath": false
+      },
+      {
+        "id": 9,
+        "state": "Attached",
+        "age": 7.967,
+        "biomass": 8,
+        "distanceToCore": 0.035,
+        "position": {
+          "x": -3.375887747168006,
+          "y": 0.12346610727388502,
+          "z": 0.6651529211183232
+        },
+        "velocity": {
+          "x": 2.2161007720700843,
+          "y": -0.04890347249216109,
+          "z": 0.4554739601262059
+        },
+        "needsPath": false
+      },
+      {
+        "id": 10,
+        "state": "Reattaching",
+        "age": 7.867,
+        "biomass": 8,
+        "distanceToCore": 0.1,
+        "position": {
+          "x": -3.320331120189574,
+          "y": 0.13619725519985085,
+          "z": 0.6318976506029621
+        },
+        "velocity": {
+          "x": -2.257988746749513,
+          "y": -0.013566575817880455,
+          "z": -0.12921536079407714
+        },
+        "needsPath": false
+      },
+      {
+        "id": 11,
+        "state": "Reattaching",
+        "age": 7.833,
+        "biomass": 8,
+        "distanceToCore": 0.218,
+        "position": {
+          "x": -3.253769816664029,
+          "y": 0.15485572734619849,
+          "z": 0.525312469465004
+        },
+        "velocity": {
+          "x": -1.9214235206364494,
+          "y": 0.02123908679619868,
+          "z": 1.1893356548093692
+        },
+        "needsPath": false
+      },
+      {
+        "id": 12,
+        "state": "Reattaching",
+        "age": 7.767,
+        "biomass": 8,
+        "distanceToCore": 0.299,
+        "position": {
+          "x": -3.364098092630916,
+          "y": 0.1661825199790848,
+          "z": 0.382342193352848
+        },
+        "velocity": {
+          "x": -0.28321420610962544,
+          "y": 0,
+          "z": 2.2474386488644997
+        },
+        "needsPath": false
+      },
+      {
+        "id": 13,
+        "state": "Ballistic",
+        "age": 0.333,
+        "biomass": 8,
+        "distanceToCore": 10.516,
+        "position": {
+          "x": -11.271916733452999,
+          "y": 1.1800000000000002,
+          "z": 7.577753326054402
+        },
+        "velocity": {
+          "x": -22.05061690756528,
+          "y": -1.5000000000000013,
+          "z": 20.200171374682487
+        },
+        "needsPath": false
+      },
+      {
+        "id": 14,
+        "state": "Ballistic",
+        "age": 0.1,
+        "biomass": 8,
+        "distanceToCore": 4.142,
+        "position": {
+          "x": -0.41994796573987925,
+          "y": 1.11,
+          "z": 3.3652210009505508
+        },
+        "velocity": {
+          "x": 18.195034580365427,
+          "y": 2.7000000000000024,
+          "z": 23.73220061835931
+        },
+        "needsPath": false
+      },
+      {
+        "id": 15,
+        "state": "Ballistic",
+        "age": 0.033,
+        "biomass": 8,
+        "distanceToCore": 2.237,
+        "position": {
+          "x": -5.212469303787263,
+          "y": 0.9099999999999999,
+          "z": -0.3913546673574586
+        },
+        "velocity": {
+          "x": -29.447323414289325,
+          "y": 3.9000000000000004,
+          "z": -5.208816881499572
+        },
+        "needsPath": false
+      }
+    ],
+    [
+      {
+        "id": 1,
+        "state": "Attached",
+        "age": 16,
+        "biomass": 8,
+        "distanceToCore": 0.231,
+        "position": {
+          "x": 2.5858155587860914,
+          "y": 0.27354677080069634,
+          "z": 0.13014420400400692
+        },
+        "velocity": {
+          "x": -2.2630354009717113,
+          "y": -0.022574820212157565,
+          "z": 0.023167187089748187
+        },
+        "needsPath": false
+      },
+      {
+        "id": 2,
+        "state": "Attached",
+        "age": 16,
+        "biomass": 8,
+        "distanceToCore": 0.16,
+        "position": {
+          "x": 2.635894957388053,
+          "y": 0.12398941479699309,
+          "z": 0.13846234800465976
+        },
+        "velocity": {
+          "x": 1.6125006994679625,
+          "y": 0.001957428350723156,
+          "z": -1.5887389390631552
+        },
+        "needsPath": false
+      },
+      {
+        "id": 3,
+        "state": "Attached",
+        "age": 16,
+        "biomass": 8,
+        "distanceToCore": 0.168,
+        "position": {
+          "x": 2.553441204688407,
+          "y": 0.12200002424655194,
+          "z": 0.09175355279296742
+        },
+        "velocity": {
+          "x": -0.2625999410013158,
+          "y": 0.039937788292319365,
+          "z": 2.247237331746346
+        },
+        "needsPath": false
+      },
+      {
+        "id": 4,
+        "state": "Attached",
+        "age": 16,
+        "biomass": 8,
+        "distanceToCore": 0.168,
+        "position": {
+          "x": 2.553441204688407,
+          "y": 0.12200002424655194,
+          "z": 0.09175355279296742
+        },
+        "velocity": {
+          "x": -1.3999424385889547,
+          "y": -0.5106090928409188,
+          "z": -1.7519815989175758
+        },
+        "needsPath": false
+      },
+      {
+        "id": 5,
+        "state": "Attached",
+        "age": 16,
+        "biomass": 8,
+        "distanceToCore": 0.131,
+        "position": {
+          "x": 2.597678927634593,
+          "y": 0.12200002424655194,
+          "z": 0.08394922672994963
+        },
+        "velocity": {
+          "x": 2.2395538129838855,
+          "y": -0.08891014304879624,
+          "z": 0.4170416348059049
+        },
+        "needsPath": false
+      },
+      {
+        "id": 6,
+        "state": "Attached",
+        "age": 16,
+        "biomass": 8,
+        "distanceToCore": 0.231,
+        "position": {
+          "x": 2.5858155587860914,
+          "y": 0.27354677080069634,
+          "z": 0.13014420400400692
+        },
+        "velocity": {
+          "x": -1.9097261229153784,
+          "y": 0.057123146623599685,
+          "z": 1.1964267726931108
+        },
+        "needsPath": false
+      },
+      {
+        "id": 7,
+        "state": "Attached",
+        "age": 8.1,
+        "biomass": 8,
+        "distanceToCore": 0.102,
+        "position": {
+          "x": 2.786220970518321,
+          "y": 0.12209649379887169,
+          "z": -0.014100176390495047
+        },
+        "velocity": {
+          "x": 1.6584305709890002,
+          "y": 0.12219774489147711,
+          "z": -1.522896203766463
+        },
+        "needsPath": false
+      },
+      {
+        "id": 8,
+        "state": "Attached",
+        "age": 8,
+        "biomass": 8,
+        "distanceToCore": 0.043,
+        "position": {
+          "x": 2.711855189319233,
+          "y": 0.1217766958866125,
+          "z": 0.019745279983473044
+        },
+        "velocity": {
+          "x": 2.216784867606716,
+          "y": 0.07922496673771817,
+          "z": 0.4064871749133055
+        },
+        "needsPath": false
+      },
+      {
+        "id": 9,
+        "state": "Reattaching",
+        "age": 7.9,
+        "biomass": 8,
+        "distanceToCore": 0.012,
+        "position": {
+          "x": 2.678148207043147,
+          "y": 0.12183875497593938,
+          "z": -0.0034586972295280348
+        },
+        "velocity": {
+          "x": -1.3795301884826916,
+          "y": 0.004268402316758291,
+          "z": -1.7968609059702596
+        },
+        "needsPath": false
+      },
+      {
+        "id": 10,
+        "state": "Reattaching",
+        "age": 7.9,
+        "biomass": 8,
+        "distanceToCore": 0.013,
+        "position": {
+          "x": 2.6751426532953877,
+          "y": 0.12177989954760549,
+          "z": -0.004991573562615167
+        },
+        "velocity": {
+          "x": -0.19957300736993755,
+          "y": -0.22474275293966756,
+          "z": 2.254099091786621
+        },
+        "needsPath": false
+      },
+      {
+        "id": 11,
+        "state": "Reattaching",
+        "age": 7.8,
+        "biomass": 8,
+        "distanceToCore": 0.022,
+        "position": {
+          "x": 2.7059436817770353,
+          "y": 0.1253676025837465,
+          "z": -0.011009186733635993
+        },
+        "velocity": {
+          "x": -1.9157213072893198,
+          "y": 0.04940513560787119,
+          "z": 1.2010705231432237
+        },
+        "needsPath": false
+      },
+      {
+        "id": 12,
+        "state": "Reattaching",
+        "age": 7.8,
+        "biomass": 8,
+        "distanceToCore": 0.052,
+        "position": {
+          "x": 2.7345673858066024,
+          "y": 0.12898833771474222,
+          "z": -0.0021724370093345663
+        },
+        "velocity": {
+          "x": -2.2620225698616636,
+          "y": 0.010153559779338683,
+          "z": -0.014161829675710686
+        },
+        "needsPath": false
+      },
+      {
+        "id": 13,
+        "state": "Ballistic",
+        "age": 0.133,
+        "biomass": 8,
+        "distanceToCore": 5.129,
+        "position": {
+          "x": -0.8617933519399408,
+          "y": 1.1800000000000002,
+          "z": 3.5377190511179046
+        },
+        "velocity": {
+          "x": -22.05061690756531,
+          "y": 2.100000000000002,
+          "z": 20.200171374682498
+        },
+        "needsPath": false
+      },
+      {
+        "id": 14,
+        "state": "Ballistic",
+        "age": 0.067,
+        "biomass": 8,
+        "distanceToCore": 3.065,
+        "position": {
+          "x": -0.19404675093024104,
+          "y": 1.02,
+          "z": -0.5649818967407777
+        },
+        "velocity": {
+          "x": -29.44732341428933,
+          "y": 3.300000000000003,
+          "z": -5.208816881499573
+        },
+        "needsPath": false
+      }
+    ]
+  ],
+  "simulationMs": {
+    "average": 2.085,
+    "p95": 4.252,
+    "maximum": 6.363
+  },
+  "meshingMs": {
+    "average": 2.247,
+    "p95": 2.533,
+    "maximum": 3.568
+  },
+  "meshingJobsMs": {
+    "average": 0.857,
+    "p95": 1.899,
+    "maximum": 3.547
+  },
+  "meshingJobsByResolution": {
+    "24": {
+      "average": 0.484,
+      "p95": 0.528,
+      "maximum": 1.851
+    },
+    "32": {
+      "average": 1.884,
+      "p95": 2.12,
+      "maximum": 3.547
+    }
+  },
+  "polygonizationMs": {
+    "average": 0.468,
+    "p95": 0.858,
+    "maximum": 2.465
+  },
+  "fieldAndSetupMs": {
+    "average": 0.389,
+    "p95": 1.05,
+    "maximum": 2.387
+  },
+  "meshingJobsOver8Ms": 0,
+  "slowestMeshingJobs": [
+    {
+      "resolution": 32,
+      "durationMs": 3.547,
+      "polygonizationMs": 2.465,
+      "polygonizationVertices": 8028,
+      "fieldAndSetupMs": 1.082
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.395,
+      "polygonizationMs": 2.126,
+      "polygonizationVertices": 8040,
+      "fieldAndSetupMs": 1.269
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.239,
+      "polygonizationMs": 2.199,
+      "polygonizationVertices": 8028,
+      "fieldAndSetupMs": 1.041
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.231,
+      "polygonizationMs": 0.843,
+      "polygonizationVertices": 8028,
+      "fieldAndSetupMs": 2.387
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.105,
+      "polygonizationMs": 2.036,
+      "polygonizationVertices": 8364,
+      "fieldAndSetupMs": 1.069
+    }
+  ],
+  "surfaceVerticesByResolution": {
+    "24": {
+      "maximum": 3336,
+      "average": 2893
+    },
+    "32": {
+      "maximum": 8304,
+      "average": 8022
+    }
+  },
+  "combinedFrameMs": {
+    "average": 4.827,
+    "p95": 7.09,
+    "maximum": 9.108
+  },
+  "runtimeDiagnostics": {
+    "measuredWallMs": 4353.031,
+    "measuredCpuMs": 5704,
+    "cpuToWallRatio": 1.31,
+    "eventLoopUtilization": 1,
+    "gc": {
+      "samples": 0,
+      "average": 0,
+      "p95": 0,
+      "maximum": 0
+    }
+  },
+  "pendingVisualJobs": 0,
+  "telemetry": [
+    {
+      "simulation": {
+        "samples": 900,
+        "averageMs": 0.611755333333335,
+        "p95Ms": 1.529700000000048,
+        "maximumMs": 2.8055999999996857
+      },
+      "meshing": {
+        "samples": 1222,
+        "averageMs": 0.8333802782323919,
+        "p95Ms": 1.8511000000000877,
+        "maximumMs": 2.8835000000003674
+      },
+      "presentation": {
+        "samples": 900,
+        "averageMs": 0.0698599999999989,
+        "p95Ms": 0.11099999999987631,
+        "maximumMs": 1.0918000000001484
+      },
+      "visualJobWait": {
+        "samples": 1222,
+        "averageMs": 1.163567921440263,
+        "p95Ms": 2.176400000000285,
+        "maximumMs": 5.808899999999994
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6353504,
+        "estimatedGpuBytes": 2648608
+      }
+    },
+    {
+      "simulation": {
+        "samples": 900,
+        "averageMs": 0.6184257777777781,
+        "p95Ms": 1.6237999999998465,
+        "maximumMs": 2.931799999999839
+      },
+      "meshing": {
+        "samples": 1120,
+        "averageMs": 0.8830626785714291,
+        "p95Ms": 1.9399000000000797,
+        "maximumMs": 3.546899999999823
+      },
+      "presentation": {
+        "samples": 900,
+        "averageMs": 0.05407855555555292,
+        "p95Ms": 0.08529999999996107,
+        "maximumMs": 1.043199999999615
+      },
+      "visualJobWait": {
+        "samples": 1120,
+        "averageMs": 0.8530799107142938,
+        "p95Ms": 1.9335999999998421,
+        "maximumMs": 5.183399999999892
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6353504,
+        "estimatedGpuBytes": 2648608
+      }
+    }
+  ],
+  "heapUsedMb": 90.41,
+  "acceptance": {
+    "mode": "smoke",
+    "skipped": true,
+    "passed": null,
+    "criteria": []
+  }
+}

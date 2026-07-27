@@ -1,0 +1,433 @@
+{
+  "runner": "win32/x64 node v20.20.2",
+  "seconds": 3,
+  "warmupSeconds": 0.1,
+  "warmupDrainFrames": 9,
+  "finalDrainFrames": 2,
+  "meshingBudgetMs": 2.5,
+  "frames": 180,
+  "blobs": 2,
+  "requestedBiomassPerBlob": 250,
+  "initialLivingFragments": 12,
+  "minimumLivingFragmentsDuringRun": 12,
+  "minimumBiomassPerBlobDuringRun": 250,
+  "livingFragmentsAtEnd": 12,
+  "finalBiomassPerBlob": [
+    250,
+    250
+  ],
+  "finalCorePositions": [
+    {
+      "x": -3.082669751945681,
+      "y": -7.467789696366207,
+      "z": -0.02385065034085688
+    },
+    {
+      "x": 3.0053311565346448,
+      "y": -7.442861410929658,
+      "z": 0.11938502285582397
+    }
+  ],
+  "maximumFragmentIdAtEnd": [
+    6,
+    6
+  ],
+  "finalFragmentStates": [
+    [
+      {
+        "id": 1,
+        "state": "Returning",
+        "age": 3.1,
+        "biomass": 8,
+        "distanceToCore": 1.729,
+        "position": {
+          "x": -3.05398251947398,
+          "y": -5.73912197837342,
+          "z": -0.01983178119191243
+        },
+        "velocity": {
+          "x": -0.04066002878947206,
+          "y": -2.299632947863861,
+          "z": -0.005921752934137138
+        },
+        "needsPath": false
+      },
+      {
+        "id": 2,
+        "state": "Returning",
+        "age": 3.1,
+        "biomass": 8,
+        "distanceToCore": 1.67,
+        "position": {
+          "x": -3.0820458180988215,
+          "y": -5.7983060057088105,
+          "z": -0.011612137175201124
+        },
+        "velocity": {
+          "x": -0.0013064033532428354,
+          "y": -2.299928257710464,
+          "z": -0.018119125120527706
+        },
+        "needsPath": false
+      },
+      {
+        "id": 3,
+        "state": "Returning",
+        "age": 3.1,
+        "biomass": 8,
+        "distanceToCore": 1.704,
+        "position": {
+          "x": -3.0709030108432684,
+          "y": -5.7642586604082675,
+          "z": -0.03649117374299544
+        },
+        "velocity": {
+          "x": -0.01716879587779996,
+          "y": -2.299867484820144,
+          "z": 0.017742173350580523
+        },
+        "needsPath": false
+      },
+      {
+        "id": 4,
+        "state": "Returning",
+        "age": 3.1,
+        "biomass": 8,
+        "distanceToCore": 1.713,
+        "position": {
+          "x": -3.0623447599195632,
+          "y": -5.754544402236508,
+          "z": -0.006927013745454813
+        },
+        "velocity": {
+          "x": -0.029194979802134036,
+          "y": -2.2996866438828523,
+          "z": -0.024269180069258177
+        },
+        "needsPath": false
+      },
+      {
+        "id": 5,
+        "state": "Returning",
+        "age": 3.1,
+        "biomass": 8,
+        "distanceToCore": 1.665,
+        "position": {
+          "x": -3.085305166940011,
+          "y": -5.802588957909104,
+          "z": -0.022621835852430754
+        },
+        "velocity": {
+          "x": 0.0034513639997424406,
+          "y": -2.2999964648245808,
+          "z": -0.002085636830434015
+        },
+        "needsPath": false
+      },
+      {
+        "id": 6,
+        "state": "Returning",
+        "age": 3.1,
+        "biomass": 8,
+        "distanceToCore": 1.726,
+        "position": {
+          "x": -3.056824349250033,
+          "y": -5.742124938163966,
+          "z": -0.02967026238766214
+        },
+        "velocity": {
+          "x": -0.036738401237643714,
+          "y": -2.2996929755042395,
+          "z": 0.007906218501610544
+        },
+        "needsPath": false
+      }
+    ],
+    [
+      {
+        "id": 1,
+        "state": "Returning",
+        "age": 3.1,
+        "biomass": 8,
+        "distanceToCore": 1.662,
+        "position": {
+          "x": 3.0279581160356916,
+          "y": -5.781458538608339,
+          "z": 0.11062397413070485
+        },
+        "velocity": {
+          "x": -0.033757282052722104,
+          "y": -2.2997141410655697,
+          "z": 0.013240668089640334
+        },
+        "needsPath": false
+      },
+      {
+        "id": 2,
+        "state": "Returning",
+        "age": 3.1,
+        "biomass": 8,
+        "distanceToCore": 1.644,
+        "position": {
+          "x": 3.0034293179505798,
+          "y": -5.798705876555617,
+          "z": 0.11965789984518671
+        },
+        "velocity": {
+          "x": 0.002196691105962323,
+          "y": -2.2999989509748,
+          "z": 0.000007939714763149919
+        },
+        "needsPath": false
+      },
+      {
+        "id": 3,
+        "state": "Returning",
+        "age": 3.1,
+        "biomass": 8,
+        "distanceToCore": 1.707,
+        "position": {
+          "x": 3.0149614723276237,
+          "y": -5.73602855955658,
+          "z": 0.09144657496167312
+        },
+        "velocity": {
+          "x": -0.01430526714023106,
+          "y": -2.2996047372997896,
+          "z": 0.040167294163828
+        },
+        "needsPath": false
+      },
+      {
+        "id": 4,
+        "state": "Returning",
+        "age": 3.1,
+        "biomass": 8,
+        "distanceToCore": 1.631,
+        "position": {
+          "x": 3.02053671074993,
+          "y": -5.811916416811343,
+          "z": 0.1205981350460321
+        },
+        "velocity": {
+          "x": -0.02334094766665018,
+          "y": -2.2998811381673434,
+          "z": -0.0013965901835279182
+        },
+        "needsPath": false
+      },
+      {
+        "id": 5,
+        "state": "Returning",
+        "age": 3.1,
+        "biomass": 8,
+        "distanceToCore": 1.681,
+        "position": {
+          "x": 2.9972386018315142,
+          "y": -5.7621489818712215,
+          "z": 0.10764168518789113
+        },
+        "velocity": {
+          "x": 0.011104763455382916,
+          "y": -2.2999073985673313,
+          "z": 0.01739661587416161
+        },
+        "needsPath": false
+      },
+      {
+        "id": 6,
+        "state": "Returning",
+        "age": 3.1,
+        "biomass": 8,
+        "distanceToCore": 1.684,
+        "position": {
+          "x": 3.0274018668652385,
+          "y": -5.758878472689444,
+          "z": 0.10142941495142063
+        },
+        "velocity": {
+          "x": -0.03247409389684375,
+          "y": -2.2996200156070223,
+          "z": 0.026329015270321332
+        },
+        "needsPath": false
+      }
+    ]
+  ],
+  "simulationMs": {
+    "average": 2.056,
+    "p95": 4.132,
+    "maximum": 4.762
+  },
+  "meshingMs": {
+    "average": 2.188,
+    "p95": 2.428,
+    "maximum": 3.449
+  },
+  "meshingJobsMs": {
+    "average": 0.949,
+    "p95": 2.074,
+    "maximum": 3.308
+  },
+  "meshingJobsByResolution": {
+    "24": {
+      "average": 0.496,
+      "p95": 0.551,
+      "maximum": 1.666
+    },
+    "32": {
+      "average": 1.959,
+      "p95": 2.361,
+      "maximum": 3.308
+    }
+  },
+  "polygonizationMs": {
+    "average": 0.549,
+    "p95": 1.08,
+    "maximum": 2.149
+  },
+  "fieldAndSetupMs": {
+    "average": 0.4,
+    "p95": 1.059,
+    "maximum": 1.504
+  },
+  "meshingJobsOver8Ms": 0,
+  "slowestMeshingJobs": [
+    {
+      "resolution": 32,
+      "durationMs": 3.308,
+      "polygonizationMs": 2.057,
+      "polygonizationVertices": 10872,
+      "fieldAndSetupMs": 1.25
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.054,
+      "polygonizationMs": 2.093,
+      "polygonizationVertices": 11904,
+      "fieldAndSetupMs": 0.961
+    },
+    {
+      "resolution": 32,
+      "durationMs": 2.988,
+      "polygonizationMs": 2.149,
+      "polygonizationVertices": 10428,
+      "fieldAndSetupMs": 0.84
+    },
+    {
+      "resolution": 32,
+      "durationMs": 2.885,
+      "polygonizationMs": 1.381,
+      "polygonizationVertices": 11232,
+      "fieldAndSetupMs": 1.504
+    },
+    {
+      "resolution": 32,
+      "durationMs": 2.644,
+      "polygonizationMs": 1.839,
+      "polygonizationVertices": 9552,
+      "fieldAndSetupMs": 0.804
+    }
+  ],
+  "surfaceVerticesByResolution": {
+    "24": {
+      "maximum": 3144,
+      "average": 2865
+    },
+    "32": {
+      "maximum": 10848,
+      "average": 10296
+    }
+  },
+  "combinedFrameMs": {
+    "average": 4.831,
+    "p95": 7.01,
+    "maximum": 8.527
+  },
+  "runtimeDiagnostics": {
+    "measuredWallMs": 874.281,
+    "measuredCpuMs": 1437,
+    "cpuToWallRatio": 1.644,
+    "eventLoopUtilization": 1,
+    "gc": {
+      "samples": 0,
+      "average": 0,
+      "p95": 0,
+      "maximum": 0
+    }
+  },
+  "pendingVisualJobs": 0,
+  "telemetry": [
+    {
+      "simulation": {
+        "samples": 180,
+        "averageMs": 0.5950077777777817,
+        "p95Ms": 1.299600000000055,
+        "maximumMs": 2.6691000000000713
+      },
+      "meshing": {
+        "samples": 219,
+        "averageMs": 0.9220547945205472,
+        "p95Ms": 1.9574999999999818,
+        "maximumMs": 2.9884000000000697
+      },
+      "presentation": {
+        "samples": 180,
+        "averageMs": 0.1009438888888888,
+        "p95Ms": 0.16099999999994452,
+        "maximumMs": 1.0121000000000322
+      },
+      "visualJobWait": {
+        "samples": 219,
+        "averageMs": 1.1398356164383598,
+        "p95Ms": 2.2729000000000497,
+        "maximumMs": 5.125999999999976
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6353504,
+        "estimatedGpuBytes": 2648608
+      }
+    },
+    {
+      "simulation": {
+        "samples": 180,
+        "averageMs": 0.5606750000000059,
+        "p95Ms": 1.2147999999999683,
+        "maximumMs": 2.212400000000116
+      },
+      "meshing": {
+        "samples": 194,
+        "averageMs": 0.9798463917525807,
+        "p95Ms": 2.1142999999999574,
+        "maximumMs": 3.307900000000018
+      },
+      "presentation": {
+        "samples": 180,
+        "averageMs": 0.08038555555555339,
+        "p95Ms": 0.13850000000002183,
+        "maximumMs": 0.3084999999999809
+      },
+      "visualJobWait": {
+        "samples": 194,
+        "averageMs": 0.7926314432989683,
+        "p95Ms": 1.9882000000000062,
+        "maximumMs": 4.476599999999962
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6353504,
+        "estimatedGpuBytes": 2648608
+      }
+    }
+  ],
+  "heapUsedMb": 91.61,
+  "acceptance": {
+    "mode": "smoke",
+    "skipped": true,
+    "passed": null,
+    "criteria": []
+  }
+}

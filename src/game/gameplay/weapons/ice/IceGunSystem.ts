@@ -550,7 +550,7 @@ export class IceGunSystem implements Disposable {
       return;
     }
 
-    if (isFreezeResistant(metadata.characterId)) {
+    if (takesDirectColdDamage(metadata.characterId)) {
       metadata.damageable.applyDamage(
         IceConfig.freeze.bossColdDamage,
         direction.clone(),
@@ -806,8 +806,18 @@ export class IceGunSystem implements Disposable {
   }
 }
 
-function isFreezeResistant(characterId: CharacterId | undefined): boolean {
-  return characterId === "strider" || characterId === "gunship";
+/**
+ * Estos personajes reciben cada tick del spray como daño directo y nunca
+ * entran al flujo de estatua. En el Blob esto es especialmente importante:
+ * el damageable de cada esfera exterior usa cualquier daño positivo para
+ * desprenderse, mientras que el damageable del núcleo descuenta su vida.
+ */
+function takesDirectColdDamage(characterId: CharacterId | undefined): boolean {
+  return (
+    characterId === "blob" ||
+    characterId === "strider" ||
+    characterId === "gunship"
+  );
 }
 
 function normalizedOrForward(direction: Vector3): Vector3 {

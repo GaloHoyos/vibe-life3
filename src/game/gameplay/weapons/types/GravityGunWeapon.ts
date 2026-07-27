@@ -231,7 +231,7 @@ export class GravityGunWeapon extends Weapon {
     if (!hit) return;
     const grabbable = resolveGrabbable(hit);
     if (!grabbable) {
-      this.puntShoveNpc(hit, context);
+      this.damagePuntedNpc(hit, context);
       return;
     }
 
@@ -249,28 +249,39 @@ export class GravityGunWeapon extends Weapon {
       this.name,
       context.now,
     );
+    if (grabbable.kind === "flyer") {
+      this.damagePuntedNpc(hit, context);
+    }
   }
 
   /**
-   * Punt directo sobre un NPC terrestre vivo (no agarrable): empujón con daño
-   * chico, como la physcannon contra headcrabs. `applyDamage` ya dispara el
-   * descontrol del motor (reactToHit) con la dirección del golpe.
+   * Daño chico del punt directo sobre un NPC vivo, terrestre o dinámico, como
+   * la physcannon contra headcrabs. `applyDamage` ya dispara el descontrol del
+   * motor (reactToHit) o desprende la parte física alcanzada.
    */
-  private puntShoveNpc(hit: RaycastHit, context: WeaponFireContext): void {
-    if (hit.metadata?.kind !== "npc" || !hit.metadata.damageable?.isAlive()) {
+  private damagePuntedNpc(hit: RaycastHit, context: WeaponFireContext): void {
+    const metadata = hit.metadata;
+    const damageable = metadata?.damageable;
+    if (metadata?.kind !== "npc" || !damageable?.isAlive()) {
       return;
     }
-    hit.metadata.damageable.applyDamage(
+    // Algunos NPCs dinámicos (por ejemplo, una esfera exterior del Blob)
+    // reclasifican su metadata durante applyDamage. Conservar la identidad del
+    // impacto para que weapon.hit siga describiendo el objetivo alcanzado.
+    const targetId = metadata.id;
+    const surfaceKind = metadata.kind;
+    const hitPartName = metadata.bodyPart?.name;
+    damageable.applyDamage(
       CONFIG.puntNpcDamage,
       context.direction.clone(),
-      hit.metadata.bodyPart?.name,
+      hitPartName,
       "player",
       hit.point,
     );
     this.context.eventBus.emit("weapon.hit", {
       weaponName: this.name,
-      targetId: hit.metadata.id,
-      surfaceKind: hit.metadata.kind,
+      targetId,
+      surfaceKind,
       point: hit.point,
       normal: hit.normal,
       damage: CONFIG.puntNpcDamage,

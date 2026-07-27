@@ -1,0 +1,188 @@
+import { default as __vite_glob_0_0 } from "/src/engine/assets/textures/architecture/aged_plaster/albedo.png?import&url";import { default as __vite_glob_0_1 } from "/src/engine/assets/textures/architecture/brick_factory/albedo.jpg?import&url";import { default as __vite_glob_0_2 } from "/src/engine/assets/textures/architecture/brick_factory/ao.jpg?import&url";import { default as __vite_glob_0_3 } from "/src/engine/assets/textures/architecture/brick_factory/normal.jpg?import&url";import { default as __vite_glob_0_4 } from "/src/engine/assets/textures/architecture/brick_factory/roughness.jpg?import&url";import { default as __vite_glob_0_5 } from "/src/engine/assets/textures/architecture/concrete_floor/albedo.png?import&url";import { default as __vite_glob_0_6 } from "/src/engine/assets/textures/architecture/industrial_wall/albedo.png?import&url";import { default as __vite_glob_0_7 } from "/src/engine/assets/textures/architecture/metal_panel/albedo.png?import&url";import { default as __vite_glob_0_8 } from "/src/engine/assets/textures/architecture/roof_clay/albedo.jpg?import&url";import { default as __vite_glob_0_9 } from "/src/engine/assets/textures/architecture/roof_clay/ao.jpg?import&url";import { default as __vite_glob_0_10 } from "/src/engine/assets/textures/architecture/roof_clay/normal.jpg?import&url";import { default as __vite_glob_0_11 } from "/src/engine/assets/textures/architecture/roof_clay/roughness.jpg?import&url";import { default as __vite_glob_0_12 } from "/src/engine/assets/textures/architecture/rusted_metal/albedo.png?import&url";import { default as __vite_glob_0_13 } from "/src/engine/assets/textures/architecture/wood_planks/albedo.png?import&url";import { default as __vite_glob_0_14 } from "/src/engine/assets/textures/environment/city_asphalt/albedo.png?import&url";import { default as __vite_glob_0_15 } from "/src/engine/assets/textures/environment/grass/albedo.jpg?import&url";import { default as __vite_glob_0_16 } from "/src/engine/assets/textures/environment/grass/ao.jpg?import&url";import { default as __vite_glob_0_17 } from "/src/engine/assets/textures/environment/grass/normal.jpg?import&url";import { default as __vite_glob_0_18 } from "/src/engine/assets/textures/environment/grass/roughness.jpg?import&url";import { default as __vite_glob_0_19 } from "/src/engine/assets/textures/environment/rock/albedo.jpg?import&url";import { default as __vite_glob_0_20 } from "/src/engine/assets/textures/environment/rock/ao.jpg?import&url";import { default as __vite_glob_0_21 } from "/src/engine/assets/textures/environment/rock/normal.jpg?import&url";import { default as __vite_glob_0_22 } from "/src/engine/assets/textures/environment/rock/roughness.jpg?import&url";import { default as __vite_glob_0_23 } from "/src/engine/assets/textures/environment/sand/albedo.jpg?import&url";import { default as __vite_glob_0_24 } from "/src/engine/assets/textures/environment/sand/ao.jpg?import&url";import { default as __vite_glob_0_25 } from "/src/engine/assets/textures/environment/sand/normal.jpg?import&url";import { default as __vite_glob_0_26 } from "/src/engine/assets/textures/environment/sand/roughness.jpg?import&url";import { default as __vite_glob_0_27 } from "/src/engine/assets/textures/environment/snow/albedo.jpg?import&url";import { default as __vite_glob_0_28 } from "/src/engine/assets/textures/environment/snow/ao.jpg?import&url";import { default as __vite_glob_0_29 } from "/src/engine/assets/textures/environment/snow/normal.jpg?import&url";import { default as __vite_glob_0_30 } from "/src/engine/assets/textures/environment/snow/roughness.jpg?import&url";import { default as __vite_glob_0_31 } from "/src/engine/assets/textures/props/control_panel/albedo.png?import&url";import { default as __vite_glob_0_32 } from "/src/engine/assets/textures/props/crate_wood/albedo.png?import&url";import { default as __vite_glob_0_33 } from "/src/engine/assets/textures/props/hazard_stripes/albedo.png?import&url";import { NoColorSpace, RepeatWrapping, SRGBColorSpace, TextureLoader } from "/node_modules/.vite/deps/three.js?v=36459d01";
+const textureUrls = /* #__PURE__ */ Object.assign({"../../assets/textures/architecture/aged_plaster/albedo.png": __vite_glob_0_0,"../../assets/textures/architecture/brick_factory/albedo.jpg": __vite_glob_0_1,"../../assets/textures/architecture/brick_factory/ao.jpg": __vite_glob_0_2,"../../assets/textures/architecture/brick_factory/normal.jpg": __vite_glob_0_3,"../../assets/textures/architecture/brick_factory/roughness.jpg": __vite_glob_0_4,"../../assets/textures/architecture/concrete_floor/albedo.png": __vite_glob_0_5,"../../assets/textures/architecture/industrial_wall/albedo.png": __vite_glob_0_6,"../../assets/textures/architecture/metal_panel/albedo.png": __vite_glob_0_7,"../../assets/textures/architecture/roof_clay/albedo.jpg": __vite_glob_0_8,"../../assets/textures/architecture/roof_clay/ao.jpg": __vite_glob_0_9,"../../assets/textures/architecture/roof_clay/normal.jpg": __vite_glob_0_10,"../../assets/textures/architecture/roof_clay/roughness.jpg": __vite_glob_0_11,"../../assets/textures/architecture/rusted_metal/albedo.png": __vite_glob_0_12,"../../assets/textures/architecture/wood_planks/albedo.png": __vite_glob_0_13,"../../assets/textures/environment/city_asphalt/albedo.png": __vite_glob_0_14,"../../assets/textures/environment/grass/albedo.jpg": __vite_glob_0_15,"../../assets/textures/environment/grass/ao.jpg": __vite_glob_0_16,"../../assets/textures/environment/grass/normal.jpg": __vite_glob_0_17,"../../assets/textures/environment/grass/roughness.jpg": __vite_glob_0_18,"../../assets/textures/environment/rock/albedo.jpg": __vite_glob_0_19,"../../assets/textures/environment/rock/ao.jpg": __vite_glob_0_20,"../../assets/textures/environment/rock/normal.jpg": __vite_glob_0_21,"../../assets/textures/environment/rock/roughness.jpg": __vite_glob_0_22,"../../assets/textures/environment/sand/albedo.jpg": __vite_glob_0_23,"../../assets/textures/environment/sand/ao.jpg": __vite_glob_0_24,"../../assets/textures/environment/sand/normal.jpg": __vite_glob_0_25,"../../assets/textures/environment/sand/roughness.jpg": __vite_glob_0_26,"../../assets/textures/environment/snow/albedo.jpg": __vite_glob_0_27,"../../assets/textures/environment/snow/ao.jpg": __vite_glob_0_28,"../../assets/textures/environment/snow/normal.jpg": __vite_glob_0_29,"../../assets/textures/environment/snow/roughness.jpg": __vite_glob_0_30,"../../assets/textures/props/control_panel/albedo.png": __vite_glob_0_31,"../../assets/textures/props/crate_wood/albedo.png": __vite_glob_0_32,"../../assets/textures/props/hazard_stripes/albedo.png": __vite_glob_0_33
+
+
+
+});
+function resolveUrl(relative) {
+  const key = `../../assets/textures/${relative}`;
+  const url = textureUrls[key];
+  if (!url) {
+    throw new Error(`Texture not found: ${relative} (looked up "${key}")`);
+  }
+  return url;
+}
+export const TextureSets = {
+  cityAsphalt: {
+    maps: {
+      albedo: "environment/city_asphalt/albedo.png"
+    },
+    tiling: 12,
+    tileSize: 2,
+    roughness: 0.94,
+    metalness: 0
+  },
+  weatheredConcrete: {
+    maps: {
+      albedo: "architecture/concrete_floor/albedo.png"
+    },
+    tiling: 4,
+    tileSize: 2,
+    roughness: 0.9,
+    metalness: 0.02
+  },
+  industrialWall: {
+    maps: {
+      albedo: "architecture/industrial_wall/albedo.png"
+    },
+    tiling: 3,
+    tileSize: 2,
+    roughness: 0.86,
+    metalness: 0.06
+  },
+  agedPlaster: {
+    maps: {
+      albedo: "architecture/aged_plaster/albedo.png"
+    },
+    tiling: 3,
+    tileSize: 2,
+    roughness: 0.94,
+    metalness: 0.01
+  },
+  paintedMetal: {
+    maps: {
+      albedo: "architecture/metal_panel/albedo.png"
+    },
+    tiling: 3,
+    tileSize: 2,
+    roughness: 0.64,
+    metalness: 0.08
+  },
+  rustedMetal: {
+    maps: {
+      albedo: "architecture/rusted_metal/albedo.png"
+    },
+    tiling: 3,
+    tileSize: 2,
+    roughness: 0.86,
+    metalness: 0.06
+  },
+  darkWoodPlanks: {
+    maps: {
+      albedo: "architecture/wood_planks/albedo.png"
+    },
+    tiling: 2,
+    tileSize: 2,
+    roughness: 0.84,
+    metalness: 0.01
+  },
+  crateWood: {
+    maps: {
+      albedo: "props/crate_wood/albedo.png"
+    },
+    tiling: 2,
+    tileSize: 1,
+    roughness: 0.86,
+    metalness: 0.01
+  },
+  controlPanel: {
+    maps: {
+      albedo: "props/control_panel/albedo.png"
+    },
+    tiling: 1,
+    tileSize: 1,
+    roughness: 0.42,
+    metalness: 0.1
+  },
+  hazardStripes: {
+    maps: {
+      albedo: "props/hazard_stripes/albedo.png"
+    },
+    tiling: 2,
+    tileSize: 2,
+    roughness: 0.66,
+    metalness: 0.08
+  },
+  snow: {
+    maps: {
+      albedo: "environment/snow/albedo.jpg",
+      normal: "environment/snow/normal.jpg",
+      roughness: "environment/snow/roughness.jpg",
+      ao: "environment/snow/ao.jpg"
+    },
+    tiling: 32
+  },
+  rock: {
+    maps: {
+      albedo: "environment/rock/albedo.jpg",
+      normal: "environment/rock/normal.jpg",
+      roughness: "environment/rock/roughness.jpg",
+      ao: "environment/rock/ao.jpg"
+    },
+    tiling: 16
+  },
+  grass: {
+    maps: {
+      albedo: "environment/grass/albedo.jpg",
+      normal: "environment/grass/normal.jpg",
+      roughness: "environment/grass/roughness.jpg",
+      ao: "environment/grass/ao.jpg"
+    },
+    tiling: 24
+  },
+  sand: {
+    maps: {
+      albedo: "environment/sand/albedo.jpg",
+      normal: "environment/sand/normal.jpg",
+      roughness: "environment/sand/roughness.jpg",
+      ao: "environment/sand/ao.jpg"
+    },
+    tiling: 24
+  },
+  brickFactory: {
+    maps: {
+      albedo: "architecture/brick_factory/albedo.jpg",
+      normal: "architecture/brick_factory/normal.jpg",
+      roughness: "architecture/brick_factory/roughness.jpg",
+      ao: "architecture/brick_factory/ao.jpg"
+    },
+    tiling: 2
+  },
+  roofClay: {
+    maps: {
+      albedo: "architecture/roof_clay/albedo.jpg",
+      normal: "architecture/roof_clay/normal.jpg",
+      roughness: "architecture/roof_clay/roughness.jpg",
+      ao: "architecture/roof_clay/ao.jpg"
+    },
+    tiling: 2
+  }
+};
+const loader = new TextureLoader();
+const cache = /* @__PURE__ */ new Map();
+function loadMap(relative, isColor, tiling) {
+  const tex = loader.load(resolveUrl(relative));
+  tex.colorSpace = isColor ? SRGBColorSpace : NoColorSpace;
+  tex.wrapS = RepeatWrapping;
+  tex.wrapT = RepeatWrapping;
+  tex.anisotropy = 4;
+  tex.repeat.set(tiling, tiling);
+  return tex;
+}
+export function getTextureSet(id) {
+  const cached = cache.get(id);
+  if (cached) return cached;
+  const def = TextureSets[id];
+  const set = {
+    albedo: loadMap(def.maps.albedo, true, def.tiling),
+    normal: def.maps.normal ? loadMap(def.maps.normal, false, def.tiling) : null,
+    roughness: def.maps.roughness ? loadMap(def.maps.roughness, false, def.tiling) : null,
+    ao: def.maps.ao ? loadMap(def.maps.ao, false, def.tiling) : null,
+    metallic: def.maps.metallic ? loadMap(def.maps.metallic, false, def.tiling) : null,
+    definition: def
+  };
+  cache.set(id, set);
+  return set;
+}
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIlRleHR1cmVzLnRzIl0sInNvdXJjZXNDb250ZW50IjpbIi8vLyA8cmVmZXJlbmNlIHR5cGVzPVwidml0ZS9jbGllbnRcIiAvPlxyXG5pbXBvcnQgeyBOb0NvbG9yU3BhY2UsIFJlcGVhdFdyYXBwaW5nLCBTUkdCQ29sb3JTcGFjZSwgVGV4dHVyZSwgVGV4dHVyZUxvYWRlciB9IGZyb20gJ3RocmVlJztcclxuXHJcbmNvbnN0IHRleHR1cmVVcmxzID0gaW1wb3J0Lm1ldGEuZ2xvYignLi4vLi4vYXNzZXRzL3RleHR1cmVzLyoqLyoue2pwZyxqcGVnLHBuZyx3ZWJwfScsIHtcclxuICBlYWdlcjogdHJ1ZSxcclxuICBxdWVyeTogJz91cmwnLFxyXG4gIGltcG9ydDogJ2RlZmF1bHQnLFxyXG59KSBhcyBSZWNvcmQ8c3RyaW5nLCBzdHJpbmc+O1xyXG5cclxuZnVuY3Rpb24gcmVzb2x2ZVVybChyZWxhdGl2ZTogc3RyaW5nKTogc3RyaW5nIHtcclxuICBjb25zdCBrZXkgPSBgLi4vLi4vYXNzZXRzL3RleHR1cmVzLyR7cmVsYXRpdmV9YDtcclxuICBjb25zdCB1cmwgPSB0ZXh0dXJlVXJsc1trZXldO1xyXG4gIGlmICghdXJsKSB7XHJcbiAgICB0aHJvdyBuZXcgRXJyb3IoYFRleHR1cmUgbm90IGZvdW5kOiAke3JlbGF0aXZlfSAobG9va2VkIHVwIFwiJHtrZXl9XCIpYCk7XHJcbiAgfVxyXG4gIHJldHVybiB1cmw7XHJcbn1cclxuXHJcbmV4cG9ydCBpbnRlcmZhY2UgVGV4dHVyZVNldERlZmluaXRpb24ge1xyXG4gIC8qKiBSdXRhcyByZWxhdGl2YXMgYSBgc3JjL2VuZ2luZS9hc3NldHMvdGV4dHVyZXMvYC4gU29sbyBgYWxiZWRvYCBlcyBvYmxpZ2F0b3Jpby4gKi9cclxuICBtYXBzOiB7XHJcbiAgICBhbGJlZG86IHN0cmluZztcclxuICAgIG5vcm1hbD86IHN0cmluZztcclxuICAgIHJvdWdobmVzcz86IHN0cmluZztcclxuICAgIGFvPzogc3RyaW5nO1xyXG4gICAgbWV0YWxsaWM/OiBzdHJpbmc7XHJcbiAgfTtcbiAgLyoqIFJlcGV0aWNpb25lcyBwb3IgZWplIChtaXNtbyB2YWxvciBVIHkgVikuICovXG4gIHRpbGluZzogbnVtYmVyO1xuICAvKiogVGFtYcOxbyBmw61zaWNvIGRlIHVuYSByZXBldGljacOzbi4gU2kgc2Ugb21pdGUsIGNvbnNlcnZhIGVsIFVWIGhpc3TDs3JpY28uICovXG4gIHRpbGVTaXplPzogbnVtYmVyO1xuICAvKiogSW50ZW5zaWRhZCBkZWwgbm9ybWFsIG1hcC4gMSA9IG5ldXRyYWwsID4xIGFjZW50w7phLCA8MSBzdWF2aXphLiAqL1xyXG4gIG5vcm1hbFNjYWxlPzogbnVtYmVyO1xyXG4gIC8qKiBNdWx0aXBsaWNhZG9yIGRlIHJvdWdobmVzcyBjb21iaW5hZG8gY29uIGVsIG1hcGEuICovXHJcbiAgcm91Z2huZXNzPzogbnVtYmVyO1xyXG4gIC8qKiBNdWx0aXBsaWNhZG9yIGRlIG1ldGFsbmVzcyBjb21iaW5hZG8gY29uIGVsIG1hcGEuICovXHJcbiAgbWV0YWxuZXNzPzogbnVtYmVyO1xyXG4gIC8qKiAwLTEsIGN1w6FudG8gb3NjdXJlY2UgZWwgYW1iaWVudCBvY2NsdXNpb24uICovXHJcbiAgYW9JbnRlbnNpdHk/OiBudW1iZXI7XHJcbn1cclxuXHJcbmV4cG9ydCBjb25zdCBUZXh0dXJlU2V0cyA9IHtcbiAgY2l0eUFzcGhhbHQ6IHtcbiAgICBtYXBzOiB7XG4gICAgICBhbGJlZG86ICdlbnZpcm9ubWVudC9jaXR5X2FzcGhhbHQvYWxiZWRvLnBuZycsXG4gICAgfSxcbiAgICB0aWxpbmc6IDEyLFxuICAgIHRpbGVTaXplOiAyLFxuICAgIHJvdWdobmVzczogMC45NCxcbiAgICBtZXRhbG5lc3M6IDAsXG4gIH0sXG4gIHdlYXRoZXJlZENvbmNyZXRlOiB7XG4gICAgbWFwczoge1xuICAgICAgYWxiZWRvOiAnYXJjaGl0ZWN0dXJlL2NvbmNyZXRlX2Zsb29yL2FsYmVkby5wbmcnLFxuICAgIH0sXG4gICAgdGlsaW5nOiA0LFxuICAgIHRpbGVTaXplOiAyLFxuICAgIHJvdWdobmVzczogMC45LFxuICAgIG1ldGFsbmVzczogMC4wMixcbiAgfSxcbiAgaW5kdXN0cmlhbFdhbGw6IHtcbiAgICBtYXBzOiB7XG4gICAgICBhbGJlZG86ICdhcmNoaXRlY3R1cmUvaW5kdXN0cmlhbF93YWxsL2FsYmVkby5wbmcnLFxuICAgIH0sXG4gICAgdGlsaW5nOiAzLFxuICAgIHRpbGVTaXplOiAyLFxuICAgIHJvdWdobmVzczogMC44NixcbiAgICBtZXRhbG5lc3M6IDAuMDYsXG4gIH0sXG4gIGFnZWRQbGFzdGVyOiB7XG4gICAgbWFwczoge1xuICAgICAgYWxiZWRvOiAnYXJjaGl0ZWN0dXJlL2FnZWRfcGxhc3Rlci9hbGJlZG8ucG5nJyxcbiAgICB9LFxuICAgIHRpbGluZzogMyxcbiAgICB0aWxlU2l6ZTogMixcbiAgICByb3VnaG5lc3M6IDAuOTQsXG4gICAgbWV0YWxuZXNzOiAwLjAxLFxuICB9LFxuICBwYWludGVkTWV0YWw6IHtcbiAgICBtYXBzOiB7XG4gICAgICBhbGJlZG86ICdhcmNoaXRlY3R1cmUvbWV0YWxfcGFuZWwvYWxiZWRvLnBuZycsXG4gICAgfSxcbiAgICB0aWxpbmc6IDMsXG4gICAgdGlsZVNpemU6IDIsXG4gICAgcm91Z2huZXNzOiAwLjY0LFxuICAgIG1ldGFsbmVzczogMC4wOCxcbiAgfSxcbiAgcnVzdGVkTWV0YWw6IHtcbiAgICBtYXBzOiB7XG4gICAgICBhbGJlZG86ICdhcmNoaXRlY3R1cmUvcnVzdGVkX21ldGFsL2FsYmVkby5wbmcnLFxuICAgIH0sXG4gICAgdGlsaW5nOiAzLFxuICAgIHRpbGVTaXplOiAyLFxuICAgIHJvdWdobmVzczogMC44NixcbiAgICBtZXRhbG5lc3M6IDAuMDYsXG4gIH0sXG4gIGRhcmtXb29kUGxhbmtzOiB7XG4gICAgbWFwczoge1xuICAgICAgYWxiZWRvOiAnYXJjaGl0ZWN0dXJlL3dvb2RfcGxhbmtzL2FsYmVkby5wbmcnLFxuICAgIH0sXG4gICAgdGlsaW5nOiAyLFxuICAgIHRpbGVTaXplOiAyLFxuICAgIHJvdWdobmVzczogMC44NCxcbiAgICBtZXRhbG5lc3M6IDAuMDEsXG4gIH0sXG4gIGNyYXRlV29vZDoge1xuICAgIG1hcHM6IHtcbiAgICAgIGFsYmVkbzogJ3Byb3BzL2NyYXRlX3dvb2QvYWxiZWRvLnBuZycsXG4gICAgfSxcbiAgICB0aWxpbmc6IDIsXG4gICAgdGlsZVNpemU6IDEsXG4gICAgcm91Z2huZXNzOiAwLjg2LFxuICAgIG1ldGFsbmVzczogMC4wMSxcbiAgfSxcbiAgY29udHJvbFBhbmVsOiB7XG4gICAgbWFwczoge1xuICAgICAgYWxiZWRvOiAncHJvcHMvY29udHJvbF9wYW5lbC9hbGJlZG8ucG5nJyxcbiAgICB9LFxuICAgIHRpbGluZzogMSxcbiAgICB0aWxlU2l6ZTogMSxcbiAgICByb3VnaG5lc3M6IDAuNDIsXG4gICAgbWV0YWxuZXNzOiAwLjEsXG4gIH0sXG4gIGhhemFyZFN0cmlwZXM6IHtcbiAgICBtYXBzOiB7XG4gICAgICBhbGJlZG86ICdwcm9wcy9oYXphcmRfc3RyaXBlcy9hbGJlZG8ucG5nJyxcbiAgICB9LFxuICAgIHRpbGluZzogMixcbiAgICB0aWxlU2l6ZTogMixcbiAgICByb3VnaG5lc3M6IDAuNjYsXG4gICAgbWV0YWxuZXNzOiAwLjA4LFxuICB9LFxuICBzbm93OiB7XG4gICAgbWFwczoge1xyXG4gICAgICBhbGJlZG86ICdlbnZpcm9ubWVudC9zbm93L2FsYmVkby5qcGcnLFxyXG4gICAgICBub3JtYWw6ICdlbnZpcm9ubWVudC9zbm93L25vcm1hbC5qcGcnLFxyXG4gICAgICByb3VnaG5lc3M6ICdlbnZpcm9ubWVudC9zbm93L3JvdWdobmVzcy5qcGcnLFxyXG4gICAgICBhbzogJ2Vudmlyb25tZW50L3Nub3cvYW8uanBnJyxcclxuICAgIH0sXHJcbiAgICB0aWxpbmc6IDMyLFxyXG4gIH0sXHJcbiAgcm9jazoge1xyXG4gICAgbWFwczoge1xyXG4gICAgICBhbGJlZG86ICdlbnZpcm9ubWVudC9yb2NrL2FsYmVkby5qcGcnLFxyXG4gICAgICBub3JtYWw6ICdlbnZpcm9ubWVudC9yb2NrL25vcm1hbC5qcGcnLFxyXG4gICAgICByb3VnaG5lc3M6ICdlbnZpcm9ubWVudC9yb2NrL3JvdWdobmVzcy5qcGcnLFxyXG4gICAgICBhbzogJ2Vudmlyb25tZW50L3JvY2svYW8uanBnJyxcclxuICAgIH0sXHJcbiAgICB0aWxpbmc6IDE2LFxyXG4gIH0sXHJcbiAgZ3Jhc3M6IHtcclxuICAgIG1hcHM6IHtcclxuICAgICAgYWxiZWRvOiAnZW52aXJvbm1lbnQvZ3Jhc3MvYWxiZWRvLmpwZycsXHJcbiAgICAgIG5vcm1hbDogJ2Vudmlyb25tZW50L2dyYXNzL25vcm1hbC5qcGcnLFxyXG4gICAgICByb3VnaG5lc3M6ICdlbnZpcm9ubWVudC9ncmFzcy9yb3VnaG5lc3MuanBnJyxcclxuICAgICAgYW86ICdlbnZpcm9ubWVudC9ncmFzcy9hby5qcGcnLFxyXG4gICAgfSxcclxuICAgIHRpbGluZzogMjQsXHJcbiAgfSxcclxuICBzYW5kOiB7XHJcbiAgICBtYXBzOiB7XHJcbiAgICAgIGFsYmVkbzogJ2Vudmlyb25tZW50L3NhbmQvYWxiZWRvLmpwZycsXHJcbiAgICAgIG5vcm1hbDogJ2Vudmlyb25tZW50L3NhbmQvbm9ybWFsLmpwZycsXHJcbiAgICAgIHJvdWdobmVzczogJ2Vudmlyb25tZW50L3NhbmQvcm91Z2huZXNzLmpwZycsXHJcbiAgICAgIGFvOiAnZW52aXJvbm1lbnQvc2FuZC9hby5qcGcnLFxyXG4gICAgfSxcclxuICAgIHRpbGluZzogMjQsXHJcbiAgfSxcclxuICBicmlja0ZhY3Rvcnk6IHtcclxuICAgIG1hcHM6IHtcclxuICAgICAgYWxiZWRvOiAnYXJjaGl0ZWN0dXJlL2JyaWNrX2ZhY3RvcnkvYWxiZWRvLmpwZycsXHJcbiAgICAgIG5vcm1hbDogJ2FyY2hpdGVjdHVyZS9icmlja19mYWN0b3J5L25vcm1hbC5qcGcnLFxyXG4gICAgICByb3VnaG5lc3M6ICdhcmNoaXRlY3R1cmUvYnJpY2tfZmFjdG9yeS9yb3VnaG5lc3MuanBnJyxcclxuICAgICAgYW86ICdhcmNoaXRlY3R1cmUvYnJpY2tfZmFjdG9yeS9hby5qcGcnLFxyXG4gICAgfSxcclxuICAgIHRpbGluZzogMixcclxuICB9LFxyXG4gIHJvb2ZDbGF5OiB7XHJcbiAgICBtYXBzOiB7XHJcbiAgICAgIGFsYmVkbzogJ2FyY2hpdGVjdHVyZS9yb29mX2NsYXkvYWxiZWRvLmpwZycsXHJcbiAgICAgIG5vcm1hbDogJ2FyY2hpdGVjdHVyZS9yb29mX2NsYXkvbm9ybWFsLmpwZycsXHJcbiAgICAgIHJvdWdobmVzczogJ2FyY2hpdGVjdHVyZS9yb29mX2NsYXkvcm91Z2huZXNzLmpwZycsXHJcbiAgICAgIGFvOiAnYXJjaGl0ZWN0dXJlL3Jvb2ZfY2xheS9hby5qcGcnLFxyXG4gICAgfSxcclxuICAgIHRpbGluZzogMixcclxuICB9LFxyXG59IGFzIGNvbnN0IHNhdGlzZmllcyBSZWNvcmQ8c3RyaW5nLCBUZXh0dXJlU2V0RGVmaW5pdGlvbj47XHJcblxyXG5leHBvcnQgdHlwZSBUZXh0dXJlU2V0SWQgPSBrZXlvZiB0eXBlb2YgVGV4dHVyZVNldHM7XHJcblxyXG5leHBvcnQgaW50ZXJmYWNlIExvYWRlZFRleHR1cmVTZXQge1xyXG4gIGFsYmVkbzogVGV4dHVyZTtcclxuICBub3JtYWw6IFRleHR1cmUgfCBudWxsO1xyXG4gIHJvdWdobmVzczogVGV4dHVyZSB8IG51bGw7XHJcbiAgYW86IFRleHR1cmUgfCBudWxsO1xyXG4gIG1ldGFsbGljOiBUZXh0dXJlIHwgbnVsbDtcclxuICBkZWZpbml0aW9uOiBUZXh0dXJlU2V0RGVmaW5pdGlvbjtcclxufVxyXG5cclxuY29uc3QgbG9hZGVyID0gbmV3IFRleHR1cmVMb2FkZXIoKTtcclxuY29uc3QgY2FjaGUgPSBuZXcgTWFwPFRleHR1cmVTZXRJZCwgTG9hZGVkVGV4dHVyZVNldD4oKTtcclxuXHJcbmZ1bmN0aW9uIGxvYWRNYXAocmVsYXRpdmU6IHN0cmluZywgaXNDb2xvcjogYm9vbGVhbiwgdGlsaW5nOiBudW1iZXIpOiBUZXh0dXJlIHtcclxuICBjb25zdCB0ZXggPSBsb2FkZXIubG9hZChyZXNvbHZlVXJsKHJlbGF0aXZlKSk7XHJcbiAgdGV4LmNvbG9yU3BhY2UgPSBpc0NvbG9yID8gU1JHQkNvbG9yU3BhY2UgOiBOb0NvbG9yU3BhY2U7XHJcbiAgdGV4LndyYXBTID0gUmVwZWF0V3JhcHBpbmc7XHJcbiAgdGV4LndyYXBUID0gUmVwZWF0V3JhcHBpbmc7XHJcbiAgdGV4LmFuaXNvdHJvcHkgPSA0O1xyXG4gIHRleC5yZXBlYXQuc2V0KHRpbGluZywgdGlsaW5nKTtcclxuICByZXR1cm4gdGV4O1xyXG59XHJcblxyXG4vKipcclxuICogQ2FyZ2EgKG8gZGV2dWVsdmUgY2FjaGVhZG8pIHVuIHNldCBQQlIgY29tcGxldG8uIENhZGEgbWFwYSBzZSBldGlxdWV0YVxyXG4gKiBjb24gZWwgY29sb3JTcGFjZSBjb3JyZWN0bzogc1JHQiBwYXJhIGFsYmVkbywgbGluZWFyIHBhcmEgZWwgcmVzdG8uXHJcbiAqIExhIGNhcmdhIGVzIGFzw61uY3JvbmEgcGVybyBsYXMgcmVmZXJlbmNpYXMgc2UgZGV2dWVsdmVuIHNpbmNyw7NuaWNhbWVudGUuXHJcbiAqL1xyXG5leHBvcnQgZnVuY3Rpb24gZ2V0VGV4dHVyZVNldChpZDogVGV4dHVyZVNldElkKTogTG9hZGVkVGV4dHVyZVNldCB7XHJcbiAgY29uc3QgY2FjaGVkID0gY2FjaGUuZ2V0KGlkKTtcclxuICBpZiAoY2FjaGVkKSByZXR1cm4gY2FjaGVkO1xyXG4gIGNvbnN0IGRlZjogVGV4dHVyZVNldERlZmluaXRpb24gPSBUZXh0dXJlU2V0c1tpZF07XHJcbiAgY29uc3Qgc2V0OiBMb2FkZWRUZXh0dXJlU2V0ID0ge1xyXG4gICAgYWxiZWRvOiBsb2FkTWFwKGRlZi5tYXBzLmFsYmVkbywgdHJ1ZSwgZGVmLnRpbGluZyksXHJcbiAgICBub3JtYWw6IGRlZi5tYXBzLm5vcm1hbCA/IGxvYWRNYXAoZGVmLm1hcHMubm9ybWFsLCBmYWxzZSwgZGVmLnRpbGluZykgOiBudWxsLFxyXG4gICAgcm91Z2huZXNzOiBkZWYubWFwcy5yb3VnaG5lc3MgPyBsb2FkTWFwKGRlZi5tYXBzLnJvdWdobmVzcywgZmFsc2UsIGRlZi50aWxpbmcpIDogbnVsbCxcclxuICAgIGFvOiBkZWYubWFwcy5hbyA/IGxvYWRNYXAoZGVmLm1hcHMuYW8sIGZhbHNlLCBkZWYudGlsaW5nKSA6IG51bGwsXHJcbiAgICBtZXRhbGxpYzogZGVmLm1hcHMubWV0YWxsaWMgPyBsb2FkTWFwKGRlZi5tYXBzLm1ldGFsbGljLCBmYWxzZSwgZGVmLnRpbGluZykgOiBudWxsLFxyXG4gICAgZGVmaW5pdGlvbjogZGVmLFxyXG4gIH07XHJcbiAgY2FjaGUuc2V0KGlkLCBzZXQpO1xyXG4gIHJldHVybiBzZXQ7XHJcbn1cclxuIl0sIm1hcHBpbmdzIjoiQUFDQSxTQUFTLGNBQWMsZ0JBQWdCLGdCQUF5QixxQkFBcUI7QUFFckYsTUFBTSxjQUFjLFlBQVksS0FBSyxrREFBa0Q7QUFBQSxFQUNyRixPQUFPO0FBQUEsRUFDUCxPQUFPO0FBQUEsRUFDUCxRQUFRO0FBQ1YsQ0FBQztBQUVELFNBQVMsV0FBVyxVQUEwQjtBQUM1QyxRQUFNLE1BQU0seUJBQXlCLFFBQVE7QUFDN0MsUUFBTSxNQUFNLFlBQVksR0FBRztBQUMzQixNQUFJLENBQUMsS0FBSztBQUNSLFVBQU0sSUFBSSxNQUFNLHNCQUFzQixRQUFRLGdCQUFnQixHQUFHLElBQUk7QUFBQSxFQUN2RTtBQUNBLFNBQU87QUFDVDtBQXlCTyxhQUFNLGNBQWM7QUFBQSxFQUN6QixhQUFhO0FBQUEsSUFDWCxNQUFNO0FBQUEsTUFDSixRQUFRO0FBQUEsSUFDVjtBQUFBLElBQ0EsUUFBUTtBQUFBLElBQ1IsVUFBVTtBQUFBLElBQ1YsV0FBVztBQUFBLElBQ1gsV0FBVztBQUFBLEVBQ2I7QUFBQSxFQUNBLG1CQUFtQjtBQUFBLElBQ2pCLE1BQU07QUFBQSxNQUNKLFFBQVE7QUFBQSxJQUNWO0FBQUEsSUFDQSxRQUFRO0FBQUEsSUFDUixVQUFV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

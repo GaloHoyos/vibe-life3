@@ -1,0 +1,177 @@
+{
+  "runner": "win32/x64 node v20.20.2",
+  "seconds": 5,
+  "warmupSeconds": 1,
+  "warmupDrainFrames": 1,
+  "finalDrainFrames": 1,
+  "meshingBudgetMs": 3.25,
+  "frames": 300,
+  "blobs": 2,
+  "requestedBiomassPerBlob": 250,
+  "initialLivingFragments": 12,
+  "livingFragmentsAtEnd": 12,
+  "simulationMs": {
+    "average": 2.359,
+    "p95": 4.873,
+    "maximum": 7.788
+  },
+  "meshingMs": {
+    "average": 2.995,
+    "p95": 3.516,
+    "maximum": 4.536
+  },
+  "meshingJobsMs": {
+    "average": 0.933,
+    "p95": 2.395,
+    "maximum": 4.331
+  },
+  "meshingJobsByResolution": {
+    "24": {
+      "average": 0.538,
+      "p95": 0.802,
+      "maximum": 1.925
+    },
+    "32": {
+      "average": 2.294,
+      "p95": 3.422,
+      "maximum": 4.331
+    }
+  },
+  "polygonizationMs": {
+    "average": 0.502,
+    "p95": 1.099,
+    "maximum": 2.347
+  },
+  "fieldAndSetupMs": {
+    "average": 0.43,
+    "p95": 1.41,
+    "maximum": 2.407
+  },
+  "meshingJobsOver8Ms": 0,
+  "slowestMeshingJobs": [
+    {
+      "resolution": 32,
+      "durationMs": 4.331,
+      "polygonizationMs": 1.976,
+      "polygonizationVertices": 10092,
+      "fieldAndSetupMs": 2.355
+    },
+    {
+      "resolution": 32,
+      "durationMs": 4.249,
+      "polygonizationMs": 1.887,
+      "polygonizationVertices": 10620,
+      "fieldAndSetupMs": 2.362
+    },
+    {
+      "resolution": 32,
+      "durationMs": 4.068,
+      "polygonizationMs": 1.781,
+      "polygonizationVertices": 9996,
+      "fieldAndSetupMs": 2.286
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.697,
+      "polygonizationMs": 1.775,
+      "polygonizationVertices": 9864,
+      "fieldAndSetupMs": 1.922
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.67,
+      "polygonizationMs": 1.797,
+      "polygonizationVertices": 9180,
+      "fieldAndSetupMs": 1.873
+    }
+  ],
+  "surfaceVerticesByResolution": {
+    "24": {
+      "maximum": 3240,
+      "average": 2982
+    },
+    "32": {
+      "maximum": 10008,
+      "average": 9402
+    }
+  },
+  "combinedFrameMs": {
+    "average": 5.909,
+    "p95": 8.877,
+    "maximum": 12.041
+  },
+  "pendingVisualJobs": 0,
+  "telemetry": [
+    {
+      "simulation": {
+        "samples": 300,
+        "averageMs": 0.6670969999999902,
+        "p95Ms": 2.04970000000003,
+        "maximumMs": 3.2097000000001117
+      },
+      "meshing": {
+        "samples": 511,
+        "averageMs": 0.8799561643835585,
+        "p95Ms": 2.0752000000002226,
+        "maximumMs": 3.6702000000000226
+      },
+      "presentation": {
+        "samples": 300,
+        "averageMs": 0.1001576666666737,
+        "p95Ms": 0.16419999999993706,
+        "maximumMs": 0.2405999999996311
+      },
+      "visualJobWait": {
+        "samples": 511,
+        "averageMs": 1.5175309197651745,
+        "p95Ms": 2.8658000000000357,
+        "maximumMs": 4.383000000000038
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6344800,
+        "estimatedGpuBytes": 2642016
+      }
+    },
+    {
+      "simulation": {
+        "samples": 300,
+        "averageMs": 0.643155333333325,
+        "p95Ms": 1.8127000000001772,
+        "maximumMs": 3.144600000000082
+      },
+      "meshing": {
+        "samples": 441,
+        "averageMs": 0.9940959183673488,
+        "p95Ms": 2.571899999999914,
+        "maximumMs": 4.331299999999828
+      },
+      "presentation": {
+        "samples": 300,
+        "averageMs": 0.06511000000000157,
+        "p95Ms": 0.11110000000007858,
+        "maximumMs": 0.45999999999958163
+      },
+      "visualJobWait": {
+        "samples": 441,
+        "averageMs": 1.3517224489795885,
+        "p95Ms": 2.6214999999997417,
+        "maximumMs": 4.911099999999806
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6344800,
+        "estimatedGpuBytes": 2642016
+      }
+    }
+  ],
+  "heapUsedMb": 116.56,
+  "acceptance": {
+    "mode": "smoke",
+    "skipped": true,
+    "passed": null,
+    "criteria": []
+  }
+}

@@ -11,8 +11,10 @@ import type { GameEventMap } from "@game/GameEvents";
 import type { NpcCombatHandle } from "@game/npc/brain/NpcBrainContext";
 import type { NpcPreset } from "@game/npc/presets/NpcPreset";
 import { recordEvents } from "@tests/support/events";
-import { Npc } from "@game/npc/Npc";
+import { Npc, type NpcConstructionParams } from "@game/npc/Npc";
+import type { NpcAnimator } from "@game/npc/animation/NpcAnimator";
 import type { ActorSnapshot, AiFrameContext } from "@game/npc/core/INpc";
+import type { NpcBehaviorController } from "@game/npc/core/NpcBehaviorController";
 import type { NpcScriptOrder } from "@game/script/NpcScriptOrder";
 
 const preset: NpcPreset = {
@@ -84,17 +86,21 @@ const combat: NpcCombatHandle = {
 function createNpc(
   raycast: Raycast = {} as Raycast,
   losRaycast?: RaycastSource,
+  animation: NpcAnimator | null = null,
+  organicMatter: NpcConstructionParams["organicMatter"] = null,
+  behavior: NpcBehaviorController | null = null,
 ) {
   const bus = new EventBus<GameEventMap>();
   const position = new Vector3(0, 0, 0);
   const motor = fakeMotor(position);
+  const visualRoot = new Group();
   return {
     npc: new Npc({
       id: "npc-1",
       characterId: "test-npc",
       faction: "zombies",
       position,
-      visualRoot: new Group(),
+      visualRoot,
       height: 1.8,
       motor,
       combat,
@@ -109,12 +115,15 @@ function createNpc(
       raycast,
       losRaycast,
       eventBus: bus,
-      animation: null,
+      animation,
+      organicMatter,
+      behavior,
       patrolRoute: null,
       tacticalMap: null,
       squadDirector: null,
     }),
     motor,
+    visualRoot,
     damaged: recordEvents(bus, "npc.damaged"),
     killed: recordEvents(bus, "npc.killed"),
   };
@@ -198,6 +207,105 @@ describe("Npc.applyDamage", () => {
     expect(damaged[0].direction).toEqual(new Vector3(1, 0, 0));
     expect(damaged[0].point).not.toBe(point);
     expect(damaged[0].point).toEqual(point);
+  });
+});
+
+describe("Npc.dispose", () => {
+  it("dispone la animacion antes de deshabilitar y liberar el motor", () => {
+    const order: string[] = [];
+    const disposeAnimation = vi.fn(() => order.push("animation"));
+    const { npc, motor } = createNpc(
+      {} as Raycast,
+      undefined,
+      { dispose: disposeAnimation } as unknown as NpcAnimator,
+    );
+    motor.disable = vi.fn(() => order.push("disable-motor"));
+    motor.dispose = vi.fn(() => order.push("dispose-motor"));
+
+    npc.dispose();
+    npc.dispose();
+
+    expect(order).toEqual(["animation", "disable-motor", "dispose-motor"]);
+    expect(disposeAnimation).toHaveBeenCalledOnce();
+    expect(motor.disable).toHaveBeenCalledOnce();
+    expect(motor.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("retira el visual y dispone el ragdoll al completar el consumo", () => {
+    const disposeAnimation = vi.fn();
+    const animation = {
+      notifyHit: vi.fn(),
+      notifyDeath: vi.fn(),
+      dispose: disposeAnimation,
+    } as unknown as NpcAnimator;
+    const { npc, motor, visualRoot } = createNpc(
+      {} as Raycast,
+      undefined,
+      animation,
+      { mass: 60, radius: 0.4, yieldNodes: 5 },
+    );
+    const parent = new Group();
+    parent.add(visualRoot);
+    motor.dispose = vi.fn();
+
+    npc.applyDamage(1000);
+    const matter = npc.getOrganicMatterHandle();
+    expect(matter?.tryClaim("blob")).toBe(true);
+
+    expect(matter?.consume("blob")).toBe(5);
+    expect(visualRoot.parent).toBeNull();
+    expect(disposeAnimation).toHaveBeenCalledOnce();
+    expect(motor.dispose).toHaveBeenCalledOnce();
+    expect(npc.getOrganicMatterHandle()).toBeNull();
+
+    const invalidBodyRead = vi.fn(() => {
+      throw new Error("rigid body already removed");
+    });
+    motor.getPosition = invalidBodyRead;
+    motor.syncFromPhysics = invalidBodyRead;
+    expect(() => npc.syncFromPhysics()).not.toThrow();
+    expect(() => npc.getAiDebugSnapshot()).not.toThrow();
+    expect(npc.getAiDebugSnapshot().position).toEqual(new Vector3());
+    expect(invalidBodyRead).not.toHaveBeenCalled();
+  });
+});
+
+describe("Npc specialized behavior", () => {
+  it("entrega el agresor reciente mientras siga vivo", () => {
+    const updateBehavior = vi.fn(() => null);
+    const behavior: NpcBehaviorController = {
+      update: updateBehavior,
+      getState: () => "test",
+      dispose: vi.fn(),
+    };
+    const { npc } = createNpc(
+      {} as Raycast,
+      undefined,
+      null,
+      null,
+      behavior,
+    );
+    const attacker = actor("combine-1", new Vector3(1, 0, 0), "combine");
+
+    npc.applyDamage(5, undefined, undefined, attacker.id);
+    npc.update(context([attacker]));
+    expect(updateBehavior).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.anything(),
+      attacker,
+    );
+
+    const deadAttacker: ActorSnapshot = {
+      ...attacker,
+      isAlive: false,
+      entity: { applyDamage: vi.fn(), isAlive: () => false },
+    };
+    npc.update(context([deadAttacker]));
+    expect(updateBehavior).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.anything(),
+      null,
+    );
   });
 });
 

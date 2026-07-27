@@ -50,6 +50,11 @@ export interface NpcMotor {
   syncFromPhysics(): CharacterMotorSnapshot;
   setSpeedMultiplier(multiplier: number): void;
   disable(): void;
+  /**
+   * Libera cuerpos y recursos fisicos que pertenecen al motor. Se invoca al
+   * destruir el runtime, despues de disponer la animacion y sus joints.
+   */
+  dispose?(): void;
   /** Salto balistico (creatures terrestres). No-op en voladores. */
   leapTo(target: Vector3, upSpeed: number, maxForwardSpeed: number): void;
   isLeaping(): boolean;

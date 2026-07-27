@@ -6,6 +6,7 @@ import {
 } from "./KinematicCharacterBase";
 import type { CharacterMotorSnapshot, NpcMotor, SliceHit } from "./NpcMotor";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
+import { applyCharacterContactDamping } from "./CharacterContactMedium";
 
 export type { CharacterMotorSnapshot } from "./NpcMotor";
 
@@ -57,6 +58,7 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
   private leapAirborne = false;
   private leapTimer = 0;
   private portalExclusions: ReadonlySet<number> | null = null;
+  private disposed = false;
   private crouched = false;
 
   constructor(
@@ -122,7 +124,11 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
           directionToTarget.normalize();
           this.desiredVelocity
             .copy(directionToTarget)
-            .multiplyScalar(this.config.maxSpeed * this.speedMultiplier);
+            .multiplyScalar(
+              this.config.maxSpeed *
+                this.speedMultiplier *
+                this.contactSpeedMultiplier,
+            );
         } else {
           if (directionToTarget.lengthSq() > 0.0001) {
             directionToTarget.normalize();
@@ -143,6 +149,7 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
             .multiplyScalar(
               this.config.maxSpeed *
                 this.speedMultiplier *
+                this.contactSpeedMultiplier *
                 facingSpeedFactor *
                 turnSlowdown,
             );
@@ -168,9 +175,11 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
       this.velocity.y += -this.config.gravity * delta;
     }
 
-    const { corrected } = this.stepMovement(delta, (collider) =>
+    const { corrected, medium } = this.stepMovement(delta, (collider) =>
       this.shouldCollideWith(collider),
     );
+    applyCharacterContactDamping(this.velocity, medium, delta);
+    this.horizontalVelocity.set(this.velocity.x, 0, this.velocity.z);
     if (this.leaping) {
       this.tickLeapLanding(delta);
     }
@@ -292,6 +301,7 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
   }
 
   disable(): void {
+    if (this.disposed) return;
     this.enabled = false;
     this.setCrouched(false);
     if (this.leaping) {
@@ -303,6 +313,13 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
     this.horizontalVelocity.set(0, 0, 0);
     this.collider.setEnabled(false);
     this.body.setEnabled(false);
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.physics.world.removeCharacterController(this.controller);
+    if (this.body.isValid()) this.physics.removeBody(this.body);
   }
 
   override getVelocity(): Vector3 {
@@ -366,6 +383,7 @@ function motorBaseOptions(
     metadata: config.metadata,
     stepOffset: config.stepOffset,
     snapToGround: config.snapToGround,
+    dynamicPushMass: config.mass,
   };
 }
 

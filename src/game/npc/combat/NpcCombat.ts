@@ -1,6 +1,6 @@
 ﻿import { Vector3 } from "three";
 import type { CharacterDefinition } from "@engine/characters/CharacterDefinition";
-import type { RaycastSource } from "@engine/physics/Raycast";
+import type { RaycastHit, RaycastSource } from "@engine/physics/Raycast";
 import type { Damageable } from "@shared/types/lifecycle";
 import type { GameEventBus } from "@game/GameEvents";
 
@@ -129,18 +129,18 @@ export class NpcCombat {
   }
 
   private tryLandHit(ctx: CombatTickContext): boolean {
-    if (!this.canHit(ctx)) {
-      return false;
-    }
+    const hit = this.resolveHit(ctx);
+    if (!hit) return false;
 
     const directionToTarget = directionTo(ctx.npcPosition, ctx.targetPosition);
     const attack = this.definition.attack;
-    ctx.target.applyDamage(
+    const damageable = hit.metadata?.damageable ?? ctx.target;
+    damageable.applyDamage(
       attack.damage,
       directionToTarget,
-      undefined,
+      hit.metadata?.bodyPart?.name,
       this.id,
-      ctx.targetPosition.clone(),
+      hit.point?.clone() ?? ctx.targetPosition.clone(),
       "melee",
     );
 
@@ -156,54 +156,53 @@ export class NpcCombat {
     return true;
   }
 
-  private canHit(ctx: CombatTickContext): boolean {
+  private resolveHit(ctx: CombatTickContext): Partial<RaycastHit> | null {
     if (!ctx.target.isAlive() || ctx.balanceLocked) {
-      return false;
+      return null;
     }
 
     const attack = this.definition.attack;
     const distanceSq = ctx.npcPosition.distanceToSquared(ctx.targetPosition);
     if (distanceSq > attack.range * attack.range) {
       this.logDebug("attack failed: out of range");
-      return false;
+      return null;
     }
 
     const directionToTarget = directionTo(ctx.npcPosition, ctx.targetPosition);
     const facingDot = ctx.npcForward.dot(directionToTarget);
     if (facingDot < attack.facingDotThreshold) {
       this.logDebug("attack failed: facing");
-      return false;
+      return null;
     }
 
-    if (
-      attack.requireLineOfSight &&
-      !this.hasLineOfSight(ctx.npcPosition, ctx.targetPosition, ctx.targetId)
-    ) {
-      this.logDebug("attack failed: line of sight");
-      return false;
-    }
-
-    return true;
+    if (!attack.requireLineOfSight) return {};
+    const hit = this.castToTarget(
+      ctx.npcPosition,
+      ctx.targetPosition,
+      ctx.targetId,
+    );
+    if (hit) return hit;
+    this.logDebug("attack failed: line of sight");
+    return null;
   }
 
-  private hasLineOfSight(
+  private castToTarget(
     npcPosition: Vector3,
     targetPosition: Vector3,
     targetId: string,
-  ): boolean {
+  ): Partial<RaycastHit> | null {
     const origin = npcPosition
       .clone()
       .add(new Vector3(0, this.definition.perception.eyeHeight, 0));
     const direction = targetPosition.clone().sub(origin);
     const distance = direction.length();
-    if (distance <= 1e-4) return true;
+    if (distance <= 1e-4) return {};
     direction.divideScalar(distance);
     // El rayo nace dentro de la cápsula atacante: hay que excluirla para que
     // el primer impacto relevante pueda ser el target o una pared intermedia.
     const hit = this.raycast.cast(origin, direction, distance + 0.2, undefined, this.id);
-    // El golpe vale si lo primero en la linea es el propio target — con
-    // "player" hardcodeado, el melee nunca conectaba contra otros NPCs.
-    return (hit?.metadata?.ownerId ?? hit?.metadata?.id) === targetId;
+    if ((hit?.metadata?.ownerId ?? hit?.metadata?.id) !== targetId) return null;
+    return hit;
   }
 
   private logDebug(message: string): void {

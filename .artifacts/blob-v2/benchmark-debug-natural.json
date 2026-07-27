@@ -1,0 +1,301 @@
+{
+  "runner": "win32/x64 node v20.20.2",
+  "seconds": 10.2,
+  "warmupSeconds": 1,
+  "warmupDrainFrames": 2,
+  "finalDrainFrames": 1,
+  "meshingBudgetMs": 2.5,
+  "frames": 612,
+  "blobs": 2,
+  "requestedBiomassPerBlob": 250,
+  "initialLivingFragments": 12,
+  "minimumLivingFragmentsDuringRun": 12,
+  "minimumBiomassPerBlobDuringRun": 250,
+  "livingFragmentsAtEnd": 12,
+  "finalBiomassPerBlob": [
+    250,
+    250
+  ],
+  "maximumFragmentIdAtEnd": [
+    6,
+    6
+  ],
+  "finalFragmentStates": [
+    [
+      {
+        "id": 1,
+        "state": "Withering",
+        "age": 11.2,
+        "biomass": 8,
+        "distanceToCore": 8.131,
+        "needsPath": false
+      },
+      {
+        "id": 2,
+        "state": "Withering",
+        "age": 11.2,
+        "biomass": 8,
+        "distanceToCore": 8.072,
+        "needsPath": false
+      },
+      {
+        "id": 3,
+        "state": "Withering",
+        "age": 11.2,
+        "biomass": 8,
+        "distanceToCore": 8.106,
+        "needsPath": false
+      },
+      {
+        "id": 4,
+        "state": "Withering",
+        "age": 11.2,
+        "biomass": 8,
+        "distanceToCore": 8.116,
+        "needsPath": false
+      },
+      {
+        "id": 5,
+        "state": "Withering",
+        "age": 11.2,
+        "biomass": 8,
+        "distanceToCore": 8.068,
+        "needsPath": false
+      },
+      {
+        "id": 6,
+        "state": "Withering",
+        "age": 11.2,
+        "biomass": 8,
+        "distanceToCore": 8.128,
+        "needsPath": false
+      }
+    ],
+    [
+      {
+        "id": 1,
+        "state": "Withering",
+        "age": 11.2,
+        "biomass": 8,
+        "distanceToCore": 8.097,
+        "needsPath": false
+      },
+      {
+        "id": 2,
+        "state": "Withering",
+        "age": 11.2,
+        "biomass": 8,
+        "distanceToCore": 8.08,
+        "needsPath": false
+      },
+      {
+        "id": 3,
+        "state": "Withering",
+        "age": 11.2,
+        "biomass": 8,
+        "distanceToCore": 8.142,
+        "needsPath": false
+      },
+      {
+        "id": 4,
+        "state": "Withering",
+        "age": 11.2,
+        "biomass": 8,
+        "distanceToCore": 8.066,
+        "needsPath": false
+      },
+      {
+        "id": 5,
+        "state": "Withering",
+        "age": 11.2,
+        "biomass": 8,
+        "distanceToCore": 8.116,
+        "needsPath": false
+      },
+      {
+        "id": 6,
+        "state": "Withering",
+        "age": 11.2,
+        "biomass": 8,
+        "distanceToCore": 8.119,
+        "needsPath": false
+      }
+    ]
+  ],
+  "simulationMs": {
+    "average": 1.879,
+    "p95": 3.854,
+    "maximum": 8.061
+  },
+  "meshingMs": {
+    "average": 2.208,
+    "p95": 2.705,
+    "maximum": 3.402
+  },
+  "meshingJobsMs": {
+    "average": 0.908,
+    "p95": 2.106,
+    "maximum": 3.314
+  },
+  "meshingJobsByResolution": {
+    "24": {
+      "average": 0.48,
+      "p95": 0.532,
+      "maximum": 1.657
+    },
+    "32": {
+      "average": 1.962,
+      "p95": 2.685,
+      "maximum": 3.314
+    }
+  },
+  "polygonizationMs": {
+    "average": 0.512,
+    "p95": 0.965,
+    "maximum": 2.261
+  },
+  "fieldAndSetupMs": {
+    "average": 0.395,
+    "p95": 1.145,
+    "maximum": 2.146
+  },
+  "meshingJobsOver8Ms": 0,
+  "slowestMeshingJobs": [
+    {
+      "resolution": 32,
+      "durationMs": 3.314,
+      "polygonizationMs": 1.886,
+      "polygonizationVertices": 11028,
+      "fieldAndSetupMs": 1.428
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.178,
+      "polygonizationMs": 2.261,
+      "polygonizationVertices": 10764,
+      "fieldAndSetupMs": 0.917
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.158,
+      "polygonizationMs": 1.92,
+      "polygonizationVertices": 10464,
+      "fieldAndSetupMs": 1.238
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.088,
+      "polygonizationMs": 0.942,
+      "polygonizationVertices": 10296,
+      "fieldAndSetupMs": 2.146
+    },
+    {
+      "resolution": 32,
+      "durationMs": 3.065,
+      "polygonizationMs": 2,
+      "polygonizationVertices": 9324,
+      "fieldAndSetupMs": 1.065
+    }
+  ],
+  "surfaceVerticesByResolution": {
+    "24": {
+      "maximum": 1092,
+      "average": 749
+    },
+    "32": {
+      "maximum": 10248,
+      "average": 9282
+    }
+  },
+  "combinedFrameMs": {
+    "average": 4.565,
+    "p95": 6.576,
+    "maximum": 10.896
+  },
+  "runtimeDiagnostics": {
+    "measuredWallMs": 2797.443,
+    "measuredCpuMs": 3579,
+    "cpuToWallRatio": 1.279,
+    "eventLoopUtilization": 1,
+    "gc": {
+      "samples": 0,
+      "average": 0,
+      "p95": 0,
+      "maximum": 0
+    }
+  },
+  "pendingVisualJobs": 0,
+  "telemetry": [
+    {
+      "simulation": {
+        "samples": 612,
+        "averageMs": 0.5518743464052326,
+        "p95Ms": 1.116800000000012,
+        "maximumMs": 2.3871999999998934
+      },
+      "meshing": {
+        "samples": 770,
+        "averageMs": 0.8597763636363631,
+        "p95Ms": 1.820299999999861,
+        "maximumMs": 2.9566999999999553
+      },
+      "presentation": {
+        "samples": 612,
+        "averageMs": 0.07173218954247967,
+        "p95Ms": 0.1068000000000211,
+        "maximumMs": 1.2175999999999476
+      },
+      "visualJobWait": {
+        "samples": 770,
+        "averageMs": 0.9335488311688276,
+        "p95Ms": 2.123800000000074,
+        "maximumMs": 3.3098999999999705
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6353504,
+        "estimatedGpuBytes": 2648608
+      }
+    },
+    {
+      "simulation": {
+        "samples": 612,
+        "averageMs": 0.5481684640522891,
+        "p95Ms": 1.1221999999997934,
+        "maximumMs": 2.198599999999942
+      },
+      "meshing": {
+        "samples": 706,
+        "averageMs": 0.9599083569405018,
+        "p95Ms": 2.147699999999986,
+        "maximumMs": 3.3141999999999143
+      },
+      "presentation": {
+        "samples": 612,
+        "averageMs": 0.05141584967320725,
+        "p95Ms": 0.0848999999999478,
+        "maximumMs": 1.0045999999997548
+      },
+      "visualJobWait": {
+        "samples": 706,
+        "averageMs": 0.8804167138810197,
+        "p95Ms": 1.9264000000002852,
+        "maximumMs": 3.005700000000161
+      },
+      "resources": {
+        "surfaces": 7,
+        "pendingVisualJobs": 0,
+        "estimatedCpuBytes": 6353504,
+        "estimatedGpuBytes": 2648608
+      }
+    }
+  ],
+  "heapUsedMb": 71.47,
+  "acceptance": {
+    "mode": "smoke",
+    "skipped": true,
+    "passed": null,
+    "criteria": []
+  }
+}

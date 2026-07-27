@@ -5,6 +5,9 @@ import type {
   CharacterDefinition,
   CharacterId,
 } from "@engine/characters/CharacterDefinition";
+import { BlobConfig } from "@game/config/blob.config";
+
+const BLOB_AGGREGATE_RADIUS = BlobConfig.armor.aggregateRadius;
 
 const baseHumanoid = {
   type: "humanoid",
@@ -913,6 +916,68 @@ export const CharacterPresets: Record<CharacterId, CharacterDefinition> = {
     ragdoll: {
       ...baseHumanoid.ragdoll,
       enabled: false,
+    },
+  },
+  blob: {
+    ...baseHumanoid,
+    id: "blob",
+    modelId: undefined,
+    type: "creature",
+    faction: "blob",
+    aiProfileId: "blobArmor",
+    // Dimensiones agregadas (core + órbita + esfera máxima) para spawn y
+    // separación de IA. El collider físico real del core usa BlobConfig.core.
+    height: BLOB_AGGREGATE_RADIUS * 2,
+    radius: BLOB_AGGREGATE_RADIUS,
+    mass: BlobConfig.core.mass,
+    visualScale: 1,
+    visualOffset: new Vector3(0, 0, 0),
+    movement: {
+      ...baseHumanoid.movement,
+      maxSpeed: BlobConfig.predator.moveSpeed,
+      acceleration: BlobConfig.predator.movementAcceleration,
+      turnSpeed: 2,
+      rotationSmoothing: 0,
+      faceTargetDeadzone: 0,
+      turnBeforeMoveAngle: Math.PI,
+      minMoveFacingDot: 1,
+      linearDamping: BlobConfig.armor.linearDamping,
+      angularDamping: BlobConfig.armor.angularDamping,
+    },
+    health: { maxHealth: BlobConfig.core.maxHealth },
+    animation: {
+      ...baseHumanoid.animation,
+      restPose: { type: "none" },
+      armsMode: "relaxed",
+      useLookAt: false,
+      useStumble: false,
+      walk: {},
+    },
+    ragdoll: {
+      ...baseHumanoid.ragdoll,
+      enabled: false,
+    },
+    collider: {
+      height: BLOB_AGGREGATE_RADIUS * 2,
+      radius: BLOB_AGGREGATE_RADIUS,
+      mass: BlobConfig.core.mass,
+      stepOffset: 0,
+      snapToGround: 0,
+    },
+    ai: { detectionRange: BlobConfig.predator.detectionRange },
+    perception: {
+      viewDistance: BlobConfig.predator.detectionRange,
+      viewConeRadians: Math.PI,
+      hearingRadius: 10,
+      memoryDuration: 2,
+      eyeHeight: 0,
+    },
+    attack: {
+      ...baseHumanoid.attack,
+      enabled: false,
+      damage: 0,
+      range: 0,
+      knockback: 0,
     },
   },
   floorTurret: {

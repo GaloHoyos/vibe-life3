@@ -48,6 +48,11 @@ import type { NpcCalloutKind } from '@game/config/audio.config';
 import { navigationProfileForPreset } from '@game/npc/navigation/NavAgentProfiles';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { PortalFrame } from '@engine/portals/PortalFrame';
+import type { NpcBehaviorController } from '@game/npc/core/NpcBehaviorController';
+import {
+  OrganicMatterController,
+  type OrganicMatterHandle,
+} from '@game/gameplay/organic/OrganicMatter';
 
 export interface NpcConstructionParams {
   id: string;
@@ -75,6 +80,14 @@ export interface NpcConstructionParams {
   patrolRoute?: Vector3[] | null;
   tacticalMap?: TacticalMap | null;
   squadDirector?: SquadDirector | null;
+  /** Controlador especializado (Blob); ausente = brain/schedules convencional. */
+  behavior?: NpcBehaviorController | null;
+  /** Presente solo en criaturas/humanoides que pueden ser cazados y digeridos. */
+  organicMatter?: {
+    mass: number;
+    radius: number;
+    yieldNodes: number;
+  } | null;
 }
 
 const tmpFacing = new Vector3();
@@ -85,7 +98,29 @@ interface PortalCapableMotor {
   teleport(position: Vector3, velocity: Vector3): void;
   snapYaw(yaw: number): void;
   setPortalExclusions(handles: ReadonlySet<number> | null): void;
+  getPortalColliderHandles?(): readonly number[];
   /** Conserva la rotación 3D de los componentes internos al cruzar. */
+  teleportThroughPortal?(
+    entry: PortalFrame,
+    exit: PortalFrame,
+    position: Vector3,
+    velocity: Vector3,
+    yaw: number,
+  ): boolean;
+}
+
+interface PortalCompositeAnimation {
+  getPortalColliderHandles?(): readonly number[];
+  setPortalTraversalActive?(active: boolean): void;
+  setPortalTraversalFrames?(
+    entry: PortalFrame | null,
+    exit: PortalFrame | null,
+  ): void;
+  teleportComposite?(
+    position: Vector3,
+    velocity: Vector3,
+    yaw: number,
+  ): boolean;
   teleportThroughPortal?(
     entry: PortalFrame,
     exit: PortalFrame,
@@ -113,6 +148,8 @@ const ATTACK_SLOT_MEMORY_GRACE = 1.0;
 const ATTACK_SLOT_RELEASE_DELAY = 1.0;
 /** Minimo (s) entre voces tacticas de un mismo NPC (no pisarse hablando). */
 const CALLOUT_THROTTLE = 4.0;
+/** Cobertura a partir de la cual una presa ya no conserva control util. */
+const FULL_ORGANIC_RESTRAINT_COVERAGE = 0.72;
 
 /**
  * Runtime unico de NPC: orquesta perception → conditions → brain → locomotion.
@@ -148,6 +185,9 @@ export class Npc implements INpc {
   private readonly navigationProfile: NavAgentProfile;
   private readonly eventBus: GameEventBus;
   private readonly animation: NpcAnimator | null;
+  private readonly behavior: NpcBehaviorController | null;
+  private readonly organicMatter: OrganicMatterController | null;
+  private readonly baseVisualScale = new Vector3(1, 1, 1);
   private readonly animationLookTarget = new Vector3();
   private lastViewerDistance = 0;
   private readonly tmpSliceDir = new Vector3();
@@ -183,6 +223,7 @@ export class Npc implements INpc {
   private lastPerception: PerceptionSnapshot | null = null;
   private wasSeeingEnemy = false;
   private lastSpottedEmitAt = -Infinity;
+  private organicRestraintCoverage = 0;
 
   constructor(params: NpcConstructionParams) {
     this.id = params.id;
@@ -212,6 +253,38 @@ export class Npc implements INpc {
     this.eventBus = params.eventBus;
     this.combatHandle = params.combat;
     this.animation = params.animation ?? null;
+    this.behavior = params.behavior ?? null;
+    this.baseVisualScale.copy(this.mesh.scale);
+    this.organicMatter = params.organicMatter
+      ? new OrganicMatterController({
+          id: this.id,
+          characterId: this.characterId,
+          radius: params.organicMatter.radius,
+          mass: params.organicMatter.mass,
+          yieldNodes: params.organicMatter.yieldNodes,
+          getPosition: (out) => {
+            const physical = this.animation?.getPhysicalCenter?.();
+            return out.copy(
+              !this.health.isAlive() && physical
+                ? physical
+                : this.motor.getPosition(),
+            );
+          },
+          isAlive: () => this.isAlive(),
+          setRestraint: (coverage) => {
+            this.organicRestraintCoverage = coverage;
+            this.applyMovementSpeedMultiplier();
+          },
+          pullToward: (target, delta, settings) => {
+            this.animation?.pullPhysicalBodyToward?.(target, delta, settings);
+          },
+          setDigestionProgress: (progress) => {
+            const scale = Math.max(0.12, 1 - progress * 0.88);
+            this.mesh.scale.copy(this.baseVisualScale).multiplyScalar(scale);
+          },
+          onConsumed: () => this.consumeOrganicBody(),
+        })
+      : null;
     this.locomotion = new NavigationLocomotion(
       this.motor,
       params.navigation,
@@ -220,6 +293,7 @@ export class Npc implements INpc {
       this.navigationProfile,
       {
         hoverHeight: this.preset.movement.hoverHeight,
+        goalReachRadius: this.preset.movement.goalReachRadius,
         separation: !this.preset.movement.flying && !this.preset.movement.directGround,
       },
     );
@@ -282,6 +356,40 @@ export class Npc implements INpc {
     if (this.frozenSolid) return;
 
     this.syncMeshFromMotor();
+    this.applyMovementSpeedMultiplier();
+
+    if (this.behavior) {
+      const handle = this.createLocomotionHandle();
+      this.feedNeighbors(ctx);
+      this.currentThreat = this.behavior.update(
+        ctx,
+        handle,
+        this.resolveRecentAttacker(ctx),
+      );
+      if (NpcDebugFlags.freezeMovement) this.locomotion.stop();
+      this.locomotion.update(delta);
+      const impactDamage = this.motor.consumeImpactDamage();
+      if (impactDamage > 0) {
+        this.applyDamage(impactDamage, undefined, undefined, 'player');
+      }
+      this.tickAnimation(delta);
+      return;
+    }
+
+    if (this.organicRestraintCoverage >= FULL_ORGANIC_RESTRAINT_COVERAGE) {
+      this.currentThreat = null;
+      this.combatHandle.tick({
+        delta,
+        elapsed: ctx.elapsed,
+        position: this.motor.getPosition(),
+        facing: this.computeFacing(),
+        threat: null,
+      });
+      this.locomotion.stop();
+      this.locomotion.update(delta);
+      this.tickAnimation(delta);
+      return;
+    }
 
     const picked = this.pickThreat(ctx);
     if (picked?.id !== this.currentThreat?.id) {
@@ -315,29 +423,7 @@ export class Npc implements INpc {
     this.threatLastKnown = perceptionSnapshot.lastKnownPosition;
     this.lastPerception = perceptionSnapshot;
 
-    const handle: NpcLocomotionHandle = {
-      moveTo: (target, options) => {
-        // Debug freeze: ignora ordenes de movimiento del brain (sin encolar
-        // paths). El NPC sigue apuntando/animando, solo no se traslada.
-        if (NpcDebugFlags.freezeMovement) return;
-        this.applyGait(options?.gait ?? 'walk');
-        this.locomotion.moveTo(target, options?.facing);
-      },
-      stop: () => {
-        this.applyGait('walk');
-        this.locomotion.stop();
-      },
-      distanceToTarget: () => this.locomotion.distanceToTarget(),
-      hasPath: () => this.locomotion.hasPath(),
-      isStuck: () => this.locomotion.isStuck(),
-      face: (target) => this.locomotion.face(target),
-      leap: (target, params) => {
-        if (NpcDebugFlags.freezeMovement) return;
-        this.locomotion.leap(target, params);
-      },
-      isLeaping: () => this.locomotion.isLeaping(),
-      teleport: this.scriptTeleport,
-    };
+    const handle = this.createLocomotionHandle();
 
     this.coverSensor?.update(
       ctx.elapsed,
@@ -519,7 +605,7 @@ export class Npc implements INpc {
   }
 
   syncFromPhysics(): void {
-    if (this.frozenSolid) return;
+    if (this.disposed || this.frozenSolid) return;
     this.syncMeshFromMotor();
   }
 
@@ -531,6 +617,9 @@ export class Npc implements INpc {
       return null;
     }
     const motor = this.motor as typeof this.motor & Partial<PortalCapableMotor>;
+    const compositeAnimation = this.animation as
+      | (NpcAnimator & PortalCompositeAnimation)
+      | null;
     const { teleport, snapYaw, setPortalExclusions, getVelocity } = motor;
     if (
       typeof teleport !== 'function' ||
@@ -546,10 +635,22 @@ export class Npc implements INpc {
       getPosition: () => motor.getPosition(),
       getVelocity: () => getVelocity.call(motor),
       teleport: (position, velocity, yaw) => {
+        if (
+          compositeAnimation?.teleportComposite?.(
+            position,
+            velocity,
+            yaw,
+          ) === true
+        ) {
+          this.syncMeshFromMotor();
+          return;
+        }
         teleport.call(motor, position, velocity);
         snapYaw.call(motor, yaw);
+        this.syncMeshFromMotor();
       },
-      ...(typeof motor.teleportThroughPortal === 'function'
+      ...(typeof compositeAnimation?.teleportThroughPortal === 'function' ||
+      typeof motor.teleportThroughPortal === 'function'
         ? {
             teleportThroughPortal: (
               entry: PortalFrame,
@@ -557,10 +658,45 @@ export class Npc implements INpc {
               position: Vector3,
               velocity: Vector3,
               yaw: number,
-            ) => motor.teleportThroughPortal!(entry, exit, position, velocity, yaw),
+            ) => {
+              const traversed =
+                compositeAnimation?.teleportThroughPortal?.(
+                  entry,
+                  exit,
+                  position,
+                  velocity,
+                  yaw,
+                ) === true ||
+                motor.teleportThroughPortal?.(
+                  entry,
+                  exit,
+                  position,
+                  velocity,
+                  yaw,
+                ) === true;
+              if (traversed) this.syncMeshFromMotor();
+              return traversed;
+            },
           }
         : {}),
-      setColliderExclusions: (handles) => setPortalExclusions.call(motor, handles),
+      ...(typeof motor.getPortalColliderHandles === 'function' ||
+      typeof compositeAnimation?.getPortalColliderHandles === 'function'
+        ? {
+            getPortalColliderHandles: () => [
+              ...new Set([
+                ...(motor.getPortalColliderHandles?.() ?? []),
+                ...(compositeAnimation?.getPortalColliderHandles?.() ?? []),
+              ]),
+            ],
+          }
+        : {}),
+      setColliderExclusions: (handles) => {
+        setPortalExclusions.call(motor, handles);
+        compositeAnimation?.setPortalTraversalActive?.(handles !== null);
+      },
+      setPortalTraversalFrames: (entry, exit) => {
+        compositeAnimation?.setPortalTraversalFrames?.(entry, exit);
+      },
     };
   }
 
@@ -580,6 +716,10 @@ export class Npc implements INpc {
       };
     }
     return this.freezeHandle;
+  }
+
+  getOrganicMatterHandle(): OrganicMatterHandle | null {
+    return this.disposed ? null : this.organicMatter;
   }
 
   private freezeSolid(): Group | null {
@@ -662,6 +802,7 @@ export class Npc implements INpc {
       this.locomotion.stop();
       this.motor.disable();
       this.combatHandle.dispose?.();
+      this.behavior?.dispose();
     }
   }
 
@@ -670,19 +811,30 @@ export class Npc implements INpc {
   }
 
   getState(): string {
-    return this.brain.snapshot().schedule ?? 'idle';
+    return this.behavior?.getState() ?? this.brain.snapshot().schedule ?? 'idle';
   }
 
   getAiDebugSnapshot(): NpcAiDebugSnapshot {
-    const motorSnap = this.motor.syncFromPhysics();
+    const motorSnap = this.disposed
+      ? {
+          position: this.position.clone(),
+          velocity: new Vector3(),
+          desiredVelocity: new Vector3(),
+          grounded: false,
+          yaw: this.mesh.rotation.y,
+          targetYaw: this.mesh.rotation.y,
+          distanceToTarget: Number.POSITIVE_INFINITY,
+        }
+      : this.motor.syncFromPhysics();
     const brainSnap = this.brain.snapshot();
+    const runtimeState = this.behavior?.getState() ?? brainSnap.schedule ?? 'idle';
     const locomotionDebug = this.locomotion.debug();
     return {
       id: this.id,
-      state: brainSnap.schedule ?? 'idle',
-      stateKey: brainSnap.schedule ?? undefined,
+      state: runtimeState,
+      stateKey: runtimeState,
       lastTransitionReason: brainSnap.previousSchedule,
-      position: this.motor.getPosition().clone(),
+      position: motorSnap.position.clone(),
       isAlive: this.isAlive(),
       health: this.health.current,
       maxHealth: this.health.max,
@@ -698,13 +850,13 @@ export class Npc implements INpc {
         speed: motorSnap.velocity.length(),
         desiredSpeed: motorSnap.desiredVelocity.length(),
         grounded: motorSnap.grounded,
-        crouched: this.motor.isCrouched?.() ?? false,
+        crouched: this.disposed ? false : (this.motor.isCrouched?.() ?? false),
         distanceToTarget: motorSnap.distanceToTarget,
         yaw: motorSnap.yaw,
         targetYaw: motorSnap.targetYaw,
       },
       brain: {
-        schedule: brainSnap.schedule ?? 'idle',
+        schedule: runtimeState,
         previousSchedule: brainSnap.previousSchedule,
         scheduleElapsed: brainSnap.scheduleElapsed,
         task: brainSnap.task,
@@ -727,6 +879,8 @@ export class Npc implements INpc {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.organicMatter?.invalidate();
+    this.behavior?.dispose();
     this.noiseSensor.dispose();
     this.coverSensor?.dispose();
     this.squadDirector?.unregister(this.id);
@@ -734,6 +888,47 @@ export class Npc implements INpc {
     this.combatHandle.dispose?.();
     this.animation?.dispose?.();
     this.motor.disable();
+    this.motor.dispose?.();
+  }
+
+  private consumeOrganicBody(): void {
+    if (this.disposed || this.health.isAlive()) return;
+    this.mesh.removeFromParent();
+    this.dispose();
+  }
+
+  private createLocomotionHandle(): NpcLocomotionHandle {
+    return {
+      moveTo: (target, options) => {
+        // Debug freeze: ignora ordenes de movimiento del brain (sin encolar
+        // paths). El NPC sigue apuntando/animando, solo no se traslada.
+        if (NpcDebugFlags.freezeMovement) return;
+        this.applyGait(options?.gait ?? 'walk');
+        this.locomotion.moveTo(target, options?.facing);
+      },
+      stop: () => {
+        this.applyGait('walk');
+        this.locomotion.stop();
+      },
+      distanceToTarget: () => this.locomotion.distanceToTarget(),
+      hasPath: () => this.locomotion.hasPath(),
+      isStuck: () => this.locomotion.isStuck(),
+      face: (target) => this.locomotion.face(target),
+      leap: (target, params) => {
+        if (NpcDebugFlags.freezeMovement) return;
+        this.locomotion.leap(target, params);
+      },
+      isLeaping: () => this.locomotion.isLeaping(),
+      teleport: this.scriptTeleport,
+    };
+  }
+
+  private resolveRecentAttacker(ctx: AiFrameContext): ActorSnapshot | null {
+    if (this.aggroTimer <= 0 || !this.aggroAttackerId) return null;
+    const attacker = [ctx.player, ...ctx.npcs].find(
+      (candidate) => candidate.id === this.aggroAttackerId,
+    );
+    return attacker?.isAlive && attacker.entity.isAlive() ? attacker : null;
   }
 
   private syncMeshFromMotor(): void {
@@ -1140,7 +1335,14 @@ export class Npc implements INpc {
   }
 
   private applyMovementSpeedMultiplier(): void {
-    this.motor.setSpeedMultiplier(this.gaitMultiplier);
+    const restraint = Math.min(
+      1,
+      this.organicRestraintCoverage / FULL_ORGANIC_RESTRAINT_COVERAGE,
+    );
+    // Curva suave: primero ofrece resistencia util, luego cierra rapido hasta
+    // inmovilizar por completo cuando el gel termina de cubrir la presa.
+    const smooth = restraint * restraint * (3 - 2 * restraint);
+    this.motor.setSpeedMultiplier(this.gaitMultiplier * (1 - smooth));
   }
 }
 

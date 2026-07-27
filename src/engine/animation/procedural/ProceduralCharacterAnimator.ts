@@ -83,6 +83,7 @@ export class ProceduralCharacterAnimator {
   private readonly layers: AnimationLayer[];
 
   private isDead = false;
+  private disposed = false;
 
   constructor(private readonly options: ProceduralAnimatorOptions) {
     this.mapper = new BoneMapper(options.root, { debug: options.debug });
@@ -126,6 +127,7 @@ export class ProceduralCharacterAnimator {
   }
 
   update(input: AnimationInput): void {
+    if (this.disposed) return;
     if (this.isDead) {
       this.ragdoll.update(input.deltaTime);
       return;
@@ -158,23 +160,27 @@ export class ProceduralCharacterAnimator {
   }
 
   triggerHit(direction?: Vector3): void {
+    if (this.disposed) return;
     this.hit.trigger(direction);
   }
 
   triggerAttack(): void {
+    if (this.disposed) return;
     this.attack.trigger();
   }
 
   triggerReload(duration: number): void {
+    if (this.disposed) return;
     this.reload.trigger(duration);
   }
 
   triggerGesture(id: GestureId, duration: number): void {
+    if (this.disposed) return;
     this.gesture.trigger(id, duration);
   }
 
   die(hitDirection?: Vector3, hitPartName?: string): void {
-    if (this.isDead) {
+    if (this.disposed || this.isDead) {
       return;
     }
     this.isDead = true;
@@ -186,7 +192,7 @@ export class ProceduralCharacterAnimator {
     currentVelocity: Vector3,
     hitPartName?: string,
   ): void {
-    if (this.isDead) {
+    if (this.disposed || this.isDead) {
       return;
     }
     this.isDead = true;
@@ -195,6 +201,34 @@ export class ProceduralCharacterAnimator {
 
   isRagdollActive(): boolean {
     return this.ragdoll.isActive();
+  }
+
+  /** Centro fisico del cadaver, independiente del root visual del NPC. */
+  getPhysicalCenter(): Vector3 | null {
+    return this.ragdoll.getCenter();
+  }
+
+  pullPhysicalBodyToward(
+    target: Vector3,
+    delta: number,
+    positionGain: number,
+    maxSpeed: number,
+    acceleration: number,
+  ): void {
+    this.ragdoll.pullToward(
+      target,
+      delta,
+      positionGain,
+      maxSpeed,
+      acceleration,
+    );
+  }
+
+  /** Libera sensores, joints y bodies del ragdoll. Idempotente. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.ragdoll.dispose();
   }
 
   /**

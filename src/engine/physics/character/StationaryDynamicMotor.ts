@@ -1,19 +1,38 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Euler, Quaternion, Vector3 } from "three";
 import { createBoxCollider } from "@engine/physics/Colliders";
+import { ACTOR_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { CharacterMotorSnapshot, NpcMotor, SliceHit } from "./NpcMotor";
+import {
+  applyCharacterContactDamping,
+  sampleCharacterMedium,
+} from "./CharacterContactMedium";
 
-export interface StationaryDynamicConfig {
+interface StationaryDynamicBaseConfig {
   id: string;
   position: Vector3;
-  /** Tamaño del collider box (ancho, alto, profundidad). */
-  size: Vector3;
   mass: number;
+  linearDamping?: number;
+  angularDamping?: number;
   /** Yaw de montaje inicial (rad): hacia donde "mira" el cuerpo al spawnear. */
   mountYaw: number;
   metadata: PhysicsMetadata;
 }
+
+export type StationaryDynamicColliderConfig =
+  | { shape: "box"; size: Vector3 }
+  | { shape: "sphere"; radius: number };
+
+/**
+ * La variante `size` se conserva para las torretas existentes. Los nuevos
+ * consumidores deben declarar el collider discriminado de forma explicita.
+ */
+export type StationaryDynamicConfig = StationaryDynamicBaseConfig &
+  (
+    | { collider: StationaryDynamicColliderConfig; size?: never }
+    | { collider?: undefined; size: Vector3 }
+  );
 
 const Y_AXIS = new Vector3(0, 1, 0);
 
@@ -41,10 +60,12 @@ export class StationaryDynamicMotor implements NpcMotor {
   readonly collider: RAPIER.Collider;
 
   private enabled = true;
+  private disposed = false;
   private yaw: number;
 
   private readonly tmpQuat = new Quaternion();
   private readonly tmpEuler = new Euler(0, 0, 0, "YXZ");
+  private readonly tmpVelocity = new Vector3();
 
   constructor(
     private readonly physics: PhysicsWorld,
@@ -56,21 +77,46 @@ export class StationaryDynamicMotor implements NpcMotor {
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(config.position.x, config.position.y, config.position.z)
         .setRotation({ x: rot.x, y: rot.y, z: rot.z, w: rot.w })
-        .setLinearDamping(LINEAR_DAMPING)
-        .setAngularDamping(ANGULAR_DAMPING)
+        .setLinearDamping(config.linearDamping ?? LINEAR_DAMPING)
+        .setAngularDamping(config.angularDamping ?? ANGULAR_DAMPING)
         .setCcdEnabled(true),
     );
-    const volume = Math.max(config.size.x * config.size.y * config.size.z, 0.001);
+    const { desc, volume } = buildCollider(config);
     this.collider = physics.world.createCollider(
-      createBoxCollider(config.size).setDensity(config.mass / volume).setFriction(0.9),
+      desc
+        .setDensity(config.mass / volume)
+        .setFriction(0.9)
+        .setCollisionGroups(ACTOR_COLLISION_GROUPS),
       this.body,
     );
     physics.registerCollider(this.collider, config.metadata);
   }
 
-  update(): void {
+  update(delta: number): void {
     if (!this.enabled) return;
     this.syncYawFromBody();
+    const velocity = this.body.linvel();
+    this.tmpVelocity.set(velocity.x, velocity.y, velocity.z);
+    const medium = sampleCharacterMedium({
+      physics: this.physics,
+      collider: this.collider,
+      position: this.body.translation(),
+      rotation: this.body.rotation(),
+      velocity: this.tmpVelocity,
+      delta,
+      characterMass: this.body.mass(),
+    });
+    applyCharacterContactDamping(this.tmpVelocity, medium, delta);
+    if (medium) {
+      this.body.setLinvel(
+        {
+          x: this.tmpVelocity.x,
+          y: this.tmpVelocity.y,
+          z: this.tmpVelocity.z,
+        },
+        true,
+      );
+    }
   }
 
   getPosition(): Vector3 {
@@ -142,10 +188,51 @@ export class StationaryDynamicMotor implements NpcMotor {
     this.enabled = false;
   }
 
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.enabled = false;
+    this.physics.removeBody(this.body);
+  }
+
   private syncYawFromBody(): void {
     const r = this.body.rotation();
     this.tmpQuat.set(r.x, r.y, r.z, r.w);
     this.tmpEuler.setFromQuaternion(this.tmpQuat);
     this.yaw = this.tmpEuler.y;
   }
+}
+
+function buildCollider(config: StationaryDynamicConfig): {
+  desc: RAPIER.ColliderDesc;
+  volume: number;
+} {
+  if (hasExplicitCollider(config)) {
+    if (config.collider.shape === "sphere") {
+      return {
+        desc: RAPIER.ColliderDesc.ball(config.collider.radius),
+        volume: Math.max((4 / 3) * Math.PI * config.collider.radius ** 3, 0.001),
+      };
+    }
+    const size = config.collider.size;
+    return {
+      desc: createBoxCollider(size),
+      volume: Math.max(size.x * size.y * size.z, 0.001),
+    };
+  }
+
+  const size = config.size;
+  return {
+    desc: createBoxCollider(size),
+    volume: Math.max(size.x * size.y * size.z, 0.001),
+  };
+}
+
+function hasExplicitCollider(
+  config: StationaryDynamicConfig,
+): config is StationaryDynamicBaseConfig & {
+  collider: StationaryDynamicColliderConfig;
+  size?: never;
+} {
+  return config.collider !== undefined;
 }

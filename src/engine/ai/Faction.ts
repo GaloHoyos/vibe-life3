@@ -10,7 +10,7 @@
  *                  lo vivo no-zombie.
  * - `neutral`    — props, civiles, no participan en combate.
  */
-export type Faction = "player" | "resistance" | "combine" | "zombies" | "neutral";
+export type Faction = "player" | "resistance" | "combine" | "zombies" | "blob" | "neutral";
 
 /**
  * Matriz de hostilidad. `true` significa que la fila ataca a la columna. No es
@@ -18,10 +18,11 @@ export type Faction = "player" | "resistance" | "combine" | "zombies" | "neutral
  * combine y zombies se atacan entre sí además de al lado del jugador.
  */
 const HOSTILITY: Record<Faction, ReadonlySet<Faction>> = {
-  player: new Set<Faction>(["combine", "zombies"]),
-  resistance: new Set<Faction>(["combine", "zombies"]),
-  combine: new Set<Faction>(["player", "resistance", "zombies"]),
-  zombies: new Set<Faction>(["player", "resistance", "combine"]),
+  player: new Set<Faction>(["combine", "zombies", "blob"]),
+  resistance: new Set<Faction>(["combine", "zombies", "blob"]),
+  combine: new Set<Faction>(["player", "resistance", "zombies", "blob"]),
+  zombies: new Set<Faction>(["player", "resistance", "combine", "blob"]),
+  blob: new Set<Faction>(["player", "resistance", "combine", "zombies", "neutral"]),
   neutral: new Set<Faction>(),
 };
 

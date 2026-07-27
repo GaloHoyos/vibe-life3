@@ -28,6 +28,7 @@ export class PhysicalSkeleton {
   private readonly config: RagdollConfig;
   private readonly bones: PhysicalBone[] = [];
   private enabled = true;
+  private disposed = false;
 
   constructor(private readonly options: PhysicalSkeletonOptions) {
     this.config = { ...DefaultRagdollConfig, ...options.config };
@@ -35,7 +36,7 @@ export class PhysicalSkeleton {
   }
 
   updateFromVisualPose(): void {
-    if (!this.enabled) {
+    if (!this.enabled || this.disposed) {
       return;
     }
 
@@ -51,6 +52,7 @@ export class PhysicalSkeleton {
   }
 
   setEnabled(enabled: boolean): void {
+    if (this.disposed) return;
     this.enabled = enabled;
     this.bones.forEach((part) => {
       part.collider.setEnabled(enabled);
@@ -64,6 +66,19 @@ export class PhysicalSkeleton {
 
   getBodyCount(): number {
     return this.bones.length;
+  }
+
+  /** Remueve los sensores kinematic y su metadata. Idempotente. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.enabled = false;
+    for (const part of this.bones) {
+      if (part.rigidBody.isValid()) {
+        this.options.physics.removeBody(part.rigidBody);
+      }
+    }
+    this.bones.length = 0;
   }
 
   private buildSensorBodies(): void {

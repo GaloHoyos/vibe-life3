@@ -80,6 +80,44 @@ describe("CharacterFactory", () => {
     npc.dispose();
     physics.reset();
   });
+
+  it("mantiene una presa organica a traves de la muerte y deja que su dueno limpie el ragdoll al consumirla", async () => {
+    const { CharacterFactory } = await import("@game/characters/CharacterFactory");
+    const physics = new PhysicsWorld();
+    await physics.init();
+    const factory = new CharacterFactory(
+      trackingAssets(),
+      physics,
+      new EventBus<GameEventMap>(),
+    );
+    const npc = await factory.createNPC(
+      "zombie",
+      "organic-zombie",
+      new Vector3(0, 2, 0),
+      [],
+      runtimeServices(),
+    );
+    const parent = new Object3D();
+    parent.add(npc.mesh);
+    const organic = npc.getOrganicMatterHandle?.();
+
+    expect(organic).not.toBeNull();
+    expect(organic?.mass).toBeGreaterThan(0);
+    expect(organic?.tryClaim("blob-hunter")).toBe(true);
+    npc.applyDamage(npc.health.max * 2, undefined, undefined, "blob-hunter");
+    expect(npc.isAlive()).toBe(false);
+    expect(organic?.isAvailable()).toBe(true);
+
+    organic?.setDigestionProgress("blob-hunter", 0.5);
+    expect(npc.mesh.scale.x).toBeLessThan(1);
+    const gained = organic?.consume("blob-hunter") ?? 0;
+    expect(gained).toBeGreaterThan(0);
+    expect(parent.children).not.toContain(npc.mesh);
+    expect(physics.getBodyCount()).toBe(0);
+    expect(() => npc.dispose()).not.toThrow();
+
+    physics.reset();
+  });
 });
 
 function trackingAssets(): AssetManager & {

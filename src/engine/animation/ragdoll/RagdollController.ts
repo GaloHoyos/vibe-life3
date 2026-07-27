@@ -81,7 +81,7 @@ export class RagdollController {
   }
 
   isActive(): boolean {
-    return this.active;
+    return this.active && !this.cleanedUp;
   }
 
   setActive(active: boolean): void {
@@ -93,15 +93,116 @@ export class RagdollController {
   }
 
   getBodyCount(): number {
-    return this.bodies.length;
+    return this.cleanedUp ? 0 : this.bodies.length;
   }
 
   getPartCount(): number {
-    return this.parts.length;
+    return this.cleanedUp ? 0 : this.parts.length;
   }
 
   getJointCount(): number {
-    return this.joints.length;
+    return this.cleanedUp ? 0 : this.joints.length;
+  }
+
+  /** Centro de masa world-space del cadaver fisico activo. */
+  getCenter(): Vector3 | null {
+    if (!this.isActive()) {
+      return null;
+    }
+
+    const center = new Vector3();
+    let totalWeight = 0;
+    for (const body of this.bodies) {
+      if (!body.isValid() || !body.isEnabled()) continue;
+      const position = body.translation();
+      const mass = body.mass();
+      // Los fallbacks sin masa explicita siguen participando como un punto.
+      const weight = Number.isFinite(mass) && mass > 0 ? mass : 1;
+      center.x += position.x * weight;
+      center.y += position.y * weight;
+      center.z += position.z * weight;
+      totalWeight += weight;
+    }
+
+    return totalWeight > 0 ? center.divideScalar(totalWeight) : null;
+  }
+
+  /**
+   * Drives the center of mass toward a point without distorting the ragdoll.
+   * Mass-proportional impulses give every part the same velocity change, so
+   * joints do not have to drag loose limbs behind the rest of the corpse.
+   */
+  pullToward(
+    target: Vector3,
+    delta: number,
+    positionGain: number,
+    maxSpeed: number,
+    acceleration: number,
+  ): void {
+    if (!this.isActive() || !isFiniteVector(target)) return;
+
+    const step = Number.isFinite(delta) ? Math.max(0, Math.min(delta, 0.1)) : 0;
+    const gain = Number.isFinite(positionGain) ? Math.max(0, positionGain) : 0;
+    const speedLimit = Number.isFinite(maxSpeed) ? Math.max(0, maxSpeed) : 0;
+    const accelerationLimit = Number.isFinite(acceleration)
+      ? Math.max(0, acceleration)
+      : 0;
+    if (step <= 0 || gain <= 0 || speedLimit <= 0 || accelerationLimit <= 0) {
+      return;
+    }
+
+    const center = this.getCenter();
+    if (!center) return;
+
+    const desiredVelocity = target.clone().sub(center).multiplyScalar(gain);
+    if (desiredVelocity.length() > speedLimit) {
+      desiredVelocity.setLength(speedLimit);
+    }
+
+    const currentVelocity = new Vector3();
+    const activeBodies: Array<{ body: RAPIER.RigidBody; mass: number }> = [];
+    let totalMass = 0;
+    for (const body of this.bodies) {
+      if (!body.isValid() || !body.isEnabled()) continue;
+      const bodyMass = body.mass();
+      const mass = Number.isFinite(bodyMass) && bodyMass > 0 ? bodyMass : 1;
+      const velocity = body.linvel();
+      currentVelocity.x += velocity.x * mass;
+      currentVelocity.y += velocity.y * mass;
+      currentVelocity.z += velocity.z * mass;
+      totalMass += mass;
+      activeBodies.push({ body, mass });
+    }
+    if (totalMass <= 0) return;
+    currentVelocity.divideScalar(totalMass);
+
+    const velocityDelta = desiredVelocity.sub(currentVelocity);
+    const maxVelocityDelta = accelerationLimit * step;
+    if (velocityDelta.length() > maxVelocityDelta) {
+      velocityDelta.setLength(maxVelocityDelta);
+    }
+    if (velocityDelta.lengthSq() <= 1e-8) return;
+
+    for (const { body, mass } of activeBodies) {
+      body.applyImpulse(
+        {
+          x: velocityDelta.x * mass,
+          y: velocityDelta.y * mass,
+          z: velocityDelta.z * mass,
+        },
+        true,
+      );
+      clampRigidBodyVelocity(
+        body,
+        this.config.maxPartLinearVelocity,
+        this.config.maxPartAngularVelocity,
+      );
+    }
+  }
+
+  /** Libera joints y bodies del cadaver. Seguro ante llamadas repetidas. */
+  dispose(): void {
+    this.cleanup();
   }
 
   private findImpulseTarget(partName?: string): RAPIER.RigidBody | null {
@@ -116,7 +217,9 @@ export class RagdollController {
   }
 
   private cleanup(): void {
+    if (this.cleanedUp) return;
     this.cleanedUp = true;
+    this.active = false;
     // Bodies/joints may already be gone after PhysicsWorld.reset() on level change.
     this.joints.forEach((joint) => {
       if (joint.isValid()) {
@@ -164,6 +267,14 @@ function clampVector(vector: Vector3, maxLength: number): Vector3 {
   }
 
   return result;
+}
+
+function isFiniteVector(vector: Vector3): boolean {
+  return (
+    Number.isFinite(vector.x) &&
+    Number.isFinite(vector.y) &&
+    Number.isFinite(vector.z)
+  );
 }
 
 function clampRigidBodyVelocity(body: RAPIER.RigidBody, maxLinear: number, maxAngular: number): void {

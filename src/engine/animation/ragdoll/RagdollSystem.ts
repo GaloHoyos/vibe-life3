@@ -44,6 +44,7 @@ export class RagdollSystem {
   private readonly restPose: RagdollRestPose | null;
   private sensorSkeleton: PhysicalSkeleton | null = null;
   private controller: RagdollController | null = null;
+  private disposed = false;
 
   constructor(private readonly options: RagdollSystemOptions) {
     // Captured at construction: the load pose is the rest pose (same contract
@@ -53,6 +54,9 @@ export class RagdollSystem {
 
   /** Construye el ragdoll fÃ­sico real (lazy). Usado al pasar a passiveRagdoll. */
   ensureBuilt(): RagdollController {
+    if (this.disposed) {
+      throw new Error(`[RagdollSystem] '${this.options.id}' ya fue disposed.`);
+    }
     if (this.controller) {
       return this.controller;
     }
@@ -76,6 +80,7 @@ export class RagdollSystem {
    * para que las balas detecten hits por body part sin alterar la fÃ­sica.
    */
   ensureLiveSensors(): PhysicalSkeleton | null {
+    if (this.disposed) return null;
     if (this.sensorSkeleton || !(this.options.config?.bodyPartCollisions ?? true)) {
       return this.sensorSkeleton;
     }
@@ -110,10 +115,12 @@ export class RagdollSystem {
   }
 
   updateLiveSensors(): void {
+    if (this.disposed) return;
     this.sensorSkeleton?.updateFromVisualPose();
   }
 
   update(delta = 0): void {
+    if (this.disposed) return;
     this.controller?.update(delta);
   }
 
@@ -123,5 +130,36 @@ export class RagdollSystem {
 
   getBodyCount(): number {
     return (this.controller?.getBodyCount() ?? 0) + (this.sensorSkeleton?.getBodyCount() ?? 0);
+  }
+
+  /** Centro de masa world-space del passive ragdoll; null antes de morir o tras cleanup. */
+  getCenter(): Vector3 | null {
+    return this.controller?.getCenter() ?? null;
+  }
+
+  pullToward(
+    target: Vector3,
+    delta: number,
+    positionGain: number,
+    maxSpeed: number,
+    acceleration: number,
+  ): void {
+    this.controller?.pullToward(
+      target,
+      delta,
+      positionGain,
+      maxSpeed,
+      acceleration,
+    );
+  }
+
+  /** Libera tanto el cadaver pasivo como los sensores vivos. Idempotente. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.sensorSkeleton?.dispose();
+    this.controller?.dispose();
+    this.sensorSkeleton = null;
+    this.controller = null;
   }
 }

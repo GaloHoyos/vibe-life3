@@ -12,6 +12,7 @@ export const PlayerConfig = {
    * ojo en ~1.65 m (center 0.90 + 0.75).
    */
   collider: {
+    mass: 70,
     radius: 0.35,
     standingHalfHeight: 0.55,
     crouchHalfHeight: 0.3,
