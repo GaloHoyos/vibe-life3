@@ -130,6 +130,15 @@ export class HUD implements Disposable {
       eventBus.on("squad.command", ({ kind }) =>
         this.view.notify(kind === "move" ? HudStrings.squadMove : HudStrings.squadRegroup),
       ),
+      eventBus.on("vehicle.player.entered", () => this.view.vehicle.show()),
+      eventBus.on("vehicle.player.exited", () => this.view.vehicle.hide()),
+      eventBus.on("vehicle.telemetry", (state) => this.view.vehicle.update(state)),
+      eventBus.on("vehicle.disabled", () =>
+        this.view.notify("Vehículo fuera de servicio", "warning"),
+      ),
+      eventBus.on("vehicle.crashed", () =>
+        this.view.notify("Impacto inminente", "warning"),
+      ),
     );
   }
 

@@ -8,6 +8,7 @@ import { InteractionPrompt } from '@game/ui/overlay/InteractionPrompt';
 import { SquadHUD } from './SquadHUD';
 import { WeaponHUD } from './WeaponHUD';
 import { WeaponSelectorView } from './WeaponSelectorView';
+import { VehicleHUD } from './VehicleHUD';
 
 export type HUDNotificationTone = 'info' | 'pickup' | 'warning';
 
@@ -26,6 +27,7 @@ export class HUDView implements Disposable {
   readonly interaction = new InteractionPrompt();
   readonly weaponSelector = new WeaponSelectorView();
   readonly squad = new SquadHUD();
+  readonly vehicle = new VehicleHUD();
   readonly objective: ObjectiveHUD;
 
   private readonly feed = document.createElement('div');
@@ -44,6 +46,7 @@ export class HUDView implements Disposable {
       this.healthArmor.element,
       this.weapon.element,
       this.squad.element,
+      this.vehicle.element,
       this.objective.element,
       this.hazardWarning.element,
       this.feed,
@@ -71,6 +74,7 @@ export class HUDView implements Disposable {
     this.weapon.dispose();
     this.weaponSelector.dispose();
     this.objective.dispose();
+    this.vehicle.dispose();
     this.element.remove();
   }
 }

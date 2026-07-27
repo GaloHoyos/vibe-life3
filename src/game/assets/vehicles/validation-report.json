@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "validator": "Khronos glTF Validator",
+  "deterministic": true,
+  "vehicles": [
+    {
+      "id": "buggy",
+      "bytes": 856028,
+      "budgetBytes": 8388608,
+      "lods": [
+        {
+          "triangles": 12680,
+          "draws": 7
+        },
+        {
+          "triangles": 5140,
+          "draws": 7
+        },
+        {
+          "triangles": 1632,
+          "draws": 5
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0,
+        "infos": 1,
+        "hints": 0
+      }
+    },
+    {
+      "id": "airboat",
+      "bytes": 786240,
+      "budgetBytes": 8388608,
+      "lods": [
+        {
+          "triangles": 8664,
+          "draws": 7
+        },
+        {
+          "triangles": 2556,
+          "draws": 7
+        },
+        {
+          "triangles": 440,
+          "draws": 1
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0,
+        "infos": 1,
+        "hints": 0
+      }
+    },
+    {
+      "id": "helicopter",
+      "bytes": 820180,
+      "budgetBytes": 14680064,
+      "lods": [
+        {
+          "triangles": 6496,
+          "draws": 5
+        },
+        {
+          "triangles": 2020,
+          "draws": 5
+        },
+        {
+          "triangles": 632,
+          "draws": 1
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0,
+        "infos": 1,
+        "hints": 0
+      }
+    }
+  ],
+  "audio": {
+    "bytes": 1532960,
+    "budgetBytes": 12582912,
+    "files": 11
+  }
+}

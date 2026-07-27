@@ -24,6 +24,7 @@ import type {
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { EditorDocument, EditorEntity } from './EditorDocument';
 import { buildProp } from './propRuntime';
+import { VehiclePresets } from '@game/config/vehicles.config';
 
 /** Id sentinela del marcador de spawn del jugador (vive en `meta`, no en `entities`). */
 export const PLAYER_START_EID = '__playerStart__';
@@ -222,6 +223,22 @@ export class EditorScene {
         return barrelMesh(entity.def.id, entity.def.position, entity.def.rotation);
       case 'hazardVolume':
         return triggerMesh(entity.def.id, entity.def.position, entity.def.size);
+      case 'vehicle': {
+        const preset = VehiclePresets[entity.def.presetId];
+        return placeholder(entity.def.position, preset.body.size, 'metalRusted', entity.def.rotation);
+      }
+      case 'vehicleWaypoint':
+        return placeholder(entity.def.position, [0.45, 0.45, 0.45], 'button');
+      case 'waterVolume':
+        return triggerMesh(entity.def.id, entity.def.position, entity.def.size);
+      case 'vehicleNavArea':
+        return groupFromPoints(entity.def.polygon, 'trim');
+      case 'vehicleNavLane':
+        return groupFromPoints(entity.def.points, 'button');
+      case 'vehicleNavMarker':
+        return placeholder(entity.def.position, [0.55, 0.75, 0.55], 'button', [0, entity.def.heading ?? 0, 0]);
+      case 'checkpoint':
+        return triggerMesh(entity.def.id, entity.def.position, entity.def.size);
       case 'npc':
         return placeholder(entity.def.position, [0.6, 1.7, 0.6], 'npc', entity.def.rotation);
       case 'weaponPickup':
@@ -315,6 +332,23 @@ function placeholder(
 function groupFromBoxes(boxes: StaticBoxDefinition[]): Group {
   const group = new Group();
   for (const box of boxes) group.add(boxMesh(box));
+  return group;
+}
+
+function groupFromPoints(
+  points: readonly VectorTuple[],
+  material: Parameters<typeof createBoxMesh>[0]['material'],
+): Group {
+  const group = new Group();
+  points.forEach((point, index) => {
+    group.add(createBoxMesh({
+      id: `point-${index}`,
+      position: point,
+      size: [0.24, 0.24, 0.24],
+      material,
+      castShadow: false,
+    }));
+  });
   return group;
 }
 

@@ -18,6 +18,12 @@ import type {
   StaticBoxDefinition,
   TerrainDefinition,
   TriggerDefinition,
+  VehicleDefinition,
+  VehicleNavAreaDefinition,
+  VehicleNavLaneDefinition,
+  VehicleNavMarkerDefinition,
+  VehicleWaypointDefinition,
+  WaterVolumeDefinition,
   WeaponPickupDefinition,
 } from '@game/levels/LevelDefinition';
 import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
@@ -30,6 +36,7 @@ import { buildBuilding, type BuildingSpec } from './BuildingBuilder';
 import { buildHouse, type HouseSpec } from './HouseBuilder';
 import { buildRamp, type RampSpec } from './RampBuilder';
 import type { PropArtifact } from './PropBuilder';
+import type { LandmarkReference } from '@game/levels/LevelTransition';
 
 export interface MapMeta {
   id: string;
@@ -38,7 +45,7 @@ export interface MapMeta {
   /** Nivel a encadenar vía trigger `endLevel`. Ver `LevelDefinition.nextLevel`. */
   nextLevel?: LevelId;
   /** Landmark de entrada para transiciones relativas. Ver `LevelDefinition.entryLandmark`. */
-  entryLandmark?: VectorTuple;
+  entryLandmark?: LandmarkReference;
   /** Objetivo inicial que muestra el HUD al cargar. */
   objective?: ObjectiveDefinition;
   background: number;
@@ -104,6 +111,12 @@ export class MapBuilder {
   private readonly barrelList: ExplosiveBarrelDefinition[] = [];
   private readonly hazardList: HazardVolumeDefinition[] = [];
   private readonly checkpointList: CheckpointDefinition[] = [];
+  private readonly vehicleList: VehicleDefinition[] = [];
+  private readonly vehicleWaypointList: VehicleWaypointDefinition[] = [];
+  private readonly waterVolumeList: WaterVolumeDefinition[] = [];
+  private readonly vehicleNavAreaList: VehicleNavAreaDefinition[] = [];
+  private readonly vehicleNavLaneList: VehicleNavLaneDefinition[] = [];
+  private readonly vehicleNavMarkerList: VehicleNavMarkerDefinition[] = [];
   private terrainDef: TerrainDefinition | undefined;
 
   constructor(private readonly meta: MapMeta) {}
@@ -310,6 +323,36 @@ export class MapBuilder {
     return this;
   }
 
+  vehicle(def: VehicleDefinition): this {
+    this.vehicleList.push(def);
+    return this;
+  }
+
+  vehicleWaypoint(def: VehicleWaypointDefinition): this {
+    this.vehicleWaypointList.push(def);
+    return this;
+  }
+
+  waterVolume(def: WaterVolumeDefinition): this {
+    this.waterVolumeList.push(def);
+    return this;
+  }
+
+  vehicleNavArea(def: VehicleNavAreaDefinition): this {
+    this.vehicleNavAreaList.push(def);
+    return this;
+  }
+
+  vehicleNavLane(def: VehicleNavLaneDefinition): this {
+    this.vehicleNavLaneList.push(def);
+    return this;
+  }
+
+  vehicleNavMarker(def: VehicleNavMarkerDefinition): this {
+    this.vehicleNavMarkerList.push(def);
+    return this;
+  }
+
   /**
    * Punto world-space dentro de un room ya agregado. `local` es el offset XZ
    * desde el centro del room, clampeado a su AABB con 0.6 m de margen de
@@ -336,6 +379,7 @@ export class MapBuilder {
 
   build(): LevelDefinition {
     this.validateUniqueIds();
+    this.validateVehicleAuthoring();
     return {
       id: this.meta.id,
       title: this.meta.title,
@@ -366,6 +410,12 @@ export class MapBuilder {
       explosiveBarrels: this.barrelList.length > 0 ? this.barrelList : undefined,
       hazardVolumes: this.hazardList.length > 0 ? this.hazardList : undefined,
       checkpoints: this.checkpointList.length > 0 ? this.checkpointList : undefined,
+      vehicles: this.vehicleList.length > 0 ? this.vehicleList : undefined,
+      vehicleWaypoints: this.vehicleWaypointList.length > 0 ? this.vehicleWaypointList : undefined,
+      waterVolumes: this.waterVolumeList.length > 0 ? this.waterVolumeList : undefined,
+      vehicleNavAreas: this.vehicleNavAreaList.length > 0 ? this.vehicleNavAreaList : undefined,
+      vehicleNavLanes: this.vehicleNavLaneList.length > 0 ? this.vehicleNavLaneList : undefined,
+      vehicleNavMarkers: this.vehicleNavMarkerList.length > 0 ? this.vehicleNavMarkerList : undefined,
     };
   }
 
@@ -396,10 +446,84 @@ export class MapBuilder {
     this.barrelList.forEach((b) => check(b.id));
     this.hazardList.forEach((h) => check(h.id));
     this.checkpointList.forEach((c) => check(c.id));
+    this.vehicleList.forEach((v) => check(v.id));
+    this.vehicleWaypointList.forEach((w) => check(w.id));
+    this.waterVolumeList.forEach((w) => check(w.id));
+    this.vehicleNavAreaList.forEach((a) => check(a.id));
+    this.vehicleNavLaneList.forEach((l) => check(l.id));
+    this.vehicleNavMarkerList.forEach((m) => check(m.id));
     if (dupes.size > 0) {
       throw new Error(
         `MapBuilder('${this.meta.id}'): ids duplicados: ${[...dupes].join(', ')}`,
       );
+    }
+  }
+
+  private validateVehicleAuthoring(): void {
+    const waypoints = new Map(
+      this.vehicleWaypointList.map((waypoint) => [waypoint.id, waypoint] as const),
+    );
+    for (const waypoint of waypoints.values()) {
+      if (waypoint.next && !waypoints.has(waypoint.next)) {
+        throw new Error(
+          `MapBuilder('${this.meta.id}'): waypoint '${waypoint.id}' referencia next '${waypoint.next}' inexistente.`,
+        );
+      }
+    }
+
+    const validateRoute = (vehicleId: string, start: string, allowLoop: boolean): void => {
+      const visited = new Set<string>();
+      let current: string | undefined = start;
+      while (current) {
+        const waypoint = waypoints.get(current);
+        if (!waypoint) {
+          throw new Error(
+            `MapBuilder('${this.meta.id}'): vehiculo '${vehicleId}' referencia waypoint '${current}' inexistente.`,
+          );
+        }
+        if (visited.has(current)) {
+          if (allowLoop) return;
+          throw new Error(
+            `MapBuilder('${this.meta.id}'): ruta de '${vehicleId}' contiene un ciclo sin pathLoop.`,
+          );
+        }
+        visited.add(current);
+        current = waypoint.next;
+      }
+    };
+
+    for (const vehicle of this.vehicleList) {
+      if (vehicle.presetId === 'helicopter' && !vehicle.pathStart) {
+        throw new Error(
+          `MapBuilder('${this.meta.id}'): helicoptero '${vehicle.id}' requiere pathStart.`,
+        );
+      }
+      if (vehicle.pathStart) validateRoute(vehicle.id, vehicle.pathStart, vehicle.pathLoop === true);
+      if (vehicle.crashPathStart) {
+        validateRoute(vehicle.id, vehicle.crashPathStart, vehicle.pathLoop === true);
+      }
+    }
+
+    for (const water of this.waterVolumeList) {
+      if (water.size.some((component) => component <= 0)) {
+        throw new Error(
+          `MapBuilder('${this.meta.id}'): volumen de agua '${water.id}' requiere size positivo.`,
+        );
+      }
+    }
+    for (const area of this.vehicleNavAreaList) {
+      if (area.polygon.length < 3) {
+        throw new Error(
+          `MapBuilder('${this.meta.id}'): area vehicular '${area.id}' requiere al menos 3 puntos.`,
+        );
+      }
+    }
+    for (const lane of this.vehicleNavLaneList) {
+      if (lane.points.length < 2 || lane.width <= 0) {
+        throw new Error(
+          `MapBuilder('${this.meta.id}'): carril vehicular '${lane.id}' invalido.`,
+        );
+      }
     }
   }
 }

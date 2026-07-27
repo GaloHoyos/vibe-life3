@@ -10,6 +10,7 @@ import type { UiSoundCue } from "@game/config/audio.config";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { WorkshopService } from "@game/workshop/WorkshopService";
 import type { DifficultyLevel } from "@game/config/difficulty.config";
+import type { SaveEnvelopeV1 } from "@game/save";
 
 export interface MainMenuCallbacks {
   onStartChapter: (chapterId: string) => void;
@@ -18,6 +19,12 @@ export interface MainMenuCallbacks {
   onDeleteLibraryMap: (id: string) => void;
   onImportCustomMap: () => void;
   onResume: () => void;
+  onContinue?: () => void | Promise<void>;
+  listSaves?: () => Promise<readonly SaveEnvelopeV1[]>;
+  onLoadSave?: (id: string) => void | Promise<void>;
+  onCreateManualSave?: () => void | Promise<void>;
+  onOverwriteSave?: (id: string) => void | Promise<void>;
+  onDeleteSave?: (id: string) => void | Promise<void>;
   onExitToMain: () => void;
   onOpenEditor: () => void;
   onSound: (cue: UiSoundCue) => void;
@@ -57,6 +64,12 @@ export class MainMenu implements Disposable {
       onOpenState: (state) => this.setState(state),
       onBack: () => this.setState(this.pauseFlow ? "paused" : "mainMenu"),
       onResume: callbacks.onResume,
+      onContinue: callbacks.onContinue ?? (() => undefined),
+      listSaves: callbacks.listSaves ?? (() => Promise.resolve([])),
+      onLoadSave: callbacks.onLoadSave ?? (() => undefined),
+      onCreateManualSave: callbacks.onCreateManualSave ?? (() => undefined),
+      onOverwriteSave: callbacks.onOverwriteSave ?? (() => undefined),
+      onDeleteSave: callbacks.onDeleteSave ?? (() => undefined),
       onExitToMain: callbacks.onExitToMain,
       onOpenEditor: callbacks.onOpenEditor,
       onSound: callbacks.onSound,
@@ -95,6 +108,11 @@ export class MainMenu implements Disposable {
     if (this.state === "customMaps") {
       this.view.setState("customMaps", this.pauseFlow);
     }
+  }
+
+  /** Actualiza la disponibilidad de Continuar y la lista del panel activo. */
+  refreshSaves(): Promise<void> {
+    return this.view.refreshSaves();
   }
 
   showMain(): void {

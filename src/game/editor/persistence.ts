@@ -1,4 +1,7 @@
-import type { EditorDocument } from './EditorDocument';
+import {
+  CURRENT_EDITOR_SCHEMA_VERSION,
+  type EditorDocument,
+} from './EditorDocument';
 import { migrateDocument } from './migrateDocument';
 
 const DRAFT_KEY = 'vibe.editor.draft';
@@ -10,7 +13,9 @@ export type EditorMode = 'edit' | 'playtest';
 export function isEditorDocument(value: unknown): value is EditorDocument {
   if (!value || typeof value !== 'object') return false;
   const doc = value as Partial<EditorDocument>;
+  const schemaVersion = (value as { schemaVersion?: unknown }).schemaVersion;
   return (
+    (schemaVersion === undefined || schemaVersion === CURRENT_EDITOR_SCHEMA_VERSION) &&
     typeof doc.meta === 'object' &&
     doc.meta !== null &&
     Array.isArray(doc.entities) &&

@@ -64,6 +64,66 @@ export function createEntity(kind: PaletteKind, at: VectorTuple): EditorEntity {
       return { eid: newEid(kind), kind, def: { id: lid('barrel'), position: [x, y, z] } };
     case 'hazardVolume':
       return { eid: newEid(kind), kind, def: { id: lid('hazard'), position: [x, y + 1, z], size: [4, 2, 4], kind: 'toxic', damagePerSecond: 15 } };
+    case 'vehicle':
+      return {
+        eid: newEid(kind),
+        kind,
+        def: {
+          id: lid('vehicle'),
+          presetId: 'buggy',
+          position: [x, y, z],
+          faction: 'resistance',
+          weaponEnabled: true,
+          portalTraversal: 'blocked',
+          connections: [],
+        },
+      };
+    case 'vehicleWaypoint':
+      return {
+        eid: newEid(kind),
+        kind,
+        def: { id: lid('vehicle-waypoint'), position: [x, y + 2, z], speed: 18, connections: [] },
+      };
+    case 'waterVolume':
+      return {
+        eid: newEid(kind),
+        kind,
+        def: { id: lid('water'), position: [x, y - 1, z], size: [12, 2, 12], surface: 'canal' },
+      };
+    case 'vehicleNavArea':
+      return {
+        eid: newEid(kind),
+        kind,
+        def: {
+          id: lid('vehicle-nav-area'),
+          polygon: [[x - 5, y, z - 5], [x + 5, y, z - 5], [x + 5, y, z + 5], [x - 5, y, z + 5]],
+          surface: 'ground',
+        },
+      };
+    case 'vehicleNavLane':
+      return {
+        eid: newEid(kind),
+        kind,
+        def: {
+          id: lid('vehicle-nav-lane'),
+          points: [[x, y, z - 5], [x, y, z + 5]],
+          width: 3,
+          direction: 'both',
+          speedLimit: 14,
+        },
+      };
+    case 'vehicleNavMarker':
+      return {
+        eid: newEid(kind),
+        kind,
+        def: { id: lid('vehicle-nav-marker'), position: [x, y, z], kind: 'parking', connections: [] },
+      };
+    case 'checkpoint':
+      return {
+        eid: newEid(kind),
+        kind,
+        def: { id: lid('checkpoint'), position: [x, y + 1, z], size: [3, 2, 3], respawn: [x, y, z] },
+      };
     case 'building':
       return {
         eid: newEid(kind),
@@ -157,6 +217,27 @@ export function cloneEntity(entity: EditorEntity): EditorEntity {
       break;
     case 'hazardVolume':
       c.def.id = lid('hazard');
+      break;
+    case 'vehicle':
+      c.def.id = lid('vehicle');
+      break;
+    case 'vehicleWaypoint':
+      c.def.id = lid('vehicle-waypoint');
+      break;
+    case 'waterVolume':
+      c.def.id = lid('water');
+      break;
+    case 'vehicleNavArea':
+      c.def.id = lid('vehicle-nav-area');
+      break;
+    case 'vehicleNavLane':
+      c.def.id = lid('vehicle-nav-lane');
+      break;
+    case 'vehicleNavMarker':
+      c.def.id = lid('vehicle-nav-marker');
+      break;
+    case 'checkpoint':
+      c.def.id = lid('checkpoint');
       break;
     case 'building':
     case 'house':

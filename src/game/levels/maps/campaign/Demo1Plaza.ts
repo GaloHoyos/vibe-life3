@@ -864,7 +864,12 @@ map
       { output: 'OnTrigger', target: 'd1-seq-resolution', input: 'Start', delay: 2 },
     ],
   })
-  .logic({ kind: 'changelevel', id: 'd1-changelevel', name: 'd1-changelevel', landmark: [-100, 1.2, 40] });
+  .logic({
+    kind: 'changelevel',
+    id: 'd1-changelevel',
+    name: 'd1-changelevel',
+    landmark: { position: [-100, 1.2, 40], yaw: 0 },
+  });
 
 // ── Triggers en umbrales reales ─────────────────────────────────────────────
 map

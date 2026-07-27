@@ -1,7 +1,10 @@
 export type { Interactable } from './Interactable';
 export { ActionButton } from './ActionButton';
-export { Charger } from './Charger';
+export { Charger, type ChargerSaveSnapshot } from './Charger';
 export { DoorButton } from './DoorButton';
-export { GrabSystem } from './GrabSystem';
+export { GrabSystem, type GrabSystemSaveSnapshot } from './GrabSystem';
 export { InteractSystem } from './InteractSystem';
-export { SlidingDoor } from './SlidingDoor';
+export {
+  SlidingDoor,
+  type SlidingDoorSaveSnapshot,
+} from './SlidingDoor';

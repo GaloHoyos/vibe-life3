@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3 } from "three";
 import { PhysicsWorld } from "@engine/physics/PhysicsWorld";
@@ -7,7 +7,10 @@ import type { PortalFrame } from "@engine/portals/PortalFrame";
 import {
   computePortalPlacement,
   portalsOverlap,
+  resolvePortalBackingColliders,
 } from "@game/gameplay/weapons/portal/PortalPlacement";
+import { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
+import { assertJsonValue } from "@game/save/JsonValue";
 
 beforeAll(async () => {
   await RAPIER.init();
@@ -245,5 +248,53 @@ describe("portalsOverlap", () => {
       halfHeight: 0.95,
     };
     expect(portalsOverlap(wall, floor)).toBe(false);
+  });
+});
+
+describe("persistencia de PortalGunSystem", () => {
+  it("revalida el frame y resuelve colliders del mundo actual al restaurar", async () => {
+    const { raycast } = await worldWithWallAndFloor();
+    const placement = computePortalPlacement(
+      raycast,
+      new Vector3(0, 5, 5),
+      new Vector3(0, 0, -1),
+      OPTIONS,
+    );
+    expect(placement).not.toBeNull();
+    const frame = placement!.frame;
+    const currentBacking = resolvePortalBackingColliders(raycast, frame, "player");
+    expect(currentBacking?.length).toBeGreaterThan(0);
+
+    const clearPlacedPortals = vi.fn();
+    const place = vi.fn();
+    const system = Object.create(PortalGunSystem.prototype) as PortalGunSystem;
+    Object.assign(system as unknown as Record<string, unknown>, {
+      raycast,
+      portals: new Map([
+        [
+          "a",
+          {
+            slot: "a",
+            frame,
+          },
+        ],
+      ]),
+      clearPlacedPortals,
+      place,
+    });
+
+    const snapshot = system.capture();
+    expect(() => assertJsonValue(snapshot)).not.toThrow();
+    system.restore(snapshot);
+
+    expect(clearPlacedPortals).toHaveBeenCalledWith(false);
+    expect(place).toHaveBeenCalledWith(
+      "a",
+      expect.objectContaining({
+        halfWidth: frame.halfWidth,
+        halfHeight: frame.halfHeight,
+      }),
+      expect.arrayContaining(currentBacking ?? []),
+    );
   });
 });

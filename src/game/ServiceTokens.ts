@@ -37,6 +37,13 @@ import type { Subtitles } from "@game/ui/subtitles/Subtitles";
 import type { MainMenu } from "@game/ui/menu/MainMenu";
 import type { LevelEditor } from "@game/editor/LevelEditor";
 import type { WorkshopService } from "@game/workshop/WorkshopService";
+import type { VehicleSystem } from "@game/gameplay/vehicles/VehicleSystem";
+import type {
+  IndexedDbSaveStorage,
+  SaveCoordinator,
+  SaveEntityRegistry,
+  SaveRepository,
+} from "@game/save";
 
 /**
  * Tokens de servicios especificos del juego.
@@ -62,6 +69,7 @@ export const GameTokens = {
   ExplosiveBarrels: new ServiceToken<ExplosiveBarrelSystem>("ExplosiveBarrelSystem"),
   PropImpacts: new ServiceToken<PropImpactSystem>("PropImpactSystem"),
   PlayerSquad: new ServiceToken<PlayerSquadService>("PlayerSquadService"),
+  Vehicles: new ServiceToken<VehicleSystem>("VehicleSystem"),
   InteractSystem: new ServiceToken<InteractSystem>("InteractSystem"),
   GrabSystem: new ServiceToken<GrabSystem>("GrabSystem"),
   TriggerSystem: new ServiceToken<TriggerSystem>("TriggerSystem"),
@@ -74,6 +82,10 @@ export const GameTokens = {
   DebugMenu: new ServiceToken<DebugMenu>("DebugMenu"),
   LevelEditor: new ServiceToken<LevelEditor>("LevelEditor"),
   Workshop: new ServiceToken<WorkshopService>("WorkshopService"),
+  SaveStorage: new ServiceToken<IndexedDbSaveStorage>("IndexedDbSaveStorage"),
+  SaveRepository: new ServiceToken<SaveRepository>("SaveRepository"),
+  SaveEntities: new ServiceToken<SaveEntityRegistry>("SaveEntityRegistry"),
+  Saves: new ServiceToken<SaveCoordinator>("SaveCoordinator"),
   BackgroundAmbience: new ServiceToken<BackgroundAmbienceSystem>(
     "BackgroundAmbienceSystem",
   ),

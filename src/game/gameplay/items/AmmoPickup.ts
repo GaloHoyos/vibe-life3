@@ -16,6 +16,11 @@ import {
   type AmmoId,
 } from "@game/config/ammo.config";
 import type { WeaponController } from "@game/gameplay/weapons/core/WeaponController";
+import {
+  capturePhysicalPickupSaveState,
+  restorePhysicalPickupSaveState,
+  type PhysicalPickupSaveSnapshot,
+} from "./PhysicalPickupSaveState";
 
 const SpawnLift = 0.6;
 const MinHalfExtent = 0.02;
@@ -56,6 +61,41 @@ export class AmmoPickup {
     pickup.object.updateMatrixWorld(true);
     pickup.spawnBody();
     return pickup;
+  }
+
+  get id(): string {
+    return this.options.id;
+  }
+
+  isAvailable(): boolean {
+    return !this.pickedUp;
+  }
+
+  captureSaveState(): PhysicalPickupSaveSnapshot {
+    if (!this.body) {
+      throw new Error(`Pickup ${this.options.id} sin cuerpo físico`);
+    }
+    return capturePhysicalPickupSaveState(
+      this.options.id,
+      !this.pickedUp,
+      this.body,
+    );
+  }
+
+  restoreSaveState(snapshot: Readonly<PhysicalPickupSaveSnapshot>): void {
+    if (!this.body || !this.collider) {
+      throw new Error(`Pickup ${this.options.id} sin cuerpo físico`);
+    }
+    restorePhysicalPickupSaveState(
+      snapshot,
+      this.options.id,
+      this.scene,
+      this.physics,
+      this.object,
+      this.body,
+      this.collider,
+    );
+    this.pickedUp = !snapshot.available;
   }
 
   update(_delta: number, playerPosition: Vector3, weapons: WeaponController): void {

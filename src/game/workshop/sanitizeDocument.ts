@@ -1,6 +1,8 @@
 import type { EditorDocument } from "@game/editor/EditorDocument";
+import { migrateDocument } from "@game/editor/migrateDocument";
 import { isEditorDocument } from "@game/editor/persistence";
 import { Soundscapes } from "@game/config/audio.config";
+import { isVehiclePresetId } from "@game/config/vehicles.config";
 import {
   descriptorFor,
   type EntityClassId,
@@ -53,10 +55,19 @@ export function sanitizeDocument(value: unknown): SanitizeResult {
   const soundscapeScan = scanSoundscapeReferences(value);
   if (!soundscapeScan.ok) return soundscapeScan;
 
-  const entityIoScan = scanEntityIO(value);
+  const document = migrateDocument(value);
+  const landmarkScan = document.meta.entryLandmark === undefined
+    ? { ok: true } as const
+    : validateLandmark(document.meta.entryLandmark, "meta.entryLandmark");
+  if (!landmarkScan.ok) return landmarkScan;
+
+  const vehicleScan = scanVehicleAuthoring(document);
+  if (!vehicleScan.ok) return vehicleScan;
+
+  const entityIoScan = scanEntityIO(document);
   if (!entityIoScan.ok) return entityIoScan;
 
-  return { ok: true, document: value };
+  return { ok: true, document };
 }
 
 type ValidationResult = { ok: true } | { ok: false; reason: string };
@@ -88,6 +99,338 @@ const LOGIC_KINDS = new Set([
 
 const MOVE_MODES = new Set(["walk", "run", "teleport", "none"]);
 const GESTURE_IDS = new Set(["point", "wave", "talk", "crouch"]);
+const VEHICLE_CREW_ROLES = new Set(["commander", "driver", "pilot", "gunner", "passenger"]);
+const VEHICLE_AI_BEHAVIORS = new Set([
+  "hold",
+  "patrol",
+  "escort",
+  "transport",
+  "intercept",
+  "flank",
+  "retreat",
+]);
+const VEHICLE_FACTIONS = new Set([
+  "player",
+  "resistance",
+  "combine",
+  "zombies",
+  "blob",
+  "neutral",
+]);
+const WATER_SURFACES = new Set(["canal", "river", "industrial"]);
+const VEHICLE_NAV_SURFACES = new Set(["ground", "water", "both"]);
+const VEHICLE_LANE_DIRECTIONS = new Set(["forward", "backward", "both"]);
+const VEHICLE_MARKER_KINDS = new Set([
+  "parking",
+  "boarding",
+  "recovery",
+  "passingBay",
+  "landingZone",
+  "dropZone",
+]);
+const EDITOR_ENTITY_KINDS = new Set([
+  "staticBox",
+  "dynamicBox",
+  "door",
+  "actionButton",
+  "npc",
+  "weaponPickup",
+  "itemPickup",
+  "ammoPickup",
+  "charger",
+  "trigger",
+  "explosiveBarrel",
+  "hazardVolume",
+  "logic",
+  "sequence",
+  "building",
+  "house",
+  "ramp",
+  "prop",
+  "prebuiltBuilding",
+  "vehicle",
+  "vehicleWaypoint",
+  "waterVolume",
+  "vehicleNavArea",
+  "vehicleNavLane",
+  "vehicleNavMarker",
+  "checkpoint",
+]);
+
+function scanVehicleAuthoring(document: EditorDocument): ValidationResult {
+  const waypoints = new Map<string, Record<string, unknown>>();
+  const vehicles: Array<{ label: string; def: Record<string, unknown> }> = [];
+
+  for (let index = 0; index < document.entities.length; index += 1) {
+    const entity: unknown = document.entities[index];
+    if (!isRecord(entity)) return invalid(`La entidad ${index} no tiene una estructura válida.`);
+    if (typeof entity.kind !== "string" || !EDITOR_ENTITY_KINDS.has(entity.kind)) {
+      return invalid(`La entidad ${index} tiene un tipo desconocido.`);
+    }
+    if (
+      entity.kind !== "vehicle" &&
+      entity.kind !== "vehicleWaypoint" &&
+      entity.kind !== "waterVolume" &&
+      entity.kind !== "vehicleNavArea" &&
+      entity.kind !== "vehicleNavLane" &&
+      entity.kind !== "vehicleNavMarker" &&
+      entity.kind !== "checkpoint"
+    ) {
+      continue;
+    }
+    if (!isRecord(entity.def)) {
+      return invalid(`La entidad ${index} no tiene una definición válida.`);
+    }
+    const label = entityLabel(entity.def, index);
+    const identity = ioIdentity(entity.def, label, false);
+    if (!identity.ok) return identity;
+
+    let shape: ValidationResult = { ok: true };
+    switch (entity.kind) {
+      case "vehicle":
+        shape = validateVehicleShape(entity.def, label);
+        vehicles.push({ label, def: entity.def });
+        break;
+      case "vehicleWaypoint":
+        shape = validateVehicleWaypointShape(entity.def, label);
+        if (waypoints.has(entity.def.id as string)) {
+          return invalid(`${label}: id de waypoint duplicado.`);
+        }
+        waypoints.set(entity.def.id as string, entity.def);
+        break;
+      case "waterVolume":
+        shape = validateWaterVolumeShape(entity.def, label);
+        break;
+      case "vehicleNavArea":
+        shape = validateVehicleNavAreaShape(entity.def, label);
+        break;
+      case "vehicleNavLane":
+        shape = validateVehicleNavLaneShape(entity.def, label);
+        break;
+      case "vehicleNavMarker":
+        shape = validateVehicleNavMarkerShape(entity.def, label);
+        break;
+      case "checkpoint":
+        shape = validateCheckpointShape(entity.def, label);
+        break;
+    }
+    if (!shape.ok) return shape;
+  }
+
+  for (const [id, waypoint] of waypoints) {
+    if (waypoint.next !== undefined && !waypoints.has(waypoint.next as string)) {
+      return invalid(`Entidad "${id}": next referencia un waypoint inexistente.`);
+    }
+  }
+
+  for (const vehicle of vehicles) {
+    for (const field of ["pathStart", "crashPathStart"] as const) {
+      const start = vehicle.def[field];
+      if (start === undefined) continue;
+      const route = validateVehicleRoute(
+        start as string,
+        vehicle.def.pathLoop === true,
+        waypoints,
+        `${vehicle.label}: ${field}`,
+      );
+      if (!route.ok) return route;
+    }
+    if (vehicle.def.presetId === "helicopter" && vehicle.def.pathStart === undefined) {
+      return invalid(`${vehicle.label}: el helicóptero requiere pathStart.`);
+    }
+  }
+
+  return { ok: true };
+}
+
+function validateVehicleRoute(
+  start: string,
+  allowLoop: boolean,
+  waypoints: ReadonlyMap<string, Record<string, unknown>>,
+  label: string,
+): ValidationResult {
+  const visited = new Set<string>();
+  let current: string | undefined = start;
+  while (current !== undefined) {
+    const waypoint = waypoints.get(current);
+    if (!waypoint) return invalid(`${label} referencia un waypoint inexistente.`);
+    if (visited.has(current)) {
+      return allowLoop
+        ? { ok: true }
+        : invalid(`${label} contiene un ciclo pero pathLoop no está habilitado.`);
+    }
+    visited.add(current);
+    current = typeof waypoint.next === "string" ? waypoint.next : undefined;
+  }
+  return { ok: true };
+}
+
+function validateVehicleShape(def: Record<string, unknown>, label: string): ValidationResult {
+  if (typeof def.presetId !== "string" || !isVehiclePresetId(def.presetId)) {
+    return invalid(`${label}: presetId vehicular desconocido.`);
+  }
+  const position = validateVector(def.position, `${label}: position`);
+  if (!position.ok) return position;
+  if (def.rotation !== undefined) {
+    const rotation = validateVector(def.rotation, `${label}: rotation`);
+    if (!rotation.ok) return rotation;
+  }
+  if (def.faction !== undefined && (typeof def.faction !== "string" || !VEHICLE_FACTIONS.has(def.faction))) {
+    return invalid(`${label}: faction desconocida.`);
+  }
+  for (const field of [
+    "weaponEnabled",
+    "startDisabled",
+    "startLocked",
+    "engineOn",
+    "pathLoop",
+  ] as const) {
+    const check = optionalBoolean(def[field], `${label}: ${field}`);
+    if (!check.ok) return check;
+  }
+  for (const field of ["pathStart", "crashPathStart", "transitionKey"] as const) {
+    const check = optionalNonEmptyString(def[field], `${label}: ${field}`);
+    if (!check.ok) return check;
+  }
+  if (
+    def.crashPolicy !== undefined &&
+    def.crashPolicy !== "survivable" &&
+    def.crashPolicy !== "fatal"
+  ) {
+    return invalid(`${label}: crashPolicy desconocida.`);
+  }
+  if (def.portalTraversal !== undefined && def.portalTraversal !== "blocked") {
+    return invalid(`${label}: portalTraversal debe ser "blocked".`);
+  }
+  if (def.crew !== undefined) {
+    if (!Array.isArray(def.crew)) return invalid(`${label}: crew debe ser una lista.`);
+    const seats = new Set<string>();
+    for (let index = 0; index < def.crew.length; index += 1) {
+      const crew = def.crew[index];
+      const prefix = `${label}, crew ${index}`;
+      if (!isRecord(crew)) return invalid(`${prefix}: asignación inválida.`);
+      if (typeof crew.actor !== "string" || crew.actor.length === 0) {
+        return invalid(`${prefix}: actor vacío o inválido.`);
+      }
+      if (typeof crew.role !== "string" || !VEHICLE_CREW_ROLES.has(crew.role)) {
+        return invalid(`${prefix}: role desconocido.`);
+      }
+      if (crew.seatId !== undefined) {
+        if (typeof crew.seatId !== "string" || crew.seatId.length === 0) {
+          return invalid(`${prefix}: seatId vacío o inválido.`);
+        }
+        if (seats.has(crew.seatId)) return invalid(`${prefix}: seatId duplicado.`);
+        seats.add(crew.seatId);
+      }
+    }
+  }
+  if (def.ai !== undefined) {
+    if (!isRecord(def.ai)) return invalid(`${label}: ai debe ser un objeto.`);
+    if (typeof def.ai.enabled !== "boolean") return invalid(`${label}: ai.enabled debe ser booleano.`);
+    if (typeof def.ai.behavior !== "string" || !VEHICLE_AI_BEHAVIORS.has(def.ai.behavior)) {
+      return invalid(`${label}: ai.behavior desconocido.`);
+    }
+    const goal = optionalNonEmptyString(def.ai.goal, `${label}: ai.goal`);
+    if (!goal.ok) return goal;
+    const recovery = optionalBoolean(def.ai.allowRecoverySnap, `${label}: ai.allowRecoverySnap`);
+    if (!recovery.ok) return recovery;
+  }
+  return { ok: true };
+}
+
+function validateVehicleWaypointShape(def: Record<string, unknown>, label: string): ValidationResult {
+  const position = validateVector(def.position, `${label}: position`);
+  if (!position.ok) return position;
+  const next = optionalNonEmptyString(def.next, `${label}: next`);
+  if (!next.ok) return next;
+  if (def.speed !== undefined && (typeof def.speed !== "number" || def.speed <= 0)) {
+    return invalid(`${label}: speed debe ser mayor a cero.`);
+  }
+  if (def.wait !== undefined && (typeof def.wait !== "number" || def.wait < 0)) {
+    return invalid(`${label}: wait debe ser mayor o igual a cero.`);
+  }
+  if (def.bank !== undefined && typeof def.bank !== "number") {
+    return invalid(`${label}: bank debe ser numérico.`);
+  }
+  return { ok: true };
+}
+
+function validateWaterVolumeShape(def: Record<string, unknown>, label: string): ValidationResult {
+  const position = validateVector(def.position, `${label}: position`);
+  if (!position.ok) return position;
+  const size = validatePositiveVector(def.size, `${label}: size`);
+  if (!size.ok) return size;
+  if (def.flow !== undefined) {
+    const flow = validateVector(def.flow, `${label}: flow`);
+    if (!flow.ok) return flow;
+  }
+  if (def.surface !== undefined && (typeof def.surface !== "string" || !WATER_SURFACES.has(def.surface))) {
+    return invalid(`${label}: surface desconocida.`);
+  }
+  return { ok: true };
+}
+
+function validateVehicleNavAreaShape(def: Record<string, unknown>, label: string): ValidationResult {
+  const polygon = validatePointList(def.polygon, 3, `${label}: polygon`);
+  if (!polygon.ok) return polygon;
+  if (typeof def.surface !== "string" || !VEHICLE_NAV_SURFACES.has(def.surface)) {
+    return invalid(`${label}: surface de navegación desconocida.`);
+  }
+  for (const field of ["cost", "speedLimit"] as const) {
+    if (def[field] !== undefined && (typeof def[field] !== "number" || def[field] <= 0)) {
+      return invalid(`${label}: ${field} debe ser mayor a cero.`);
+    }
+  }
+  return validateStringArray(def.tags, `${label}: tags`);
+}
+
+function validateVehicleNavLaneShape(def: Record<string, unknown>, label: string): ValidationResult {
+  const points = validatePointList(def.points, 2, `${label}: points`);
+  if (!points.ok) return points;
+  if (typeof def.width !== "number" || def.width <= 0) {
+    return invalid(`${label}: width debe ser mayor a cero.`);
+  }
+  if (typeof def.direction !== "string" || !VEHICLE_LANE_DIRECTIONS.has(def.direction)) {
+    return invalid(`${label}: direction desconocida.`);
+  }
+  if (def.speedLimit !== undefined && (typeof def.speedLimit !== "number" || def.speedLimit <= 0)) {
+    return invalid(`${label}: speedLimit debe ser mayor a cero.`);
+  }
+  if (def.priority !== undefined && typeof def.priority !== "number") {
+    return invalid(`${label}: priority debe ser numérica.`);
+  }
+  return validateStringArray(def.tags, `${label}: tags`);
+}
+
+function validateVehicleNavMarkerShape(def: Record<string, unknown>, label: string): ValidationResult {
+  const position = validateVector(def.position, `${label}: position`);
+  if (!position.ok) return position;
+  if (typeof def.kind !== "string" || !VEHICLE_MARKER_KINDS.has(def.kind)) {
+    return invalid(`${label}: tipo de marker desconocido.`);
+  }
+  if (def.heading !== undefined && typeof def.heading !== "number") {
+    return invalid(`${label}: heading debe ser numérico.`);
+  }
+  const recovery = optionalBoolean(def.allowRecoverySnap, `${label}: allowRecoverySnap`);
+  if (!recovery.ok) return recovery;
+  if (def.allowedPresets !== undefined) {
+    if (!Array.isArray(def.allowedPresets)) return invalid(`${label}: allowedPresets debe ser una lista.`);
+    if (!def.allowedPresets.every((preset) => typeof preset === "string" && isVehiclePresetId(preset))) {
+      return invalid(`${label}: allowedPresets contiene un preset desconocido.`);
+    }
+  }
+  return { ok: true };
+}
+
+function validateCheckpointShape(def: Record<string, unknown>, label: string): ValidationResult {
+  const position = validateVector(def.position, `${label}: position`);
+  if (!position.ok) return position;
+  const size = validatePositiveVector(def.size, `${label}: size`);
+  if (!size.ok) return size;
+  return def.respawn === undefined
+    ? { ok: true }
+    : validateVector(def.respawn, `${label}: respawn`);
+}
 
 /**
  * Valida el grafo I/O sin intentar sustituir el schema completo del backend.
@@ -111,7 +454,16 @@ function scanEntityIO(document: EditorDocument): ValidationResult {
       return invalid(`La entidad ${index} no tiene una estructura válida.`);
     }
     const kind = rawEntity.kind;
-    if (kind !== "trigger" && kind !== "door" && kind !== "npc" && kind !== "logic" && kind !== "sequence") {
+    if (
+      kind !== "trigger" &&
+      kind !== "door" &&
+      kind !== "npc" &&
+      kind !== "logic" &&
+      kind !== "sequence" &&
+      kind !== "vehicle" &&
+      kind !== "vehicleWaypoint" &&
+      kind !== "vehicleNavMarker"
+    ) {
       continue;
     }
     if (!isRecord(rawEntity.def)) {
@@ -168,6 +520,15 @@ function scanEntityIO(document: EditorDocument): ValidationResult {
       const sequenceShape = validateSequenceShape(def, label);
       if (!sequenceShape.ok) return sequenceShape;
       sequences.push({ label, def });
+    } else if (kind === "vehicle") {
+      const vehicleShape = validateVehicleShape(def, label);
+      if (!vehicleShape.ok) return vehicleShape;
+    } else if (kind === "vehicleWaypoint") {
+      const waypointShape = validateVehicleWaypointShape(def, label);
+      if (!waypointShape.ok) return waypointShape;
+    } else if (kind === "vehicleNavMarker") {
+      const markerShape = validateVehicleNavMarkerShape(def, label);
+      if (!markerShape.ok) return markerShape;
     }
   }
 
@@ -369,7 +730,7 @@ function validateLogicShape(def: Record<string, unknown>, label: string): Valida
     case "changelevel":
       return def.landmark === undefined
         ? { ok: true }
-        : validateVector(def.landmark, `${label}: landmark`);
+        : validateLandmark(def.landmark, `${label}: landmark`);
     default:
       return invalid(`${label}: tipo de entidad lógica desconocido.`);
   }
@@ -379,6 +740,11 @@ function validateNpcShape(def: Record<string, unknown>, label: string): Validati
   if (typeof def.characterId !== "string" || def.characterId.length === 0) {
     return invalid(`${label}: characterId inválido.`);
   }
+  const transitionKey = optionalNonEmptyString(
+    def.transitionKey,
+    `${label}: transitionKey`,
+  );
+  if (!transitionKey.ok) return transitionKey;
   return validateVector(def.position, `${label}: position`);
 }
 
@@ -499,6 +865,47 @@ function validateVector(value: unknown, label: string): ValidationResult {
   return { ok: true };
 }
 
+function validateLandmark(value: unknown, label: string): ValidationResult {
+  if (Array.isArray(value)) {
+    return validateVector(value, label);
+  }
+  if (!isRecord(value)) {
+    return invalid(`${label}: debe ser un landmark válido.`);
+  }
+  const position = validateVector(value.position, `${label}: position`);
+  if (!position.ok) return position;
+  return value.yaw === undefined ||
+    (typeof value.yaw === "number" && Number.isFinite(value.yaw))
+    ? { ok: true }
+    : invalid(`${label}: yaw debe ser numérico y finito.`);
+}
+
+function validatePositiveVector(value: unknown, label: string): ValidationResult {
+  const vector = validateVector(value, label);
+  if (!vector.ok) return vector;
+  return (value as number[]).every((component) => component > 0)
+    ? { ok: true }
+    : invalid(`${label} debe contener valores mayores a cero.`);
+}
+
+function validatePointList(value: unknown, minimum: number, label: string): ValidationResult {
+  if (!Array.isArray(value) || value.length < minimum) {
+    return invalid(`${label} debe tener al menos ${minimum} puntos.`);
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const point = validateVector(value[index], `${label}[${index}]`);
+    if (!point.ok) return point;
+  }
+  return { ok: true };
+}
+
+function validateStringArray(value: unknown, label: string): ValidationResult {
+  if (value === undefined) return { ok: true };
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+    ? { ok: true }
+    : invalid(`${label} debe ser una lista de textos.`);
+}
+
 function optionalBoolean(value: unknown, label: string): ValidationResult {
   return value === undefined || typeof value === "boolean"
     ? { ok: true }
@@ -509,6 +916,12 @@ function optionalString(value: unknown, label: string): ValidationResult {
   return value === undefined || typeof value === "string"
     ? { ok: true }
     : invalid(`${label} debe ser texto.`);
+}
+
+function optionalNonEmptyString(value: unknown, label: string): ValidationResult {
+  return value === undefined || (typeof value === "string" && value.length > 0)
+    ? { ok: true }
+    : invalid(`${label} debe ser texto no vacío.`);
 }
 
 function isLogicKind(value: unknown): value is Exclude<EntityClassId, "player" | "trigger" | "door" | "npc" | "sequence"> {

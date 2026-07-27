@@ -50,6 +50,7 @@ export const SnowFieldLevel: LevelDefinition = {
     color: 0xe8edf2,
     intensity: 1.8,
   },
+  entryLandmark: { position: [0, 10, 0], yaw: 0 },
   playerStart: [0, 10, 0],
   audio: {
     ambiences: ['background.wind', 'background.hl2.wind.wasteland'],

@@ -47,4 +47,30 @@ describe("AmmoPickup", () => {
     expect(scene.children).toContain(pickup.object);
     pickup.dispose();
   });
+
+  it("restaura disponibilidad y pose fisica sin volver a otorgar municion", async () => {
+    const scene = new Scene();
+    const physics = new PhysicsWorld();
+    await physics.init();
+    const weapons = {
+      pickupAmmo: vi.fn(() => true),
+    } as unknown as WeaponController;
+    const pickup = await AmmoPickup.create(scene, physics, fakeAssets(), {
+      id: "ammo-restore-test",
+      ammoId: "pistol",
+      position: new Vector3(2, 0, 3),
+    });
+    const snapshot = pickup.captureSaveState();
+
+    pickup.update(1 / 60, new Vector3(2, 0.6, 3), weapons);
+    expect(pickup.isAvailable()).toBe(false);
+
+    pickup.restoreSaveState(snapshot);
+
+    expect(pickup.isAvailable()).toBe(true);
+    expect(scene.children).toContain(pickup.object);
+    expect(pickup.object.position.toArray()).toEqual(snapshot.body.position);
+    expect(weapons.pickupAmmo).toHaveBeenCalledTimes(1);
+    pickup.dispose();
+  });
 });

@@ -7,6 +7,7 @@ import { quatFromEuler } from "@game/levels/builders/transform";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
 import {
   ExplosiveBarrel,
+  type ExplosiveBarrelSaveSnapshot,
   type ExplosiveBarrelDefinition,
   type ExplosiveBarrelTuning,
 } from "./ExplosiveBarrel";
@@ -21,6 +22,11 @@ const BARREL_RADIUS = 0.28;
 const BARREL_HEIGHT = 0.95;
 const BARREL_MASS = 30;
 
+export interface ExplosiveBarrelSystemSaveSnapshot {
+  version: 1;
+  barrels: ExplosiveBarrelSaveSnapshot[];
+}
+
 /**
  * Owner de los barriles explosivos del nivel. Cada barril es un `Damageable`
  * registrado en la metadata de su collider, así lo alcanzan disparos hitscan,
@@ -30,6 +36,7 @@ const BARREL_MASS = 30;
  */
 export class ExplosiveBarrelSystem implements Disposable {
   private readonly barrels: ExplosiveBarrel[] = [];
+  private readonly definitions = new Map<string, ExplosiveBarrelDefinition>();
 
   constructor(
     private readonly physics: PhysicsWorld,
@@ -38,6 +45,7 @@ export class ExplosiveBarrelSystem implements Disposable {
   ) {}
 
   spawn(def: ExplosiveBarrelDefinition): void {
+    this.definitions.set(def.id, cloneDefinition(def));
     const center = new Vector3(
       def.position[0],
       def.position[1] + BARREL_HEIGHT / 2,
@@ -92,10 +100,71 @@ export class ExplosiveBarrelSystem implements Disposable {
     }
   }
 
+  captureBarrelSaveState(
+    barrelId: string,
+  ): ExplosiveBarrelSaveSnapshot | null {
+    if (!this.definitions.has(barrelId)) {
+      return null;
+    }
+    return this.barrels.find((barrel) => barrel.id === barrelId)
+      ?.captureSaveState() ?? { id: barrelId, destroyed: true };
+  }
+
+  restoreBarrelSaveState(
+    snapshot: Readonly<ExplosiveBarrelSaveSnapshot>,
+  ): boolean {
+    const definition = this.definitions.get(snapshot.id);
+    if (!definition) {
+      return false;
+    }
+
+    let barrel = this.barrels.find((candidate) => candidate.id === snapshot.id);
+    if (snapshot.destroyed) {
+      if (barrel) {
+        this.remove(barrel);
+      }
+      return true;
+    }
+
+    if (!barrel) {
+      this.spawn(definition);
+      barrel = this.barrels.find(
+        (candidate) => candidate.id === snapshot.id,
+      );
+    }
+    if (!barrel) {
+      return false;
+    }
+    barrel.restoreSaveState(snapshot);
+    return true;
+  }
+
+  captureSaveState(): ExplosiveBarrelSystemSaveSnapshot {
+    return {
+      version: 1,
+      barrels: [...this.definitions.keys()]
+        .sort((a, b) => a.localeCompare(b))
+        .map((id) => this.captureBarrelSaveState(id))
+        .filter(
+          (snapshot): snapshot is ExplosiveBarrelSaveSnapshot =>
+            snapshot !== null,
+        ),
+    };
+  }
+
+  restoreSaveState(
+    snapshot: Readonly<ExplosiveBarrelSystemSaveSnapshot>,
+  ): void {
+    for (const barrel of snapshot.barrels) {
+      this.restoreBarrelSaveState(barrel);
+    }
+  }
+
   /** Remueve meshes + bodies vivos. Llamar ANTES de `PhysicsWorld.reset()`. */
   clear(): void {
     this.barrels.forEach((barrel) => this.disposeBarrel(barrel));
     this.barrels.length = 0;
+    this.definitions.clear();
   }
 
   dispose(): void {
@@ -128,6 +197,22 @@ export class ExplosiveBarrelSystem implements Disposable {
       this.physics.removeDynamicBody(body);
     }
   }
+}
+
+function cloneDefinition(
+  definition: Readonly<ExplosiveBarrelDefinition>,
+): ExplosiveBarrelDefinition {
+  return {
+    id: definition.id,
+    position: [...definition.position],
+    ...(definition.rotation
+      ? { rotation: [...definition.rotation] }
+      : {}),
+    ...(definition.health === undefined ? {} : { health: definition.health }),
+    ...(definition.damage === undefined ? {} : { damage: definition.damage }),
+    ...(definition.radius === undefined ? {} : { radius: definition.radius }),
+    ...(definition.impulse === undefined ? {} : { impulse: definition.impulse }),
+  };
 }
 
 function createBarrelMesh(id: string): Mesh {

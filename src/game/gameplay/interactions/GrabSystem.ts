@@ -25,6 +25,11 @@ const IMPACT_WEAPON_NAME = "Gravity Gun";
 
 export type CarryDropReason = GrabDropReason | "distance" | "weapon";
 
+export interface GrabSystemSaveSnapshot {
+  readonly version: 1;
+  readonly heldBodyId: string | null;
+}
+
 /**
  * Agarre con E (+USE de HL2): versión débil de la gravity gun, sin arma.
  * Solo props livianos en rango corto; E agarra/suelta, LMB empuja suave (y
@@ -152,6 +157,31 @@ export class GrabSystem {
       });
     }
     this.setFocusLabel(null, false);
+  }
+
+  captureSaveState(): GrabSystemSaveSnapshot {
+    const held = this.grab.getHeldBody();
+    return {
+      version: 1,
+      heldBodyId: held ? this.bodyId(held) ?? null : null,
+    };
+  }
+
+  restoreSaveState(
+    snapshot: GrabSystemSaveSnapshot,
+    cameraQuaternion: Quaternion,
+  ): void {
+    this.clear();
+    if (!snapshot.heldBodyId) return;
+    let target: RAPIER.RigidBody | null = null;
+    this.physics.world.bodies.forEach((body) => {
+      if (target || !body.isDynamic() || body.numColliders() === 0) return;
+      const metadata = this.physics.getColliderMetadata(body.collider(0));
+      if (metadata?.id === snapshot.heldBodyId) target = body;
+    });
+    if (target) {
+      this.grab.grab(target, cameraQuaternion);
+    }
   }
 
   private drop(reason: CarryDropReason): void {

@@ -9,6 +9,11 @@ import type { NpcScriptOrder } from "@game/script/NpcScriptOrder";
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { PortalFrame } from "@engine/portals/PortalFrame";
 import type { OrganicMatterHandle } from "@game/gameplay/organic/OrganicMatter";
+import type { BrainSnapshot } from "@engine/ai/brain/Brain";
+import type {
+  RigidBodySnapshot,
+  SerializedVector3,
+} from "@engine/physics/RigidBodySnapshot";
 
 /**
  * Snapshot ligero de un actor del mundo (player u otro NPC) que cualquier
@@ -265,6 +270,29 @@ export interface NpcFreezeHandle {
   shatter?(): void;
 }
 
+export interface NpcSaveSnapshot {
+  version: 1;
+  id: string;
+  body: RigidBodySnapshot;
+  health: number;
+  alive: boolean;
+  mounted: boolean;
+  removed: boolean;
+  logical: {
+    state: string;
+    brain: BrainSnapshot;
+    lastScheduleId: string | null;
+    threatId: string | null;
+    threatLastKnown: SerializedVector3 | null;
+    aggroAttackerId: string | null;
+    aggroTimer: number;
+    grenadeReadyAt: number;
+    healReadyAt: number;
+    flinchCooldownTimer: number;
+    lastCalloutAt: number | null;
+  };
+}
+
 /** Interfaz uniforme que consume `Game`/`LevelLoader`. La implementa `Npc`. */
 export interface INpc {
   readonly id: string;
@@ -278,6 +306,13 @@ export interface INpc {
   readonly playerSquadEligible: boolean;
   /** Nombre visible si es compañera (preset con `companion`), o null. */
   readonly companionName: string | null;
+
+  /**
+   * Suspensión reversible para asientos. El runtime vehicular sincroniza la
+   * pose visual; el NPC conserva vida, inventario y brain para retomarlos.
+   */
+  setVehicleMounted?(mounted: boolean, exitPosition?: Vector3): void;
+  isVehicleMounted?(): boolean;
 
   update(ctx: AiFrameContext): void;
   syncFromPhysics(): void;
@@ -297,6 +332,9 @@ export interface INpc {
   isAlive(): boolean;
   getState(): string;
   getAiDebugSnapshot(): NpcAiDebugSnapshot;
+  /** Estado plano para guardado. Opcional para adapters de NPC externos/tests. */
+  captureSaveState?(): NpcSaveSnapshot;
+  restoreSaveState?(snapshot: Readonly<NpcSaveSnapshot>): void;
   /**
    * Libera listeners del bus, releases de cover/squad y desactiva motor/animator.
    * Debe ser idempotente â€” `die()` y el teardown de nivel lo invocan ambos.

@@ -1,4 +1,5 @@
 import type { VectorTuple } from '@shared/math/VectorTuple';
+import type { LandmarkReference } from '@game/levels/LevelTransition';
 import type { LevelActionKind } from '@game/GameEvents';
 import type { SoundscapeId } from '@game/config/audio.config';
 import type { NPCDefinition } from '@game/levels/LevelDefinition';
@@ -76,7 +77,7 @@ export type LogicEntityDefinition =
   /** Acción de nivel (respawn de encuentros, arsenal). Input `Trigger`. */
   | { kind: 'levelAction'; id: string; name: string; action: LevelActionKind; connections?: EntityConnection[] }
   /** Salida de nivel estilo `info_landmark`. Input `Trigger`. */
-  | { kind: 'changelevel'; id: string; name: string; landmark?: VectorTuple; connections?: EntityConnection[] };
+  | { kind: 'changelevel'; id: string; name: string; landmark?: LandmarkReference; connections?: EntityConnection[] };
 
 export type LogicEntityKind = LogicEntityDefinition['kind'];
 

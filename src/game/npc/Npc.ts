@@ -6,6 +6,12 @@ import { PerceptionSystem, isTargetVisible } from '@engine/ai/perception/Percept
 import type { PerceptionSnapshot } from '@engine/ai/perception/PerceptionSystem';
 import type { Raycast, RaycastSource } from '@engine/physics/Raycast';
 import type { NpcMotor } from '@engine/physics/character/NpcMotor';
+import {
+  captureRigidBodySnapshot,
+  restoreRigidBodySnapshot,
+  type RigidBodySnapshot,
+  type SerializedVector3,
+} from '@engine/physics/RigidBodySnapshot';
 import { NavigationLocomotion } from '@engine/ai/locomotion/NavigationLocomotion';
 import type { LocomotionNeighbor, NpcLocomotionDebug } from '@engine/ai/locomotion/NavigationLocomotion';
 import type { NavigationService } from '@engine/ai/navigation/NavigationService';
@@ -22,6 +28,7 @@ import type {
   NpcAiDebugSnapshot,
   NpcFreezeHandle,
   NpcPortalHandle,
+  NpcSaveSnapshot,
 } from '@game/npc/core/INpc';
 import type {
   NpcBrainContext,
@@ -178,6 +185,7 @@ export class Npc implements INpc {
   private readonly preset: NpcPreset;
   private readonly difficulty?: DifficultyProvider;
   private readonly sliceDamage: number;
+  private vehicleMounted = false;
   private readonly raycast: Raycast;
   private readonly losRaycast: RaycastSource;
   private readonly buildingRegistry: BuildingRegistry;
@@ -329,6 +337,7 @@ export class Npc implements INpc {
 
   update(ctx: AiFrameContext): void {
     if (this.disposed) return;
+    if (this.vehicleMounted) return;
     const delta = ctx.delta;
     this.lastViewerDistance = ctx.viewerDistance ?? (ctx.aiLod === 'near' ? 0 : ctx.aiLod === 'mid' ? 30 : 65);
     if (this.justHitTimer > 0) this.justHitTimer = Math.max(0, this.justHitTimer - delta);
@@ -549,6 +558,33 @@ export class Npc implements INpc {
     this.tickAnimation(delta);
   }
 
+  setVehicleMounted(mounted: boolean, exitPosition?: Vector3): void {
+    if (this.disposed || this.vehicleMounted === mounted) return;
+    this.vehicleMounted = mounted;
+    this.motor.body.setEnabled(!mounted);
+    for (let index = 0; index < this.motor.body.numColliders(); index += 1) {
+      this.motor.body.collider(index).setEnabled(!mounted);
+    }
+    this.mesh.visible = !mounted;
+    if (!mounted && exitPosition) {
+      const portalMotor = this.motor as NpcMotor & Partial<PortalCapableMotor>;
+      if (typeof portalMotor.teleport === "function") {
+        portalMotor.teleport(exitPosition, new Vector3());
+      } else {
+        this.motor.body.setTranslation(exitPosition, true);
+        if (this.motor.body.isKinematic()) {
+          this.motor.body.setNextKinematicTranslation(exitPosition);
+        }
+        this.motor.resyncPendingFromBody?.();
+      }
+      this.position.copy(exitPosition);
+    }
+  }
+
+  isVehicleMounted(): boolean {
+    return this.vehicleMounted;
+  }
+
   /**
    * Cuchillazos por contacto del motor (manhack): aplica el daño al blanco (×2 si
    * es el player) y avisa el ataque. El motor ya gatea la cadencia y el rebote.
@@ -605,7 +641,7 @@ export class Npc implements INpc {
   }
 
   syncFromPhysics(): void {
-    if (this.disposed || this.frozenSolid) return;
+    if (this.disposed || this.frozenSolid || this.vehicleMounted) return;
     this.syncMeshFromMotor();
   }
 
@@ -787,23 +823,34 @@ export class Npc implements INpc {
     const fraction = Math.min(1, Math.max(0.2, amount / maxHealth));
     this.animation?.notifyHit(dir, fraction);
     if (!this.health.isAlive()) {
-      this.eventBus.emit('npc.killed', {
-        id: this.id,
-        characterId: this.preset.id,
-        position: this.motor.getPosition().clone(),
-        ...(attackerId ? { attackerId } : {}),
-      });
-      if (!this.frozenSolid) {
-        const deathVelocity = this.motor.getVelocity();
-        this.animation?.notifyDeath(dir, deathVelocity, hitPartName);
-      }
-      this.coverSensor?.dispose();
-      this.squadDirector?.unregister(this.id);
-      this.locomotion.stop();
-      this.motor.disable();
-      this.combatHandle.dispose?.();
-      this.behavior?.dispose();
+      this.finishDeath(dir, hitPartName, attackerId);
     }
+  }
+
+  private finishDeath(
+    direction: Vector3,
+    hitPartName?: string,
+    attackerId?: string,
+  ): void {
+    this.eventBus.emit('npc.killed', {
+      id: this.id,
+      characterId: this.preset.id,
+      position: this.motor.getPosition().clone(),
+      ...(attackerId ? { attackerId } : {}),
+    });
+    if (!this.frozenSolid) {
+      this.animation?.notifyDeath(
+        direction,
+        this.motor.getVelocity(),
+        hitPartName,
+      );
+    }
+    this.coverSensor?.dispose();
+    this.squadDirector?.unregister(this.id);
+    this.locomotion.stop();
+    this.motor.disable();
+    this.combatHandle.dispose?.();
+    this.behavior?.dispose();
   }
 
   isAlive(): boolean {
@@ -812,6 +859,100 @@ export class Npc implements INpc {
 
   getState(): string {
     return this.behavior?.getState() ?? this.brain.snapshot().schedule ?? 'idle';
+  }
+
+  captureSaveState(): NpcSaveSnapshot {
+    const body = this.disposed
+      ? rigidBodySnapshotFromTransform(
+          this.position,
+          this.mesh.quaternion,
+        )
+      : captureRigidBodySnapshot(this.motor.body);
+    return {
+      version: 1,
+      id: this.id,
+      body,
+      health: finiteNumber(this.health.current),
+      alive: this.isAlive(),
+      mounted: this.vehicleMounted,
+      removed: this.disposed,
+      logical: {
+        state: this.getState(),
+        brain: this.brain.snapshot(),
+        lastScheduleId: this.lastScheduleId,
+        threatId: this.currentThreat?.id ?? null,
+        threatLastKnown: vectorSnapshot(this.threatLastKnown),
+        aggroAttackerId: this.aggroAttackerId,
+        aggroTimer: finiteNonNegative(this.aggroTimer),
+        grenadeReadyAt: finiteNonNegative(this.grenadeReadyAt),
+        healReadyAt: finiteNonNegative(this.healReadyAt),
+        flinchCooldownTimer: finiteNonNegative(this.flinchCooldownTimer),
+        lastCalloutAt: Number.isFinite(this.lastCalloutAt)
+          ? this.lastCalloutAt
+          : null,
+      },
+    };
+  }
+
+  restoreSaveState(snapshot: Readonly<NpcSaveSnapshot>): void {
+    if (snapshot.id !== this.id) {
+      throw new Error(`Snapshot de NPC ${snapshot.id} aplicado a ${this.id}`);
+    }
+    if (this.disposed) {
+      return;
+    }
+    if (snapshot.removed) {
+      this.mesh.removeFromParent();
+      this.dispose();
+      return;
+    }
+
+    if (this.vehicleMounted) {
+      this.setVehicleMounted(false, new Vector3(...snapshot.body.position));
+    }
+    restoreRigidBodySnapshot(this.motor.body, snapshot.body);
+    this.motor.resyncPendingFromBody?.();
+    this.vehicleMounted = false;
+    this.mesh.visible = true;
+    this.position.set(...snapshot.body.position);
+    this.mesh.position.copy(this.position);
+    this.mesh.quaternion.set(...snapshot.body.rotation);
+
+    this.brain.restoreSnapshot(snapshot.logical.brain);
+    this.lastScheduleId = snapshot.logical.lastScheduleId;
+    this.currentThreat = null;
+    this.threatCandidates.length = 0;
+    this.threatLastKnown = snapshot.logical.threatLastKnown
+      ? new Vector3(...snapshot.logical.threatLastKnown)
+      : null;
+    this.aggroAttackerId = snapshot.logical.aggroAttackerId;
+    this.aggroTimer = finiteNonNegative(snapshot.logical.aggroTimer);
+    this.grenadeReadyAt = finiteNonNegative(snapshot.logical.grenadeReadyAt);
+    this.healReadyAt = finiteNonNegative(snapshot.logical.healReadyAt);
+    this.flinchCooldownTimer = finiteNonNegative(
+      snapshot.logical.flinchCooldownTimer,
+    );
+    this.lastCalloutAt = snapshot.logical.lastCalloutAt === null
+      ? -Infinity
+      : finiteNumber(snapshot.logical.lastCalloutAt);
+    this.lastPerception = null;
+    this.wasSeeingEnemy = false;
+
+    if (!snapshot.alive) {
+      this.health.set(0);
+      this.finishDeath(new Vector3(), undefined, undefined);
+      return;
+    }
+
+    this.health.set(Math.max(0.001, finiteNumber(snapshot.health)));
+    const physicalEnabled = snapshot.body.enabled && !snapshot.mounted;
+    this.motor.body.setEnabled(physicalEnabled);
+    for (let index = 0; index < this.motor.body.numColliders(); index += 1) {
+      this.motor.body.collider(index).setEnabled(physicalEnabled);
+    }
+    if (snapshot.mounted) {
+      this.setVehicleMounted(true);
+    }
   }
 
   getAiDebugSnapshot(): NpcAiDebugSnapshot {
@@ -1439,4 +1580,46 @@ function pathSnapshotFromLocomotion(debug: NpcLocomotionDebug) {
     startNodePosition: null,
     goalNodePosition: null,
   };
+}
+
+function rigidBodySnapshotFromTransform(
+  position: Vector3,
+  rotation: Quaternion,
+): RigidBodySnapshot {
+  return {
+    position: [
+      finiteNumber(position.x),
+      finiteNumber(position.y),
+      finiteNumber(position.z),
+    ],
+    rotation: [
+      finiteNumber(rotation.x),
+      finiteNumber(rotation.y),
+      finiteNumber(rotation.z),
+      finiteNumber(rotation.w, 1),
+    ],
+    linearVelocity: [0, 0, 0],
+    angularVelocity: [0, 0, 0],
+    enabled: false,
+    sleeping: false,
+  };
+}
+
+function vectorSnapshot(value: Vector3 | null): SerializedVector3 | null {
+  if (!value) {
+    return null;
+  }
+  return [
+    finiteNumber(value.x),
+    finiteNumber(value.y),
+    finiteNumber(value.z),
+  ];
+}
+
+function finiteNonNegative(value: number): number {
+  return Math.max(0, finiteNumber(value));
+}
+
+function finiteNumber(value: number, fallback = 0): number {
+  return Number.isFinite(value) ? value : fallback;
 }

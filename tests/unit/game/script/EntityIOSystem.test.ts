@@ -19,6 +19,40 @@ function recordingHandle(name: string, key?: string): EntityHandle & { received:
 const player: ActivatorRef = { kind: "player" };
 
 describe("EntityIOSystem", () => {
+  it("restores delayed dispatches and maxFires without duplicating outputs", () => {
+    const received: string[] = [];
+    const build = (): EntityIOSystem => {
+      const io = new EntityIOSystem();
+      io.registerEntity({
+        name: "target",
+        classId: "relay",
+        acceptInput: (input) => received.push(input),
+      });
+      io.registerConnections("source", [
+        {
+          output: "OnTrigger",
+          target: "target",
+          input: "Fire",
+          delay: 1,
+          maxFires: 1,
+        },
+      ]);
+      return io;
+    };
+    const original = build();
+    original.fireOutput("source", "OnTrigger", { kind: "player" });
+    original.update(0.4);
+    const snapshot = original.capture();
+
+    const restored = build();
+    restored.restore(snapshot);
+    restored.fireOutput("source", "OnTrigger", { kind: "player" });
+    restored.update(0.59);
+    expect(received).toEqual([]);
+    restored.update(0.02);
+    expect(received).toEqual(["Fire"]);
+  });
+
   it("despacha inmediatamente las conexiones con delay 0", () => {
     const io = new EntityIOSystem();
     const target = recordingHandle("msg");

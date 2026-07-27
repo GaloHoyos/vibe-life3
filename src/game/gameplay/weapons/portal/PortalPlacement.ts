@@ -30,6 +30,21 @@ export interface PortalPlacementResult {
   backingColliders: RAPIER.Collider[];
 }
 
+/**
+ * Revalida un frame persistido contra la colisión del mundo reconstruido.
+ * Devuelve los colliders actuales, cuyos handles pueden cambiar entre cargas.
+ */
+export function resolvePortalBackingColliders(
+  raycast: Raycast,
+  frame: PortalFrame,
+  excludeId?: string,
+): RAPIER.Collider[] | null {
+  const normal = new Vector3(0, 0, 1)
+    .applyQuaternion(frame.quaternion)
+    .normalize();
+  return probeFootprint(raycast, frame, normal, excludeId);
+}
+
 const WORLD_UP = new Vector3(0, 1, 0);
 const WORLD_X = new Vector3(1, 0, 0);
 

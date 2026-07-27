@@ -5,6 +5,11 @@ import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import type { WeaponController } from '@game/gameplay/weapons/core/WeaponController';
 import type { WeaponId } from '@game/gameplay/weapons/core/WeaponDefinition';
 import { getWeapon } from '@game/gameplay/weapons/core/WeaponFactory';
+import {
+  capturePhysicalPickupSaveState,
+  restorePhysicalPickupSaveState,
+  type PhysicalPickupSaveSnapshot,
+} from '@game/gameplay/items/PhysicalPickupSaveState';
 
 const PickupRadius = 1.35;
 const SpawnLift = 0.85;
@@ -72,6 +77,35 @@ export class WeaponPickup {
     const instance = await assets.instantiateModel(definition.pickupModelId);
     pickup.object.add(instance.root ?? createFallbackPickup(definition.displayName));
     return pickup;
+  }
+
+  get id(): string {
+    return this.options.id;
+  }
+
+  isAvailable(): boolean {
+    return !this.pickedUp;
+  }
+
+  captureSaveState(): PhysicalPickupSaveSnapshot {
+    return capturePhysicalPickupSaveState(
+      this.options.id,
+      !this.pickedUp,
+      this.body,
+    );
+  }
+
+  restoreSaveState(snapshot: Readonly<PhysicalPickupSaveSnapshot>): void {
+    restorePhysicalPickupSaveState(
+      snapshot,
+      this.options.id,
+      this.scene,
+      this.physics,
+      this.object,
+      this.body,
+      this.collider,
+    );
+    this.pickedUp = !snapshot.available;
   }
 
   update(_delta: number, playerPosition: Vector3, weapons: WeaponController): void {

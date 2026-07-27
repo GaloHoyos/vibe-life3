@@ -6,6 +6,7 @@ export type AudioBusName =
   | "ambience"
   | "sfx"
   | "weapons"
+  | "vehicles"
   | "enemies"
   | "footsteps"
   | "dialogue"
@@ -38,6 +39,7 @@ const defaultVolumes: Record<AudioBusName, number> = {
   ambience: 0.75,
   sfx: 0.85,
   weapons: 0.9,
+  vehicles: 0.82,
   enemies: 0.85,
   footsteps: 0.65,
   dialogue: 0.8,
@@ -100,6 +102,7 @@ export class AudioSystem {
     ambience: 1,
     sfx: 1,
     weapons: 1,
+    vehicles: 1,
     enemies: 1,
     footsteps: 1,
     dialogue: 1,
@@ -412,6 +415,7 @@ export class AudioSystem {
       "ambience",
       "sfx",
       "weapons",
+      "vehicles",
       "enemies",
       "footsteps",
       "dialogue",

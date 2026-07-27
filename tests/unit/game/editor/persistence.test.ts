@@ -36,6 +36,19 @@ describe("editor persistence", () => {
     expect(loadDraft()).toBeNull();
   });
 
+  it("migra documentos sin versión y rechaza versiones futuras", () => {
+    const legacy = structuredClone(testEditorDocument()) as unknown as Record<string, unknown>;
+    delete legacy.schemaVersion;
+    localStorage.setItem("vibe.editor.draft", JSON.stringify(legacy));
+    expect(loadDraft()?.schemaVersion).toBe(1);
+
+    localStorage.setItem(
+      "vibe.editor.draft",
+      JSON.stringify({ ...testEditorDocument(), schemaVersion: 2 }),
+    );
+    expect(loadDraft()).toBeNull();
+  });
+
   it("round-trips editor boot mode in session storage", () => {
     expect(getEditorMode()).toBeNull();
 

@@ -110,6 +110,42 @@ describe("PortalTravellerSystem — aperture hole", () => {
     traveller.dispose();
   });
 
+  it("keeps bodies with blocked portal traversal on the backing surface", async () => {
+    const { physics, floor } = await makeWorld();
+    const pair = new PortalPairState();
+    const entry = floorPortal(0, 0);
+    const exit = wallPortal(9, 2);
+    pair.set("a", entry);
+    pair.set("b", exit);
+
+    let teleports = 0;
+    const traveller = new PortalTravellerSystem(physics, new Scene(), pair, {
+      ...OPTIONS,
+      onTeleport: () => {
+        teleports += 1;
+      },
+    });
+    traveller.setPortal("a", entry, [floor]);
+    traveller.setPortal("b", exit, []);
+
+    const chassis = physics.createDynamicBox(
+      {
+        id: "vehicle",
+        position: new Vector3(0, 1, 0),
+        size: new Vector3(0.8, 0.8, 0.8),
+        mass: 1200,
+        metadata: { portalTraversal: "blocked" },
+      },
+      new Object3D(),
+    );
+    simulate(physics, traveller, 180);
+
+    expect(teleports).toBe(0);
+    expect(chassis.translation().y).toBeGreaterThan(0.35);
+    expect(Math.abs(chassis.translation().x)).toBeLessThan(1);
+    traveller.dispose();
+  });
+
   it("a long box bridging a small portal stays supported (does not fall or teleport)", async () => {
     const { physics, floor } = await makeWorld();
     const pair = new PortalPairState();

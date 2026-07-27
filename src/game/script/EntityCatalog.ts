@@ -7,7 +7,16 @@ import type { LogicEntityKind } from './EntityIOTypes';
  * desconocidos), pero mantenerlo alineado evita conexiones muertas.
  */
 
-export type EntityClassId = 'player' | 'trigger' | 'door' | 'npc' | 'sequence' | LogicEntityKind;
+export type EntityClassId =
+  | 'player'
+  | 'trigger'
+  | 'door'
+  | 'npc'
+  | 'sequence'
+  | 'vehicle'
+  | 'vehicleWaypoint'
+  | 'vehicleNavMarker'
+  | LogicEntityKind;
 
 /** Tipo del parámetro que un input espera, para renderizar el campo correcto en el editor. */
 export type InputParamKind = 'none' | 'string' | 'number' | 'targetName';
@@ -86,6 +95,52 @@ export const EntityCatalog: Record<EntityClassId, EntityIODescriptor> = {
       { id: 'Cancel', label: 'Cancelar' },
       { id: 'Cue', label: 'Señal (cue)' },
     ],
+  },
+  vehicle: {
+    outputs: [
+      { id: 'OnPlayerEntered', label: 'Al entrar el jugador' },
+      { id: 'OnPlayerExited', label: 'Al salir el jugador' },
+      { id: 'OnStarted', label: 'Al arrancar' },
+      { id: 'OnStopped', label: 'Al detenerse' },
+      { id: 'OnWaypoint', label: 'Al pasar un waypoint' },
+      { id: 'OnDamaged', label: 'Al recibir daño' },
+      { id: 'OnDisabled', label: 'Al quedar inutilizado' },
+      { id: 'OnDestroyed', label: 'Al destruirse' },
+      { id: 'OnCrashed', label: 'Al chocar' },
+      { id: 'OnStuck', label: 'Al quedar atascado' },
+    ],
+    inputs: [
+      { id: 'Enable', label: 'Habilitar' },
+      { id: 'Disable', label: 'Deshabilitar' },
+      { id: 'Lock', label: 'Bloquear' },
+      { id: 'Unlock', label: 'Desbloquear' },
+      { id: 'TurnOn', label: 'Encender motor' },
+      { id: 'TurnOff', label: 'Apagar motor' },
+      { id: 'Start', label: 'Iniciar ruta' },
+      { id: 'Stop', label: 'Detener ruta' },
+      { id: 'SetSpeed', label: 'Fijar velocidad', param: 'number' },
+      { id: 'EnableGun', label: 'Habilitar arma' },
+      { id: 'DisableGun', label: 'Deshabilitar arma' },
+      { id: 'Attach', label: 'Montar actor', param: 'string' },
+      { id: 'Detach', label: 'Desmontar actor', param: 'string' },
+      { id: 'SetGoal', label: 'Fijar objetivo', param: 'string' },
+      { id: 'ClearGoal', label: 'Limpiar objetivo' },
+      { id: 'Repair', label: 'Reparar' },
+      { id: 'Crash', label: 'Iniciar choque' },
+    ],
+  },
+  vehicleWaypoint: {
+    outputs: [{ id: 'OnPass', label: 'Al pasar' }],
+    inputs: [
+      { id: 'Enable', label: 'Habilitar' },
+      { id: 'Disable', label: 'Deshabilitar' },
+      { id: 'SetNext', label: 'Cambiar siguiente', param: 'string' },
+      { id: 'SetSpeed', label: 'Fijar velocidad', param: 'number' },
+    ],
+  },
+  vehicleNavMarker: {
+    outputs: [],
+    inputs: [],
   },
   relay: {
     outputs: [{ id: 'OnTrigger', label: 'Al disparar' }],

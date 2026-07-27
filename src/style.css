@@ -1270,3 +1270,165 @@ body {
 .is-hidden {
   display: none;
 }
+.vehicle-hud {
+  --vehicle-accent: #f6b94a;
+  position: absolute;
+  right: clamp(22px, 3.4vw, 58px);
+  bottom: clamp(32px, 6vh, 76px);
+  width: min(340px, calc(100vw - 44px));
+  box-sizing: border-box;
+  padding: 14px 16px 15px;
+  color: #f5d59a;
+  border: 1px solid rgb(246 185 74 / 42%);
+  border-left: 3px solid var(--vehicle-accent);
+  background:
+    linear-gradient(105deg, rgb(20 23 22 / 92%), rgb(11 15 16 / 74%)),
+    repeating-linear-gradient(0deg, transparent 0 3px, rgb(255 255 255 / 2%) 3px 4px);
+  box-shadow:
+    0 18px 55px rgb(0 0 0 / 45%),
+    inset 0 0 26px rgb(246 185 74 / 5%);
+  font-family: "Rajdhani", "Arial Narrow", sans-serif;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  transform: translateZ(0);
+  transition: opacity 180ms ease, transform 240ms ease;
+}
+
+.vehicle-hud.is-hidden {
+  display: block !important;
+  opacity: 0;
+  transform: translateX(24px);
+}
+
+.vehicle-hud.is-critical {
+  --vehicle-accent: #f35f3e;
+  animation: vehicle-critical-pulse 0.85s ease-in-out infinite alternate;
+}
+
+.vehicle-hud__header,
+.vehicle-hud__meter,
+.vehicle-hud__occupants {
+  display: flex;
+  align-items: center;
+}
+
+.vehicle-hud__header {
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgb(246 185 74 / 22%);
+}
+
+.vehicle-hud__name {
+  max-width: 205px;
+  color: #fff0c4;
+  font-size: 12px;
+  line-height: 1.25;
+  text-shadow: 0 0 12px rgb(246 185 74 / 25%);
+}
+
+.vehicle-hud__speed-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.vehicle-hud__speed {
+  min-width: 64px;
+  color: #fff8db;
+  font-size: 31px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 0.9;
+  text-align: right;
+}
+
+.vehicle-hud__speed-unit,
+.vehicle-hud__meter-label,
+.vehicle-hud__meter-value {
+  color: rgb(245 213 154 / 74%);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.vehicle-hud__meter {
+  display: grid;
+  grid-template-columns: 76px 1fr 44px;
+  gap: 9px;
+  margin-top: 9px;
+}
+
+.vehicle-hud__meter-track {
+  position: relative;
+  height: 5px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 10%);
+}
+
+.vehicle-hud__meter-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--vehicle-accent);
+  box-shadow: 0 0 9px color-mix(in srgb, var(--vehicle-accent) 65%, transparent);
+  transform-origin: left center;
+  transition: transform 90ms linear;
+}
+
+.vehicle-hud__meter--boost .vehicle-hud__meter-fill {
+  background: #6dd8e3;
+}
+
+.vehicle-hud__meter--weapon .vehicle-hud__meter-fill {
+  background: linear-gradient(90deg, #e7c768 0 68%, #ef5f3f 85%);
+}
+
+.vehicle-hud__meter-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vehicle-hud__components {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgb(246 185 74 / 16%);
+  color: #d8b87d;
+  font-size: 8px;
+}
+
+.vehicle-hud__components .is-damaged {
+  color: #ffb055;
+}
+
+.vehicle-hud__components .is-disabled {
+  color: #ff6547;
+  text-decoration: line-through;
+}
+
+.vehicle-hud__occupants {
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin-top: 9px;
+  color: rgb(233 217 181 / 68%);
+  font-size: 8px;
+}
+
+.vehicle-hud__occupants span::before {
+  content: "◆";
+  margin-right: 5px;
+  color: var(--vehicle-accent);
+  font-size: 6px;
+}
+
+.vehicle-hud .is-hidden,
+.vehicle-hud__components.is-hidden {
+  display: none;
+}
+
+@keyframes vehicle-critical-pulse {
+  from { box-shadow: 0 18px 55px rgb(0 0 0 / 45%), inset 0 0 24px rgb(243 95 62 / 4%); }
+  to { box-shadow: 0 18px 55px rgb(0 0 0 / 45%), inset 0 0 34px rgb(243 95 62 / 16%); }
+}

@@ -48,6 +48,7 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
   private readonly forward = new Vector3(0, 0, 1);
   private readonly tmpDirection = new Vector3();
   private readonly tmpFacing = new Vector3();
+  private readonly tmpCrouchTarget = new Vector3();
   private readonly tmpRotation = new Quaternion();
   private distanceToTarget = Number.POSITIVE_INFINITY;
   private yaw = 0;
@@ -241,8 +242,11 @@ export class CharacterMotor extends KinematicCharacterBase implements NpcMotor {
       { x: position.x, y: position.y + delta, z: position.z },
       true,
     );
+    // El objetivo pendiente acompaña el anclaje de la cápsula; re-emitirlo como
+    // objetivo absoluto conserva el desplazamiento que todavía no se comprometió.
+    this.shiftPendingTarget(0, delta, 0);
     this.body.setNextKinematicTranslation(
-      { x: position.x, y: position.y + delta, z: position.z },
+      this.readPendingPosition(this.tmpCrouchTarget),
     );
     this.crouched = crouched;
   }

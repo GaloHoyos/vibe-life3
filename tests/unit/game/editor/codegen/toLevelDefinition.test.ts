@@ -4,6 +4,7 @@ import type { StaticBoxDefinition } from "@game/levels/LevelDefinition";
 import { testEditorDocument } from "@tests/support/fixtures";
 import { toLevelDefinition } from "@game/editor/codegen/toLevelDefinition";
 import { fromLevelDefinition } from "@game/editor/codegen/fromLevelDefinition";
+import { toTypeScript } from "@game/editor/codegen/toTypeScript";
 
 describe("toLevelDefinition", () => {
   it("preserva entidades y rotaciones del documento", () => {
@@ -121,6 +122,130 @@ describe("toLevelDefinition", () => {
     // Omitido queda omitido (el default gordon lo resuelve el runtime).
     const plain = toLevelDefinition(testEditorDocument({}));
     expect(plain.playerModel).toBeUndefined();
+  });
+
+  it("round-trip de autoría vehicular y emisión TypeScript", () => {
+    const entities: EditorEntity[] = [
+      {
+        eid: "wp-a-eid",
+        kind: "vehicleWaypoint",
+        def: { id: "wp-a", position: [0, 4, 0], next: "wp-b", speed: 16, connections: [] },
+      },
+      {
+        eid: "wp-b-eid",
+        kind: "vehicleWaypoint",
+        def: { id: "wp-b", position: [0, 5, -12], wait: 0.5, connections: [] },
+      },
+      {
+        eid: "heli-eid",
+        kind: "vehicle",
+        def: {
+          id: "heli",
+          presetId: "helicopter",
+          position: [0, 4, 0],
+          pathStart: "wp-a",
+          crashPolicy: "survivable",
+          crew: [{ actor: "!player", role: "gunner", seatId: "door-gunner" }],
+          weaponEnabled: true,
+          portalTraversal: "blocked",
+          connections: [{ output: "OnCrashed", target: "landing", input: "Enable" }],
+        },
+      },
+      {
+        eid: "water-eid",
+        kind: "waterVolume",
+        def: { id: "canal", position: [10, -1, 0], size: [12, 2, 30], surface: "canal" },
+      },
+      {
+        eid: "area-eid",
+        kind: "vehicleNavArea",
+        def: {
+          id: "drive-area",
+          polygon: [[-8, 0, -8], [8, 0, -8], [8, 0, 8], [-8, 0, 8]],
+          surface: "ground",
+        },
+      },
+      {
+        eid: "lane-eid",
+        kind: "vehicleNavLane",
+        def: {
+          id: "main-lane",
+          points: [[0, 0, -8], [0, 0, 8]],
+          width: 3,
+          direction: "both",
+        },
+      },
+      {
+        eid: "marker-eid",
+        kind: "vehicleNavMarker",
+        def: { id: "landing", position: [0, 0, -15], kind: "landingZone", connections: [] },
+      },
+      {
+        eid: "checkpoint-eid",
+        kind: "checkpoint",
+        def: { id: "save-vehicle", position: [0, 1, 3], size: [3, 2, 3], respawn: [0, 0, 2] },
+      },
+    ];
+    const doc = testEditorDocument({ entities });
+
+    const level = toLevelDefinition(doc);
+    expect(level.vehicles?.[0]).toMatchObject({
+      id: "heli",
+      presetId: "helicopter",
+      pathStart: "wp-a",
+      crashPolicy: "survivable",
+    });
+    expect(level.vehicleWaypoints).toHaveLength(2);
+    expect(level.waterVolumes?.[0].size).toEqual([12, 2, 30]);
+    expect(level.vehicleNavAreas).toHaveLength(1);
+    expect(level.vehicleNavLanes).toHaveLength(1);
+    expect(level.vehicleNavMarkers?.[0].kind).toBe("landingZone");
+    expect(level.checkpoints?.[0].id).toBe("save-vehicle");
+
+    const roundTripped = fromLevelDefinition(level);
+    expect(roundTripped.schemaVersion).toBe(1);
+    expect(roundTripped.entities.map((entity) => entity.kind)).toEqual(
+      expect.arrayContaining([
+        "vehicle",
+        "vehicleWaypoint",
+        "waterVolume",
+        "vehicleNavArea",
+        "vehicleNavLane",
+        "vehicleNavMarker",
+        "checkpoint",
+      ]),
+    );
+
+    const source = toTypeScript(roundTripped);
+    expect(source).toContain(".vehicle(");
+    expect(source).toContain(".vehicleWaypoint(");
+    expect(source).toContain(".waterVolume(");
+    expect(source).toContain(".vehicleNavArea(");
+    expect(source).toContain(".vehicleNavLane(");
+    expect(source).toContain(".vehicleNavMarker(");
+    expect(source).toContain(".checkpoint(");
+  });
+
+  it("rechaza rutas vehiculares cíclicas sin pathLoop", () => {
+    const entities: EditorEntity[] = [
+      {
+        eid: "a",
+        kind: "vehicleWaypoint",
+        def: { id: "a", position: [0, 3, 0], next: "b" },
+      },
+      {
+        eid: "b",
+        kind: "vehicleWaypoint",
+        def: { id: "b", position: [0, 3, -4], next: "a" },
+      },
+      {
+        eid: "heli",
+        kind: "vehicle",
+        def: { id: "heli", presetId: "helicopter", position: [0, 3, 0], pathStart: "a" },
+      },
+    ];
+
+    expect(() => toLevelDefinition(testEditorDocument({ entities }))).toThrow("ciclo sin pathLoop");
   });
 
   it("falla con ids duplicados", () => {

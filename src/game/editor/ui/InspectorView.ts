@@ -21,6 +21,7 @@ import {
   type InputParamKind,
 } from '@game/script/EntityCatalog';
 import type { GestureId } from '@engine/animation/AnimationInput';
+import { VEHICLE_ARCHETYPE_IDS } from '@game/config/vehicles.config';
 import type { EditorDocument, EditorEntity, PropEntitySpec } from '../EditorDocument';
 import { entityIoName, entityKindLabel, entityLevelId } from '../EditorDocument';
 import {
@@ -46,6 +47,7 @@ import {
   SOUNDSCAPE_IDS,
   WEAPON_IDS,
 } from '../editorOptions';
+import { normalizeLandmark } from '@game/levels/LevelTransition';
 import {
   checkboxField,
   jsonField,
@@ -63,6 +65,19 @@ const ROOFS: readonly string[] = ['flat', 'walkable', 'gable', 'none'];
 const AXES: readonly string[] = ['x', 'z'];
 const NO_DOOR = '(sin puerta)';
 const NO_WALL = '(ninguno)';
+const VEHICLE_FACTIONS = ['player', 'resistance', 'combine', 'zombies', 'blob', 'neutral'] as const;
+const WATER_SURFACES = ['canal', 'river', 'industrial'] as const;
+const VEHICLE_NAV_SURFACES = ['ground', 'water', 'both'] as const;
+const VEHICLE_LANE_DIRECTIONS = ['forward', 'backward', 'both'] as const;
+const VEHICLE_CRASH_POLICIES = ['fatal', 'survivable'] as const;
+const VEHICLE_MARKER_KINDS = [
+  'parking',
+  'boarding',
+  'recovery',
+  'passingBay',
+  'landingZone',
+  'dropZone',
+] as const;
 
 export interface InspectorCallbacks {
   getDocument(): EditorDocument;
@@ -159,7 +174,12 @@ export class InspectorView implements Disposable {
     if (
       entity.kind !== 'charger' &&
       entity.kind !== 'prebuiltBuilding' &&
-      entity.kind !== 'hazardVolume'
+      entity.kind !== 'hazardVolume' &&
+      entity.kind !== 'waterVolume' &&
+      entity.kind !== 'vehicleWaypoint' &&
+      entity.kind !== 'vehicleNavArea' &&
+      entity.kind !== 'vehicleNavLane' &&
+      entity.kind !== 'checkpoint'
     ) {
       this.rotField = vec3Field('Rotacion (°)', degTuple(getRotation(entity)), (v) => {
         setRotation(entity, [degToRad(v[0]), degToRad(v[1]), degToRad(v[2])]);
@@ -346,6 +366,124 @@ export class InspectorView implements Disposable {
           this.commit();
         }));
         return;
+      case 'vehicle':
+        this.append(selectField('Preset', entity.def.presetId, VEHICLE_ARCHETYPE_IDS, (v) => {
+          entity.def.presetId = v as typeof entity.def.presetId;
+          this.commitAndRerender();
+        }));
+        this.append(selectField('Facción', entity.def.faction ?? 'resistance', VEHICLE_FACTIONS, (v) => {
+          entity.def.faction = v as NonNullable<typeof entity.def.faction>;
+          this.commit();
+        }));
+        this.append(checkboxField('Arma habilitada', entity.def.weaponEnabled ?? true, (v) => {
+          entity.def.weaponEnabled = v;
+          this.commit();
+        }));
+        this.append(checkboxField('Arranca bloqueado', entity.def.startLocked ?? false, (v) => {
+          entity.def.startLocked = v || undefined;
+          this.commit();
+        }));
+        this.append(checkboxField('Motor encendido', entity.def.engineOn ?? false, (v) => {
+          entity.def.engineOn = v || undefined;
+          this.commit();
+        }));
+        this.append(textField('Inicio de ruta', entity.def.pathStart ?? '', (v) => {
+          entity.def.pathStart = v || undefined;
+          this.commit();
+        }));
+        this.append(textField('Inicio de crash', entity.def.crashPathStart ?? '', (v) => {
+          entity.def.crashPathStart = v || undefined;
+          this.commit();
+        }));
+        this.append(selectField('Política de crash', entity.def.crashPolicy ?? 'fatal', VEHICLE_CRASH_POLICIES, (v) => {
+          entity.def.crashPolicy = v === 'fatal' ? undefined : 'survivable';
+          this.commit();
+        }));
+        this.append(checkboxField('Ruta cíclica', entity.def.pathLoop ?? false, (v) => {
+          entity.def.pathLoop = v || undefined;
+          this.commit();
+        }));
+        this.connectionsEditor(entity.def, 'vehicle');
+        return;
+      case 'vehicleWaypoint':
+        this.append(textField('Siguiente waypoint', entity.def.next ?? '', (v) => {
+          entity.def.next = v || undefined;
+          this.commit();
+        }));
+        this.append(numberField('Velocidad (m/s)', entity.def.speed ?? 18, (v) => {
+          entity.def.speed = v > 0 ? v : undefined;
+          this.commit();
+        }, 0.5));
+        this.append(numberField('Espera (s)', entity.def.wait ?? 0, (v) => {
+          entity.def.wait = v > 0 ? v : undefined;
+          this.commit();
+        }, 0.25));
+        this.append(numberField('Bank (rad)', entity.def.bank ?? 0, (v) => {
+          entity.def.bank = v || undefined;
+          this.commit();
+        }, 0.05));
+        this.connectionsEditor(entity.def, 'vehicleWaypoint');
+        return;
+      case 'waterVolume':
+        this.append(selectField('Superficie', entity.def.surface ?? 'canal', WATER_SURFACES, (v) => {
+          entity.def.surface = v as NonNullable<typeof entity.def.surface>;
+          this.commit();
+        }));
+        return;
+      case 'vehicleNavArea':
+        this.append(selectField('Superficie', entity.def.surface, VEHICLE_NAV_SURFACES, (v) => {
+          entity.def.surface = v as typeof entity.def.surface;
+          this.commit();
+        }));
+        this.append(numberField('Costo', entity.def.cost ?? 1, (v) => {
+          entity.def.cost = v > 0 ? v : undefined;
+          this.commit();
+        }, 0.1));
+        this.append(numberField('Límite de velocidad', entity.def.speedLimit ?? 14, (v) => {
+          entity.def.speedLimit = v > 0 ? v : undefined;
+          this.commit();
+        }, 0.5));
+        return;
+      case 'vehicleNavLane':
+        this.append(selectField('Dirección', entity.def.direction, VEHICLE_LANE_DIRECTIONS, (v) => {
+          entity.def.direction = v as typeof entity.def.direction;
+          this.commit();
+        }));
+        this.append(numberField('Ancho', entity.def.width, (v) => {
+          entity.def.width = Math.max(0.1, v);
+          this.commit();
+        }, 0.25));
+        this.append(numberField('Límite de velocidad', entity.def.speedLimit ?? 14, (v) => {
+          entity.def.speedLimit = v > 0 ? v : undefined;
+          this.commit();
+        }, 0.5));
+        this.append(numberField('Prioridad', entity.def.priority ?? 1, (v) => {
+          entity.def.priority = v;
+          this.commit();
+        }, 1));
+        return;
+      case 'vehicleNavMarker':
+        this.append(selectField('Tipo', entity.def.kind, VEHICLE_MARKER_KINDS, (v) => {
+          entity.def.kind = v as typeof entity.def.kind;
+          this.commit();
+        }));
+        this.append(checkboxField('Permitir recovery snap', entity.def.allowRecoverySnap ?? false, (v) => {
+          entity.def.allowRecoverySnap = v || undefined;
+          this.commit();
+        }));
+        return;
+      case 'checkpoint':
+        this.append(checkboxField('Respawn explicito', entity.def.respawn !== undefined, (v) => {
+          entity.def.respawn = v ? (entity.def.respawn ?? [...entity.def.position]) : undefined;
+          this.commitAndRerender();
+        }));
+        if (entity.def.respawn) {
+          this.append(vec3Field('Respawn', entity.def.respawn, (v) => {
+            entity.def.respawn = v;
+            this.commit();
+          }));
+        }
+        return;
       case 'building':
         this.buildingFields(entity.spec);
         return;
@@ -453,8 +591,23 @@ export class InspectorView implements Disposable {
         this.append(selectField('Acción', def.action, LEVEL_ACTIONS, (v) => { def.action = v as typeof def.action; this.commit(); }));
         break;
       case 'changelevel':
-        this.append(checkboxField('Con landmark', def.landmark !== undefined, (v) => { def.landmark = v ? (def.landmark ?? [0, 1, 0]) : undefined; this.commitAndRerender(); }));
-        if (def.landmark) this.append(vec3Field('Landmark', def.landmark, (v) => { def.landmark = v; this.commit(); }));
+        this.append(checkboxField('Con landmark', def.landmark !== undefined, (v) => {
+          def.landmark = v
+            ? normalizeLandmark(def.landmark ?? [0, 1, 0])
+            : undefined;
+          this.commitAndRerender();
+        }));
+        if (def.landmark) {
+          const landmark = normalizeLandmark(def.landmark);
+          this.append(vec3Field('Landmark', landmark.position, (v) => {
+            def.landmark = { ...landmark, position: v };
+            this.commit();
+          }));
+          this.append(numberField('Yaw (rad)', landmark.yaw ?? 0, (v) => {
+            def.landmark = { ...landmark, yaw: v };
+            this.commit();
+          }, 0.05));
+        }
         break;
       case 'npcSpawner':
         this.spawnerNpcList(def);
@@ -1034,6 +1187,12 @@ function entityIoClass(entity: EditorEntity): EntityClassId | null {
       return entity.def.kind;
     case 'sequence':
       return 'sequence';
+    case 'vehicle':
+      return 'vehicle';
+    case 'vehicleWaypoint':
+      return 'vehicleWaypoint';
+    case 'vehicleNavMarker':
+      return 'vehicleNavMarker';
     default:
       return null;
   }

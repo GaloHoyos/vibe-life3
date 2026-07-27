@@ -5,6 +5,11 @@ import type { PhysicsWorld } from '@engine/physics/PhysicsWorld';
 import type { GameEventBus } from '@game/GameEvents';
 import type { PlayerHealth } from '@game/gameplay/player/PlayerHealth';
 import { getItem, type ItemDefinition, type ItemId } from '@game/config/items.config';
+import {
+  capturePhysicalPickupSaveState,
+  restorePhysicalPickupSaveState,
+  type PhysicalPickupSaveSnapshot,
+} from './PhysicalPickupSaveState';
 
 const SpawnLift = 0.6;
 const MinHalfExtent = 0.02;
@@ -88,6 +93,42 @@ export class ItemPickup {
       id: this.options.id,
       kind: 'weaponPickup',
     });
+    this.physics.setBodyVisual(this.body, this.object);
+  }
+
+  get id(): string {
+    return this.options.id;
+  }
+
+  isAvailable(): boolean {
+    return !this.pickedUp;
+  }
+
+  captureSaveState(): PhysicalPickupSaveSnapshot {
+    if (!this.body) {
+      throw new Error(`Pickup ${this.options.id} sin cuerpo físico`);
+    }
+    return capturePhysicalPickupSaveState(
+      this.options.id,
+      !this.pickedUp,
+      this.body,
+    );
+  }
+
+  restoreSaveState(snapshot: Readonly<PhysicalPickupSaveSnapshot>): void {
+    if (!this.body || !this.collider) {
+      throw new Error(`Pickup ${this.options.id} sin cuerpo físico`);
+    }
+    restorePhysicalPickupSaveState(
+      snapshot,
+      this.options.id,
+      this.scene,
+      this.physics,
+      this.object,
+      this.body,
+      this.collider,
+    );
+    this.pickedUp = !snapshot.available;
   }
 
   update(_delta: number, playerPosition: Vector3, health: PlayerHealth): void {
@@ -112,6 +153,9 @@ export class ItemPickup {
 
   dispose(): void {
     this.object.removeFromParent();
+    if (this.body) {
+      this.physics.clearBodyVisual(this.body);
+    }
     this.collider?.setEnabled(false);
     this.body?.setEnabled(false);
   }

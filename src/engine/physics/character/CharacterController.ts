@@ -70,6 +70,7 @@ export class CharacterController extends KinematicCharacterBase {
   /** Velocidad de impacto del frame en que aterrizó (m/s), 0 si no aterrizó. */
   private landingImpact = 0;
   private readonly tmpEye = new Vector3();
+  private readonly tmpProbe = new Vector3();
   private readonly tmpWishDir = new Vector3();
   private readonly tmpImpulse = new Vector3();
   private readonly tmpRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, TMP_STAND_UP);
@@ -160,8 +161,12 @@ export class CharacterController extends KinematicCharacterBase {
       this.options.crouchEyeHeight,
       this.crouchProgress,
     );
-    const p = this.body.translation();
-    return this.tmpEye.set(p.x, p.y + eyeOffset, p.z);
+    // Pose pendiente y no `body.translation()`: la física corre a paso fijo, así
+    // que la pose comprometida sólo cambia en algunos frames y la cámara se
+    // congelaría entre substeps a más de 60 fps.
+    const p = this.readPendingPosition(this.tmpEye);
+    p.y += eyeOffset;
+    return p;
   }
 
   /**
@@ -210,12 +215,9 @@ export class CharacterController extends KinematicCharacterBase {
 
   /** Base de la cápsula (los pies). Ancla del modelo visual del jugador. */
   getFeetPosition(out = new Vector3()): Vector3 {
-    const t = this.body.translation();
-    return out.set(
-      t.x,
-      t.y - this.currentHalfHeight - this.options.radius,
-      t.z,
-    );
+    const t = this.readPendingPosition(out);
+    t.y -= this.currentHalfHeight + this.options.radius;
+    return t;
   }
 
   isSprinting(): boolean {
@@ -335,6 +337,9 @@ export class CharacterController extends KinematicCharacterBase {
         { x: t.x, y: t.y + halfHeightDelta, z: t.z },
         true,
       );
+      // El objetivo pendiente acompaña el anclaje: si no, el offset resultante
+      // barrería la cápsula de vuelta a la altura anterior.
+      this.shiftPendingTarget(0, halfHeightDelta, 0);
     }
     // Crouch jump (HL1/HL2): en el aire NO trasladamos el cuerpo, asÃ­ los pies
     // suben por la cÃ¡psula achicada y se gana clearance para subir bordes que
@@ -353,7 +358,7 @@ export class CharacterController extends KinematicCharacterBase {
       return true;
     }
 
-    const t = this.body.translation();
+    const t = this.readPendingPosition(this.tmpProbe);
     const headY = t.y + this.currentHalfHeight + this.options.radius;
     const r = this.options.radius * 0.6;
     const probes: ReadonlyArray<readonly [number, number]> = [

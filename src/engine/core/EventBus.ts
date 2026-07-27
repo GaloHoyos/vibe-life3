@@ -12,6 +12,7 @@ type Handler<TPayload> = (payload: TPayload) => void;
  */
 export class EventBus<TEvents extends object> {
   private readonly handlers = new Map<keyof TEvents, Set<Handler<TEvents[keyof TEvents]>>>();
+  private suspensionDepth = 0;
 
   /** Suscribe `handler` a `eventName`. Devuelve un disposer idempotente. */
   on<TKey extends keyof TEvents>(eventName: TKey, handler: Handler<TEvents[TKey]>): () => void {
@@ -25,6 +26,9 @@ export class EventBus<TEvents extends object> {
 
   /** Notifica sincrónicamente a todos los handlers registrados para `eventName`. */
   emit<TKey extends keyof TEvents>(eventName: TKey, payload: TEvents[TKey]): void {
+    if (this.suspensionDepth > 0) {
+      return;
+    }
     const handlers = this.handlers.get(eventName);
 
     if (!handlers) {
@@ -39,6 +43,21 @@ export class EventBus<TEvents extends object> {
   /** Borra todas las suscripciones. Usar al destruir la instancia del bus. */
   clear(): void {
     this.handlers.clear();
+    this.suspensionDepth = 0;
+  }
+
+  /**
+   * Silencia emisiones mientras un consumidor reconstruye estado de forma
+   * atómica. El disposer es idempotente y admite suspensiones anidadas.
+   */
+  suspend(): () => void {
+    this.suspensionDepth += 1;
+    let resumed = false;
+    return () => {
+      if (resumed) return;
+      resumed = true;
+      this.suspensionDepth = Math.max(0, this.suspensionDepth - 1);
+    };
   }
 
   private getHandlers<TKey extends keyof TEvents>(eventName: TKey): Set<Handler<TEvents[keyof TEvents]>> {

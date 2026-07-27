@@ -17,6 +17,12 @@ import type { LevelId } from '@game/levels/LevelRegistry';
 import type { PlayerModelId } from '@game/config/playermodel.config';
 import type { IOEntityFields, LogicEntityDefinition } from '@game/script/EntityIOTypes';
 import type { ScriptedSequenceDefinition } from '@game/script/ScriptedSequenceTypes';
+import type { Faction } from '@engine/ai/Faction';
+import type {
+  VehicleCrewRole,
+  VehiclePresetId,
+} from '@game/config/vehicles.config';
+import type { LandmarkReference } from '@game/levels/LevelTransition';
 
 /** Rotacion Euler XYZ en radianes. Omitida = alineado a los ejes. */
 type RotationTuple = VectorTuple;
@@ -69,6 +75,11 @@ export interface NPCDefinition extends IOEntityFields {
   characterId: CharacterId;
   patrol?: VectorTuple[];
   rotation?: RotationTuple;
+  /**
+   * Identidad estable al cruzar un changelevel. El NPC con la misma clave en el
+   * nivel destino hereda pose y vitales del origen (companion que te sigue).
+   */
+  transitionKey?: string;
 }
 
 export interface WeaponPickupDefinition {
@@ -101,6 +112,117 @@ export interface ChargerDefinition {
   rotationY?: number;
   /** Override de la reserva total. Default según `ChargerTypes[kind]`. */
   capacity?: number;
+}
+
+export interface VehicleCrewAssignment {
+  /** Targetname del actor, o `!player`. */
+  actor: string;
+  role: VehicleCrewRole;
+  /** Si se omite, el runtime elige el primer asiento compatible libre. */
+  seatId?: string;
+}
+
+export type VehicleAiBehavior =
+  | 'hold'
+  | 'patrol'
+  | 'escort'
+  | 'transport'
+  | 'intercept'
+  | 'flank'
+  | 'retreat';
+
+export interface VehicleAiDefinition {
+  enabled: boolean;
+  behavior: VehicleAiBehavior;
+  /** Targetname de marker, actor o vehículo según el comportamiento. */
+  goal?: string;
+  allowRecoverySnap?: boolean;
+}
+
+/** Instancia autorada de un preset vehicular. */
+export interface VehicleDefinition extends IOEntityFields {
+  id: string;
+  presetId: VehiclePresetId;
+  position: VectorTuple;
+  rotation?: RotationTuple;
+  faction?: Faction;
+  crew?: VehicleCrewAssignment[];
+  weaponEnabled?: boolean;
+  startDisabled?: boolean;
+  startLocked?: boolean;
+  engineOn?: boolean;
+  /** Primer waypoint de la ruta normal; requerido por el helicóptero. */
+  pathStart?: string;
+  /** Primer waypoint de la secuencia de choque. */
+  crashPathStart?: string;
+  /** Default `fatal`; los setpieces pueden declarar un choque sobrevivible. */
+  crashPolicy?: 'survivable' | 'fatal';
+  /** Autoriza que la cadena `next` vuelva a un waypoint ya visitado. */
+  pathLoop?: boolean;
+  ai?: VehicleAiDefinition;
+  /** Identidad estable al cruzar un changelevel. */
+  transitionKey?: string;
+  portalTraversal?: 'blocked';
+}
+
+/** Nodo Source-style de una ruta vehicular enlazada por `next`. */
+export interface VehicleWaypointDefinition extends IOEntityFields {
+  id: string;
+  position: VectorTuple;
+  next?: string;
+  speed?: number;
+  wait?: number;
+  /** Inclinación lateral autorada, en radianes. */
+  bank?: number;
+}
+
+export interface WaterVolumeDefinition {
+  id: string;
+  /** Centro del volumen físico. La cara superior es la superficie del agua. */
+  position: VectorTuple;
+  size: VectorTuple;
+  flow?: VectorTuple;
+  surface?: 'canal' | 'river' | 'industrial';
+}
+
+export type VehicleNavSurface = 'ground' | 'water' | 'both';
+
+export interface VehicleNavAreaDefinition {
+  id: string;
+  polygon: VectorTuple[];
+  surface: VehicleNavSurface;
+  cost?: number;
+  speedLimit?: number;
+  tags?: string[];
+  flags?: Array<'noCombat' | 'noReverse' | 'parking' | 'shore'>;
+}
+
+export interface VehicleNavLaneDefinition {
+  id: string;
+  points: VectorTuple[];
+  width: number;
+  direction: 'forward' | 'backward' | 'both';
+  speedLimit?: number;
+  priority?: number;
+  tags?: string[];
+}
+
+export type VehicleNavMarkerKind =
+  | 'parking'
+  | 'boarding'
+  | 'recovery'
+  | 'passingBay'
+  | 'landingZone'
+  | 'dropZone';
+
+export interface VehicleNavMarkerDefinition extends IOEntityFields {
+  id: string;
+  position: VectorTuple;
+  heading?: number;
+  kind: VehicleNavMarkerKind;
+  allowedPresets?: VehiclePresetId[];
+  /** Sólo un marker explícito puede habilitar el último escalón de recovery. */
+  allowRecoverySnap?: boolean;
 }
 
 /** Objetivo inicial de un nivel. El HUD lo muestra al cargar. */
@@ -171,7 +293,7 @@ export interface LevelDefinition {
    * del nivel anterior — así la transición conserva la posición relativa. Si se
    * omite, reaparece en `playerStart`.
    */
-  entryLandmark?: VectorTuple;
+  entryLandmark?: LandmarkReference;
   /** Objetivo que el HUD muestra al cargar el nivel. */
   objective?: ObjectiveDefinition;
   /** Color de fondo de fallback (cuando no hay skybox o el HDRI falla). */
@@ -219,4 +341,16 @@ export interface LevelDefinition {
   explosiveBarrels?: ExplosiveBarrelDefinition[];
   /** Volúmenes de peligro que dañan al jugador mientras está adentro. */
   hazardVolumes?: HazardVolumeDefinition[];
+  /** Vehículos pilotables, tripulados o guionados. */
+  vehicles?: VehicleDefinition[];
+  /** Rutas enlazadas para helicópteros y movimientos guionados. */
+  vehicleWaypoints?: VehicleWaypointDefinition[];
+  /** Agua renderizable y consultable por motores de flotación. */
+  waterVolumes?: WaterVolumeDefinition[];
+  /** Regiones donde el bake de navegación vehicular puede generar espacio libre. */
+  vehicleNavAreas?: VehicleNavAreaDefinition[];
+  /** Carriles autorados del grafo vehicular global. */
+  vehicleNavLanes?: VehicleNavLaneDefinition[];
+  /** Puntos semánticos de parking, boarding, recovery y aterrizaje. */
+  vehicleNavMarkers?: VehicleNavMarkerDefinition[];
 }

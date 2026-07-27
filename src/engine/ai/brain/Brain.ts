@@ -55,6 +55,25 @@ export class Brain<C> {
     };
   }
 
+  /**
+   * Reanuda la posición lógica de un schedule sin ejecutar callbacks durante
+   * la carga. El task se inicializa normalmente en el próximo `update`.
+   */
+  restoreSnapshot(snapshot: Readonly<BrainSnapshot>): void {
+    const current = snapshot.schedule
+      ? this.schedules.find((schedule) => schedule.id === snapshot.schedule) ?? null
+      : null;
+    this.current = current;
+    this.previousId = snapshot.previousSchedule;
+    this.taskIndex = current
+      ? Math.max(0, Math.min(current.tasks.length - 1, snapshot.taskIndex))
+      : 0;
+    this.taskInitialized = false;
+    this.scheduleElapsed = Number.isFinite(snapshot.scheduleElapsed)
+      ? Math.max(0, snapshot.scheduleElapsed)
+      : 0;
+  }
+
   update(ctx: C, delta: number, conditions: ConditionMask): void {
     this.scheduleElapsed += delta;
     const candidate = this.pick(conditions);
