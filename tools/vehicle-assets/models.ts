@@ -92,14 +92,85 @@ const BUGGY_GUN_Y = 1.78;
 const BUGGY_GUN_REACH = 1.32;
 
 /**
- * Las anclas de cámara se exportan SIN rotación propia: son marcadores de
- * posición y la convención de "hacia adelante" la aplica `VehicleCameraRig`.
- * Traían un giro de 180° horneado que se sumaba al del rig y dejaba la cámara
- * mirando la cola del vehículo.
+ * Casco del hidrodeslizador, atado al preset físico (`vehicles.config.ts`:
+ * body.size [2.35, 1.45, 4.4], colliderCenter.y 0.55). El fondo de planeo va
+ * al piso del collider y la cubierta a media altura; si la cubierta sube más,
+ * el piloto sentado sobresale de la caja de colisión.
  */
-const CAMERA_ANCHOR_ROTATION: readonly [number, number, number, number] = [
-  0, 0, 0, 1,
-];
+const AIRBOAT_HULL = {
+  bottomY: 0.28,
+  deckY: 0.96,
+  halfWidth: 1.07,
+  sternZ: -2.14,
+} as const;
+
+/**
+ * Ventilador de popa. El radio deja la punta de pala apenas por encima de la
+ * cubierta: bajar el eje obliga a recortar la jaula contra el espejo de popa,
+ * y es justo la jaula entera lo que da la silueta del hidrodeslizador.
+ */
+const AIRBOAT_FAN = {
+  y: 1.92,
+  z: -1.74,
+  radius: 0.92,
+  cageRadius: 1.0,
+} as const;
+
+/**
+ * Pintle del cañón sobre el castillo de proa. La altura sale de la depresión
+ * máxima del preset (−0.35 rad): con 1.24 m de caño la punta baja 0.43 m, así
+ * que por debajo de 1.3 el arma termina apuntando a la propia roda.
+ */
+const AIRBOAT_GUN_Y = 1.52;
+const AIRBOAT_GUN_Z = 1.72;
+const AIRBOAT_GUN_REACH = 1.16;
+
+/**
+ * Alzada del castillo de proa, en radianes. Levanta la roda para que el casco
+ * monte el hielo en vez de clavarse, y de paso deja la boca del cañón por
+ * encima de la cubierta en depresión máxima.
+ */
+const AIRBOAT_BOW_RAKE = -0.15;
+
+/** Puesto del piloto: centrado, entre el cañón de proa y la bancada del motor. */
+const AIRBOAT_DRIVER_Z = -0.52;
+
+/**
+ * Fuselaje del helicóptero. Las cotas salen del preset físico
+ * (`vehicles.config.ts`: body.size [3.4, 2.8, 9.2], colliderCenter [0, 1.25,
+ * 0.1]) y de las anclas de tripulación, que ya estaban calibradas para este
+ * habitáculo: el piso queda 0.16 m por debajo del almohadón de las butacas.
+ */
+const HELI_CABIN = {
+  halfWidth: 1.08,
+  floorY: 0.72,
+  roofY: 2.3,
+  /** Cara interna del forro de bodega, por dentro de la piel. */
+  liningX: 0.99,
+  /** Largo útil de bodega, entre el mamparo de popa y el del puesto. */
+  lining: [-1.94, 1.18],
+  /** Vano de la puerta corrediza de babor, en Z. */
+  doorway: [-0.15, 0.85],
+  portholeY: 1.72,
+  portholeRadius: 0.2,
+} as const;
+
+/**
+ * Parabrisas: cristal muy tumbado, con la base adelante y el canto superior
+ * contra el techo. El ojo del piloto (`camera_pilot`, y 1.72) cae dentro de
+ * este tramo, así que el cristal tiene que ser transparente de verdad.
+ */
+const HELI_WINDSHIELD = {
+  rake: -0.66,
+  y: 1.74,
+  z: 2.6,
+  height: 0.98,
+} as const;
+
+const HELI_ROTOR = { y: 2.98, z: -0.12 } as const;
+
+/** Rotor de cola: de canto sobre la deriva, a dos tercios de su altura. */
+const HELI_TAIL_ROTOR = { x: 0.3, y: 2.33, z: -5.92 } as const;
 
 function createHullGeometry(
   length: number,
@@ -395,14 +466,26 @@ function steeringWheelParts(
   return parts;
 }
 
+/**
+ * Repetición espejada dentro de [0,1]. La proyección plana de abajo se sale del
+ * rango en cuanto una pieza pasa los 2 m del origen, y recortar ahí deja a toda
+ * la pieza muestreando un solo téxel del borde: la roda de proa salía como una
+ * plancha de color liso. Espejar mantiene idéntico lo que ya caía en rango y le
+ * devuelve grano a los extremos sin invadir la casilla vecina del atlas.
+ */
+function mirrorUnit(value: number): number {
+  const wrapped = ((value % 2) + 2) % 2;
+  return wrapped > 1 ? 2 - wrapped : wrapped;
+}
+
 function remapUv(geometry: BufferGeometry, tile: AtlasTile): void {
   const uv = geometry.getAttribute("uv");
   if (uv === undefined) {
     const position = geometry.getAttribute("position");
     const generated = new Float32Array(position.count * 2);
     for (let index = 0; index < position.count; index += 1) {
-      generated[index * 2] = position.getX(index) * 0.25 + 0.5;
-      generated[index * 2 + 1] = position.getZ(index) * 0.25 + 0.5;
+      generated[index * 2] = mirrorUnit(position.getX(index) * 0.25 + 0.5);
+      generated[index * 2 + 1] = mirrorUnit(position.getZ(index) * 0.25 + 0.5);
     }
     geometry.setAttribute("uv", new Float32BufferAttribute(generated, 2));
   }
@@ -436,7 +519,10 @@ function prepareGeometry(part: GeometryPart): BufferGeometry {
 
 function mergeParts(
   parts: readonly GeometryPart[],
-  options: { readonly bakeOcclusion?: boolean } = {},
+  options: {
+    readonly bakeOcclusion?: boolean;
+    readonly occlusionStrength?: number;
+  } = {},
 ): BufferGeometry {
   const geometries = parts.map(prepareGeometry);
   const merged = mergeGeometries(geometries, false);
@@ -447,17 +533,42 @@ function mergeParts(
     throw new Error("No se pudo combinar la geometría procedural del vehículo.");
   }
   if (options.bakeOcclusion !== false) {
-    bakeVertexOcclusion(merged);
+    bakeVertexOcclusion(merged, { strength: options.occlusionStrength });
   }
   merged.computeBoundingBox();
   merged.computeBoundingSphere();
   return merged;
 }
 
+/**
+ * Vidrio de cabina. Va como material aparte porque el atlas de cuatro casillas
+ * es opaco por definición: una ventana pintada sobre la chapa nunca deja ver el
+ * interior. Alcanza con `BLEND` y alfa baja; `KHR_materials_transmission` sería
+ * más correcto pero obliga a un render target extra por cuadro, que es mucho
+ * pedir para una ventanilla.
+ */
+function createGlassMaterial(
+  document: Document,
+  spec: VehicleAssetSpec,
+): Material {
+  return document
+    .createMaterial(`${spec.id}_glazing`)
+    .setBaseColorFactor([0.24, 0.29, 0.34, 0.4])
+    .setMetallicFactor(0.04)
+    // Casi espejo (0.07) el cristal devolvía el entorno como una mancha blanca
+    // que tapaba la cabina entera. Con algo de rugosidad el reflejo se abre y
+    // se ve lo que hay detrás, que es todo el punto de ponerle vidrio.
+    .setRoughnessFactor(0.17)
+    .setAlphaMode("BLEND")
+    // Desde la butaca se mira el cristal por su cara interna.
+    .setDoubleSided(true);
+}
+
 function createMesh(
   context: BuildContext,
   name: string,
   geometry: BufferGeometry,
+  material: Material = context.material,
 ): Mesh {
   geometry.computeTangents();
   const document = context.document;
@@ -538,7 +649,7 @@ function createMesh(
     .setAttribute("TEXCOORD_0", uvAccessor)
     .setAttribute("TANGENT", tangentAccessor)
     .setIndices(indexAccessor)
-    .setMaterial(context.material);
+    .setMaterial(material);
   if (colors) {
     // AO horneada: el loader activa `vertexColors` solo y multiplica el albedo.
     primitive.setAttribute(
@@ -562,7 +673,17 @@ function createNode(
     readonly rotation?: Euler;
     readonly scale?: Vec3;
     readonly extras?: Record<string, unknown>;
-    readonly cameraForward?: boolean;
+    /**
+     * Rumbo del ancla de cámara: `true` mira a proa, un número la gira ese
+     * ángulo en Y. Las anclas NO llevan la corrección de "hacia adelante" —
+     * ésa la aplica `VehicleCameraRig`, y horneada acá se sumaba a la del rig
+     * y dejaba la cámara mirando la cola.
+     *
+     * El rig conserva el yaw del ancla íntegro y el `localYaw` del jugador es
+     * relativo a él, así que este ángulo también fija el cero del arma: si se
+     * gira el ancla del artillero hay que girar igual la base de la torreta.
+     */
+    readonly camera?: boolean | number;
   } = {},
 ): Node {
   const node = context.document.createNode(name);
@@ -582,8 +703,10 @@ function createNode(
   if (options.scale !== undefined) {
     node.setScale([...options.scale]);
   }
-  if (options.cameraForward === true) {
-    node.setRotation([...CAMERA_ANCHOR_ROTATION]);
+  if (options.camera !== undefined && options.camera !== false) {
+    const yaw = options.camera === true ? 0 : options.camera;
+    const quaternion = new Quaternion().setFromEuler(new ThreeEuler(0, yaw, 0));
+    node.setRotation([quaternion.x, quaternion.y, quaternion.z, quaternion.w]);
   }
   if (options.extras !== undefined) {
     node.setExtras(options.extras);
@@ -601,10 +724,16 @@ function createVisualNode(
     readonly position?: Vec3;
     readonly rotation?: Euler;
     readonly extras?: Record<string, unknown>;
+    readonly material?: Material;
+    readonly bakeOcclusion?: boolean;
+    readonly occlusionStrength?: number;
   } = {},
 ): Node {
-  const geometry = mergeParts(parts);
-  const mesh = createMesh(context, `${name}_mesh`, geometry);
+  const geometry = mergeParts(parts, {
+    bakeOcclusion: options.bakeOcclusion,
+    occlusionStrength: options.occlusionStrength,
+  });
+  const mesh = createMesh(context, `${name}_mesh`, geometry, options.material);
   geometry.dispose();
   return createNode(context, parent, name, {
     mesh,
@@ -620,11 +749,11 @@ function createAnchor(
   position: Vec3,
   kind: string,
   extras: Record<string, unknown> = {},
-  cameraForward = false,
+  camera: boolean | number = false,
 ): Node {
   return createNode(context, context.sceneRoot, name, {
     position,
-    cameraForward,
+    camera,
     extras: { kind, ...extras },
   });
 }
@@ -1003,57 +1132,149 @@ function buildBuggy(context: BuildContext): void {
   ]);
 }
 
+/**
+ * Hélice de empuje: un solo rotor de popa, como el del hidrodeslizador de
+ * Half-Life 2. El buje va largo porque es lo que se ve entre las palas cuando
+ * el disco gira; sin él, a régimen el centro queda hueco.
+ */
 function createFanGeometry(segments: number, simplified: boolean): BufferGeometry {
+  const hubRadius = 0.19;
+  const tip = AIRBOAT_FAN.radius;
   const parts: GeometryPart[] = [
     {
-      geometry: new TorusGeometry(0.58, 0.055, Math.max(6, segments / 2), segments * 2),
-      tile: 2,
-    },
-    // Cubo con plato de anclaje y cono frontal.
-    {
-      geometry: new CylinderGeometry(0.13, 0.11, 0.3, segments),
+      geometry: new CylinderGeometry(hubRadius, hubRadius * 0.82, 0.36, segments),
       rotation: [Math.PI / 2, 0, 0],
       tile: 2,
     },
+    // Plato de bridas y cono de nariz.
     {
-      geometry: new CylinderGeometry(0.2, 0.2, 0.05, segments),
+      geometry: new CylinderGeometry(0.3, 0.3, 0.055, segments),
       rotation: [Math.PI / 2, 0, 0],
-      position: [0, 0, -0.1],
+      position: [0, 0, -0.13],
       tile: 1,
     },
     {
-      geometry: new SphereGeometry(0.12, segments, Math.max(4, segments / 2)),
-      position: [0, 0, 0.16],
-      scale: [1, 1, 1.4],
+      geometry: new SphereGeometry(0.17, segments, Math.max(4, segments / 2)),
+      position: [0, 0, 0.2],
+      scale: [1, 1, 1.5],
       tile: 2,
     },
   ];
-  const blades = simplified ? 2 : 5;
+  const blades = simplified ? 3 : 6;
+  const bladeLength = tip - hubRadius;
   for (let index = 0; index < blades; index += 1) {
     const angle = (Math.PI * 2 * index) / blades;
-    // Pala con paso: torcida sobre su eje y afinada hacia la punta.
-    parts.push({
-      geometry: chamferWedge({
-        length: 0.9,
-        height: 0.04,
-        frontWidth: 0.09,
-        rearWidth: 0.16,
-        chamfer: 0.012,
-      }),
-      position: [Math.cos(angle + Math.PI / 2) * 0.5, Math.sin(angle + Math.PI / 2) * 0.5, 0],
-      rotation: [Math.PI / 2, 0.34, angle],
-      tile: 3,
-    });
-    if (!simplified) {
-      parts.push({
-        geometry: chamferBox(0.09, 0.09, 0.13, 0.02),
-        position: [Math.cos(angle + Math.PI / 2) * 0.16, Math.sin(angle + Math.PI / 2) * 0.16, 0],
+    const radial: Vec3 = [
+      Math.cos(angle + Math.PI / 2),
+      Math.sin(angle + Math.PI / 2),
+      0,
+    ];
+    // Pala con paso: torcida sobre su eje y afinada hacia la punta. El giro de
+    // π/2 en X manda el +Z local hacia el buje, así que la cuerda ancha va en
+    // `frontWidth`: al revés la pala sale afinada en la raíz y ancha en punta.
+    // La punta va pintada aparte, y es lo que hace visible el disco: de un
+    // solo tono oscuro la hélice se pierde contra los caños de la jaula.
+    const split = hubRadius + bladeLength * 0.7;
+    const splitChord = 0.3 - (0.3 - 0.17) * 0.7;
+    parts.push(
+      {
+        geometry: chamferWedge({
+          length: split - hubRadius,
+          height: 0.055,
+          frontWidth: 0.3,
+          rearWidth: splitChord,
+          chamfer: 0.016,
+        }),
+        position: [
+          radial[0] * ((hubRadius + split) / 2),
+          radial[1] * ((hubRadius + split) / 2),
+          0,
+        ],
+        rotation: [Math.PI / 2, 0.38, angle],
+        tile: 2,
+      },
+      {
+        geometry: chamferWedge({
+          length: tip - split,
+          height: 0.055,
+          frontWidth: splitChord,
+          rearWidth: 0.17,
+          chamfer: 0.016,
+        }),
+        position: [
+          radial[0] * ((split + tip) / 2),
+          radial[1] * ((split + tip) / 2),
+          0,
+        ],
+        rotation: [Math.PI / 2, 0.38, angle],
+        tile: 1,
+      },
+    );
+    if (simplified) continue;
+    parts.push(
+      // Caña de raíz: la abrazadera que sujeta la pala al plato.
+      {
+        geometry: new CylinderGeometry(0.055, 0.055, 0.2, 8),
+        position: [radial[0] * (hubRadius + 0.06), radial[1] * (hubRadius + 0.06), 0],
+        rotation: [0, 0, angle],
+        tile: 2,
+      },
+      {
+        geometry: chamferBox(0.11, 0.11, 0.16, 0.02),
+        position: [radial[0] * (hubRadius + 0.16), radial[1] * (hubRadius + 0.16), 0],
         rotation: [0, 0, angle],
         tile: 1,
-      });
-    }
+      },
+    );
   }
   return mergeParts(parts);
+}
+
+/**
+ * Jaula del ventilador: aros concéntricos más radios en el plano del disco.
+ * Los radios tienen que quedar EN el plano, no sobre el eje: una reja se lee
+ * de frente, y salidos hacia adelante parecían púas clavadas en la popa.
+ */
+function fanCageParts(
+  segments: number,
+  detailed: boolean,
+): GeometryPart[] {
+  const { y, z, cageRadius } = AIRBOAT_FAN;
+  const parts: GeometryPart[] = [];
+  const ringDepths = detailed ? [0.3, 0.06, -0.24] : [0.04];
+  for (const depth of ringDepths) {
+    parts.push({
+      geometry: new TorusGeometry(cageRadius, 0.042, 6, segments * 2),
+      position: [0, y, z + depth],
+      tile: 2,
+    });
+  }
+  // Aro interior: sostiene los radios a media luz y hace leer la reja.
+  if (detailed) {
+    parts.push({
+      geometry: new TorusGeometry(cageRadius * 0.54, 0.03, 5, segments * 2),
+      position: [0, y, z + 0.3],
+      tile: 2,
+    });
+  }
+  const spokes = detailed ? 10 : 5;
+  for (let index = 0; index < spokes; index += 1) {
+    const angle = (index / spokes) * Math.PI;
+    parts.push({
+      geometry: new CylinderGeometry(0.021, 0.021, cageRadius * 2, 6),
+      position: [0, y, z + 0.3],
+      rotation: [0, 0, angle],
+      tile: 2,
+    });
+    if (!detailed) continue;
+    parts.push({
+      geometry: new CylinderGeometry(0.019, 0.019, cageRadius * 2, 6),
+      position: [0, y, z - 0.24],
+      rotation: [0, 0, angle + Math.PI / (spokes * 2)],
+      tile: 2,
+    });
+  }
+  return parts;
 }
 
 function buildAirboatLod(
@@ -1064,110 +1285,353 @@ function buildAirboatLod(
   const suffix = lod === 0 ? "" : `_lod${lod}`;
   const segments = lod === 0 ? 18 : lod === 1 ? 10 : 6;
   const detailed = lod === 0;
+  const { bottomY, deckY, halfWidth, sternZ } = AIRBOAT_HULL;
+  /** Plano de los timones: por detrás del aro trasero de la jaula. */
+  const rudderZ = AIRBOAT_FAN.z - 0.42;
   const bodyParts: GeometryPart[] = [
-    // Casco: fondo plano de planeo con proa levantada y espejo de popa.
+    // Casco de planeo en dos tramos partidos por el pantoque. Un único prisma
+    // de costados verticales lee como cajón: el quiebre entre el fondo abierto
+    // y la obra muerta es lo que hace que la silueta sea la de un casco.
     {
       geometry: chamferWedge({
-        length: 4.7,
-        height: 0.7,
-        frontWidth: 0.62,
-        rearWidth: 2.0,
-        topFrontWidth: 1.5,
+        length: 3.34,
+        height: 0.34,
+        frontWidth: 1.34,
+        rearWidth: 1.2,
+        topFrontWidth: 2.06,
+        topRearWidth: 1.92,
+        chamfer: 0.05,
+      }),
+      position: [0, 0.45, -0.47],
+      tile: 0,
+    },
+    {
+      geometry: chamferWedge({
+        length: 3.34,
+        height: 0.36,
+        frontWidth: 2.06,
+        rearWidth: 1.92,
+        topFrontWidth: 2.2,
+        topRearWidth: 2.08,
+        chamfer: 0.05,
+      }),
+      position: [0, 0.78, -0.47],
+      tile: 0,
+    },
+    // Castillo de proa: levanta el fondo sobre la flotación para montarse en la
+    // banquisa en vez de clavarse contra ella.
+    {
+      geometry: chamferWedge({
+        length: 1.24,
+        height: 0.62,
+        frontWidth: 0.34,
+        rearWidth: 1.34,
+        topFrontWidth: 1,
         topRearWidth: 2.16,
         chamfer: 0.05,
       }),
-      position: [0, 0.62, 0.15],
+      position: [0, 0.8, 1.74],
+      rotation: [AIRBOAT_BOW_RAKE, 0, 0],
       tile: 0,
     },
-    // Regala perimetral: el borde grueso que separa casco de cubierta.
-    { geometry: chamferBox(2.24, 0.14, 3.4, 0.04), position: [0, 0.95, -0.2], tile: 1 },
+    // Espejo de popa: cierra el casco y recibe la bancada del ventilador.
+    { geometry: chamferBox(2.02, 0.66, 0.17, 0.05), position: [0, 0.64, sternZ], tile: 0 },
+    // Cubierta de chapa entre regalas.
+    { geometry: chamferBox(1.92, 0.09, 3.2, 0.03), position: [0, deckY, -0.48], tile: 2 },
+    // Roda reforzada: la chapa que parte el hielo fino antes de que el casco lo
+    // monte, y lo que separa este casco de un airboat de pantano. Va medida
+    // POR FUERA del perfil de proa: a ras del casco queda enterrada y sólo se
+    // ve la pintura clara.
     {
       geometry: chamferWedge({
-        length: 3.45,
-        height: 0.3,
-        frontWidth: 0.5,
-        rearWidth: 1.66,
-        chamfer: 0.04,
+        length: 0.34,
+        height: 0.82,
+        frontWidth: 0.42,
+        rearWidth: 0.62,
+        topFrontWidth: 1.08,
+        topRearWidth: 1.4,
+        chamfer: 0.022,
       }),
-      position: [0, 0.93, 0.45],
-      tile: 1,
+      position: [0, 0.98, 2.2],
+      rotation: [AIRBOAT_BOW_RAKE, 0, 0],
+      tile: 2,
     },
-    // Consola central y bancos.
-    { geometry: chamferBox(1.28, 0.24, 0.85, 0.04), position: [0, 1.17, -0.25], tile: 2 },
-    { geometry: panel(1.12, 0.42, 0.06), position: [0, 1.42, 0.16], rotation: [-0.34, 0, 0], tile: 2 },
-    // Espejo de popa con refuerzos.
-    { geometry: chamferBox(2.08, 0.5, 0.14, 0.04), position: [0, 1.06, -2.02], tile: 3 },
   ];
 
   for (const side of [-1, 1] as const) {
     bodyParts.push(
-      { geometry: chamferBox(0.54, 0.14, 0.56, 0.035), position: [side * 0.38, 1.02, -0.1], tile: 1 },
-      { geometry: chamferBox(0.54, 0.62, 0.14, 0.035), position: [side * 0.38, 1.32, -0.36], rotation: [-0.14, 0, 0], tile: 1 },
-    );
-  }
-
-  if (lod < 2) {
-    bodyParts.push(
-      // Bancada del ventilador.
-      createTubePart([-1.02, 0.98, -2.03], [-1.02, 2.1, -1.55], 0.048, segments, 2),
-      createTubePart([1.02, 0.98, -2.03], [1.02, 2.1, -1.55], 0.048, segments, 2),
-      createTubePart([-1.02, 2.1, -1.55], [1.02, 2.1, -1.55], 0.048, segments, 2),
-      createTubePart([-0.98, 0.98, -1.22], [-0.98, 2.1, -1.55], 0.048, segments, 2),
-      createTubePart([0.98, 0.98, -1.22], [0.98, 2.1, -1.55], 0.048, segments, 2),
-      gusset([-1.02, 2.1, -1.55], 0.14, 2),
-      gusset([1.02, 2.1, -1.55], 0.14, 2),
-      // Bita de proa.
+      // Regala: el borde grueso que separa casco de cubierta y se come los
+      // golpes contra el hielo.
       {
-        geometry: new CylinderGeometry(0.12, 0.14, 0.62, segments),
-        position: [0, 1.08, 2.28],
-        rotation: [Math.PI / 2, 0, 0],
+        geometry: chamferBox(0.13, 0.16, 3.32, 0.04),
+        position: [side * (halfWidth - 0.01), deckY + 0.04, -0.46],
+        tile: 1,
+      },
+      // Tramo de proa: acompaña el afinado y la alzada del castillo.
+      {
+        geometry: chamferBox(0.13, 0.16, 1.34, 0.04),
+        position: [side * 0.78, deckY + 0.17, 1.71],
+        rotation: [-0.21, -side * 0.44, 0],
+        tile: 1,
+      },
+      // Patín de hielo: correr sobre banquisa sin destrozar el fondo de planeo.
+      // Va sobre el fondo, por dentro del pantoque, no en el costado.
+      {
+        geometry: chamferBox(0.18, 0.14, 3.3, 0.04),
+        position: [side * 0.44, bottomY - 0.04, -0.5],
         tile: 2,
       },
     );
-    // Jaula del ventilador: aros concéntricos y radios.
-    const cageRadius = 1.05;
-    for (const ringZ of detailed ? [-1.42, -1.62, -1.82] : [-1.62]) {
-      bodyParts.push({
-        geometry: new TorusGeometry(cageRadius, 0.035, 6, segments * 2),
-        position: [0, 1.55, ringZ],
-        tile: 2,
-      });
+    if (detailed) {
+      bodyParts.push(
+        // Tacos del patín: el mordiente contra el hielo.
+        ...ribParts(
+          [side * 0.44, bottomY - 0.11, -0.5],
+          [0, 0, 1],
+          9,
+          0.36,
+          [0.2, 0.07, 0.09],
+          2,
+        ),
+        // Banda naranja de rescate sobre la obra muerta.
+        {
+          geometry: chamferBox(0.06, 0.17, 2.42, 0.02),
+          position: [side * 1.03, 0.79, -0.55],
+          tile: 1,
+        },
+        // Cuadernas remachadas a la vista, sólo sobre la obra muerta: al ras y
+        // del color del casco no rompen nada, pero pasadas de alto convierten
+        // el flanco en una empalizada.
+        ...ribParts(
+          [side * 1.04, 0.78, -0.4],
+          [0, 0, 1],
+          5,
+          0.62,
+          [0.06, 0.3, 0.08],
+          2,
+        ),
+        { geometry: rivetRow([side * 1.05, deckY - 0.1, -1.95], [side * 1.05, deckY - 0.1, 1.0], 14, 0.018, "x"), tile: 1 },
+      );
     }
-    const spokes = detailed ? 10 : 6;
-    for (let index = 0; index < spokes; index += 1) {
-      const angle = (index / spokes) * Math.PI * 2;
-      bodyParts.push({
-        geometry: new CylinderGeometry(0.022, 0.022, cageRadius * 2, 6),
-        position: [0, 1.55, -1.62],
-        rotation: [Math.PI / 2, 0, angle],
-        tile: 2,
-      });
+  }
+
+  // Quilla-patín central: el casco apoya en tres líneas, no en el fondo entero.
+  bodyParts.push({
+    geometry: chamferBox(0.24, 0.13, 3.5, 0.035),
+    position: [0, bottomY - 0.03, -0.42],
+    tile: 2,
+  });
+
+  // Puntos de amarre sobre el aro: las patas y los tirantes tienen que morder
+  // la circunferencia, no el aire de adentro, o la jaula queda cruzada de
+  // caños por delante del disco.
+  const ringLowX = 0.9;
+  const ringLowY = AIRBOAT_FAN.y - Math.sqrt(
+    AIRBOAT_FAN.cageRadius ** 2 - ringLowX ** 2,
+  );
+  const ringHighX = 0.78;
+  const ringHighY = AIRBOAT_FAN.y + Math.sqrt(
+    AIRBOAT_FAN.cageRadius ** 2 - ringHighX ** 2,
+  );
+  // Jaula, patas y bloque del motor entran en TODOS los LOD. Son la silueta del
+  // hidrodeslizador: sin ellos el LOD lejano es una tabla flotando, y a 566
+  // triángulos el nivel más barato tiene de sobra para pagarlos.
+  bodyParts.push(
+    ...fanCageParts(segments, detailed),
+    createTubePart([-ringLowX, ringLowY, AIRBOAT_FAN.z - 0.3], [ringLowX, ringLowY, AIRBOAT_FAN.z - 0.3], 0.045, segments, 2),
+    { geometry: chamferBox(0.84, 0.54, 0.76, 0.05), position: [0, 1.26, -1.04], tile: 2 },
+    ...[-1, 1].flatMap((side) => [
+      createTubePart([side * 0.95, deckY, -1.14], [side * ringLowX, ringLowY, AIRBOAT_FAN.z], 0.05, segments, 2),
+      createTubePart([side * 0.95, deckY, -2.04], [side * ringLowX, ringLowY, AIRBOAT_FAN.z], 0.05, segments, 2),
+    ]),
+  );
+
+  if (lod < 2) {
+    for (const side of [-1, 1] as const) {
+      bodyParts.push(
+        // Tirante largo a proa: la jaula pesa y va alta; sin él el conjunto lee
+        // como apoyado en vez de arriostrado.
+        createTubePart([side * ringHighX, ringHighY, AIRBOAT_FAN.z], [side * 0.97, deckY + 0.14, -0.6], 0.034, segments, 2),
+        gusset([side * ringLowX, ringLowY, AIRBOAT_FAN.z], 0.15, 1),
+        // Candelero y barandilla de proa. Muere contra la roda por fuera en vez
+        // de cerrar sobre crujía: cruzando el eje quedaba justo a la altura del
+        // caño y le tapaba el tiro al cañón de proa.
+        createTubePart([side * 0.92, deckY + 0.06, 0.96], [side * 0.9, deckY + 0.34, 1.0], 0.036, segments, 2),
+        createTubePart([side * 0.9, deckY + 0.34, 1.0], [side * 0.62, deckY + 0.42, 1.94], 0.04, segments, 2),
+        createTubePart([side * 0.62, deckY + 0.42, 1.94], [side * 0.3, deckY + 0.3, 2.28], 0.04, segments, 2),
+      );
     }
+    bodyParts.push(
+      // Bastidor de timones: sin las barras superior e inferior las palas
+      // quedan flotando por detrás del espejo, sin nada que las cuelgue.
+      createTubePart([-0.76, AIRBOAT_FAN.y + 0.24, rudderZ], [0.76, AIRBOAT_FAN.y + 0.24, rudderZ], 0.034, segments, 2),
+      createTubePart([-0.76, AIRBOAT_FAN.y - 0.64, rudderZ], [0.76, AIRBOAT_FAN.y - 0.64, rudderZ], 0.034, segments, 2),
+      ...[-1, 1].flatMap((side) => [
+        createTubePart([side * 0.76, AIRBOAT_FAN.y + 0.24, rudderZ], [side * ringLowX, ringLowY, AIRBOAT_FAN.z - 0.24], 0.03, segments, 2),
+        createTubePart([side * 0.76, AIRBOAT_FAN.y - 0.64, rudderZ], [side * ringLowX, ringLowY, AIRBOAT_FAN.z - 0.24], 0.03, segments, 2),
+      ]),
+      // Pedestal del cañón, soldado sobre la roda.
+      { geometry: chamferBox(0.36, 0.09, 0.38, 0.03), position: [0, 1.14, AIRBOAT_GUN_Z], tile: 1 },
+      { geometry: new CylinderGeometry(0.08, 0.115, 0.36, segments), position: [0, 1.33, AIRBOAT_GUN_Z], tile: 2 },
+      { geometry: chamferBox(0.28, 0.06, 0.3, 0.02), position: [0, 1.48, AIRBOAT_GUN_Z], tile: 2 },
+      // Carcasa de transmisión del motor al buje.
+      createTubePart([0, 1.5, -1.24], [0, AIRBOAT_FAN.y - 0.06, AIRBOAT_FAN.z + 0.22], 0.15, segments, 2),
+    );
+
+    bodyParts.push(
+      // Consola: un volumen macizo desde la cubierta, no una chapa suelta. Es
+      // lo que le da centro al casco y donde se apoyan tablero y guardaespuma.
+      {
+        geometry: chamferWedge({
+          length: 0.54,
+          height: 0.48,
+          frontWidth: 1,
+          rearWidth: 1.24,
+          topFrontWidth: 0.86,
+          topRearWidth: 1.12,
+          chamfer: 0.045,
+        }),
+        position: [0, deckY + 0.26, 0.42],
+        tile: 0,
+      },
+      { geometry: chamferBox(1.16, 0.08, 0.48, 0.03), position: [0, deckY + 0.52, 0.38], rotation: [-0.2, 0, 0], tile: 2 },
+      // Guardaespuma, no una ventanilla: el atlas es opaco. Va bajo y adelante
+      // a propósito: el canto superior queda 0.18 m por debajo del ojo del
+      // piloto (deckY + 0.94) y a 0.8 m de él, que es lo que deja ver la proa.
+      // Pegado a la butaca y a la altura de la vista tapaba media pantalla.
+      { geometry: chamferBox(0.88, 0.3, 0.06, 0.025), position: [0, deckY + 0.56, 0.55], rotation: [-0.3, 0, 0], tile: 2 },
+      { geometry: chamferBox(0.94, 0.05, 0.07, 0.018), position: [0, deckY + 0.69, 0.51], rotation: [-0.3, 0, 0], tile: 1 },
+      createTubePart([-0.45, deckY + 0.48, 0.61], [-0.45, deckY + 0.68, 0.54], 0.026, segments, 1),
+      createTubePart([0.45, deckY + 0.48, 0.61], [0.45, deckY + 0.68, 0.54], 0.026, segments, 1),
+      // Brazola del puesto: encierra el cockpit y corta el agua que entra por
+      // la regala. Sin ella la cubierta es una plancha vacía de dos metros.
+      ...[-1, 1].flatMap((side) => [
+        {
+          geometry: chamferBox(0.11, 0.22, 1.5, 0.03),
+          position: [side * 0.63, deckY + 0.14, -0.28] as Vec3,
+          tile: 0 as AtlasTile,
+        },
+        {
+          geometry: chamferBox(0.13, 0.06, 1.5, 0.02),
+          position: [side * 0.63, deckY + 0.27, -0.28] as Vec3,
+          tile: 1 as AtlasTile,
+        },
+      ]),
+      // Butaca del piloto: almohadón sobre cajón, respaldo alto y apoyacabeza.
+      // Va baja, encajada en el casco: es la altura que fija el ojo del piloto.
+      { geometry: chamferBox(0.46, 0.22, 0.48, 0.035), position: [0, deckY + 0.02, AIRBOAT_DRIVER_Z], tile: 2 },
+      { geometry: chamferBox(0.56, 0.16, 0.58, 0.04), position: [0, deckY + 0.16, AIRBOAT_DRIVER_Z], tile: 3 },
+      { geometry: chamferBox(0.56, 0.6, 0.16, 0.04), position: [0, deckY + 0.53, AIRBOAT_DRIVER_Z - 0.3], rotation: [-0.16, 0, 0], tile: 3 },
+      { geometry: chamferBox(0.34, 0.2, 0.14, 0.035), position: [0, deckY + 0.9, AIRBOAT_DRIVER_Z - 0.38], tile: 3 },
+    );
   }
 
   if (detailed) {
     bodyParts.push(
-      // Cajones de equipo y flotadores laterales.
-      { geometry: chamferBox(0.4, 0.52, 0.52, 0.04), position: [-0.78, 1.24, -1.37], tile: 3 },
-      { geometry: chamferBox(0.4, 0.52, 0.52, 0.04), position: [0.78, 1.24, -1.37], tile: 3 },
-      createTubePart([-1.12, 0.86, -1.0], [-1.12, 0.86, 1.7], 0.075, 10, 2),
-      createTubePart([1.12, 0.86, -1.0], [1.12, 0.86, 1.7], 0.075, 10, 2),
-      // Refuerzos remachados del casco.
-      ...ribParts([-1.06, 0.72, 0.2], [0, 0, 1], 5, 0.62, [0.08, 0.34, 0.07], 3),
-      ...ribParts([1.06, 0.72, 0.2], [0, 0, 1], 5, 0.62, [0.08, 0.34, 0.07], 3),
-      // Motor sobre la popa y escape.
-      { geometry: chamferBox(0.72, 0.5, 0.66, 0.045), position: [0, 1.32, -1.9], tile: 2 },
-      createTubePart([-0.2, 1.6, -1.94], [-0.2, 1.94, -2.12], 0.05, 10, 1),
-      // Tablero e instrumentos del piloto.
-      { geometry: chamferBox(0.42, 0.16, 0.2, 0.03), position: [-0.38, 1.5, 0.28], rotation: [-0.34, 0, 0], tile: 2 },
-      ...steeringWheelParts([-0.38, 1.48, 0.32], 0.17, 12, 2),
-      // Faro de proa.
-      { geometry: new CylinderGeometry(0.12, 0.12, 0.14, 12), position: [0, 1.24, 2.1], rotation: [Math.PI / 2, 0, 0], tile: 2 },
-      { geometry: new CylinderGeometry(0.09, 0.09, 0.03, 12), position: [0, 1.24, 2.18], rotation: [Math.PI / 2, 0, 0], tile: 0 },
-      // Remachado del casco a la regala, a lo largo de las dos bandas.
-      { geometry: rivetRow([-1.02, 0.98, -1.8], [-0.42, 0.98, 2.0], 16, 0.019), tile: 1 },
-      { geometry: rivetRow([1.02, 0.98, -1.8], [0.42, 0.98, 2.0], 16, 0.019), tile: 1 },
-      { geometry: rivetRow([-0.92, 1.14, -2.06], [0.92, 1.14, -2.06], 11, 0.019, "z"), tile: 1 },
+      // Nervios verticales de la roda: el filo que muerde el hielo.
+      ...ribParts([0, 1.05, 2.36], [1, 0, 0], 5, 0.17, [0.06, 0.34, 0.07], 2),
+      { geometry: rivetRow([-0.5, 1.32, 2.12], [0.5, 1.32, 2.12], 8, 0.019, "z"), tile: 2 },
+      // Cornamusas de amarre sobre la regala.
+      ...(
+        [
+          [0.84, 1.44],
+          [halfWidth - 0.02, -1.5],
+        ] as const
+      ).flatMap(([x, z]) =>
+        [-1, 1].map((side) => ({
+          geometry: chamferBox(0.09, 0.1, 0.26, 0.02),
+          position: [side * x, deckY + 0.2, z] as Vec3,
+          tile: 2 as AtlasTile,
+        })),
+      ),
+      // Alas de la butaca y acolchado del respaldo.
+      ...[-1, 1].map((side) => ({
+        geometry: chamferBox(0.1, 0.16, 0.52, 0.03),
+        position: [side * 0.27, deckY + 0.29, AIRBOAT_DRIVER_Z] as Vec3,
+        tile: 3 as AtlasTile,
+      })),
+      ...ribParts(
+        [0, deckY + 0.53, AIRBOAT_DRIVER_Z - 0.38],
+        [0, 1, 0],
+        4,
+        0.15,
+        [0.5, 0.05, 0.07],
+        3,
+      ),
+      // Arco antivuelco de la butaca, con asidero naranja para el embarque.
+      createTubePart([-0.32, deckY + 0.1, AIRBOAT_DRIVER_Z - 0.42], [-0.32, deckY + 0.98, AIRBOAT_DRIVER_Z - 0.46], 0.03, segments, 2),
+      createTubePart([0.32, deckY + 0.1, AIRBOAT_DRIVER_Z - 0.42], [0.32, deckY + 0.98, AIRBOAT_DRIVER_Z - 0.46], 0.03, segments, 2),
+      createTubePart([-0.32, deckY + 0.98, AIRBOAT_DRIVER_Z - 0.46], [0.32, deckY + 0.98, AIRBOAT_DRIVER_Z - 0.46], 0.03, segments, 1),
+      // Chapa de la consola: galón, registro de acceso y remachado. Un frente
+      // liso de un metro en blanco hielo lee como plástico.
+      { geometry: chamferBox(1.14, 0.09, 0.05, 0.02), position: [0, deckY + 0.2, 0.7], tile: 1 },
+      { geometry: chamferBox(0.42, 0.26, 0.05, 0.02), position: [0, deckY + 0.36, 0.7], tile: 2 },
+      ...[-1, 1].map((side) => ({
+        geometry: chamferBox(0.05, 0.28, 0.32, 0.02),
+        position: [side * 0.56, deckY + 0.28, 0.4] as Vec3,
+        tile: 2 as AtlasTile,
+      })),
+      { geometry: rivetRow([-0.5, deckY + 0.48, 0.68], [0.5, deckY + 0.48, 0.68], 8, 0.017, "z"), tile: 2 },
+      // Registros de cubierta a proa y a popa del puesto.
+      { geometry: chamferBox(0.54, 0.05, 0.5, 0.02), position: [0, deckY + 0.06, 1.0], tile: 2 },
+      { geometry: new TorusGeometry(0.07, 0.018, 5, 10), position: [0, deckY + 0.09, 1.0], rotation: [Math.PI / 2, 0, 0], tile: 1 },
+      { geometry: chamferBox(0.46, 0.05, 0.4, 0.02), position: [0, deckY + 0.06, -1.62], tile: 2 },
+      // Relojes sobre el tablero y caña de timón con manillar: el mando del
+      // casco es una barra, no un volante de auto.
+      { geometry: new CylinderGeometry(0.062, 0.062, 0.04, 12), position: [-0.13, deckY + 0.57, 0.34], rotation: [Math.PI / 2 - 0.2, 0, 0], tile: 3 },
+      { geometry: new CylinderGeometry(0.062, 0.062, 0.04, 12), position: [0.13, deckY + 0.57, 0.34], rotation: [Math.PI / 2 - 0.2, 0, 0], tile: 3 },
+      createTubePart([0, deckY + 0.3, 0.06], [0, deckY + 0.54, 0.14], 0.04, 10, 2),
+      { geometry: new CylinderGeometry(0.03, 0.03, 0.68, 10), position: [0, deckY + 0.55, 0.15], rotation: [0, 0, Math.PI / 2], tile: 2 },
+      ...[-1, 1].map((side) => ({
+        geometry: new CylinderGeometry(0.045, 0.045, 0.16, 10),
+        position: [side * 0.27, deckY + 0.55, 0.15] as Vec3,
+        rotation: [0, 0, Math.PI / 2] as Euler,
+        tile: 3 as AtlasTile,
+      })),
+      // Piso antideslizante del puesto.
+      ...ribParts([0, deckY + 0.06, -0.2], [0, 0, 1], 4, 0.13, [0.62, 0.03, 0.06], 2),
+      // Culata, escape con pantalla térmica y bidón de reserva atado al motor.
+      ...ribParts([0, 1.56, -1.04], [1, 0, 0], 4, 0.19, [0.11, 0.08, 0.6], 2),
+      createTubePart([0.3, 1.5, -0.94], [0.38, 2.12, -0.86], 0.058, 10, 1),
+      { geometry: new CylinderGeometry(0.088, 0.088, 0.34, 10), position: [0.35, 1.82, -0.9], tile: 2 },
+      { geometry: new CylinderGeometry(0.19, 0.19, 0.52, 12), position: [-0.62, 1.32, -1.42], rotation: [0, 0, Math.PI / 2], tile: 1 },
+      { geometry: chamferBox(0.06, 0.3, 0.3, 0.02), position: [-0.62, 1.32, -1.42], tile: 3 },
+      // Faros de proa sobre los hombros del castillo, fuera del arco del cañón.
+      ...[-1, 1].flatMap((side) => [
+        {
+          geometry: new CylinderGeometry(0.115, 0.115, 0.16, 12),
+          position: [side * 0.54, 1.26, 1.96] as Vec3,
+          rotation: [Math.PI / 2 - 0.1, 0, 0] as Euler,
+          tile: 2 as AtlasTile,
+        },
+        {
+          geometry: new CylinderGeometry(0.088, 0.088, 0.04, 12),
+          position: [side * 0.54, 1.27, 2.04] as Vec3,
+          rotation: [Math.PI / 2 - 0.1, 0, 0] as Euler,
+          tile: 0 as AtlasTile,
+        },
+      ]),
+      // Reflector de trabajo en la coronilla de la jaula.
+      { geometry: chamferBox(0.22, 0.18, 0.16, 0.03), position: [0, AIRBOAT_FAN.y + AIRBOAT_FAN.cageRadius + 0.12, AIRBOAT_FAN.z + 0.24], rotation: [0.3, 0, 0], tile: 2 },
+      // Bichero de hielo trincado a la regala de babor.
+      createTubePart([0.98, deckY + 0.17, -1.3], [0.98, deckY + 0.17, 1.2], 0.032, 8, 2),
+      { geometry: chamferBox(0.05, 0.16, 0.2, 0.02), position: [0.98, deckY + 0.24, 1.32], rotation: [0.5, 0, 0], tile: 2 },
+      // Rollo de cabo sobre el castillo.
+      ...[0, 1, 2].map((ring) => ({
+        geometry: new TorusGeometry(0.19 - ring * 0.028, 0.036, 5, 12),
+        position: [-0.5, 1.11 + ring * 0.06, 1.42] as Vec3,
+        rotation: [Math.PI / 2 + AIRBOAT_BOW_RAKE, 0, 0] as Euler,
+        tile: 3 as AtlasTile,
+      })),
+      // Espejo de popa: galón, estribo de embarque y asidero.
+      { geometry: chamferBox(1.9, 0.14, 0.06, 0.02), position: [0, 0.84, sternZ - 0.12], tile: 1 },
+      { geometry: chamferBox(0.56, 0.07, 0.3, 0.025), position: [0, 0.56, sternZ - 0.22], tile: 2 },
+      createTubePart([-0.3, 0.6, sternZ - 0.32], [-0.3, deckY, sternZ - 0.08], 0.024, 8, 2),
+      createTubePart([0.3, 0.6, sternZ - 0.32], [0.3, deckY, sternZ - 0.08], 0.024, 8, 2),
+      // Antena de látigo y remachado del espejo de popa.
+      createTubePart([0.86, deckY + 0.16, -1.98], [1.0, 2.42, -2.14], 0.017, 6, 2),
+      { geometry: rivetRow([-0.9, deckY - 0.2, sternZ - 0.08], [0.9, deckY - 0.2, sternZ - 0.08], 11, 0.019, "z"), tile: 1 },
+      { geometry: rivetRow([-0.44, 1.2, 2.26], [0.44, 1.2, 2.26], 7, 0.018, "z"), tile: 2 },
     );
   }
   createVisualNode(context, root, `airboat_body${suffix}`, bodyParts);
@@ -1176,32 +1640,44 @@ function buildAirboatLod(
     const fanGeometry = createFanGeometry(segments, lod !== 0);
     const fanMesh = createMesh(context, `airboat_fan_lod${lod}_mesh`, fanGeometry);
     fanGeometry.dispose();
-    createNode(context, root, `fan_left${suffix}`, {
+    createNode(context, root, `fan_main${suffix}`, {
       mesh: fanMesh,
-      position: [-0.65, 1.55, -1.58],
-      extras: { kind: "fan", side: "left" },
-    });
-    createNode(context, root, `fan_right${suffix}`, {
-      mesh: fanMesh,
-      position: [0.65, 1.55, -1.58],
-      extras: { kind: "fan", side: "right" },
+      position: [0, AIRBOAT_FAN.y, AIRBOAT_FAN.z],
+      extras: { kind: "fan" },
     });
 
     const rudderGeometry = mergeParts([
-      // Timón con perfil: borde de ataque grueso y fuga afilada.
+      // Timón con perfil: borde de ataque grueso y fuga afilada, con la cuerda
+      // afinándose hacia arriba. Una pala de una pieza, lisa y del color del
+      // casco, colgaba de la popa como una puerta; el quiebre de cuerda y el
+      // acero son los que la vuelven una superficie de mando.
       {
         geometry: chamferWedge({
-          length: 0.48,
-          height: 0.85,
-          frontWidth: 0.075,
-          rearWidth: 0.03,
-          chamfer: 0.012,
+          length: 0.5,
+          height: 0.46,
+          frontWidth: 0.085,
+          rearWidth: 0.028,
+          chamfer: 0.014,
         }),
-        position: [0, -0.1, 0],
-        tile: 0,
+        position: [0, -0.21, -0.16],
+        tile: 2,
       },
-      { geometry: chamferBox(0.09, 0.12, 0.12, 0.02), position: [0, 0.32, 0.16], tile: 2 },
-      { geometry: chamferBox(0.09, 0.12, 0.12, 0.02), position: [0, -0.5, 0.16], tile: 2 },
+      {
+        geometry: chamferWedge({
+          length: 0.38,
+          height: 0.42,
+          frontWidth: 0.08,
+          rearWidth: 0.026,
+          chamfer: 0.014,
+        }),
+        position: [0, 0.22, -0.1],
+        tile: 2,
+      },
+      // Galón de rescate sobre el quiebre y herrajes de charnela.
+      { geometry: chamferBox(0.075, 0.1, 0.46, 0.02), position: [0, 0.01, -0.17], tile: 1 },
+      { geometry: chamferBox(0.1, 0.12, 0.13, 0.02), position: [0, 0.4, 0.02], tile: 1 },
+      { geometry: chamferBox(0.1, 0.12, 0.13, 0.02), position: [0, -0.4, 0.02], tile: 1 },
+      { geometry: new CylinderGeometry(0.028, 0.028, 0.94, 8), tile: 2 },
     ]);
     const rudderMesh = createMesh(
       context,
@@ -1211,44 +1687,54 @@ function buildAirboatLod(
     rudderGeometry.dispose();
     createNode(context, root, `rudder_left${suffix}`, {
       mesh: rudderMesh,
-      position: [-0.45, 1.35, -2.05],
+      position: [-0.46, AIRBOAT_FAN.y - 0.2, rudderZ],
       extras: { kind: "rudder", side: "left" },
     });
     createNode(context, root, `rudder_right${suffix}`, {
       mesh: rudderMesh,
-      position: [0.45, 1.35, -2.05],
+      position: [0.46, AIRBOAT_FAN.y - 0.2, rudderZ],
       extras: { kind: "rudder", side: "right" },
     });
 
+    const yawParts: GeometryPart[] = [
+      { geometry: new CylinderGeometry(0.15, 0.19, 0.12, segments), tile: 2 },
+      { geometry: new CylinderGeometry(0.105, 0.105, 0.14, segments), position: [0, 0.08, 0], tile: 2 },
+    ];
+    if (detailed) {
+      yawParts.push(
+        { geometry: panel(0.05, 0.2, 0.22), position: [0.13, 0.08, -0.02], tile: 1 },
+        { geometry: panel(0.05, 0.2, 0.22), position: [-0.13, 0.08, -0.02], tile: 1 },
+      );
+    }
     const turretYaw = createVisualNode(
       context,
       root,
       `turret_yaw${suffix}`,
-      [
-        { geometry: new CylinderGeometry(0.26, 0.32, 0.14, segments), tile: 3 },
-        { geometry: new CylinderGeometry(0.18, 0.18, 0.14, segments), position: [0, 0.12, 0], tile: 2 },
-        ...(detailed
-          ? [{ geometry: chamferBox(0.14, 0.16, 0.14, 0.03), position: [-0.22, 0.08, -0.12] as Vec3, tile: 1 as AtlasTile }]
-          : []),
-      ],
-      { position: [0, 1.06, 1.18], extras: { kind: "turret-yaw" } },
+      yawParts,
+      {
+        position: [0, AIRBOAT_GUN_Y, AIRBOAT_GUN_Z],
+        extras: { kind: "turret-yaw" },
+      },
     );
+
     const pitchParts: GeometryPart[] = [
-      { geometry: chamferBox(0.32, 0.26, 0.44, 0.035), position: [0, 0, 0.12], tile: 0 },
-      { geometry: new CylinderGeometry(0.06, 0.08, 1.22, segments), position: [0, 0, 0.7], rotation: [Math.PI / 2, 0, 0], tile: 2 },
+      // Recámara, camisa de refrigeración y bocacha.
+      { geometry: chamferBox(0.34, 0.3, 0.48, 0.04), position: [0, 0, 0.06], tile: 2 },
+      { geometry: new CylinderGeometry(0.072, 0.088, 0.82, segments), position: [0, 0, 0.68], rotation: [Math.PI / 2, 0, 0], tile: 2 },
+      { geometry: new CylinderGeometry(0.105, 0.12, 0.17, segments), position: [0, 0, 1.08], rotation: [Math.PI / 2, 0, 0], tile: 2 },
     ];
     if (detailed) {
       pitchParts.push(
-        // Camisa de refrigeración perforada y bocacha.
-        { geometry: new CylinderGeometry(0.1, 0.1, 0.42, segments), position: [0, 0, 0.36], rotation: [Math.PI / 2, 0, 0], tile: 1 },
-        ...[0.62, 0.86].map((z) => ({
-          geometry: new CylinderGeometry(0.088, 0.088, 0.04, segments),
+        { geometry: new CylinderGeometry(0.098, 0.098, 0.36, segments), position: [0, 0, 0.4], rotation: [Math.PI / 2, 0, 0], tile: 1 },
+        // Anillos de inducción: el cobre es lo que lo separa de una ametralladora.
+        ...[0.74, 0.86, 0.98].map((z) => ({
+          geometry: new TorusGeometry(0.082, 0.024, 6, segments),
           position: [0, 0, z] as Vec3,
-          rotation: [Math.PI / 2, 0, 0] as Euler,
           tile: 1 as AtlasTile,
         })),
-        { geometry: new CylinderGeometry(0.095, 0.11, 0.14, segments), position: [0, 0, 1.24], rotation: [Math.PI / 2, 0, 0], tile: 2 },
-        { geometry: chamferBox(0.16, 0.14, 0.26, 0.03), position: [0.2, 0.02, 0.04], tile: 3 },
+        { geometry: chamferBox(0.16, 0.2, 0.26, 0.03), position: [0.2, -0.02, 0.02], tile: 1 },
+        { geometry: chamferBox(0.06, 0.1, 0.16, 0.02), position: [0, 0.18, 0.24], tile: 2 },
+        createTubePart([0, -0.06, -0.16], [0, -0.24, -0.3], 0.026, 8, 2),
       );
     }
     createVisualNode(
@@ -1274,50 +1760,61 @@ function buildAirboat(context: BuildContext): void {
     buildAirboatLod(context, root, lod);
   }
 
-  createAnchor(context, "seat_driver", [-0.38, 1.5, -0.1], "seat", {
+  const { deckY } = AIRBOAT_HULL;
+  // Puesto único: el preset del hidrodeslizador tiene una sola butaca y el
+  // artillero dispara desde ella, así que no hay ancla de tripulante extra.
+  createAnchor(context, "seat_driver", [0, deckY + 0.52, AIRBOAT_DRIVER_Z], "seat", {
     role: "driver",
   });
-  createAnchor(context, "seat_gunner", [0.38, 1.5, -0.1], "seat", {
-    role: "gunner",
-  });
+  // El ojo va justo por encima del marco del parabrisas: es la cota que fija
+  // hasta dónde puede crecer la consola sin taparle el frente al piloto.
   createAnchor(
     context,
     "camera_driver",
-    [-0.38, 1.86, 0.05],
+    [0, deckY + 0.94, AIRBOAT_DRIVER_Z + 0.22],
     "camera",
     { role: "driver", fov: 78 },
     true,
   );
-  createAnchor(context, "exit_left", [-1.48, 0.95, -0.05], "exit", {
+  createAnchor(context, "exit_left", [1.5, 0.95, -0.1], "exit", {
     seat: "seat_driver",
   });
-  createAnchor(context, "exit_right", [1.48, 0.95, -0.05], "exit", {
-    seat: "seat_gunner",
+  createAnchor(context, "exit_right", [-1.5, 0.95, -0.1], "exit", {
+    seat: "seat_driver",
   });
-  createAnchor(context, "muzzle", [0, 1.16, 2.48], "muzzle", {
-    weapon: "pulse-cannon",
-  });
-  createAnchor(context, "audio_fan", [0, 1.58, -1.58], "audio", {
+  // Punta de la bocacha con el cañón en reposo: `VehicleVisual` cuelga el ancla
+  // del nodo de elevación, así que de acá en más sigue al arma.
+  createAnchor(
+    context,
+    "muzzle",
+    [0, AIRBOAT_GUN_Y, AIRBOAT_GUN_Z + AIRBOAT_GUN_REACH],
+    "muzzle",
+    { weapon: "pulse-cannon" },
+  );
+  createAnchor(context, "audio_fan", [0, AIRBOAT_FAN.y, AIRBOAT_FAN.z], "audio", {
     layer: "fan",
   });
   createAnchor(context, "audio_water", [0, 0.35, 0.3], "audio", {
     layer: "water",
   });
-  createAnchor(context, "damage_engine", [0, 1.15, -1.5], "damage", {
+  createAnchor(context, "damage_engine", [0, 1.3, -1.1], "damage", {
     component: "engine",
-    halfExtents: [1, 0.7, 0.6],
+    halfExtents: [0.6, 0.5, 0.55],
   });
   createAnchor(context, "damage_hull", [0, 0.62, 0.2], "damage", {
     component: "hull",
     halfExtents: [1.15, 0.4, 2.2],
   });
-  createAnchor(context, "damage_weapon", [0, 1.18, 1.4], "damage", {
-    component: "weapon",
-    halfExtents: [0.3, 0.3, 0.8],
-  });
-  createAnchor(context, "damage_fuel", [0, 1.05, -0.78], "damage", {
+  createAnchor(
+    context,
+    "damage_weapon",
+    [0, AIRBOAT_GUN_Y, AIRBOAT_GUN_Z + 0.5],
+    "damage",
+    { component: "weapon", halfExtents: [0.3, 0.3, 0.8] },
+  );
+  createAnchor(context, "damage_fuel", [-0.62, 1.32, -1.42], "damage", {
     component: "fuel",
-    halfExtents: [0.55, 0.4, 0.4],
+    halfExtents: [0.35, 0.35, 0.35],
   });
   const wreckage = createNode(context, context.sceneRoot, "wreckage", {
     extras: { kind: "wreckage", hiddenByDefault: true },
@@ -1329,82 +1826,298 @@ function buildAirboat(context: BuildContext): void {
       tile: 3,
     },
     {
-      geometry: new TorusGeometry(0.52, 0.07, 6, 12),
-      position: [0.62, 0.65, -1.35],
-      rotation: [0.12, 0.35, 0],
+      geometry: new TorusGeometry(0.86, 0.06, 6, 14),
+      position: [0.44, 0.72, -1.5],
+      rotation: [0.16, 0.32, 0.28],
       tile: 2,
     },
   ]);
 }
 
+/**
+ * Portilla redonda: marco, hueco oscuro y cristal. El hueco es lo que la hace
+ * leer desde afuera; sin un fondo oscuro detrás, el vidrio se apoya contra la
+ * piel del fuselaje y la ventana termina pareciendo un disco pintado.
+ */
+function portholeParts(
+  center: Vec3,
+  radius: number,
+  segments: number,
+): { readonly shell: GeometryPart[]; readonly glass: GeometryPart[] } {
+  const side = Math.sign(center[0]);
+  const acrossX: Euler = [0, 0, Math.PI / 2];
+  return {
+    shell: [
+      // Sólo el aro: un disco macizo detrás del cristal quedaba enterrado en la
+      // piel (invisible desde afuera) y encima tapaba la ventana desde la
+      // bodega, que es desde donde se mira hacia el paisaje.
+      {
+        geometry: new TorusGeometry(radius, 0.024, 5, segments),
+        position: [center[0] + side * 0.008, center[1], center[2]],
+        rotation: [0, Math.PI / 2, 0],
+        tile: 2,
+      },
+    ],
+    glass: [
+      {
+        geometry: new CylinderGeometry(radius * 0.94, radius * 0.94, 0.02, segments),
+        position: [center[0] + side * 0.014, center[1], center[2]],
+        rotation: acrossX,
+        tile: 0,
+      },
+    ],
+  };
+}
+
+/**
+ * Tramos macizos de una banda horizontal del forro de bodega: recibe los vanos
+ * (portillas, puerta) y devuelve el complemento dentro del largo de cabina.
+ */
+function liningBandParts(
+  side: -1 | 1,
+  centerY: number,
+  height: number,
+  openings: readonly (readonly [number, number])[],
+  tile: AtlasTile,
+): GeometryPart[] {
+  const [fromZ, toZ] = HELI_CABIN.lining;
+  const sorted = [...openings].sort((a, b) => a[0] - b[0]);
+  const parts: GeometryPart[] = [];
+  let cursor: number = fromZ;
+  for (const [openFrom, openTo] of [...sorted, [toZ, toZ] as const]) {
+    const length = Math.min(openFrom, toZ) - cursor;
+    if (length > 0.03) {
+      parts.push({
+        geometry: chamferBox(0.08, height, length, 0.025),
+        position: [side * HELI_CABIN.liningX, centerY, cursor + length / 2],
+        tile,
+      });
+    }
+    cursor = Math.max(cursor, openTo);
+  }
+  return parts;
+}
+
+/**
+ * Bodega vista desde adentro. El fuselaje exterior es un macizo convexo y sus
+ * caras internas se descartan por backface culling, así que sin este forro el
+ * pasajero mira el paisaje a través de las paredes y el artillero cree estar
+ * clipeando el casco. Es lo único que define el interior, y sus huecos son los
+ * que dejan ver hacia afuera: banda de portillas a media altura y el vano de la
+ * puerta corrediza a babor.
+ */
+function cabinInteriorParts(
+  segments: number,
+  portholes: readonly (readonly [number, number])[],
+): GeometryPart[] {
+  const { liningX, doorway, portholeY, portholeRadius } = HELI_CABIN;
+  const [fromZ, toZ] = HELI_CABIN.lining;
+  const length = toZ - fromZ;
+  const centerZ = (fromZ + toZ) / 2;
+  const parts: GeometryPart[] = [
+    // Piso, cielorraso y mamparo de popa.
+    { geometry: chamferBox(2 * liningX, 0.09, length, 0.03), position: [0, 0.68, centerZ], tile: 3 },
+    { geometry: chamferBox(2 * liningX, 0.09, length, 0.03), position: [0, 2.0, centerZ], tile: 1 },
+    { geometry: chamferBox(2 * liningX, 1.36, 0.09, 0.03), position: [0, 1.36, fromZ + 0.05], tile: 1 },
+    // Refuerzos del mamparo de popa y anclajes de carga en el piso: dos metros
+    // de chapa lisa a un solo tono leen como un vacío blanco, no como el fondo
+    // de una bodega.
+    ...ribParts([0, 1.36, fromZ + 0.12], [0, 1, 0], 4, 0.34, [1.86, 0.07, 0.06], 2),
+    // Cara de bodega del mamparo del puesto. El mamparo en sí va oscuro porque
+    // es el fondo que se ve a través del parabrisas; de este lado se forra
+    // claro, si no el pasajero mirando a proa tiene una pared negra encima.
+    { geometry: chamferBox(2 * liningX, 1.36, 0.08, 0.03), position: [0, 1.36, toZ - 0.05], tile: 1 },
+    ...ribParts([0, 1.36, toZ - 0.12], [0, 1, 0], 3, 0.4, [1.8, 0.06, 0.06], 2),
+    { geometry: chamferBox(0.5, 0.42, 0.08, 0.03), position: [0, 0.95, fromZ + 0.12], tile: 3 },
+    ...[-0.55, 0.55].flatMap((x) =>
+      [-1.3, -0.4, 0.5].map((z) => ({
+        geometry: new TorusGeometry(0.055, 0.016, 4, 8),
+        position: [x, 0.74, z] as Vec3,
+        rotation: [Math.PI / 2, 0, 0] as Euler,
+        tile: 2 as AtlasTile,
+      })),
+    ),
+  ];
+  for (const side of [-1, 1] as const) {
+    const windows = portholes
+      .filter(([entry]) => entry === side)
+      .map(([, z]) => [z - portholeRadius, z + portholeRadius] as const);
+    const door = side === -1 ? [doorway] : [];
+    const openings = [...windows, ...door];
+    parts.push(
+      ...liningBandParts(side, 0.89, 0.34, [], 1),
+      ...liningBandParts(side, 1.28, 0.44, door, 1),
+      ...liningBandParts(side, 1.72, 0.44, openings, 1),
+      ...liningBandParts(side, 1.99, 0.1, [], 1),
+      // Pasamanos del techo.
+      createTubePart(
+        [side * 0.62, 1.94, fromZ + 0.3],
+        [side * 0.62, 1.94, toZ - 0.3],
+        0.028,
+        Math.max(6, segments / 2),
+        2,
+      ),
+    );
+    // Cuadernas a la vista, salteando los vanos. Sin este filtro una cuaderna
+    // cae en mitad del vano de la puerta, a un palmo de la cara del artillero,
+    // y otras cruzan las portillas por el medio.
+    for (let index = 0; index < 5; index += 1) {
+      const z = centerZ + (index - 2) * 0.62;
+      const blocked = openings.some(
+        ([openFrom, openTo]) => z > openFrom - 0.07 && z < openTo + 0.07,
+      );
+      if (blocked) continue;
+      parts.push({
+        geometry: chamferBox(0.05, 1.28, 0.07, 0.02),
+        position: [side * (liningX - 0.06), 1.4, z],
+        tile: 2,
+      });
+    }
+    // Marco interior de cada portilla: el hueco del forro necesita canto.
+    for (const [, z] of portholes.filter(([entry]) => entry === side)) {
+      parts.push({
+        geometry: new TorusGeometry(portholeRadius, 0.026, 5, Math.max(8, segments)),
+        position: [side * (liningX - 0.05), portholeY, z],
+        rotation: [0, Math.PI / 2, 0],
+        tile: 2,
+      });
+    }
+  }
+  // Jambas y umbral del vano de la puerta.
+  parts.push(
+    { geometry: chamferBox(0.1, 0.9, 0.09, 0.025), position: [-liningX, 1.5, doorway[0]], tile: 2 },
+    { geometry: chamferBox(0.1, 0.9, 0.09, 0.025), position: [-liningX, 1.5, doorway[1]], tile: 2 },
+    { geometry: chamferBox(0.14, 0.07, doorway[1] - doorway[0], 0.02), position: [-liningX + 0.02, 1.09, (doorway[0] + doorway[1]) / 2], tile: 2 },
+  );
+  return parts;
+}
+
+/**
+ * Rotor principal de cinco palas. El cubo del Mi-8 es alto y lleno de herrajes
+ * (plato cíclico, amortiguadores de arrastre, bielas de paso); resuelto como un
+ * disco liso el helicóptero pierde justo la pieza que lo identifica de lejos.
+ */
 function createMainRotorGeometry(
   segments: number,
   simplified: boolean,
 ): BufferGeometry {
+  const gripRadius = 0.38;
+  const tip = 3.9;
   const parts: GeometryPart[] = [
-    // Cubo del rotor: plato, mástil y tapa.
-    { geometry: new CylinderGeometry(0.22, 0.28, 0.24, segments), tile: 2 },
-    { geometry: new CylinderGeometry(0.1, 0.1, 0.46, segments), position: [0, 0.2, 0], tile: 2 },
-    { geometry: new CylinderGeometry(0.34, 0.3, 0.07, segments), position: [0, -0.16, 0], tile: 1 },
+    { geometry: new CylinderGeometry(0.3, 0.34, 0.26, segments), tile: 2 },
+    { geometry: new CylinderGeometry(0.13, 0.13, 0.54, segments), position: [0, 0.26, 0], tile: 2 },
+    { geometry: new CylinderGeometry(0.15, 0.18, 0.09, segments), position: [0, 0.5, 0], tile: 2 },
+    // Plato cíclico bajo el cubo.
+    { geometry: new CylinderGeometry(0.4, 0.4, 0.09, segments), position: [0, -0.24, 0], tile: 2 },
+    { geometry: new CylinderGeometry(0.34, 0.3, 0.07, segments), position: [0, -0.34, 0], tile: 1 },
   ];
-  const blades = simplified ? 2 : 4;
+  const blades = simplified ? 3 : 5;
+  const bladeLength = tip - gripRadius;
   for (let index = 0; index < blades; index += 1) {
     const angle = (Math.PI * 2 * index) / blades;
-    // Pala afinada con paso: la punta más angosta que la raíz.
-    parts.push({
-      geometry: chamferWedge({
-        length: 3.9,
-        height: 0.05,
-        frontWidth: 0.15,
-        rearWidth: 0.24,
-        chamfer: 0.014,
-      }),
-      position: [0, 0, 1.85],
-      rotation: [0, angle, 0.14],
-      tile: index % 2 === 0 ? 1 : 2,
-    });
-    if (!simplified) {
-      parts.push(
-        // Tirante y brazo de paso de cada pala.
-        {
-          geometry: chamferBox(0.13, 0.11, 0.42, 0.02),
-          position: [Math.sin(angle) * 0.34, 0, Math.cos(angle) * 0.34],
-          rotation: [0, angle, 0],
-          tile: 2,
-        },
-        {
-          geometry: new CylinderGeometry(0.02, 0.02, 0.34, 6),
-          position: [Math.sin(angle) * 0.28, 0.24, Math.cos(angle) * 0.28],
-          tile: 2,
-        },
-      );
-    }
+    const seat: Vec3 = [
+      Math.sin(angle) * ((gripRadius + tip) / 2),
+      0,
+      Math.cos(angle) * ((gripRadius + tip) / 2),
+    ];
+    const spin: Euler = [0, angle, 0.13];
+    // Banda antiabrasión del borde de ataque. Es una tira angosta, pero sin ella
+    // la pala es una tabla de un solo tono y a contraluz lee como madera.
+    const leadingEdge = chamferBox(0.05, 0.065, bladeLength, 0.012);
+    leadingEdge.translate(0.11, 0, 0);
+    parts.push(
+      {
+        // Pala con paso y afinada hacia la punta.
+        geometry: chamferWedge({
+          length: bladeLength,
+          height: 0.055,
+          frontWidth: 0.2,
+          rearWidth: 0.3,
+          chamfer: 0.014,
+        }),
+        position: seat,
+        rotation: spin,
+        tile: 1,
+      },
+      { geometry: leadingEdge, position: seat, rotation: spin, tile: 2 },
+    );
+    if (simplified) continue;
+    parts.push(
+      // Puño, amortiguador de arrastre y biela de paso.
+      {
+        geometry: chamferBox(0.15, 0.14, 0.46, 0.025),
+        position: [Math.sin(angle) * 0.36, 0, Math.cos(angle) * 0.36],
+        rotation: [0, angle, 0],
+        tile: 2,
+      },
+      {
+        geometry: new CylinderGeometry(0.045, 0.045, 0.3, 8),
+        position: [Math.sin(angle + 0.4) * 0.36, -0.1, Math.cos(angle + 0.4) * 0.36],
+        rotation: [Math.PI / 2, angle, 0],
+        tile: 3,
+      },
+      createTubePart(
+        [Math.sin(angle - 0.32) * 0.4, -0.22, Math.cos(angle - 0.32) * 0.4],
+        [Math.sin(angle) * 0.3, 0.14, Math.cos(angle) * 0.3],
+        0.022,
+        6,
+        2,
+      ),
+    );
   }
   return mergeParts(parts);
 }
 
+/** Rotor de cola de tres palas, montado de canto sobre la deriva. */
 function createTailRotorGeometry(
   segments: number,
   simplified: boolean,
 ): BufferGeometry {
+  const tip = 0.78;
+  const hub = 0.14;
   const parts: GeometryPart[] = [
-    { geometry: new CylinderGeometry(0.13, 0.13, 0.18, segments), rotation: [Math.PI / 2, 0, 0], tile: 2 },
-    { geometry: new CylinderGeometry(0.2, 0.18, 0.05, segments), position: [0, 0, -0.1], rotation: [Math.PI / 2, 0, 0], tile: 1 },
+    { geometry: new CylinderGeometry(hub, hub, 0.2, segments), rotation: [Math.PI / 2, 0, 0], tile: 2 },
+    { geometry: new CylinderGeometry(0.2, 0.17, 0.06, segments), position: [0, 0, -0.12], rotation: [Math.PI / 2, 0, 0], tile: 1 },
+    { geometry: new SphereGeometry(0.11, segments, Math.max(4, segments / 2)), position: [0, 0, 0.13], scale: [1, 1, 1.4], tile: 2 },
   ];
-  const blades = simplified ? 2 : 4;
+  const blades = simplified ? 2 : 3;
   for (let index = 0; index < blades; index += 1) {
     const angle = (Math.PI * 2 * index) / blades;
+    const radial: Vec3 = [
+      Math.cos(angle + Math.PI / 2),
+      Math.sin(angle + Math.PI / 2),
+      0,
+    ];
+    const seat: Vec3 = [
+      radial[0] * ((hub + tip) / 2),
+      radial[1] * ((hub + tip) / 2),
+      0,
+    ];
+    const spin: Euler = [Math.PI / 2, 0.24, angle];
+    // Misma banda de borde de ataque que en el rotor principal.
+    const leadingEdge = chamferBox(0.04, 0.05, tip - hub, 0.01);
+    leadingEdge.translate(0.055, 0, 0);
+    parts.push(
+      {
+        geometry: chamferWedge({
+          length: tip - hub,
+          height: 0.04,
+          frontWidth: 0.14,
+          rearWidth: 0.09,
+          chamfer: 0.012,
+        }),
+        position: seat,
+        rotation: spin,
+        tile: 1,
+      },
+      { geometry: leadingEdge, position: seat, rotation: spin, tile: 2 },
+    );
+    if (simplified) continue;
     parts.push({
-      geometry: chamferWedge({
-        length: 1.18,
-        height: 0.04,
-        frontWidth: 0.07,
-        rearWidth: 0.12,
-        chamfer: 0.012,
-      }),
-      position: [Math.cos(angle + Math.PI / 2) * 0.62, Math.sin(angle + Math.PI / 2) * 0.62, 0],
-      rotation: [Math.PI / 2, 0.22, angle],
-      tile: index % 2 === 0 ? 1 : 3,
+      geometry: chamferBox(0.08, 0.08, 0.12, 0.02),
+      position: [radial[0] * (hub + 0.07), radial[1] * (hub + 0.07), 0],
+      rotation: [0, 0, angle],
+      tile: 2,
     });
   }
   return mergeParts(parts);
@@ -1414,112 +2127,393 @@ function buildHelicopterLod(
   context: BuildContext,
   root: Node,
   lod: 0 | 1 | 2,
+  glassMaterial: Material,
 ): void {
   const suffix = lod === 0 ? "" : `_lod${lod}`;
   const segments = lod === 0 ? 22 : lod === 1 ? 12 : 6;
   const detailed = lod === 0;
+  const { floorY, roofY, halfWidth } = HELI_CABIN;
+  const glassParts: GeometryPart[] = [];
   const fuselageParts: GeometryPart[] = [
-    // Cabina principal: sección de carga donde viaja la escuadra.
+    // Cabina de carga: la sección constante del Mi-8, un cajón de cantos vivos
+    // redondeados entre el morro y el arranque del botalón.
+    // El frente se cierra en z 1.25 y no más adelante: `seat_pilot` está en
+    // z 1.55 y `camera_pilot` en 1.72, así que todo lo que pase de ahí deja al
+    // piloto metido dentro del macizo, mirando el mamparo en vez del morro.
     {
-      geometry: chamferWedge({
-        length: 4.35,
-        height: 1.72,
-        frontWidth: 1.9,
-        rearWidth: 1.5,
-        topFrontWidth: 1.72,
-        topRearWidth: 1.24,
-        chamfer: 0.06,
-      }),
-      position: [0, 1.18, 0.18],
+      geometry: roundedBox(2.16, 1.78, 3.26, 0.3, detailed ? 3 : 1),
+      position: [0, 1.42, -0.38],
       tile: 0,
     },
-    // Morro acristalado.
+    // Panza del morro: cae y se angosta hacia la punta, por debajo del piso.
     {
-      geometry: new SphereGeometry(1, segments, Math.max(8, segments / 2)),
-      position: [0, 1.25, 1.9],
-      scale: [0.92, 0.86, 1.12],
-      tile: 1,
+      geometry: chamferWedge({
+        length: 1.24,
+        height: 0.66,
+        frontWidth: 1.08,
+        rearWidth: 1.98,
+        topFrontWidth: 1.44,
+        topRearWidth: 2.12,
+        chamfer: 0.15,
+      }),
+      position: [0, 0.64, 2.42],
+      rotation: [0.09, 0, 0],
+      tile: 0,
     },
-    // Cubierta de motores y toma de aire.
-    { geometry: roundedBox(1.76, 0.54, 1.18, 0.13, detailed ? 3 : 1), position: [0, 2.13, -0.2], rotation: [-0.05, 0, 0], tile: 3 },
-    { geometry: chamferBox(0.9, 0.26, 0.5, 0.04), position: [0, 2.44, 0.3], rotation: [-0.12, 0, 0], tile: 2 },
-    // Botalón de cola en dos tramos: la conicidad evita el tubo recto.
-    createTubePart([0, 1.45, -1.65], [0, 1.3, -3.9], 0.26, segments, 0),
-    createTubePart([0, 1.3, -3.9], [0, 1.22, -5.95], 0.17, segments, 0),
-    // Deriva y estabilizador horizontal.
-    { geometry: chamferWedge({ length: 1.15, height: 1.05, frontWidth: 0.12, rearWidth: 0.07, chamfer: 0.02 }), position: [0, 1.82, -5.72], rotation: [0.18, 0, 0], tile: 1 },
-    { geometry: chamferWedge({ length: 0.62, height: 0.07, frontWidth: 1.7, rearWidth: 1.2, chamfer: 0.02 }), position: [0, 1.36, -5.1], tile: 1 },
-    // Patines de aterrizaje con travesaños.
-    createTubePart([-0.72, 0.28, -0.9], [-0.72, 0.08, -2.15], 0.055, segments, 2),
-    createTubePart([0.72, 0.28, -0.9], [0.72, 0.08, -2.15], 0.055, segments, 2),
-    createTubePart([-0.72, 0.08, -2.15], [-0.72, 0.08, 1.3], 0.07, segments, 2),
-    createTubePart([0.72, 0.08, -2.15], [0.72, 0.08, 1.3], 0.07, segments, 2),
-    createTubePart([-0.72, 0.08, 1.3], [-0.52, 0.42, 1.65], 0.045, segments, 2),
-    createTubePart([0.72, 0.08, 1.3], [0.52, 0.42, 1.65], 0.045, segments, 2),
-    createTubePart([-0.72, 0.3, 0.62], [0.72, 0.3, 0.62], 0.05, segments, 2),
-    createTubePart([-0.72, 0.3, -1.1], [0.72, 0.3, -1.1], 0.05, segments, 2),
-    // Blindaje soldado sobre los laterales.
-    { geometry: panel(0.08, 1.45, 1.52), position: [-1.08, 1.25, -0.05], rotation: [0, 0, -0.04], tile: 1 },
-    { geometry: panel(0.08, 1.45, 1.52), position: [1.08, 1.25, -0.05], rotation: [0, 0, 0.04], tile: 1 },
+    // Piso y techo del puesto de vuelo. El morro va ABIERTO por delante: con el
+    // parabrisas transparente, detrás tiene que haber una cabina y no el macizo
+    // del fuselaje.
+    { geometry: chamferBox(1.72, 0.1, 1.84, 0.04), position: [0, floorY, 2.14], tile: 3 },
+    // El techo del puesto se angosta hacia el parabrisas y se empalma con la
+    // cabina por un carenado: a tope de cajones el morro leía como una galería
+    // de vidrio pegada al frente.
+    {
+      geometry: chamferWedge({
+        length: 1.62,
+        height: 0.13,
+        frontWidth: 1.3,
+        rearWidth: 1.82,
+        chamfer: 0.05,
+      }),
+      position: [0, roofY - 0.11, 2.02],
+      rotation: [0.06, 0, 0],
+      tile: 0,
+    },
+    {
+      geometry: chamferWedge({
+        length: 0.5,
+        height: 0.46,
+        frontWidth: 1.86,
+        rearWidth: 2.12,
+        topFrontWidth: 1.56,
+        topRearWidth: 1.96,
+        chamfer: 0.14,
+      }),
+      position: [0, 1.98, 1.32],
+      tile: 0,
+    },
+    // Mamparo que separa el puesto de la bodega. Va oscuro a propósito: es el
+    // fondo que se ve a través del parabrisas, y en gris claro convertía el
+    // cristal en un panel lechoso.
+    { geometry: panel(1.9, 1.4, 0.08), position: [0, 1.45, 1.22], tile: 3 },
+    // Cubierta de motores y carenado del mástil.
+    {
+      geometry: roundedBox(1.5, 0.66, 2.1, 0.24, detailed ? 3 : 1),
+      position: [0, 2.5, 0.2],
+      tile: 0,
+    },
+    { geometry: chamferWedge({ length: 0.8, height: 0.3, frontWidth: 0.7, rearWidth: 0.5, topFrontWidth: 0.5, topRearWidth: 0.34, chamfer: 0.06 }), position: [0, 2.92, HELI_ROTOR.z], tile: 2 },
+    // Botalón: un solo cono continuo. Dos cilindros encadenados dejaban un
+    // escalón anular justo en la unión, que a contraluz lee como una rotura.
+    {
+      geometry: new CylinderGeometry(0.34, 0.185, 4.1, segments),
+      position: [0, 1.86, -3.66],
+      rotation: [Math.PI / 2 - 0.035, 0, 0],
+      tile: 0,
+    },
+    // Popa afinada: la cabina no termina en un tabique plano, se estrecha y
+    // sube hasta empalmar con el botalón.
+    {
+      geometry: chamferWedge({
+        length: 1.02,
+        height: 1.5,
+        frontWidth: 2.08,
+        rearWidth: 0.92,
+        topFrontWidth: 1.92,
+        topRearWidth: 0.78,
+        chamfer: 0.2,
+      }),
+      position: [0, 1.54, -2.44],
+      rotation: [0.12, 0, 0],
+      tile: 0,
+    },
+    // Deriva barrida, con raíz engrosada, y estabilizador horizontal.
+    {
+      geometry: chamferWedge({ length: 0.92, height: 1.2, frontWidth: 0.19, rearWidth: 0.1, chamfer: 0.03 }),
+      position: [0, 2.16, -5.86],
+      rotation: [-0.34, 0, 0],
+      tile: 0,
+    },
+    {
+      geometry: chamferWedge({ length: 1.15, height: 0.42, frontWidth: 0.3, rearWidth: 0.2, chamfer: 0.08 }),
+      position: [0, 1.72, -5.62],
+      rotation: [-0.34, 0, 0],
+      tile: 0,
+    },
+    {
+      geometry: chamferWedge({ length: 0.66, height: 0.13, frontWidth: 1.66, rearWidth: 1.18, chamfer: 0.03 }),
+      position: [0, 1.79, -4.82],
+      tile: 0,
+    },
+    // Carenados de anclaje del estabilizador al botalón.
+    ...[-1, 1].map((side) => ({
+      geometry: chamferWedge({ length: 0.76, height: 0.2, frontWidth: 0.24, rearWidth: 0.14, chamfer: 0.05 }),
+      position: [side * 0.3, 1.8, -4.8] as Vec3,
+      tile: 0 as AtlasTile,
+    })),
   ];
+
+  // Tren triciclo fijo: dos ruedas de morro juntas y un tren principal ancho
+  // sobre balancines. El modelo anterior traía patines, que no son de este
+  // aparato.
+  const noseWheel = buildWheel({ radius: 0.17, width: 0.12, segments, treadCount: detailed ? 10 : 0 });
+  const mainWheel = buildWheel({ radius: 0.3, width: 0.19, segments, treadCount: detailed ? 14 : 0 });
+  for (const side of [-1, 1] as const) {
+    fuselageParts.push(
+      { geometry: noseWheel.tire.clone(), position: [side * 0.14, 0.17, 2.36], tile: 3 },
+      { geometry: noseWheel.rim.clone(), position: [side * 0.14, 0.17, 2.36], tile: 2 },
+      { geometry: mainWheel.tire.clone(), position: [side * 1.24, 0.3, -0.52], tile: 3 },
+      { geometry: mainWheel.rim.clone(), position: [side * 1.24, 0.3, -0.52], tile: 2 },
+      // Pata principal: balancín, compás y amortiguador oleoneumático.
+      createTubePart([side * 0.86, 0.92, -0.28], [side * 1.2, 0.34, -0.5], 0.075, segments, 2),
+      createTubePart([side * 0.8, 0.66, -1.12], [side * 1.2, 0.34, -0.56], 0.055, segments, 2),
+      createTubePart([side * 0.92, 1.16, -0.52], [side * 1.18, 0.46, -0.52], 0.06, segments, 2),
+    );
+  }
+  noseWheel.tire.dispose();
+  noseWheel.rim.dispose();
+  mainWheel.tire.dispose();
+  mainWheel.rim.dispose();
+  fuselageParts.push(
+    createTubePart([0, 0.52, 2.36], [0, 0.2, 2.36], 0.07, segments, 2),
+    { geometry: chamferBox(0.42, 0.1, 0.14, 0.03), position: [0, 0.2, 2.36], tile: 2 },
+  );
+
+  // Parabrisas del Mi-8: dos cristales grandes muy tumbados, partidos por el
+  // montante central, más las ventanillas laterales del puesto. El cristal va
+  // en su propia malla porque lleva otro material.
+  const rake = HELI_WINDSHIELD.rake;
+  for (const side of [-1, 1] as const) {
+    glassParts.push({
+      geometry: chamferBox(0.68, HELI_WINDSHIELD.height, 0.03, 0.01),
+      position: [side * 0.37, HELI_WINDSHIELD.y, HELI_WINDSHIELD.z],
+      rotation: [rake, 0, 0],
+      tile: 0,
+    });
+    // Ventanilla lateral, sobre la puerta del puesto.
+    glassParts.push({
+      geometry: chamferBox(0.03, 0.52, 0.62, 0.01),
+      position: [side * 0.9, 1.7, 2.3],
+      rotation: [0, -side * 0.29, 0],
+      tile: 0,
+    });
+  }
+  fuselageParts.push(
+    // Montante central, largueros del marco y montantes exteriores.
+    { geometry: chamferBox(0.07, HELI_WINDSHIELD.height + 0.04, 0.06, 0.015), position: [0, HELI_WINDSHIELD.y, HELI_WINDSHIELD.z + 0.02], rotation: [rake, 0, 0], tile: 3 },
+    { geometry: chamferBox(1.54, 0.09, 0.1, 0.02), position: [0, 2.09, 2.31], rotation: [rake, 0, 0], tile: 3 },
+    { geometry: chamferBox(1.54, 0.1, 0.13, 0.025), position: [0, 1.36, 2.9], rotation: [rake, 0, 0], tile: 3 },
+    ...[-1, 1].map((side) => ({
+      geometry: chamferBox(0.07, HELI_WINDSHIELD.height + 0.04, 0.07, 0.015),
+      position: [side * 0.74, HELI_WINDSHIELD.y, HELI_WINDSHIELD.z + 0.02] as Vec3,
+      rotation: [rake, 0, 0] as Euler,
+      tile: 3 as AtlasTile,
+    })),
+    // Costado bajo del puesto: de la cintura para abajo el morro es chapa.
+    ...[-1, 1].map((side) => ({
+      geometry: chamferBox(0.1, 0.66, 1.74, 0.04),
+      position: [side * 0.9, 1.06, 2.08] as Vec3,
+      rotation: [0, -side * 0.29, 0] as Euler,
+      tile: 0 as AtlasTile,
+    })),
+    // Marco de las ventanillas laterales.
+    ...[-1, 1].flatMap((side) => [
+      {
+        geometry: chamferBox(0.05, 0.06, 0.66, 0.015),
+        position: [side * 0.9, 1.98, 2.3] as Vec3,
+        rotation: [0, -side * 0.29, 0] as Euler,
+        tile: 3 as AtlasTile,
+      },
+      {
+        geometry: chamferBox(0.05, 0.06, 0.66, 0.015),
+        position: [side * 0.9, 1.42, 2.3] as Vec3,
+        rotation: [0, -side * 0.29, 0] as Euler,
+        tile: 3 as AtlasTile,
+      },
+    ]),
+  );
+
+  // Portillas de la bodega. La banda de la puerta lleva menos porque ahí va el
+  // vano corredizo y el pivote de la ametralladora.
+  // Portillas de la bodega. Babor lleva sólo dos: el resto de la banda se la
+  // come el vano de la puerta corrediza.
+  const portholes: readonly (readonly [number, number])[] = [
+    [-1, -0.45],
+    [-1, -1.15],
+    [1, 0.95],
+    [1, 0.25],
+    [1, -0.45],
+    [1, -1.15],
+  ];
+  for (const [side, z] of portholes) {
+    const porthole = portholeParts(
+      [side * halfWidth, HELI_CABIN.portholeY, z],
+      HELI_CABIN.portholeRadius,
+      Math.max(8, segments),
+    );
+    fuselageParts.push(...porthole.shell);
+    glassParts.push(...porthole.glass);
+  }
 
   if (lod < 2) {
     fuselageParts.push(
-      // Marco de las puertas correderas.
-      { geometry: chamferBox(0.1, 1.3, 0.12, 0.03), position: [-1.02, 1.3, 1.02], tile: 3 },
-      { geometry: chamferBox(0.1, 1.3, 0.12, 0.03), position: [-1.02, 1.3, -0.72], tile: 3 },
-      { geometry: chamferBox(0.1, 1.3, 0.12, 0.03), position: [1.02, 1.3, 1.02], tile: 3 },
-      { geometry: chamferBox(0.1, 1.3, 0.12, 0.03), position: [1.02, 1.3, -0.72], tile: 3 },
-      // Asientos de cabina: banco corrido con respaldos.
-      { geometry: chamferBox(0.78, 0.14, 0.56, 0.035), position: [-0.48, 0.82, 0.1], rotation: [-0.1, 0, 0], tile: 2 },
-      { geometry: chamferBox(0.78, 0.14, 0.56, 0.035), position: [0.48, 0.82, 0.1], rotation: [-0.1, 0, 0], tile: 2 },
-      { geometry: chamferBox(0.58, 0.74, 0.14, 0.035), position: [-0.48, 1.16, -0.7], tile: 2 },
-      { geometry: chamferBox(0.58, 0.74, 0.14, 0.035), position: [0.48, 1.16, -0.7], tile: 2 },
-      // Mamparo trasero y agarraderas.
-      { geometry: panel(1.9, 1.3, 0.07), position: [0, 1.3, -1.6], tile: 1 },
-      createTubePart([-0.88, 0.46, -0.78], [-0.88, 1.95, -0.78], 0.035, 8, 3),
-      createTubePart([0.88, 0.46, -0.78], [0.88, 1.95, -0.78], 0.035, 8, 3),
+      // Puerta corrediza abierta: la hoja va corrida hacia popa y por FUERA de
+      // la piel. La chapa hundida que tapaba el vano le comía la vista al
+      // artillero, que dispara justo por ahí.
+      { geometry: chamferBox(0.09, 0.96, 1.0, 0.03), position: [-1.12, 1.5, -0.72], tile: 0 },
+      ...[1.02, 1.98].map((y) => ({
+        geometry: chamferBox(0.11, 0.06, 2.2, 0.02),
+        position: [-1.1, y, -0.2] as Vec3,
+        tile: 2 as AtlasTile,
+      })),
+      ...[0.88, -0.18].map((z) => ({
+        geometry: chamferBox(0.12, 1.0, 0.09, 0.025),
+        position: [-1.06, 1.5, z] as Vec3,
+        tile: 2 as AtlasTile,
+      })),
+      // Bancos corridos. El de babor MUERE antes del vano: corrido de punta a
+      // punta, el respaldo le quedaba al artillero a 40 cm de la cara, tapándole
+      // media puerta con un bloque negro.
+      { geometry: chamferBox(0.7, 0.13, 1.72, 0.035), position: [-0.62, 0.85, -1.08], tile: 3 },
+      { geometry: chamferBox(0.09, 0.62, 1.72, 0.03), position: [-0.9, 1.2, -1.08], tile: 3 },
+      { geometry: chamferBox(0.7, 0.13, 2.5, 0.035), position: [0.62, 0.85, -0.7], tile: 3 },
+      { geometry: chamferBox(0.09, 0.62, 2.5, 0.03), position: [0.9, 1.2, -0.7], tile: 3 },
+      // Puesto de vuelo visible a través del cristal: butacas, tablero, consola
+      // central y palancas de mando.
+      ...[-1, 1].flatMap((side) => [
+        {
+          geometry: chamferBox(0.5, 0.14, 0.5, 0.035),
+          position: [side * 0.48, 0.88, 1.62] as Vec3,
+          tile: 3 as AtlasTile,
+        },
+        {
+          geometry: chamferBox(0.5, 0.68, 0.13, 0.035),
+          position: [side * 0.48, 1.24, 1.4] as Vec3,
+          rotation: [-0.14, 0, 0] as Euler,
+          tile: 3 as AtlasTile,
+        },
+      ]),
+      // Tablero, visera, consola central y panel de techo. El puesto se ve
+      // entero a través del cristal, así que tiene que estar amueblado: vacío,
+      // el parabrisas transparente deja ver el cielo del otro lado.
+      { geometry: chamferBox(1.5, 0.42, 0.36, 0.04), position: [0, 1.19, 2.56], rotation: [-0.42, 0, 0], tile: 3 },
+      { geometry: chamferBox(1.54, 0.07, 0.26, 0.025), position: [0, 1.4, 2.48], rotation: [-0.75, 0, 0], tile: 3 },
+      { geometry: chamferBox(0.36, 0.46, 0.9, 0.035), position: [0, 1.0, 2.08], tile: 3 },
+      { geometry: chamferBox(1.2, 0.13, 0.5, 0.03), position: [0, 1.99, 2.42], rotation: [0.06, 0, 0], tile: 3 },
+      // Costados internos del puesto, hasta el techo: cierran la cabina por
+      // arriba de la cintura, donde antes se veía de lado a lado.
+      ...[-1, 1].map((side) => ({
+        geometry: chamferBox(0.06, 0.62, 0.42, 0.02),
+        position: [side * 0.86, 1.72, 2.72] as Vec3,
+        rotation: [0, -side * 0.29, 0] as Euler,
+        tile: 3 as AtlasTile,
+      })),
     );
   }
 
   if (detailed) {
     fuselageParts.push(
-      // Estribos y placas remendadas.
-      { geometry: panel(0.74, 0.12, 1.15), position: [-0.92, 1.65, 0.3], rotation: [0.04, -0.03, -0.11], tile: 3 },
-      { geometry: panel(0.74, 0.12, 1.15), position: [0.92, 1.65, 0.3], rotation: [0.04, 0.03, 0.11], tile: 3 },
-      { geometry: chamferBox(0.64, 0.24, 0.57, 0.04), position: [-0.7, 2.32, -0.18], tile: 1 },
-      { geometry: chamferBox(0.64, 0.24, 0.57, 0.04), position: [0.7, 2.32, -0.18], tile: 1 },
-      createTubePart([-1.05, 0.65, 1.35], [-1.05, 1.95, 1.15], 0.035, 8, 3),
-      createTubePart([1.05, 0.65, 1.35], [1.05, 1.95, 1.15], 0.035, 8, 3),
-      // Escapes de turbina.
-      createTubePart([-0.5, 2.16, -0.72], [-0.62, 2.1, -1.12], 0.13, segments, 2),
-      createTubePart([0.5, 2.16, -0.72], [0.62, 2.1, -1.12], 0.13, segments, 2),
-      // Refuerzos longitudinales del botalón.
-      ...ribParts([0, 1.38, -2.9], [0, 0, 1], 6, 0.5, [0.5, 0.05, 0.06], 1),
-      // Marco del parabrisas y limpiaparabrisas.
-      createTubePart([-0.62, 1.86, 2.06], [0.62, 1.86, 2.06], 0.045, 10, 3),
-      createTubePart([0, 1.86, 2.06], [0, 0.72, 2.34], 0.038, 10, 3),
-      // Tablero de vuelo y palanca de mando.
-      { geometry: chamferBox(1.24, 0.3, 0.32, 0.04), position: [0, 1.16, 2.28], rotation: [-0.5, 0, 0], tile: 2 },
-      createTubePart([-0.42, 0.86, 2.02], [-0.42, 1.2, 1.94], 0.032, 8, 2),
-      createTubePart([0.42, 0.86, 2.02], [0.42, 1.2, 1.94], 0.032, 8, 2),
-      // Faro de búsqueda y baliza.
-      { geometry: new CylinderGeometry(0.15, 0.15, 0.18, segments), position: [0, 0.62, 1.62], rotation: [Math.PI / 2, 0, 0], tile: 2 },
-      { geometry: new SphereGeometry(0.09, 10, 8), position: [0, 2.5, -0.9], tile: 0 },
-      // Cajas de munición junto a la puerta.
-      { geometry: chamferBox(0.34, 0.28, 0.44, 0.035), position: [-0.72, 0.9, -1.24], tile: 3 },
-      { geometry: chamferBox(0.34, 0.28, 0.44, 0.035), position: [0.72, 0.9, -1.24], tile: 3 },
-      // Remachado del blindaje y de la unión botalón-cabina.
-      { geometry: rivetRow([-1.13, 1.9, -0.72], [-1.13, 1.9, 0.62], 10, 0.019, "x"), tile: 1 },
-      { geometry: rivetRow([-1.13, 0.6, -0.72], [-1.13, 0.6, 0.62], 10, 0.019, "x"), tile: 1 },
-      { geometry: rivetRow([1.13, 1.9, -0.72], [1.13, 1.9, 0.62], 10, 0.019, "x"), tile: 1 },
-      { geometry: rivetRow([1.13, 0.6, -0.72], [1.13, 0.6, 0.62], 10, 0.019, "x"), tile: 1 },
-      { geometry: rivetRow([-0.62, 1.72, -1.66], [0.62, 1.72, -1.66], 9, 0.019, "z"), tile: 1 },
+      // Tomas de aire de las turbinas y escapes laterales.
+      ...[-1, 1].flatMap((side) => [
+        {
+          geometry: new CylinderGeometry(0.27, 0.27, 0.36, segments),
+          position: [side * 0.4, 2.52, 1.26] as Vec3,
+          rotation: [Math.PI / 2, 0, 0] as Euler,
+          tile: 2 as AtlasTile,
+        },
+        {
+          geometry: new TorusGeometry(0.27, 0.035, 5, segments),
+          position: [side * 0.4, 2.52, 1.44] as Vec3,
+          tile: 1 as AtlasTile,
+        },
+        createTubePart([side * 0.52, 2.42, -0.32], [side * 0.82, 2.52, -0.72], 0.15, segments, 2),
+      ]),
+      // Relieve de paneles y bocas de servicio del capó.
+      ...ribParts([0, 2.83, 0.2], [0, 0, 1], 4, 0.44, [0.86, 0.035, 0.06], 0),
+      { geometry: chamferBox(0.5, 0.06, 0.62, 0.02), position: [0.52, 2.8, 0.76], tile: 2 },
+      // Larguerillos del costado: sin ellos el fuselaje son cuatro metros de
+      // chapa lisa con las portillas flotando encima.
+      ...[-1, 1].flatMap((side) => [
+        {
+          geometry: chamferBox(0.07, 0.09, 3.0, 0.02),
+          position: [side * (HELI_CABIN.halfWidth + 0.01), 1.16, -0.38] as Vec3,
+          tile: 0 as AtlasTile,
+        },
+        {
+          geometry: chamferBox(0.06, 0.07, 3.0, 0.02),
+          position: [side * (HELI_CABIN.halfWidth + 0.01), 2.02, -0.38] as Vec3,
+          tile: 0 as AtlasTile,
+        },
+        {
+          geometry: rivetRow(
+            [side * (HELI_CABIN.halfWidth + 0.02), 1.28, -1.7],
+            [side * (HELI_CABIN.halfWidth + 0.02), 1.28, 1.1],
+            13,
+            0.017,
+            "x",
+          ),
+          tile: 2 as AtlasTile,
+        },
+      ]),
+      // Palancas de paso colectivo y cíclico del puesto.
+      ...[-1, 1].flatMap((side) => [
+        createTubePart([side * 0.48, 0.82, 1.86], [side * 0.48, 1.16, 1.78], 0.03, 8, 2),
+        createTubePart([side * 0.72, 0.82, 1.5], [side * 0.66, 1.06, 1.72], 0.028, 8, 2),
+      ]),
+      // Refuerzos longitudinales del botalón y del empenaje.
+      ...ribParts([0, 1.86, -3.0], [0, 0, 1], 6, 0.5, [0.52, 0.05, 0.06], 1),
+      // Estribos de acceso, asideros y tubo de pitot.
+      ...[-1, 1].flatMap((side) => [
+        {
+          geometry: chamferBox(0.3, 0.07, 0.16, 0.02),
+          position: [side * 1.02, 0.55, 1.0] as Vec3,
+          tile: 2 as AtlasTile,
+        },
+        createTubePart([side * 1.1, 1.0, 1.12], [side * 1.1, 1.62, 1.0], 0.03, 8, 2),
+        createTubePart([side * 0.5, 1.32, 2.98], [side * 0.62, 1.28, 3.24], 0.022, 6, 2),
+      ]),
+      // Faro de aterrizaje bajo el morro y baliza sobre el botalón.
+      { geometry: new CylinderGeometry(0.16, 0.16, 0.14, segments), position: [0, 0.42, 2.6], rotation: [Math.PI / 2 - 1.1, 0, 0], tile: 2 },
+      { geometry: new CylinderGeometry(0.12, 0.12, 0.04, segments), position: [0, 0.35, 2.63], rotation: [Math.PI / 2 - 1.1, 0, 0], tile: 1 },
+      { geometry: new SphereGeometry(0.08, 10, 8), position: [0, 2.02, -2.6], tile: 1 },
+      // Antenas de látigo bajo el botalón.
+      createTubePart([0, 1.5, -2.2], [0.1, 1.16, -2.75], 0.016, 6, 2),
+      // Caja de engranajes del rotor de cola sobre la deriva.
+      { geometry: chamferBox(0.34, 0.34, 0.4, 0.05), position: [HELI_TAIL_ROTOR.x * 0.45, HELI_TAIL_ROTOR.y, HELI_TAIL_ROTOR.z], tile: 2 },
+      // Remachado del fuselaje y del arranque del botalón.
+      { geometry: rivetRow([-1.1, 2.06, -1.6], [-1.1, 2.06, 1.1], 13, 0.019, "x"), tile: 2 },
+      { geometry: rivetRow([1.1, 2.06, -1.6], [1.1, 2.06, 1.1], 13, 0.019, "x"), tile: 2 },
+      { geometry: rivetRow([-0.78, 1.3, -1.98], [0.78, 1.3, -1.98], 10, 0.019, "z"), tile: 2 },
     );
   }
 
   createVisualNode(context, root, `helicopter_fuselage${suffix}`, fuselageParts);
-  if (lod < 2) {
+  if (detailed) {
+    // Forro de bodega, en malla aparte y SIN AO horneada. Va sólo en LOD0: la
+    // cámara del tripulante vive dentro del casco, así que para él el LOD
+    // siempre es el 0, y desde afuera la piel tapa el interior entero.
+    // La AO va floja a propósito: a fuerza plena el horneado trata la bodega
+    // como una cueva y la deja casi negra, y apagada del todo las paredes
+    // quedan planas. Con poco alcanza para marcar rincones.
+    createVisualNode(
+      context,
+      root,
+      "helicopter_cabin",
+      cabinInteriorParts(segments, portholes),
+      { occlusionStrength: 0.36, extras: { kind: "interior" } },
+    );
+  }
+  // El cristal va aparte: otro material y sin AO horneada, que sobre un vidrio
+  // sólo lo ensucia.
+  createVisualNode(context, root, `helicopter_glazing${suffix}`, glassParts, {
+    material: glassMaterial,
+    bakeOcclusion: false,
+    extras: { kind: "glazing" },
+  });
+
+  // Los rotores entran en TODOS los LOD: un helicóptero sin disco a 190 m no
+  // lee como lejano, lee como roto. Simplificados salen baratísimos.
+  {
     const mainRotorGeometry = createMainRotorGeometry(segments, lod !== 0);
     const mainRotorMesh = createMesh(
       context,
@@ -1529,7 +2523,7 @@ function buildHelicopterLod(
     mainRotorGeometry.dispose();
     createNode(context, root, `rotor_main${suffix}`, {
       mesh: mainRotorMesh,
-      position: [0, 2.58, -0.2],
+      position: [0, HELI_ROTOR.y, HELI_ROTOR.z],
       extras: { kind: "rotor", axis: "+Y" },
     });
 
@@ -1540,33 +2534,44 @@ function buildHelicopterLod(
       tailRotorGeometry,
     );
     tailRotorGeometry.dispose();
+    // El runtime hace girar `rotor_tail` sobre SU eje Z. El disco de un rotor de
+    // cola es vertical y de canto, así que el nodo nace girado 90° en Y: de ahí
+    // en más el mismo giro de siempre queda sobre el eje X del aparato.
     createNode(context, root, `rotor_tail${suffix}`, {
       mesh: tailRotorMesh,
-      position: [0, 1.3, -6.05],
-      extras: { kind: "rotor", axis: "+Z" },
+      position: [HELI_TAIL_ROTOR.x, HELI_TAIL_ROTOR.y, HELI_TAIL_ROTOR.z],
+      rotation: [0, Math.PI / 2, 0],
+      extras: { kind: "rotor", axis: "+X" },
     });
+  }
 
+  if (lod < 2) {
     const turretYaw = createVisualNode(
       context,
       root,
       `turret_yaw${suffix}`,
       [
-        // Pivote de la ametralladora de puerta, colgado del marco.
+        // Pivote de la ametralladora de puerta, colgado del marco del vano.
         { geometry: new CylinderGeometry(0.21, 0.25, 0.18, segments), tile: 3 },
-        { geometry: new CylinderGeometry(0.09, 0.09, 0.34, segments), position: [0, 0.2, 0], tile: 2 },
+        { geometry: new CylinderGeometry(0.09, 0.09, 0.32, segments), position: [0, -0.19, 0], tile: 2 },
+        { geometry: chamferBox(0.26, 0.07, 0.26, 0.02), position: [0, -0.34, 0], tile: 2 },
         ...(detailed
           ? [
               {
                 geometry: chamferBox(0.2, 0.1, 0.2, 0.03),
-                position: [0, 0.36, 0] as Vec3,
+                position: [0, 0.14, 0] as Vec3,
                 tile: 1 as AtlasTile,
               },
             ]
           : []),
       ],
       {
-        position: [-1.18, 1.15, 0.35],
-        rotation: [0, 0, Math.PI / 2],
+        // Pintle vertical en el marco del vano, con el caño apuntando AFUERA
+        // (−X). El cero de guiñada tiene que coincidir con el rumbo del ancla
+        // `camera_gunner`: el rig le pasa al arma su `localYaw`, que es
+        // relativo al ancla.
+        position: [-1.12, 1.32, 0.35],
+        rotation: [0, -Math.PI / 2, 0],
         extras: { kind: "turret-yaw" },
       },
     );
@@ -1601,6 +2606,7 @@ function buildHelicopterLod(
 }
 
 function buildHelicopter(context: BuildContext): void {
+  const glassMaterial = createGlassMaterial(context.document, context.spec);
   for (const lod of [0, 1, 2] as const) {
     const root = createNode(context, context.sceneRoot, `visual_lod${lod}`, {
       extras: {
@@ -1610,7 +2616,7 @@ function buildHelicopter(context: BuildContext): void {
         screenCoverage: lod === 0 ? 0.34 : lod === 1 ? 0.11 : 0,
       },
     });
-    buildHelicopterLod(context, root, lod);
+    buildHelicopterLod(context, root, lod, glassMaterial);
   }
 
   createAnchor(context, "seat_pilot", [-0.48, 1.26, 1.55], "seat", {
@@ -1641,13 +2647,16 @@ function buildHelicopter(context: BuildContext): void {
     { role: "pilot", fov: 74 },
     true,
   );
+  // El artillero mira POR LA PUERTA, no a proa: se sienta de costado y el arma
+  // es de puerta. Va además un palmo hacia adentro del vano, porque pegado al
+  // plano de la puerta el hueco le tapa todo el campo y no se ve ni el marco.
   createAnchor(
     context,
     "camera_gunner",
-    [-0.88, 1.55, 0.2],
+    [-0.5, 1.58, 0.3],
     "camera",
     { role: "gunner", fov: 78 },
-    true,
+    -Math.PI / 2,
   );
   // Comandante y pasajeros: sin su propia ancla el cambio de asiento caería al
   // rig procedural, que vive en otras coordenadas que este modelo.
@@ -1662,13 +2671,15 @@ function buildHelicopter(context: BuildContext): void {
     { role: "commander", fov: 74 },
     true,
   );
+  // El pasajero va en la banqueta de estribor, de espaldas al forro: mira
+  // hacia adentro de la bodega, no a proa como si condujera.
   createAnchor(
     context,
     "camera_passenger",
     [0.5, 1.6, -0.72],
     "camera",
     { role: "passenger", fov: 76 },
-    true,
+    -Math.PI / 2,
   );
   createAnchor(context, "exit_left", [-1.45, 0.92, -0.25], "exit", {
     seats: ["seat_gunner", "seat_passenger_left"],
@@ -1676,10 +2687,10 @@ function buildHelicopter(context: BuildContext): void {
   createAnchor(context, "exit_right", [1.45, 0.92, -0.25], "exit", {
     seats: ["seat_pilot", "seat_passenger_right"],
   });
-  createAnchor(context, "muzzle", [-1.18, 1.16, 1.58], "muzzle", {
+  createAnchor(context, "muzzle", [-2.39, 1.32, 0.35], "muzzle", {
     weapon: "door-machine-gun",
   });
-  createAnchor(context, "audio_rotor", [0, 2.35, -0.2], "audio", {
+  createAnchor(context, "audio_rotor", [0, HELI_ROTOR.y - 0.3, HELI_ROTOR.z], "audio", {
     layer: "rotor",
   });
   createAnchor(context, "audio_cabin", [0, 1.2, -0.05], "audio", {
@@ -1688,15 +2699,15 @@ function buildHelicopter(context: BuildContext): void {
   createAnchor(context, "audio_alarm", [0, 1.72, 1.05], "audio", {
     layer: "alarm",
   });
-  createAnchor(context, "damage_rotor", [0, 2.55, -0.2], "damage", {
+  createAnchor(context, "damage_rotor", [0, HELI_ROTOR.y, HELI_ROTOR.z], "damage", {
     component: "rotor",
     halfExtents: [2.4, 0.18, 2.4],
   });
-  createAnchor(context, "damage_engine", [0, 2.05, -0.35], "damage", {
+  createAnchor(context, "damage_engine", [0, 2.45, 0.34], "damage", {
     component: "engine",
-    halfExtents: [0.9, 0.45, 0.7],
+    halfExtents: [0.9, 0.45, 0.9],
   });
-  createAnchor(context, "damage_cockpit", [0, 1.4, 1.7], "damage", {
+  createAnchor(context, "damage_cockpit", [0, 1.4, 2.3], "damage", {
     component: "cockpit",
     halfExtents: [0.9, 0.8, 0.85],
   });
@@ -1704,9 +2715,9 @@ function buildHelicopter(context: BuildContext): void {
     component: "fuel",
     halfExtents: [0.35, 0.6, 0.55],
   });
-  createAnchor(context, "damage_weapon", [-1.18, 1.16, 0.65], "damage", {
+  createAnchor(context, "damage_weapon", [-1.72, 1.32, 0.35], "damage", {
     component: "weapon",
-    halfExtents: [0.35, 0.35, 0.8],
+    halfExtents: [0.8, 0.35, 0.35],
   });
   const wreckage = createNode(context, context.sceneRoot, "wreckage", {
     extras: {

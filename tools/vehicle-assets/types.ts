@@ -30,6 +30,12 @@ export interface VehicleAssetSpec {
   readonly maxDrawsPerLod: number;
   readonly maxGlbBytes: number;
   readonly finishes: readonly [AtlasFinish, AtlasFinish, AtlasFinish, AtlasFinish];
+  /**
+   * Color al que degrada el chorreado vertical. Por defecto es la mugre terrosa
+   * del resto del parque; un vehículo polar la necesita fría, porque una veta
+   * marrón sobre chapa celeste lee a barro y le saca todo el frío al casco.
+   */
+  readonly grimeColor?: readonly [number, number, number];
   readonly requiredNodes: readonly string[];
 }
 
@@ -116,29 +122,30 @@ export const VEHICLE_SPECS: readonly VehicleAssetSpec[] = [
   },
   {
     id: "airboat",
-    displayName: "Skiff industrial de mantenimiento",
+    displayName: "Hidrodeslizador ártico de rescate",
     seed: 0x27182818,
     maxTrianglesLod0: 80_000,
     maxDrawsPerLod: 18,
     maxGlbBytes: 8 * 1024 * 1024,
+    // 0 casco pintado en gris hielo, 1 naranja de rescate ya oxidado, 2 acero
+    // frío mecanizado, 3 goma, lona y tapizado.
     finishes: [
-      { color: [222, 172, 44], roughness: 0.7, metallic: 0.06, wear: 0.62, grain: 1 },
-      { color: [52, 57, 57], roughness: 0.6, metallic: 0.6, wear: 0.5, grain: 1.4 },
-      { color: [122, 128, 124], roughness: 0.5, metallic: 0.8, wear: 0.45, grain: 1.5 },
-      { color: [110, 54, 36], roughness: 0.86, metallic: 0.2, wear: 0.84, grain: 1.2 },
+      { color: [183, 197, 205], roughness: 0.72, metallic: 0.05, wear: 0.56, grain: 1 },
+      { color: [193, 88, 32], roughness: 0.8, metallic: 0.18, wear: 0.82, grain: 1.2 },
+      { color: [98, 107, 114], roughness: 0.5, metallic: 0.84, wear: 0.44, grain: 1.55 },
+      { color: [36, 39, 43], roughness: 0.93, metallic: 0.03, wear: 0.22, grain: 2.5 },
     ],
+    grimeColor: [88, 100, 110],
     requiredNodes: [
       "visual_lod0",
       "visual_lod1",
       "visual_lod2",
-      "fan_left",
-      "fan_right",
+      "fan_main",
       "rudder_left",
       "rudder_right",
       "turret_yaw",
       "turret_pitch",
       "seat_driver",
-      "seat_gunner",
       "camera_driver",
       "exit_left",
       "exit_right",
@@ -159,12 +166,16 @@ export const VEHICLE_SPECS: readonly VehicleAssetSpec[] = [
     maxTrianglesLod0: 125_000,
     maxDrawsPerLod: 24,
     maxGlbBytes: 14 * 1024 * 1024,
+    // 0 chapa azul pizarra del fuselaje, 1 gris claro de panza y empenaje,
+    // 2 acero de tren, cubo de rotor y herrajes, 3 goma, marcos e interior.
     finishes: [
-      { color: [80, 92, 63], roughness: 0.74, metallic: 0.08, wear: 0.5, grain: 1 },
-      { color: [198, 189, 158], roughness: 0.7, metallic: 0.06, wear: 0.55, grain: 1 },
-      { color: [72, 78, 75], roughness: 0.54, metallic: 0.78, wear: 0.4, grain: 1.5 },
-      { color: [124, 63, 40], roughness: 0.85, metallic: 0.2, wear: 0.8, grain: 1.2 },
+      { color: [70, 80, 95], roughness: 0.72, metallic: 0.1, wear: 0.3, grain: 1 },
+      { color: [136, 142, 147], roughness: 0.7, metallic: 0.06, wear: 0.52, grain: 1 },
+      { color: [118, 124, 130], roughness: 0.5, metallic: 0.82, wear: 0.4, grain: 1.5 },
+      { color: [36, 38, 42], roughness: 0.9, metallic: 0.04, wear: 0.26, grain: 2.4 },
     ],
+    // Chorreado frío: el marrón terroso por defecto pelea contra la chapa azul.
+    grimeColor: [78, 86, 96],
     requiredNodes: [
       "visual_lod0",
       "visual_lod1",

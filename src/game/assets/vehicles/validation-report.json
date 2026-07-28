@@ -30,19 +30,19 @@
     },
     {
       "id": "airboat",
-      "bytes": 836656,
+      "bytes": 1103028,
       "budgetBytes": 8388608,
       "lods": [
         {
-          "triangles": 8664,
-          "draws": 7
+          "triangles": 13960,
+          "draws": 6
         },
         {
-          "triangles": 2556,
-          "draws": 7
+          "triangles": 3724,
+          "draws": 6
         },
         {
-          "triangles": 440,
+          "triangles": 992,
           "draws": 1
         }
       ],
@@ -55,26 +55,26 @@
     },
     {
       "id": "helicopter",
-      "bytes": 810572,
+      "bytes": 1232612,
       "budgetBytes": 14680064,
       "lods": [
         {
-          "triangles": 6496,
-          "draws": 5
+          "triangles": 20272,
+          "draws": 7
         },
         {
-          "triangles": 2020,
-          "draws": 5
+          "triangles": 6372,
+          "draws": 6
         },
         {
-          "triangles": 632,
-          "draws": 1
+          "triangles": 3932,
+          "draws": 4
         }
       ],
       "khronos": {
         "errors": 0,
         "warnings": 0,
-        "infos": 1,
+        "infos": 7,
         "hints": 0
       }
     }

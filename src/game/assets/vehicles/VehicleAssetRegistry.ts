@@ -271,7 +271,9 @@ function installLod(
 function prepareRenderableMeshes(root: Object3D): void {
   root.traverse((node) => {
     if (!(node instanceof Mesh)) return;
-    node.castShadow = true;
+    // El shadow map no lee alfa: si el cristal proyectara, una cabina
+    // acristalada tiraría la misma sombra maciza que una de chapa.
+    node.castShadow = !isTransparent(node.material);
     node.receiveShadow = true;
     node.frustumCulled = true;
     if (!node.geometry.boundingSphere) {
@@ -281,6 +283,11 @@ function prepareRenderableMeshes(root: Object3D): void {
       node.geometry.computeBoundingBox();
     }
   });
+}
+
+export function isTransparent(material: Material | readonly Material[]): boolean {
+  const materials = Array.isArray(material) ? material : [material as Material];
+  return materials.some((entry) => entry.transparent);
 }
 
 function cloneInstanceMaterials(root: Object3D): void {

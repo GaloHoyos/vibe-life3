@@ -335,10 +335,7 @@ function bindImportedRig(
       ]
     : [];
   const fans = archetype === "airboat"
-    ? [
-        ...animatedVariants(root, "fan_left", 0, 1, 1),
-        ...animatedVariants(root, "fan_right", 1, -1, 1),
-      ]
+    ? animatedVariants(root, "fan_main", 0, 1, 1)
     : [];
   const rudders = archetype === "airboat"
     ? [
@@ -386,6 +383,10 @@ function bindImportedRig(
       : [node.material];
     materials.forEach((material) => {
       if (!(material instanceof MeshStandardMaterial)) return;
+      // El daño tizna y enrojece la chapa. Aplicado al cristal lo vuelve un
+      // panel opaco al carbonizarse y lo enciende al arder, que es justo lo
+      // que un vidrio no hace.
+      if (material.transparent) return;
       damageMaterials.set(material, {
         material,
         color: material.color.clone(),

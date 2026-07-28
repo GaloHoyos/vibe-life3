@@ -69,18 +69,18 @@
     },
     {
       "id": "airboat",
-      "glbBytes": 836656,
+      "glbBytes": 1103028,
       "lods": [
         {
-          "triangles": 8664,
-          "draws": 7
+          "triangles": 13960,
+          "draws": 6
         },
         {
-          "triangles": 2556,
-          "draws": 7
+          "triangles": 3724,
+          "draws": 6
         },
         {
-          "triangles": 440,
+          "triangles": 992,
           "draws": 1
         }
       ],
@@ -88,16 +88,14 @@
         "airboat_vehicle",
         "visual_lod0",
         "airboat_body",
-        "fan_left",
-        "fan_right",
+        "fan_main",
         "rudder_left",
         "rudder_right",
         "turret_yaw",
         "turret_pitch",
         "visual_lod1",
         "airboat_body_lod1",
-        "fan_left_lod1",
-        "fan_right_lod1",
+        "fan_main_lod1",
         "rudder_left_lod1",
         "rudder_right_lod1",
         "turret_yaw_lod1",
@@ -105,7 +103,6 @@
         "visual_lod2",
         "airboat_body_lod2",
         "seat_driver",
-        "seat_gunner",
         "camera_driver",
         "exit_left",
         "exit_right",
@@ -122,37 +119,43 @@
     },
     {
       "id": "helicopter",
-      "glbBytes": 810572,
+      "glbBytes": 1232612,
       "lods": [
         {
-          "triangles": 6496,
-          "draws": 5
+          "triangles": 20272,
+          "draws": 7
         },
         {
-          "triangles": 2020,
-          "draws": 5
+          "triangles": 6372,
+          "draws": 6
         },
         {
-          "triangles": 632,
-          "draws": 1
+          "triangles": 3932,
+          "draws": 4
         }
       ],
       "nodeNames": [
         "helicopter_vehicle",
         "visual_lod0",
         "helicopter_fuselage",
+        "helicopter_cabin",
+        "helicopter_glazing",
         "rotor_main",
         "rotor_tail",
         "turret_yaw",
         "turret_pitch",
         "visual_lod1",
         "helicopter_fuselage_lod1",
+        "helicopter_glazing_lod1",
         "rotor_main_lod1",
         "rotor_tail_lod1",
         "turret_yaw_lod1",
         "turret_pitch_lod1",
         "visual_lod2",
         "helicopter_fuselage_lod2",
+        "helicopter_glazing_lod2",
+        "rotor_main_lod2",
+        "rotor_tail_lod2",
         "seat_pilot",
         "seat_gunner",
         "seat_passenger_left",

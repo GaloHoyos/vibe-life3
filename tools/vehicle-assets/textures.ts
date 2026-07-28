@@ -196,6 +196,7 @@ export async function createPbrAtlases(
   const normal = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE * CHANNELS);
   const pbr = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE * CHANNELS);
   const height = new Float32Array(ATLAS_SIZE * ATLAS_SIZE);
+  const grimeColor = spec.grimeColor ?? DUST_COLOR;
 
   for (let tile = 0; tile < 4; tile += 1) {
     const finish = spec.finishes[tile]!;
@@ -225,9 +226,9 @@ export async function createPbrAtlases(
         red = lerp(red, BARE_METAL_COLOR[0], surface.bare * 0.82);
         green = lerp(green, BARE_METAL_COLOR[1], surface.bare * 0.82);
         blue = lerp(blue, BARE_METAL_COLOR[2], surface.bare * 0.82);
-        red = lerp(red, DUST_COLOR[0], surface.dust);
-        green = lerp(green, DUST_COLOR[1], surface.dust);
-        blue = lerp(blue, DUST_COLOR[2], surface.dust);
+        red = lerp(red, grimeColor[0], surface.dust);
+        green = lerp(green, grimeColor[1], surface.dust);
+        blue = lerp(blue, grimeColor[2], surface.dust);
 
         const pixel = atlasIndex * CHANNELS;
         albedo[pixel] = clampByte(red);
