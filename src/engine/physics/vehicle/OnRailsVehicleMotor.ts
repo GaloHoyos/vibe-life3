@@ -38,6 +38,16 @@ export interface OnRailsVehicleMotorConfig {
   deceleration: number;
   orientationSmoothing: number;
   arcLengthDivisions?: number;
+  /** Multiple of the cruise speed reachable on full throttle. */
+  throttleBoostFactor?: number;
+  /** Fraction of the cruise speed available travelling backwards. */
+  reverseFactor?: number;
+  /** How far the pilot may slide off the spline sideways, in metres. */
+  lateralRange?: number;
+  /** How fast that sideways offset follows the stick, in 1/s. */
+  lateralResponse?: number;
+  /** Roll applied at full lateral deflection, in radians. */
+  maxControlBank?: number;
   onWaypoint?: (waypoint: Readonly<RailWaypoint>) => void;
   onComplete?: () => void;
 }
@@ -64,6 +74,8 @@ export class OnRailsVehicleMotor implements VehicleMotor {
   private currentSpeed = 0;
   private nextWaypointIndex = 1;
   private waitRemaining = 0;
+  private lateralOffset = 0;
+  private controlBank = 0;
   private running: boolean;
   private enabled = true;
   private disposed = false;
@@ -200,7 +212,7 @@ export class OnRailsVehicleMotor implements VehicleMotor {
     const braking = Math.max(this.control.brake, this.control.handbrake);
     const desiredSpeed =
       this.running && braking < 1
-        ? this.targetSpeed * (1 - braking)
+        ? this.commandedSpeed() * (1 - braking)
         : 0;
     const rate =
       desiredSpeed >= this.currentSpeed
@@ -212,10 +224,33 @@ export class OnRailsVehicleMotor implements VehicleMotor {
       Math.max(0, rate) * delta,
     );
 
-    if (this.currentSpeed > 0 && this.running) {
+    if (this.currentSpeed !== 0 && this.running) {
       this.advance(this.currentSpeed * delta);
     }
     this.applyPose(delta);
+  }
+
+  /**
+   * Cruise speed as commanded by the pilot. Neutral holds the authored speed,
+   * so an unpiloted transport behaves exactly as before.
+   */
+  private commandedSpeed(): number {
+    const throttle = this.control.throttle;
+    if (throttle > 0) {
+      return MathUtils.lerp(
+        this.targetSpeed,
+        this.targetSpeed * Math.max(1, this.config.throttleBoostFactor ?? 1),
+        throttle,
+      );
+    }
+    if (throttle < 0) {
+      return MathUtils.lerp(
+        this.targetSpeed,
+        -this.targetSpeed * Math.max(0, this.config.reverseFactor ?? 0),
+        -throttle,
+      );
+    }
+    return this.targetSpeed;
   }
 
   postPhysicsStep(_delta: number): void {
@@ -290,6 +325,13 @@ export class OnRailsVehicleMotor implements VehicleMotor {
   }
 
   private advance(travel: number): void {
+    if (travel < 0) {
+      // Retroceder no vuelve a disparar los waypoints: son disparadores
+      // autorales de un solo sentido, no marcas de posición.
+      this.distance = this.normalizeDistance(this.distance + travel);
+      this.nextWaypointIndex = this.findNextWaypointIndex(this.distance);
+      return;
+    }
     let remaining = Math.max(0, travel);
     let guard = this.waypoints.length * 2 + 2;
     while (remaining > 0.000001 && guard > 0) {
@@ -339,7 +381,28 @@ export class OnRailsVehicleMotor implements VehicleMotor {
     const u = MathUtils.clamp(this.distance / this.totalLength, 0, 1);
     this.curve.getPointAt(u, this.point);
     this.curve.getTangentAt(u, this.tangent).normalize();
+
+    // Corredor lateral: el trazado sigue mandando, pero el piloto puede
+    // desplazarse dentro de él. Sin esto el timón no haría absolutamente nada.
+    const range = this.config.lateralRange ?? 0;
+    if (range > 0) {
+      // `this.right` es Y × tangente = +X con la tangente en +Z, o sea la
+      // IZQUIERDA del piloto: el desplazamiento va con el signo cambiado.
+      this.lateralOffset = MathUtils.lerp(
+        this.lateralOffset,
+        -this.control.steering * range,
+        1 - Math.exp(-(this.config.lateralResponse ?? 4) * delta),
+      );
+    }
+    // Alabeo hacia adentro del viraje: al irse a estribor baja el ala de -X.
+    this.controlBank =
+      range > 0
+        ? (-this.lateralOffset / range) * (this.config.maxControlBank ?? 0)
+        : 0;
     this.buildTargetRotation(u);
+    if (range > 0) {
+      this.point.addScaledVector(this.right, this.lateralOffset);
+    }
 
     const current = this.body.rotation();
     this.currentRotation.set(current.x, current.y, current.z, current.w);
@@ -356,6 +419,8 @@ export class OnRailsVehicleMotor implements VehicleMotor {
   }
 
   private snapPoseToDistance(distance: number): void {
+    this.lateralOffset = 0;
+    this.controlBank = 0;
     const u = MathUtils.clamp(distance / this.totalLength, 0, 1);
     this.curve.getPointAt(u, this.point);
     this.curve.getTangentAt(u, this.tangent).normalize();
@@ -376,7 +441,7 @@ export class OnRailsVehicleMotor implements VehicleMotor {
     this.up.crossVectors(this.tangent, this.right).normalize();
     this.matrix.makeBasis(this.right, this.up, this.tangent);
     this.targetRotation.setFromRotationMatrix(this.matrix);
-    const bank = this.sampleBank(u);
+    const bank = this.sampleBank(u) + this.controlBank;
     if (Math.abs(bank) > 0.000001) {
       this.bankRotation.setFromAxisAngle(LOCAL_FORWARD, bank);
       this.targetRotation.multiply(this.bankRotation);
@@ -451,7 +516,7 @@ export class OnRailsVehicleMotor implements VehicleMotor {
         1,
       ),
     );
-    this.telemetry.steering = 0;
+    this.telemetry.steering = this.control.steering;
     this.telemetry.contactCount = 0;
     this.telemetry.grounded = false;
     this.telemetry.submergedRatio = 0;

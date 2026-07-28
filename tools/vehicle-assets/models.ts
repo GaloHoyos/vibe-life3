@@ -57,8 +57,48 @@ interface BuildContext {
   readonly spec: VehicleAssetSpec;
 }
 
-const CAMERA_FORWARD_ROTATION: readonly [number, number, number, number] = [
-  0, 1, 0, 0,
+/**
+ * Rueda del buggy, derivada del preset físico (`vehicles.config.ts`: body.size
+ * [2.15, 1.35, 3.8], colliderCenter.y 0.75) y de cómo arma las ruedas
+ * `VehicleEntity.createMotor`. La malla tiene que coincidir con el raycast o el
+ * chasis se ve flotando sobre el piso.
+ */
+const BUGGY_WHEEL = {
+  radius: 0.46,
+  halfWidth: 2.15 * 0.46,
+  halfLength: 3.8 * 0.36,
+  /** Conexión (0.75 − 0.24) menos la suspensión totalmente extendida (0.36). */
+  restY: 0.75 - 0.24 - 0.36,
+} as const;
+
+/**
+ * Puesto de manejo. Con `physicalForward` +Z y up +Y la derecha del vehículo es
+ * −X, así que el volante, los relojes y la butaca del conductor van en +X.
+ */
+const BUGGY_DRIVER_X = 0.38;
+
+/**
+ * Pedestal del cañón: sobre el larguero del artillero, delante de su butaca y
+ * por fuera del capó.
+ *
+ * La altura no es estética. Con la boca a 1.32 m del pivote y la depresión
+ * máxima del preset (−0.45 rad), la punta baja 0.57 m: por debajo de 1.76 el
+ * caño se entierra en el capó cada vez que se apunta hacia abajo y adelante,
+ * que es exactamente lo que hacía el montaje anterior.
+ */
+const BUGGY_GUN_X = -0.72;
+const BUGGY_GUN_Z = 0.6;
+const BUGGY_GUN_Y = 1.78;
+const BUGGY_GUN_REACH = 1.32;
+
+/**
+ * Las anclas de cámara se exportan SIN rotación propia: son marcadores de
+ * posición y la convención de "hacia adelante" la aplica `VehicleCameraRig`.
+ * Traían un giro de 180° horneado que se sumaba al del rig y dejaba la cámara
+ * mirando la cola del vehículo.
+ */
+const CAMERA_ANCHOR_ROTATION: readonly [number, number, number, number] = [
+  0, 0, 0, 1,
 ];
 
 function createHullGeometry(
@@ -205,6 +245,109 @@ function ribParts(
     });
   }
   return parts;
+}
+
+/**
+ * Amortiguador con espiral a la vista: vástago, copas y anillos apilados sobre
+ * el eje. Los anillos son lo que hace leer el resorte; un cilindro liso queda
+ * como un caño, y la suspensión expuesta es media personalidad del buggy.
+ */
+function coilOverParts(
+  top: Vec3,
+  bottom: Vec3,
+  options: {
+    readonly radius: number;
+    readonly coils: number;
+    readonly segments: number;
+    readonly springTile: AtlasTile;
+    readonly bodyTile: AtlasTile;
+  },
+): GeometryPart[] {
+  const start = new Vector3(...top);
+  const end = new Vector3(...bottom);
+  const axis = end.clone().sub(start).normalize();
+  const quaternion = new Quaternion().setFromUnitVectors(
+    new Vector3(0, 1, 0),
+    axis,
+  );
+  const euler = new ThreeEuler().setFromQuaternion(quaternion);
+  const alongAxis: Euler = [euler.x, euler.y, euler.z];
+  // El toro nace en el plano XY: hay que acostarlo antes de alinearlo al eje.
+  const ringEuler = new ThreeEuler().setFromQuaternion(
+    quaternion
+      .clone()
+      .multiply(
+        new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2),
+      ),
+  );
+  const parts: GeometryPart[] = [
+    createTubePart(
+      top,
+      bottom,
+      options.radius * 0.36,
+      options.segments,
+      options.bodyTile,
+    ),
+  ];
+  for (const t of [0.1, 0.9]) {
+    const point = start.clone().lerp(end, t);
+    parts.push({
+      geometry: new CylinderGeometry(
+        options.radius * 1.2,
+        options.radius * 1.2,
+        0.04,
+        options.segments,
+      ),
+      position: [point.x, point.y, point.z],
+      rotation: alongAxis,
+      tile: options.bodyTile,
+    });
+  }
+  for (let index = 0; index < options.coils; index += 1) {
+    const t = 0.16 + (index / Math.max(1, options.coils - 1)) * 0.68;
+    const point = start.clone().lerp(end, t);
+    parts.push({
+      geometry: new TorusGeometry(
+        options.radius,
+        options.radius * 0.26,
+        5,
+        Math.max(8, options.segments),
+      ),
+      position: [point.x, point.y, point.z],
+      rotation: [ringEuler.x, ringEuler.y, ringEuler.z],
+      tile: options.springTile,
+    });
+  }
+  return parts;
+}
+
+/**
+ * Aplica una transformación común a un subconjunto ya armado. Sirve para piezas
+ * que se diseñan cómodas en su propio origen (el volante) y después se cuelgan
+ * inclinadas en el habitáculo.
+ */
+function groupParts(
+  parts: readonly GeometryPart[],
+  options: { readonly position?: Vec3; readonly rotation?: Euler },
+): GeometryPart[] {
+  return parts.map((part) => {
+    const geometry = part.geometry.clone();
+    geometry.applyMatrix4(
+      new Matrix4().compose(
+        new Vector3(...(part.position ?? [0, 0, 0])),
+        new Quaternion().setFromEuler(
+          new ThreeEuler(...(part.rotation ?? [0, 0, 0])),
+        ),
+        new Vector3(...(part.scale ?? [1, 1, 1])),
+      ),
+    );
+    return {
+      geometry,
+      position: options.position,
+      rotation: options.rotation,
+      tile: part.tile,
+    };
+  });
 }
 
 /** Nudo de la jaula antivuelco: cubre la unión entre tubos. */
@@ -440,7 +583,7 @@ function createNode(
     node.setScale([...options.scale]);
   }
   if (options.cameraForward === true) {
-    node.setRotation([...CAMERA_FORWARD_ROTATION]);
+    node.setRotation([...CAMERA_ANCHOR_ROTATION]);
   }
   if (options.extras !== undefined) {
     node.setExtras(options.extras);
@@ -494,142 +637,197 @@ function buildBuggyLod(
   const suffix = lod === 0 ? "" : `_lod${lod}`;
   const segments = lod === 0 ? 20 : lod === 1 ? 12 : 6;
   const detailed = lod === 0;
+  const { halfWidth, halfLength, restY } = BUGGY_WHEEL;
+  const driverX = BUGGY_DRIVER_X;
   const bodyParts: GeometryPart[] = [
-    // Piso y largueros del bastidor.
-    { geometry: chamferBox(1.62, 0.14, 3.1, 0.03), position: [0, 0.6, 0], tile: 3 },
-    { geometry: chamferBox(0.17, 0.26, 3.15, 0.035), position: [-0.79, 0.63, 0], tile: 1 },
-    { geometry: chamferBox(0.17, 0.26, 3.15, 0.035), position: [0.79, 0.63, 0], tile: 1 },
-    // Morro: capó inclinado y trompa.
+    // Bastidor: piso de chapa, largueros y travesaños.
+    { geometry: chamferBox(1.44, 0.1, 2.92, 0.03), position: [0, 0.6, -0.05], tile: 3 },
+    { geometry: chamferBox(0.15, 0.24, 3.2, 0.035), position: [-0.73, 0.66, -0.05], tile: 2 },
+    { geometry: chamferBox(0.15, 0.24, 3.2, 0.035), position: [0.73, 0.66, -0.05], tile: 2 },
+    { geometry: chamferBox(1.5, 0.12, 0.15, 0.03), position: [0, 0.62, 1.22], tile: 2 },
+    { geometry: chamferBox(1.5, 0.12, 0.15, 0.03), position: [0, 0.62, -1.3], tile: 2 },
+    // Capó: cae hacia la trompa y se angosta arriba, así desde la butaca se ve
+    // el piso cerca del paragolpes en vez de una tapa plana.
     {
       geometry: chamferWedge({
-        length: 1.5,
-        height: 0.44,
-        frontWidth: 1.24,
-        rearWidth: 1.6,
-        topFrontWidth: 1.06,
-        topRearWidth: 1.5,
-        chamfer: 0.04,
+        length: 1.44,
+        height: 0.4,
+        frontWidth: 1.06,
+        rearWidth: 1.3,
+        topFrontWidth: 0.9,
+        topRearWidth: 1.16,
+        chamfer: 0.045,
       }),
-      position: [0, 0.95, 1.12],
-      rotation: [-0.07, 0, 0],
+      position: [0, 0.99, 1.15],
+      rotation: [-0.05, 0, 0],
       tile: 0,
     },
-    // Compartimiento de motor trasero y tapa.
-    { geometry: roundedBox(1.5, 0.44, 0.94, 0.08, detailed ? 3 : 1), position: [0, 0.94, -1.14], tile: 1 },
-    { geometry: panel(1.36, 0.82, 0.05), position: [0, 1.17, -1.14], rotation: [Math.PI / 2, 0, 0], tile: 2 },
-    // Consola central y tablero.
-    { geometry: chamferBox(1.02, 0.16, 0.72, 0.025), position: [0, 1.04, -0.2], tile: 2 },
-    { geometry: panel(1.28, 0.34, 0.06), position: [0, 1.15, 0.5], rotation: [-0.42, 0, 0], tile: 2 },
+    // Cortaviento: cierra el frente del habitáculo sin meter un travesaño a la
+    // altura de los ojos, que es lo que tapaba la vista con la jaula anterior.
+    { geometry: chamferBox(1.36, 0.26, 0.18, 0.04), position: [0, 1.14, 0.5], rotation: [-0.34, 0, 0], tile: 0 },
+    // Mamparo trasero y tapa del motor.
+    { geometry: panel(1.44, 0.5, 0.07), position: [0, 1.0, -0.8], tile: 2 },
+    { geometry: roundedBox(1.32, 0.44, 0.94, 0.07, detailed ? 3 : 1), position: [0, 1.0, -1.3], tile: 0 },
   ];
 
-  // Asientos: base, respaldo y apoyacabeza en vez de una caja suelta.
+  // Butacas: base, respaldo y apoyacabeza en vez de una caja suelta.
   for (const side of [-1, 1] as const) {
+    const x = side * driverX;
     bodyParts.push(
-      { geometry: chamferBox(0.46, 0.12, 0.5, 0.03), position: [side * 0.38, 0.75, -0.2], tile: 3 },
-      { geometry: chamferBox(0.46, 0.62, 0.13, 0.03), position: [side * 0.38, 1.06, -0.46], rotation: [-0.16, 0, 0], tile: 3 },
+      { geometry: chamferBox(0.46, 0.14, 0.52, 0.03), position: [x, 0.78, -0.24], tile: 3 },
+      { geometry: chamferBox(0.46, 0.66, 0.14, 0.03), position: [x, 1.1, -0.52], rotation: [-0.15, 0, 0], tile: 3 },
     );
     if (detailed) {
       bodyParts.push(
-        { geometry: chamferBox(0.34, 0.2, 0.12, 0.03), position: [side * 0.38, 1.42, -0.52], tile: 3 },
-        // Cartelas laterales del asiento.
-        { geometry: panel(0.05, 0.4, 0.44), position: [side * 0.61, 0.92, -0.3], tile: 1 },
+        { geometry: chamferBox(0.34, 0.2, 0.13, 0.03), position: [x, 1.46, -0.57], tile: 3 },
+        { geometry: panel(0.05, 0.42, 0.46), position: [x + side * 0.23, 0.98, -0.3], tile: 2 },
+        // Arnés cruzado sobre el respaldo.
+        { geometry: panel(0.07, 0.52, 0.03), position: [x - side * 0.09, 1.14, -0.44], rotation: [-0.15, 0, side * 0.5], tile: 1 },
       );
     }
   }
 
   if (lod < 2) {
-    const tube = 0.058;
+    const tube = 0.052;
+    for (const side of [-1, 1] as const) {
+      bodyParts.push(
+        // Arco antivuelco principal, detrás de las butacas.
+        createTubePart([side * 0.74, 0.7, -0.66], [side * 0.74, 1.94, -0.66], tube, segments, 2),
+        // Montante hacia el cortaviento: baja pegado al flanco, fuera del cono
+        // de visión del conductor.
+        createTubePart([side * 0.75, 1.92, -0.68], [side * 0.79, 1.24, 0.56], 0.046, segments, 2),
+        createTubePart([side * 0.79, 1.24, 0.56], [side * 0.77, 0.74, 0.68], 0.046, segments, 2),
+        // Tirante trasero y barra lateral anti-intrusión.
+        createTubePart([side * 0.74, 1.92, -0.68], [side * 0.72, 0.84, -1.68], 0.048, segments, 2),
+        createTubePart([side * 0.78, 0.88, 0.6], [side * 0.78, 0.86, -0.64], 0.044, segments, 2),
+        gusset([side * 0.74, 1.94, -0.66], 0.14, 1),
+        // Paragolpes tubular delantero.
+        createTubePart([side * 0.68, 0.72, 1.9], [side * 0.72, 0.66, 1.42], 0.045, segments, 2),
+        createTubePart([side * 0.62, 1.08, 1.82], [side * 0.68, 0.72, 1.9], 0.042, segments, 2),
+      );
+    }
     bodyParts.push(
-      // Antivuelco principal.
-      createTubePart([-0.78, 0.67, -1.42], [-0.78, 1.74, -0.56], tube, segments, 1),
-      createTubePart([0.78, 0.67, -1.42], [0.78, 1.74, -0.56], tube, segments, 1),
-      createTubePart([-0.78, 1.74, -0.56], [0.78, 1.74, -0.56], tube, segments, 1),
-      createTubePart([-0.78, 1.74, -0.56], [-0.7, 1.56, 0.66], 0.05, segments, 1),
-      createTubePart([0.78, 1.74, -0.56], [0.7, 1.56, 0.66], 0.05, segments, 1),
-      // Travesaños de proa y refuerzo diagonal.
-      createTubePart([-0.78, 0.72, 1.3], [0.78, 0.72, 1.3], 0.046, segments, 2),
-      createTubePart([-0.7, 1.56, 0.66], [0.7, 1.56, 0.66], 0.046, segments, 1),
-      gusset([-0.78, 1.74, -0.56], 0.15, 1),
-      gusset([0.78, 1.74, -0.56], 0.15, 1),
-      // Parachoques delantero tubular.
-      createTubePart([-0.72, 0.62, 1.62], [0.72, 0.62, 1.62], 0.052, segments, 3),
-      createTubePart([-0.72, 0.62, 1.62], [-0.62, 0.95, 1.5], 0.042, segments, 3),
-      createTubePart([0.72, 0.62, 1.62], [0.62, 0.95, 1.5], 0.042, segments, 3),
+      createTubePart([-0.74, 1.94, -0.66], [0.74, 1.94, -0.66], tube, segments, 2),
+      createTubePart([-0.72, 0.86, -1.7], [0.72, 0.86, -1.7], 0.048, segments, 2),
+      createTubePart([-0.68, 0.72, 1.9], [0.68, 0.72, 1.9], 0.055, segments, 2),
+    );
+    if (detailed) {
+      bodyParts.push(
+        // Cruz de refuerzo del arco principal.
+        createTubePart([-0.72, 1.9, -0.7], [0.72, 0.88, -0.7], 0.038, 8, 2),
+        createTubePart([0.72, 1.9, -0.7], [-0.72, 0.88, -0.7], 0.038, 8, 2),
+      );
+    }
+    // Pedestal del cañón, soldado al larguero y arriostrado contra el montante.
+    bodyParts.push(
+      { geometry: chamferBox(0.3, 0.16, 0.34, 0.03), position: [BUGGY_GUN_X, 0.86, BUGGY_GUN_Z], tile: 1 },
+      { geometry: new CylinderGeometry(0.058, 0.085, 0.84, segments), position: [BUGGY_GUN_X, 1.34, BUGGY_GUN_Z], tile: 2 },
+      { geometry: chamferBox(0.24, 0.06, 0.26, 0.02), position: [BUGGY_GUN_X, 1.73, BUGGY_GUN_Z], tile: 2 },
+      createTubePart([BUGGY_GUN_X, 1.58, BUGGY_GUN_Z], [-0.78, 1.4, 0.28], 0.034, 8, 2),
+      gusset([BUGGY_GUN_X - 0.05, 1.02, BUGGY_GUN_Z + 0.04], 0.13, 1),
     );
   }
 
   if (detailed) {
     bodyParts.push(
-      // Parrilla de láminas.
-      ...ribParts([0, 0.86, 1.83], [1, 0, 0], 7, 0.15, [0.05, 0.3, 0.1], 1),
-      { geometry: chamferBox(1.16, 0.36, 0.1, 0.03), position: [0, 0.86, 1.79], tile: 1 },
-      // Faros con lente.
-      { geometry: new CylinderGeometry(0.13, 0.13, 0.16, 12), position: [-0.42, 1.0, 1.76], rotation: [Math.PI / 2, 0, 0], tile: 2 },
-      { geometry: new CylinderGeometry(0.13, 0.13, 0.16, 12), position: [0.42, 1.0, 1.76], rotation: [Math.PI / 2, 0, 0], tile: 2 },
-      { geometry: new CylinderGeometry(0.1, 0.1, 0.03, 12), position: [-0.42, 1.0, 1.85], rotation: [Math.PI / 2, 0, 0], tile: 0 },
-      { geometry: new CylinderGeometry(0.1, 0.1, 0.03, 12), position: [0.42, 1.0, 1.85], rotation: [Math.PI / 2, 0, 0], tile: 0 },
-      // Bloque de motor, radiador y escapes.
-      { geometry: chamferBox(0.66, 0.44, 0.62, 0.04), position: [0, 0.99, -1.5], tile: 2 },
-      ...ribParts([0, 0.99, -1.72], [0, 1, 0], 5, 0.09, [0.62, 0.04, 0.16], 1),
-      createTubePart([-0.28, 0.78, -1.62], [-0.34, 0.72, -1.95], 0.05, 10, 2),
-      createTubePart([0.28, 0.78, -1.62], [0.34, 0.72, -1.95], 0.05, 10, 2),
-      // Paneles remendados: chapas superpuestas fuera de escuadra.
-      { geometry: panel(0.05, 0.36, 0.72), position: [-0.84, 0.86, 0.34], rotation: [0, 0, 0.06], tile: 3 },
-      { geometry: panel(0.05, 0.3, 0.58), position: [0.84, 0.9, -0.28], rotation: [0, 0, -0.05], tile: 1 },
-      { geometry: panel(0.42, 0.05, 0.5), position: [0.3, 1.02, 1.2], rotation: [0.04, 0, 0.03], tile: 3 },
-      // Tablero: bisel de instrumentos, columna y volante.
-      { geometry: chamferBox(0.44, 0.16, 0.2, 0.03), position: [-0.38, 1.26, 0.36], rotation: [-0.42, 0, 0], tile: 2 },
-      createTubePart([-0.38, 1.2, 0.42], [-0.38, 1.0, 0.16], 0.035, 8, 2),
-      ...steeringWheelParts([-0.38, 1.22, 0.4], 0.19, 12, 2),
-      // Bidón de repuesto y caja de herramientas en la cubierta trasera.
-      { geometry: new CylinderGeometry(0.16, 0.16, 0.44, 12), position: [-0.46, 1.32, -1.12], rotation: [0, 0, Math.PI / 2], tile: 3 },
-      { geometry: chamferBox(0.42, 0.22, 0.32, 0.03), position: [0.42, 1.29, -1.12], tile: 1 },
-      // Remaches sobre las costuras de chapa.
-      { geometry: rivetRow([-0.82, 1.02, -0.28], [-0.82, 1.02, 0.98], 9, 0.018, "x"), tile: 1 },
-      { geometry: rivetRow([0.82, 1.02, -0.28], [0.82, 1.02, 0.98], 9, 0.018, "x"), tile: 1 },
-      { geometry: rivetRow([-0.68, 1.2, 1.62], [0.68, 1.2, 1.62], 10, 0.018, "z"), tile: 1 },
-      { geometry: rivetRow([-0.68, 0.68, 1.72], [0.68, 0.68, 1.72], 10, 0.018, "z"), tile: 1 },
-      { geometry: rivetRow([-0.7, 1.18, -1.6], [0.7, 1.18, -1.6], 9, 0.018, "y"), tile: 1 },
+      // Parrilla y faros en la trompa. El marco va del color de la carrocería:
+      // con el marco oscuro toda la trompa se leía como un bloque negro.
+      { geometry: chamferBox(0.72, 0.3, 0.07, 0.02), position: [0, 0.92, 1.84], tile: 0 },
+      ...ribParts([0, 0.92, 1.87], [1, 0, 0], 5, 0.13, [0.045, 0.24, 0.05], 3),
+      { geometry: new CylinderGeometry(0.11, 0.11, 0.18, 12), position: [-0.35, 1.05, 1.8], rotation: [Math.PI / 2, 0, 0], tile: 2 },
+      { geometry: new CylinderGeometry(0.11, 0.11, 0.18, 12), position: [0.35, 1.05, 1.8], rotation: [Math.PI / 2, 0, 0], tile: 2 },
+      { geometry: new CylinderGeometry(0.085, 0.085, 0.04, 12), position: [-0.35, 1.05, 1.89], rotation: [Math.PI / 2, 0, 0], tile: 0 },
+      { geometry: new CylinderGeometry(0.085, 0.085, 0.04, 12), position: [0.35, 1.05, 1.89], rotation: [Math.PI / 2, 0, 0], tile: 0 },
+      // Persianas de ventilación del capó.
+      ...ribParts([0, 1.19, 1.45], [0, 0, 1], 4, 0.12, [0.46, 0.04, 0.06], 2),
+      // Chapas remendadas en los flancos, fuera de escuadra.
+      { geometry: panel(0.06, 0.42, 0.88), position: [-0.8, 1.0, 0.76], rotation: [0, 0, 0.05], tile: 1 },
+      { geometry: panel(0.06, 0.36, 0.72), position: [0.8, 1.04, 0.62], rotation: [0, 0, -0.04], tile: 1 },
+      // Remaches sobre las costuras del capó y del mamparo.
+      { geometry: rivetRow([-0.56, 1.17, 0.5], [-0.45, 1.15, 1.76], 9, 0.016, "y"), tile: 2 },
+      { geometry: rivetRow([0.56, 1.17, 0.5], [0.45, 1.15, 1.76], 9, 0.016, "y"), tile: 2 },
+      { geometry: rivetRow([-0.42, 1.13, 1.89], [0.42, 1.13, 1.89], 8, 0.016, "z"), tile: 2 },
+      { geometry: rivetRow([-0.66, 1.18, -0.76], [0.66, 1.18, -0.76], 9, 0.016, "z"), tile: 2 },
+      // Motor a la vista sobre la cubierta trasera.
+      { geometry: chamferBox(0.82, 0.42, 0.62, 0.04), position: [0, 1.34, -1.28], tile: 2 },
+      ...ribParts([0, 1.56, -1.28], [1, 0, 0], 4, 0.19, [0.09, 0.06, 0.5], 2),
+      ...[-0.27, -0.09, 0.09, 0.27].map((x) => ({
+        geometry: new CylinderGeometry(0.05, 0.065, 0.14, 10),
+        position: [x, 1.62, -1.14] as Vec3,
+        tile: 2 as AtlasTile,
+      })),
+      // Escapes, tanque auxiliar y bidón atado a la cubierta.
+      createTubePart([-0.3, 1.16, -1.5], [-0.36, 1.52, -1.9], 0.05, 10, 2),
+      createTubePart([0.3, 1.16, -1.5], [0.36, 1.52, -1.9], 0.05, 10, 2),
+      { geometry: new CylinderGeometry(0.15, 0.15, 0.44, 12), position: [-0.56, 1.36, -1.5], tile: 1 },
+      { geometry: chamferBox(0.32, 0.38, 0.18, 0.03), position: [0.56, 1.34, -1.5], tile: 1 },
+      // Tablero del conductor: bisel, relojes, columna y volante. El bisel va
+      // chico y por detrás del aro, si no tapa el volante desde la butaca.
+      { geometry: chamferBox(0.36, 0.13, 0.17, 0.03), position: [driverX, 1.37, 0.56], rotation: [-0.38, 0, 0], tile: 2 },
+      { geometry: new CylinderGeometry(0.06, 0.06, 0.04, 12), position: [driverX - 0.09, 1.39, 0.49], rotation: [Math.PI / 2 - 0.38, 0, 0], tile: 3 },
+      { geometry: new CylinderGeometry(0.06, 0.06, 0.04, 12), position: [driverX + 0.09, 1.39, 0.49], rotation: [Math.PI / 2 - 0.38, 0, 0], tile: 3 },
+      createTubePart([driverX, 1.26, 0.4], [driverX, 0.98, 0.62], 0.032, 8, 2),
+      ...groupParts(steeringWheelParts([0, 0, 0], 0.175, 12, 2), {
+        position: [driverX, 1.3, 0.34],
+        rotation: [0.42, 0, 0],
+      }),
+      // Palanca de cambios y freno de mano entre las butacas.
+      createTubePart([0.08, 0.84, -0.06], [0.12, 1.1, 0.02], 0.028, 8, 2),
+      { geometry: new SphereGeometry(0.045, 8, 6), position: [0.12, 1.12, 0.02], tile: 3 },
+      createTubePart([-0.08, 0.82, 0], [-0.14, 1.0, 0.2], 0.026, 8, 2),
     );
   }
 
-  // Guardabarros y suspensión visible por rueda.
-  const wheelSpots: readonly Vec3[] = [
-    [-1, 0.52, 1.08],
-    [1, 0.52, 1.08],
-    [-1, 0.52, -1.12],
-    [1, 0.52, -1.12],
-  ];
+  // Guardabarros y suspensión a la vista. El guardabarros va fijo al chasis
+  // mientras la rueda oscila, así que se dibuja a media carrera; el radio deja
+  // pasar la compresión completa sin tocar el taco del neumático.
+  const guardY = restY + 0.16;
+  const hubY = restY + 0.12;
   if (lod < 2) {
-    for (const [x, y, z] of wheelSpots) {
-      bodyParts.push(
-        ...fenderParts(
-          [x * 0.94, y, z],
-          0.62,
-          0.42,
-          detailed ? 7 : 4,
-          1,
-        ),
-      );
-      if (detailed) {
-        const inner = Math.sign(x) * 0.72;
+    for (const side of [-1, 1] as const) {
+      for (const z of [halfLength, -halfLength] as const) {
+        const x = side * halfWidth;
         bodyParts.push(
-          // Trapecio y amortiguador.
-          createTubePart([inner, y - 0.04, z], [x * 0.96, y - 0.02, z], 0.045, 8, 2),
-          createTubePart([inner, y + 0.22, z + 0.1], [x * 0.94, y + 0.06, z], 0.036, 8, 2),
-          createTubePart([inner + Math.sign(x) * 0.06, y + 0.52, z], [x * 0.94, y + 0.04, z], 0.05, 10, 3),
-          { geometry: new CylinderGeometry(0.07, 0.07, 0.2, 10), position: [x * 0.86, y + 0.3, z], rotation: [0, 0, Math.sign(x) * 0.34], tile: 1 },
+          ...fenderParts(
+            [side * 1.02, guardY, z],
+            0.64,
+            0.46,
+            detailed ? 6 : 4,
+            1,
+            [0.72, 2.42],
+          ),
+          // Soportes al larguero: sin ellos el guardabarros flota sobre la rueda.
+          createTubePart([side * 0.8, 0.88, z - 0.24], [side * 0.72, 0.72, z - 0.5], 0.03, 6, 2),
+          createTubePart([side * 0.8, 0.88, z + 0.24], [side * 0.72, 0.72, z + 0.5], 0.03, 6, 2),
+          createTubePart([side * 0.5, 0.54, z], [x * 0.9, hubY - 0.12, z], 0.05, 8, 2),
+          createTubePart([side * 0.44, 0.84, z], [x * 0.88, hubY + 0.13, z], 0.04, 8, 2),
         );
+        if (detailed) {
+          bodyParts.push(
+            ...coilOverParts(
+              [side * 0.72, 1.0, z * 0.8],
+              [x * 0.86, hubY + 0.06, z],
+              {
+                radius: 0.078,
+                coils: 6,
+                segments: 10,
+                springTile: 1,
+                bodyTile: 2,
+              },
+            ),
+            { geometry: new CylinderGeometry(0.09, 0.09, 0.14, 10), position: [x * 0.9, hubY, z], rotation: [0, 0, Math.PI / 2], tile: 2 },
+          );
+        }
       }
     }
   }
 
   createVisualNode(context, root, `buggy_body${suffix}`, bodyParts);
   const built = buildWheel({
-    radius: 0.43,
-    width: 0.34,
+    radius: BUGGY_WHEEL.radius,
+    width: 0.38,
     segments,
-    treadCount: detailed ? 16 : lod === 1 ? 8 : 0,
+    treadCount: detailed ? 18 : lod === 1 ? 10 : 0,
   });
   const wheelGeometry = mergeParts([
     { geometry: built.tire, tile: 3 },
@@ -644,10 +842,10 @@ function buildBuggyLod(
   );
   wheelGeometry.dispose();
   const wheelNodes: readonly [string, Vec3][] = [
-    ["wheel_front_left", [-1, 0.52, 1.08]],
-    ["wheel_front_right", [1, 0.52, 1.08]],
-    ["wheel_rear_left", [-1, 0.52, -1.12]],
-    ["wheel_rear_right", [1, 0.52, -1.12]],
+    ["wheel_front_left", [-halfWidth, restY, halfLength]],
+    ["wheel_front_right", [halfWidth, restY, halfLength]],
+    ["wheel_rear_left", [-halfWidth, restY, -halfLength]],
+    ["wheel_rear_right", [halfWidth, restY, -halfLength]],
   ];
   for (const [name, position] of wheelNodes) {
     createNode(context, root, `${name}${suffix}`, {
@@ -663,13 +861,13 @@ function buildBuggyLod(
 
   if (lod < 2) {
     const yawParts: GeometryPart[] = [
-      { geometry: new CylinderGeometry(0.3, 0.36, 0.14, segments), tile: 1 },
-      { geometry: new CylinderGeometry(0.22, 0.22, 0.16, segments), position: [0, 0.13, 0], tile: 2 },
+      { geometry: new CylinderGeometry(0.15, 0.19, 0.11, segments), tile: 2 },
+      { geometry: new CylinderGeometry(0.105, 0.105, 0.14, segments), position: [0, 0.08, 0], tile: 2 },
     ];
     if (detailed) {
       yawParts.push(
-        ...ribParts([0, 0.02, 0], [0, 1, 0], 3, 0.05, [0.74, 0.03, 0.74], 1),
-        { geometry: chamferBox(0.16, 0.2, 0.16, 0.03), position: [-0.26, 0.1, -0.16], tile: 3 },
+        { geometry: panel(0.05, 0.2, 0.22), position: [0.13, 0.08, 0.02], tile: 1 },
+        { geometry: panel(0.05, 0.2, 0.22), position: [-0.13, 0.08, 0.02], tile: 1 },
       );
     }
     const turretYaw = createVisualNode(
@@ -677,26 +875,29 @@ function buildBuggyLod(
       root,
       `turret_yaw${suffix}`,
       yawParts,
-      { position: [0, 1.02, 0.82], extras: { kind: "turret-yaw" } },
+      {
+        position: [BUGGY_GUN_X, BUGGY_GUN_Y, BUGGY_GUN_Z],
+        extras: { kind: "turret-yaw" },
+      },
     );
 
     const pitchParts: GeometryPart[] = [
-      // Cañón con manguito y freno de boca.
-      { geometry: new CylinderGeometry(0.075, 0.095, 1.5, segments), position: [0, 0, 0.72], rotation: [Math.PI / 2, 0, 0], tile: 2 },
-      { geometry: new CylinderGeometry(0.115, 0.115, 0.4, segments), position: [0, 0, 0.34], rotation: [Math.PI / 2, 0, 0], tile: 1 },
-      { geometry: chamferBox(0.36, 0.3, 0.46, 0.04), position: [0, 0, 0.14], tile: 1 },
+      // Recámara, camisa y freno de boca.
+      { geometry: chamferBox(0.28, 0.26, 0.44, 0.035), position: [0, 0, 0.1], tile: 2 },
+      { geometry: new CylinderGeometry(0.062, 0.075, 0.92, segments), position: [0, 0, 0.7], rotation: [Math.PI / 2, 0, 0], tile: 2 },
+      { geometry: new CylinderGeometry(0.088, 0.1, 0.16, segments), position: [0, 0, 1.22], rotation: [Math.PI / 2, 0, 0], tile: 2 },
     ];
     if (detailed) {
       pitchParts.push(
-        { geometry: new CylinderGeometry(0.11, 0.13, 0.16, segments), position: [0, 0, 1.44], rotation: [Math.PI / 2, 0, 0], tile: 2 },
-        // Anillos disipadores a lo largo del cañón.
-        ...[0.6, 0.85, 1.1].map((z) => ({
-          geometry: new CylinderGeometry(0.105, 0.105, 0.045, segments),
+        // Bobinas de inducción: el cobre es lo que lo separa de una ametralladora.
+        ...[0.82, 0.94, 1.06].map((z) => ({
+          geometry: new TorusGeometry(0.09, 0.026, 6, segments),
           position: [0, 0, z] as Vec3,
-          rotation: [Math.PI / 2, 0, 0] as Euler,
           tile: 1 as AtlasTile,
         })),
-        { geometry: chamferBox(0.2, 0.16, 0.3, 0.03), position: [0.24, 0.02, 0.06], tile: 3 },
+        { geometry: chamferBox(0.16, 0.2, 0.28, 0.03), position: [-0.2, -0.02, 0.04], tile: 1 },
+        { geometry: chamferBox(0.06, 0.1, 0.16, 0.02), position: [0, 0.18, 0.28], tile: 2 },
+        createTubePart([0, -0.06, -0.16], [0, -0.24, -0.3], 0.026, 8, 2),
       );
     }
     createVisualNode(
@@ -722,60 +923,72 @@ function buildBuggy(context: BuildContext): void {
     buildBuggyLod(context, root, lod);
   }
 
-  createAnchor(context, "seat_driver", [-0.38, 1.22, -0.16], "seat", {
+  // El puesto de manejo va en +X, la izquierda del vehículo.
+  createAnchor(context, "seat_driver", [BUGGY_DRIVER_X, 1.22, -0.2], "seat", {
     role: "driver",
   });
-  createAnchor(context, "seat_gunner", [0.38, 1.22, -0.16], "seat", {
+  createAnchor(context, "seat_gunner", [-BUGGY_DRIVER_X, 1.22, -0.2], "seat", {
     role: "gunner",
   });
   createAnchor(
     context,
     "camera_driver",
-    [-0.38, 1.62, -0.06],
+    [BUGGY_DRIVER_X, 1.66, -0.14],
     "camera",
     { role: "driver", fov: 76 },
     true,
   );
   // El artillero comparte el habitáculo: sin ancla propia, cambiar de asiento
-  // saltaba al rig procedural, que tiene otra disposición.
+  // saltaba al rig procedural, que tiene otra disposición. Va incorporado
+  // detrás de la recámara: sentado a la altura del conductor miraría por debajo
+  // del cañón y el pedestal le taparía media pantalla.
   createAnchor(
     context,
     "camera_gunner",
-    [0.38, 1.62, -0.06],
+    [BUGGY_GUN_X + 0.32, BUGGY_GUN_Y + 0.04, BUGGY_GUN_Z - 0.82],
     "camera",
     { role: "gunner", fov: 76 },
     true,
   );
-  createAnchor(context, "exit_left", [-1.35, 0.8, -0.2], "exit", {
+  createAnchor(context, "exit_left", [1.4, 0.8, -0.2], "exit", {
     seat: "seat_driver",
   });
-  createAnchor(context, "exit_right", [1.35, 0.8, -0.2], "exit", {
+  createAnchor(context, "exit_right", [-1.4, 0.8, -0.2], "exit", {
     seat: "seat_gunner",
   });
-  createAnchor(context, "muzzle", [0, 1.12, 2.27], "muzzle", {
-    weapon: "induction-cannon",
-  });
-  createAnchor(context, "audio_engine", [0, 0.95, -1.35], "audio", {
+  // Punta del freno de boca con el cañón en reposo: `VehicleVisual` cuelga el
+  // ancla del nodo de elevación, así que de acá en más sigue al arma.
+  createAnchor(
+    context,
+    "muzzle",
+    [BUGGY_GUN_X, BUGGY_GUN_Y, BUGGY_GUN_Z + BUGGY_GUN_REACH],
+    "muzzle",
+    { weapon: "induction-cannon" },
+  );
+  createAnchor(context, "audio_engine", [0, 1.2, -1.3], "audio", {
     layer: "engine",
   });
-  createAnchor(context, "audio_transmission", [0, 0.65, 0], "audio", {
+  createAnchor(context, "audio_transmission", [0, 0.62, -0.1], "audio", {
     layer: "transmission",
   });
-  createAnchor(context, "damage_engine", [0, 0.95, -1.3], "damage", {
+  createAnchor(context, "damage_engine", [0, 1.15, -1.3], "damage", {
     component: "engine",
-    halfExtents: [0.55, 0.4, 0.5],
+    halfExtents: [0.55, 0.45, 0.55],
   });
-  createAnchor(context, "damage_steering", [0, 0.65, 0.9], "damage", {
+  createAnchor(context, "damage_steering", [BUGGY_DRIVER_X, 1.1, 0.4], "damage", {
     component: "steering",
-    halfExtents: [0.75, 0.25, 0.4],
+    halfExtents: [0.4, 0.35, 0.4],
   });
-  createAnchor(context, "damage_weapon", [0, 1.25, 0.9], "damage", {
-    component: "weapon",
-    halfExtents: [0.3, 0.3, 0.8],
-  });
-  createAnchor(context, "damage_fuel", [0, 0.92, -0.88], "damage", {
+  createAnchor(
+    context,
+    "damage_weapon",
+    [BUGGY_GUN_X, BUGGY_GUN_Y - 0.1, BUGGY_GUN_Z + 0.5],
+    "damage",
+    { component: "weapon", halfExtents: [0.25, 0.35, 0.8] },
+  );
+  createAnchor(context, "damage_fuel", [-0.56, 1.36, -1.5], "damage", {
     component: "fuel",
-    halfExtents: [0.5, 0.35, 0.35],
+    halfExtents: [0.3, 0.3, 0.3],
   });
   const wreckage = createNode(context, context.sceneRoot, "wreckage", {
     extras: { kind: "wreckage", hiddenByDefault: true },

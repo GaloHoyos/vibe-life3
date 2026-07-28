@@ -8,8 +8,12 @@ import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast, RaycastSource } from "@engine/physics/Raycast";
 import type { CameraSystem } from "@engine/render/CameraSystem";
 import type { VfxSystem } from "@engine/render/effects/VfxSystem";
-import type { VehicleControlInput } from "@engine/physics/vehicle";
+import {
+  VehicleDriverInputModel,
+  type VehicleControlInput,
+} from "@engine/physics/vehicle";
 import { VehicleAssetRegistry } from "@game/assets/vehicles/VehicleAssetRegistry";
+import { vehicleTopSpeed } from "@game/config/vehicles.config";
 import type { GameEventBus } from "@game/GameEvents";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { Player } from "@game/gameplay/player/Player";
@@ -108,6 +112,7 @@ export class VehicleSystem {
     }
   >();
   private player: Player | null = null;
+  private readonly driverInput = new VehicleDriverInputModel();
   private mountedVehicle: VehicleEntity | null = null;
   private mountedOccupant: VehicleOccupant | null = null;
   private currentLevel: LevelDefinition | null = null;
@@ -230,12 +235,13 @@ export class VehicleSystem {
         continue;
       }
 
-      if (
-        acceptPlayerInput &&
-        (this.mountedOccupant.role === "driver" ||
-          (this.mountedOccupant.role === "pilot" && !vehicle.isOnRails()))
-      ) {
-        vehicle.setControl(this.readPlayerControl(vehicle));
+      // El piloto de un vehículo sobre riel también manda: el trazado define
+      // el recorrido, pero la velocidad y el corredor lateral son suyos.
+      const atTheControls =
+        this.mountedOccupant.role === "driver" ||
+        this.mountedOccupant.role === "pilot";
+      if (acceptPlayerInput && atTheControls) {
+        vehicle.setControl(this.readPlayerControl(vehicle, delta));
       } else if (!vehicle.isOnRails()) {
         vehicle.setControl(PARKED_CONTROL);
       }
@@ -829,20 +835,22 @@ export class VehicleSystem {
     return best ? { id: best.id, position: best.position } : null;
   }
 
-  private readPlayerControl(vehicle: VehicleEntity): VehicleControlInput {
-    const forward = this.controls.isDown("moveForward") ? 1 : 0;
-    const back = this.controls.isDown("moveBack") ? 1 : 0;
-    const signedSpeed = vehicle.getTelemetry().forwardSpeed;
-    const wantsReverse = back > 0 && signedSpeed < 1.1;
-    return {
-      throttle: forward - (wantsReverse ? back : 0),
-      steering:
-        (this.controls.isDown("moveRight") ? 1 : 0) -
-        (this.controls.isDown("moveLeft") ? 1 : 0),
-      brake: back > 0 && !wantsReverse ? 1 : 0,
-      handbrake: this.controls.isDown("jump") ? 1 : 0,
-      boost: this.controls.isDown("sprint"),
-    };
+  private readPlayerControl(
+    vehicle: VehicleEntity,
+    delta: number,
+  ): VehicleControlInput {
+    return this.driverInput.update(
+      {
+        forward: this.controls.isDown("moveForward"),
+        back: this.controls.isDown("moveBack"),
+        left: this.controls.isDown("moveLeft"),
+        right: this.controls.isDown("moveRight"),
+        handbrake: this.controls.isDown("vehicleHandbrake"),
+        boost: this.controls.isDown("sprint"),
+      },
+      vehicle.getTelemetry().forwardSpeed,
+      delta,
+    );
   }
 
   private registerVehicleInteraction(vehicle: VehicleEntity): void {
@@ -885,6 +893,9 @@ export class VehicleSystem {
       return false;
     }
 
+    // Sin esto el acelerador y el volante del vehículo anterior arrancan
+    // aplicados en el próximo.
+    this.driverInput.reset();
     this.mountedVehicle = vehicle;
     this.mountedOccupant = occupant;
     this.player.mountVehicle(vehicle.id);
@@ -1401,6 +1412,8 @@ export class VehicleSystem {
       archetype: vehicle.preset.archetype,
       speed: telemetry.speed,
       forwardSpeed: telemetry.forwardSpeed,
+      topSpeed: vehicleTopSpeed(vehicle.preset),
+      handbrake: vehicle.isHandbrakeApplied(),
       hull: hull.current,
       hullMax: hull.max,
       components: vehicle.damage.getComponents(),

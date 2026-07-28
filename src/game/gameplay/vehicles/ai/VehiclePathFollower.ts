@@ -113,7 +113,10 @@ export class VehiclePathFollower {
     const curvature = (2 * Math.sin(alpha)) / Math.max(0.5, lookAhead);
     const steeringAngle = Math.atan(this.profile.wheelbase * curvature);
     const steeringDenominator = Math.max(0.05, this.profile.maxSteeringAngle);
-    let steering = clamp(steeringAngle / steeringDenominator, -1, 1);
+    // `alpha > 0` significa que el objetivo quedó hacia +X, que es la IZQUIERDA
+    // (la derecha del proyecto es `forward × up` = -X). Sin el signo la IA
+    // mandaba doblar para el lado opuesto al de su propio camino.
+    let steering = -clamp(steeringAngle / steeringDenominator, -1, 1);
     if (direction === 'reverse') steering *= -1;
 
     const targetSpeedLimit = target.speedLimit ?? this.profile.maxSpeed;

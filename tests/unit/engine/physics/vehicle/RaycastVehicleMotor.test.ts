@@ -15,10 +15,12 @@ describe("RaycastVehicleMotor", () => {
   it("aplica tracción, suspensión y telemetría mediante los hooks fijos", async () => {
     const physics = new PhysicsWorld();
     await physics.init();
+    // Piso amplio: con la tracción sana el buggy alcanza su tope de 30 m/s y
+    // recorre ~60 m en los 3 s de la prueba.
     physics.createStaticBox({
       id: "floor",
       position: new Vector3(0, -0.5, 0),
-      size: new Vector3(100, 1, 100),
+      size: new Vector3(400, 1, 400),
     });
     const body = physics.createDynamicBox(
       {

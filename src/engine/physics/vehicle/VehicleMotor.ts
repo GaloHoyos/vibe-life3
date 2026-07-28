@@ -9,7 +9,15 @@ import type { Disposable } from "@shared/types/lifecycle";
 export interface VehicleControlInput {
   /** -1 = reverse, 0 = neutral, 1 = full forward throttle. */
   throttle: number;
-  /** -1 = left, 0 = centered, 1 = right. */
+  /**
+   * -1 = left, 0 = centered, 1 = right.
+   *
+   * "Right" is the project's right: `forward × up`, which with +Z forward and
+   * +Y up is **-X**, not +X. Turning right therefore *decreases*
+   * `atan2(forward.x, forward.z)`. Cada sitio que traducía esto por su cuenta
+   * lo tenía al revés, así que la convención se verifica en
+   * `tests/unit/game/gameplay/vehicles/VehicleSteering.test.ts`.
+   */
   steering: number;
   /** Service brake in the 0..1 range. */
   brake: number;

@@ -19,11 +19,24 @@ export type VehicleMotorPreset =
       kind: 'raycast';
       engineForce: number;
       reverseForce: number;
+      /** Impulso de freno por rueda y por paso fijo, en N·s. */
       brakeForce: number;
       handbrakeForce: number;
+      /** Freno motor al soltar el acelerador, en N·s por rueda. */
+      autoBrakeForce: number;
+      /** Agarre lateral que le queda al tren de mano al tirar del freno, 0..1. */
+      handbrakeSideFriction: number;
       maxSteeringAngle: number;
       steeringFadeSpeed: number;
+      /** Curva de dirección: 1 lineal, >1 suaviza las correcciones chicas. */
+      steeringExponent: number;
       boostMultiplier: number;
+      /** Gravedad extra como múltiplo de la normal, para que no despegue. */
+      extraGravity: number;
+      /** Techo de velocidad angular, en rad/s. */
+      maxAngularVelocity: number;
+      /** Par que endereza el chasis en el aire, en N·m por radián. */
+      uprightTorque: number;
       suspensionRestLength: number;
       suspensionTravel: number;
       suspensionStiffness: number;
@@ -35,11 +48,32 @@ export type VehicleMotorPreset =
       kind: 'hover';
       thrustForce: number;
       reverseForce: number;
+      /** Par de guiñada disponible sin acelerador, para maniobrar parado. */
       steeringTorque: number;
+      /** Desviación máxima del empuje a tope de timón, en radianes. */
+      rudderAngle: number;
+      /** Punto de aplicación del empuje en espacio local: la popa. */
+      thrustPoint: VectorTuple;
+      /**
+       * Centro de resistencia lateral. Va por DETRÁS del centro de masa: es lo
+       * que orienta el casco hacia donde viaja, igual que las plumas de una
+       * flecha. Por delante haría exactamente lo contrario.
+       */
+      lateralDragPoint: VectorTuple;
+      /** Fracción del empuje disponible con el casco varado. */
+      landThrustFactor: number;
       planingSpeed: number;
       buoyancy: number;
+      /**
+       * Arrastres expresados como tasa por segundo: el motor los multiplica por
+       * la masa, así el manejo no cambia si se retoca el peso del casco.
+       */
       waterDrag: number;
       lateralDrag: number;
+      /** Amortiguación de guiñada, también relativa a la masa. */
+      yawDamping: number;
+      /** Multiplicador de arrastre con el freno de agua puesto. */
+      waterBrakeDrag: number;
       groundDrag: number;
       probeOffsets: readonly VectorTuple[];
     }
@@ -50,6 +84,13 @@ export type VehicleMotorPreset =
       braking: number;
       maxBank: number;
       lookAhead: number;
+      /** Múltiplo del crucero alcanzable a fondo de acelerador. */
+      throttleBoostFactor: number;
+      /** Fracción del crucero disponible yendo marcha atrás por el trazado. */
+      reverseFactor: number;
+      /** Cuánto puede apartarse el piloto del trazado, en metros. */
+      lateralRange: number;
+      lateralResponse: number;
     };
 
 export interface VehicleSeatPreset {
@@ -92,6 +133,8 @@ export interface VehiclePresetDefinition {
     colliderCenter: VectorTuple;
     centerOfMass: VectorTuple;
     mass: number;
+    /** Rozamiento del casco contra el mundo. */
+    hullFriction: number;
   };
   camera: {
     enterBlendSeconds: number;
@@ -137,40 +180,49 @@ export const VehiclePresets = {
       kind: 'raycast',
       engineForce: 2350,
       reverseForce: 1450,
-      brakeForce: 115,
-      handbrakeForce: 180,
+      brakeForce: 75,
+      handbrakeForce: 130,
+      autoBrakeForce: 14,
+      handbrakeSideFriction: 0.32,
       maxSteeringAngle: 0.52,
       steeringFadeSpeed: 28,
+      steeringExponent: 1.4,
       boostMultiplier: 1.45,
+      extraGravity: 0.3,
+      maxAngularVelocity: 5,
+      uprightTorque: 3500,
       suspensionRestLength: 0.36,
       suspensionTravel: 0.24,
       suspensionStiffness: 32,
       suspensionCompression: 4.4,
       suspensionRelaxation: 5.2,
-      tireFriction: 2.4,
+      tireFriction: 1.5,
     },
     body: {
       size: [2.15, 1.35, 3.8],
       colliderCenter: [0, 0.75, 0],
       centerOfMass: [0, -0.38, 0.1],
       mass: 920,
+      hullFriction: 0.92,
     },
     camera: groundCamera,
     seats: [
+      // Puesto de manejo en +X: la derecha del vehículo es −X, así que el
+      // volante va a la izquierda y el cañón queda del lado del artillero.
       {
         id: 'driver',
         role: 'driver',
-        position: [-0.42, 1.05, 0.15],
-        cameraPosition: [-0.42, 1.42, 0.15],
-        exits: [[-1.45, 0.25, 0.15], [1.45, 0.25, 0.15], [0, 0.25, 2.25]],
+        position: [0.42, 1.05, 0.15],
+        cameraPosition: [0.42, 1.42, 0.15],
+        exits: [[1.45, 0.25, 0.15], [-1.45, 0.25, 0.15], [0, 0.25, 2.25]],
         internalLinks: ['gunner'],
       },
       {
         id: 'gunner',
         role: 'gunner',
-        position: [0.42, 1.05, 0.15],
-        cameraPosition: [0.42, 1.42, 0.15],
-        exits: [[1.45, 0.25, 0.15], [-1.45, 0.25, 0.15]],
+        position: [-0.42, 1.05, 0.15],
+        cameraPosition: [-0.42, 1.42, 0.15],
+        exits: [[-1.45, 0.25, 0.15], [1.45, 0.25, 0.15]],
         internalLinks: ['driver'],
         canUseWeapon: true,
       },
@@ -209,14 +261,20 @@ export const VehiclePresets = {
     defaultFaction: 'resistance',
     motor: {
       kind: 'hover',
-      thrustForce: 3100,
-      reverseForce: 950,
-      steeringTorque: 2150,
+      thrustForce: 4200,
+      reverseForce: 1150,
+      steeringTorque: 620,
+      rudderAngle: 0.6,
+      thrustPoint: [0, 0.35, -1.9],
+      lateralDragPoint: [0, 0, -1.6],
+      landThrustFactor: 1,
       planingSpeed: 10,
       buoyancy: 1.18,
-      waterDrag: 1.5,
-      lateralDrag: 5.5,
-      groundDrag: 3.8,
+      waterDrag: 0.12,
+      lateralDrag: 0.7,
+      yawDamping: 2.6,
+      waterBrakeDrag: 4,
+      groundDrag: 0.35,
       probeOffsets: [
         [-0.72, -0.25, 1.25],
         [0.72, -0.25, 1.25],
@@ -230,6 +288,8 @@ export const VehiclePresets = {
       colliderCenter: [0, 0.55, 0],
       centerOfMass: [0, -0.32, -0.1],
       mass: 780,
+      // Un casco liso varado tiene que poder arrastrarse de vuelta al agua.
+      hullFriction: 0.12,
     },
     camera: { ...groundCamera, speedFovGain: 10, positionDamping: 10 },
     seats: [
@@ -281,12 +341,17 @@ export const VehiclePresets = {
       braking: 7,
       maxBank: 0.38,
       lookAhead: 8,
+      throttleBoostFactor: 1.7,
+      reverseFactor: 0.4,
+      lateralRange: 7,
+      lateralResponse: 2.6,
     },
     body: {
       size: [3.4, 2.8, 9.2],
       colliderCenter: [0, 1.25, 0.1],
       centerOfMass: [0, -0.25, 0.15],
       mass: 2850,
+      hullFriction: 0.85,
     },
     camera: {
       enterBlendSeconds: 0.5,
@@ -360,4 +425,20 @@ export const VehiclePresets = {
 
 export function isVehiclePresetId(value: string): value is VehiclePresetId {
   return Object.prototype.hasOwnProperty.call(VehiclePresets, value);
+}
+
+/**
+ * Velocidad punta aproximada en m/s. La usan tanto la IA para planificar como
+ * el HUD para escalar el velocímetro: si cada uno la dedujera por su cuenta el
+ * indicador terminaría desfasado del comportamiento real.
+ */
+export function vehicleTopSpeed(preset: VehiclePresetDefinition): number {
+  switch (preset.motor.kind) {
+    case 'raycast':
+      return Math.max(18, preset.motor.steeringFadeSpeed * 1.25);
+    case 'hover':
+      return Math.max(18, preset.motor.planingSpeed * 2.25);
+    case 'onRails':
+      return preset.motor.cruiseSpeed * preset.motor.throttleBoostFactor;
+  }
 }

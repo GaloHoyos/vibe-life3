@@ -8,6 +8,16 @@ export interface ActionInput<TAction extends string> {
 export type BindingMap<TAction extends string> = Record<TAction, readonly string[]>;
 
 /**
+ * Contexto en el que una acción puede dispararse. Dos acciones de contextos
+ * distintos nunca están activas a la vez, así que pueden compartir tecla.
+ */
+export type BindingContextMap<TAction extends string> = Partial<
+  Record<TAction, string>
+>;
+
+const DEFAULT_CONTEXT = "default";
+
+/**
  * Indirección entre acciones del juego y `KeyboardEvent.code`. Una acción
  * puede tener N teclas asociadas (ej. `["ShiftLeft", "ShiftRight"]` para
  * sprint). Las consultas iteran y usan `Input` como fuente de verdad de
@@ -15,16 +25,21 @@ export type BindingMap<TAction extends string> = Record<TAction, readonly string
  *
  * `setBinding` evicta el mismo código de otras acciones para evitar que
  * la misma tecla dispare dos acciones simultáneamente — comportamiento
- * estándar en menús de controles tipo Half-Life 2.
+ * estándar en menús de controles tipo Half-Life 2. La excepción son las
+ * acciones de otro contexto: saltar y el freno de mano comparten Espacio
+ * porque nunca se puede estar a pie y conduciendo al mismo tiempo.
  */
 export class KeyBindings<TAction extends string> implements ActionInput<TAction> {
   private readonly bindings = new Map<TAction, string[]>();
+  private readonly contexts: BindingContextMap<TAction>;
   private readonly listeners = new Set<(action: TAction) => void>();
 
   constructor(
     private readonly input: Input,
     defaults: BindingMap<TAction>,
+    contexts: BindingContextMap<TAction> = {},
   ) {
+    this.contexts = contexts;
     for (const action of Object.keys(defaults) as TAction[]) {
       this.bindings.set(action, [...defaults[action]]);
     }
@@ -50,9 +65,11 @@ export class KeyBindings<TAction extends string> implements ActionInput<TAction>
 
   setBinding(action: TAction, codes: readonly string[]): void {
     const evicted = new Set<TAction>();
+    const context = this.contexts[action] ?? DEFAULT_CONTEXT;
     for (const code of codes) {
       for (const other of this.bindings.keys()) {
         if (other === action) continue;
+        if ((this.contexts[other] ?? DEFAULT_CONTEXT) !== context) continue;
         const otherCodes = this.bindings.get(other);
         if (!otherCodes) continue;
         const idx = otherCodes.indexOf(code);

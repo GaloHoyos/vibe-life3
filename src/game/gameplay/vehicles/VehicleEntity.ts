@@ -96,6 +96,8 @@ const TMP_POSITION = new Vector3();
 const TMP_QUATERNION = new Quaternion();
 const TMP_FORWARD = new Vector3();
 const TMP_WORLD = new Vector3();
+/** Igual a la gravedad de `PhysicsWorld`; dimensiona el peso de reposo. */
+const GRAVITY_MAGNITUDE = 20.5;
 
 export class VehicleEntity {
   readonly id: string;
@@ -122,11 +124,19 @@ export class VehicleEntity {
   private lightsOn = false;
   private weaponEnabled: boolean;
   private boost = 1;
+  private handbrakeApplied = false;
   private crashing = false;
   private wreckage = false;
   private disposed = false;
   private lastImpactAt = -Infinity;
   private elapsed = 0;
+  /**
+   * Un casco apoyado transmite su propio peso por el contacto: el airboat en
+   * tierra son ~16 kN, muy por encima del umbral fijo anterior de 14 kN, así que
+   * se "chocaba" solo cada 0.18 s y lastimaba a quien iba a bordo. El umbral
+   * tiene que ser relativo al peso del vehículo.
+   */
+  private readonly impactForceThreshold: number;
 
   constructor(
     private readonly physics: PhysicsWorld,
@@ -148,6 +158,10 @@ export class VehicleEntity {
     this.locked = definition.startLocked ?? false;
     this.engineOn = definition.engineOn ?? true;
     this.weaponEnabled = definition.weaponEnabled ?? Boolean(this.preset.weapon);
+    this.impactForceThreshold = Math.max(
+      14_000,
+      this.preset.body.mass * GRAVITY_MAGNITUDE * 2.2,
+    );
 
     this.damage = new VehicleDamageModel(
       this.preset.archetype,
@@ -230,6 +244,10 @@ export class VehicleEntity {
     return { key: this.id, name: this.name };
   }
 
+  isHandbrakeApplied(): boolean {
+    return this.handbrakeApplied;
+  }
+
   setControl(input: Readonly<VehicleControlInput>): void {
     if (
       !this.enabled ||
@@ -237,12 +255,14 @@ export class VehicleEntity {
       this.wreckage ||
       this.damage.getState() === "disabled"
     ) {
+      this.handbrakeApplied = false;
       this.motor.setControl(NEUTRAL_CONTROL);
       return;
     }
     const engine = this.damage.getZoneFraction("engine");
     const steering = this.damage.getZoneFraction("steering");
     const canBoost = input.boost && this.boost > 0.04;
+    this.handbrakeApplied = input.handbrake > 0.5;
     this.motor.setControl({
       throttle: input.throttle * MathUtils.lerp(0.28, 1, engine),
       steering: input.steering * MathUtils.lerp(0.3, 1, steering),
@@ -292,17 +312,16 @@ export class VehicleEntity {
       speed: telemetry.speed,
       steering: telemetry.steering,
       wheelRotation,
-      suspension: telemetry.wheels.map((wheel, index) => {
-        const wheelPreset =
+      // Recorrido de suspensión EN METROS respecto de la extensión total. El
+      // visual lo suma a la posición de reposo de la rueda, así la rueda dibujada
+      // queda donde el raycast la apoya; con un valor normalizado y escalado a
+      // ojo el chasis quedaba flotando sobre el piso.
+      suspension: telemetry.wheels.map((wheel) => {
+        const restLength =
           this.preset.motor.kind === "raycast"
             ? this.preset.motor.suspensionRestLength
             : 0.35;
-        return MathUtils.clamp(
-          (wheelPreset - wheel.suspensionLength) /
-            Math.max(wheelPreset, 0.01),
-          -1,
-          1,
-        ) + index * 0;
+        return restLength - wheel.suspensionLength;
       }),
       engine01: this.engineOn
         ? MathUtils.clamp(telemetry.engineRpm / 6_500, 0.12, 1)
@@ -328,11 +347,13 @@ export class VehicleEntity {
     event: PhysicsContactForce,
     otherCollider: RAPIER.Collider | null,
   ): void {
-    if (this.wreckage || event.totalForceMagnitude < 14_000) return;
+    if (this.wreckage || event.totalForceMagnitude < this.impactForceThreshold) {
+      return;
+    }
     if (this.elapsed - this.lastImpactAt < 0.18) return;
     this.lastImpactAt = this.elapsed;
     const damage = MathUtils.clamp(
-      (event.totalForceMagnitude - 12_000) / 4_500,
+      (event.totalForceMagnitude - this.impactForceThreshold) / 4_500,
       2,
       85,
     );
@@ -843,10 +864,16 @@ export class VehicleEntity {
     )
       .setTranslation(center.x, center.y, center.z)
       .setDensity(0.001)
-      .setFriction(this.preset.archetype === "airboat" ? 0.45 : 0.92)
+      .setFriction(this.preset.body.hullFriction)
+      // `Min` en vez del promedio: el casco es el que manda. Si no, el rozamiento
+      // efectivo depende del material de cada nivel y un hidrodeslizador varado
+      // queda clavado en un mapa y se desliza en otro.
+      .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min)
       .setRestitution(0.04)
       .setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS)
-      .setContactForceEventThreshold(8_000);
+      // Mismo umbral que `processContactForce`: así Rapier ni siquiera emite el
+      // evento del contacto de reposo.
+      .setContactForceEventThreshold(this.impactForceThreshold);
     this.addCollider(primary, "hull", false);
 
     const hitboxes = damageHitboxes(this.preset.archetype);
@@ -937,6 +964,12 @@ export class VehicleEntity {
         highSpeedSteeringFactor: 0.28,
         directionChangeBrakeSpeed: 1.4,
         boostMultiplier: config.boostMultiplier,
+        autoBrakeForce: config.autoBrakeForce,
+        steeringExponent: config.steeringExponent,
+        handbrakeSideFrictionFactor: config.handbrakeSideFriction,
+        extraGravity: config.extraGravity,
+        maxAngularVelocity: config.maxAngularVelocity,
+        uprightTorque: config.uprightTorque,
         antiRollStiffness: 8_500,
         antiRollPairs: [
           [0, 1],
@@ -963,16 +996,21 @@ export class VehicleEntity {
         maxSteeringTorque: config.steeringTorque,
         maxForwardSpeed: 31,
         maxReverseSpeed: 9,
-        forwardDrag: config.waterDrag,
-        lateralDrag: config.lateralDrag,
-        verticalDrag: 4.2,
-        angularDrag: 3.4,
+        forwardDrag: this.preset.body.mass * config.waterDrag,
+        lateralDrag: this.preset.body.mass * config.lateralDrag,
+        verticalDrag: this.preset.body.mass * 0.4,
+        angularDrag: this.preset.body.mass * config.yawDamping,
         planingLift: this.preset.body.mass * 1.4,
         maxPlaningLift: this.preset.body.mass * 11,
-        landThrustFactor: 0.18,
+        landThrustFactor: config.landThrustFactor,
         throttleResponse: 4.8,
         steeringResponse: 6.5,
         boostMultiplier: 1.32,
+        rudderAngle: config.rudderAngle,
+        thrustPoint: new Vector3(...config.thrustPoint),
+        lateralDragPoint: new Vector3(...config.lateralDragPoint),
+        waterBrakeDrag: config.waterBrakeDrag,
+        landDrag: this.preset.body.mass * config.groundDrag,
       });
     }
 
@@ -1000,6 +1038,11 @@ export class VehicleEntity {
       acceleration: config.acceleration,
       deceleration: config.braking,
       orientationSmoothing: 5,
+      throttleBoostFactor: config.throttleBoostFactor,
+      reverseFactor: config.reverseFactor,
+      lateralRange: config.lateralRange,
+      lateralResponse: config.lateralResponse,
+      maxControlBank: config.maxBank,
       onWaypoint: (waypoint) => {
         this.eventBus.emit("vehicle.waypoint", {
           id: this.id,

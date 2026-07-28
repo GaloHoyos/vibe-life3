@@ -46,6 +46,22 @@ export interface RaycastVehicleMotorConfig {
   /** Speed above which opposite throttle brakes before changing direction. */
   directionChangeBrakeSpeed: number;
   boostMultiplier?: number;
+  /** Brake impulse applied while coasting, standing in for engine drag. */
+  autoBrakeForce?: number;
+  /**
+   * Steering response curve. The driver input stays linear and is raised to
+   * this power, so small corrections at speed stay gentle (Source's
+   * `steeringExponent`).
+   */
+  steeringExponent?: number;
+  /** Side grip left on the handbrake wheels while it is pulled, 0..1. */
+  handbrakeSideFrictionFactor?: number;
+  /** Extra downward gravity as a multiple of the standard one. */
+  extraGravity?: number;
+  /** Hard ceiling on angular speed, in rad/s. */
+  maxAngularVelocity?: number;
+  /** Torque that rights the chassis while airborne, in N·m per radian. */
+  uprightTorque?: number;
   antiRollStiffness?: number;
   antiRollPairs?: readonly (readonly [number, number])[];
   wheelDirection?: Vector3;
@@ -58,9 +74,22 @@ export interface RaycastVehicleMotorConfig {
 const LOCAL_FORWARD = new Vector3(0, 0, 1);
 const LOCAL_UP = new Vector3(0, 1, 0);
 const DEFAULT_WHEEL_DIRECTION = new Vector3(0, -1, 0);
-const DEFAULT_WHEEL_AXLE = new Vector3(1, 0, 0);
+// El eje de rueda fija hacia dónde empuja la fuerza motriz: con +X el vehículo
+// avanzaba hacia -Z, contra la convención del proyecto (+Z es adelante, y así
+// están modelados el morro, los faros y el ancla de cámara).
+const DEFAULT_WHEEL_AXLE = new Vector3(-1, 0, 0);
 const RPM_IDLE = 700;
 const RPM_MAX = 6500;
+const WORLD_DOWN = new Vector3(0, -1, 0);
+const GRAVITY = 20.5;
+/**
+ * Rapier only consults `wheel.brake` when `engine_force` is EXACTLY zero
+ * (`if wheel.engine_force != 0.0 { ... } else { max_impulse = brake }`).
+ * A throttle that decays exponentially never reaches zero, so anything below
+ * this has to be snapped to it or the brakes are dead for good.
+ */
+const ENGINE_FORCE_EPSILON = 1;
+const THROTTLE_RELEASE_FACTOR = 5;
 
 export class RaycastVehicleMotor implements VehicleMotor {
   readonly body: RAPIER.RigidBody;
@@ -176,12 +205,31 @@ export class RaycastVehicleMotor implements VehicleMotor {
   }
 
   prePhysicsStep(delta: number): void {
-    if (!this.isEnabled() || delta <= 0 || !this.body.isValid()) return;
+    if (this.disposed || !this.body.isValid()) return;
+    // Rapier ACUMULA las fuerzas de usuario entre steps hasta que se resetean
+    // (a diferencia de Bullet/PhysX, que las limpian solas). Sin esto la barra
+    // estabilizadora suma su fuerza frame tras frame y termina disparando el
+    // chasis. Se resetea incluso deshabilitado: si no, lo último que se aplicó
+    // queda empujando para siempre.
+    this.body.resetForces(false);
+    this.body.resetTorques(false);
+    if (!this.isEnabled() || delta <= 0) return;
 
+    // Pisar el freno cierra la mariposa: mantener acelerador y freno a la vez
+    // dejaría el motor empujando contra el freno durante casi un segundo.
+    const throttleTarget =
+      this.control.brake > 0 || this.control.handbrake > 0
+        ? 0
+        : this.control.throttle;
+    // Abrir gas es progresivo; cerrarlo es inmediato, como la mariposa real.
+    const throttleResponse =
+      Math.abs(throttleTarget) < Math.abs(this.smoothedThrottle)
+        ? this.config.throttleResponse * THROTTLE_RELEASE_FACTOR
+        : this.config.throttleResponse;
     this.smoothedThrottle = damp(
       this.smoothedThrottle,
-      this.control.throttle,
-      this.config.throttleResponse,
+      throttleTarget,
+      throttleResponse,
       delta,
     );
     this.smoothedSteering = damp(
@@ -202,8 +250,11 @@ export class RaycastVehicleMotor implements VehicleMotor {
       MathUtils.clamp(this.config.highSpeedSteeringFactor, 0, 1),
       speedRatio,
     );
+    // `steering > 0` es a la derecha, y la derecha del proyecto es `forward ×
+    // up` = -X con +Z adelante. El signo también va atado a
+    // DEFAULT_WHEEL_AXLE: con el eje en -X, Rapier lee el ángulo al revés.
     const steering =
-      this.smoothedSteering *
+      -curve(this.smoothedSteering, this.config.steeringExponent ?? 1) *
       this.config.maxSteeringAngle *
       steeringFactor;
 
@@ -227,15 +278,28 @@ export class RaycastVehicleMotor implements VehicleMotor {
     const boost = this.control.boost
       ? Math.max(1, this.config.boostMultiplier ?? 1)
       : 1;
-    const engineForce =
+    const rawEngineForce =
       throttle >= 0
         ? throttle * this.config.maxEngineForce * boost
         : throttle * this.config.maxReverseForce;
-    const serviceBrake =
-      Math.max(this.control.brake, directionBrake) *
-      this.config.maxBrakeForce;
+    // Ver ENGINE_FORCE_EPSILON: sin este corte el freno nunca llega a aplicarse.
+    const engineForce =
+      Math.abs(rawEngineForce) < ENGINE_FORCE_EPSILON ? 0 : rawEngineForce;
+    const brakeInput = Math.max(this.control.brake, directionBrake);
+    const serviceBrake = brakeInput * this.config.maxBrakeForce;
     const handbrake =
       this.control.handbrake * this.config.maxHandbrakeForce;
+    // Freno motor: sin él la inercia lleva el chasis cientos de metros porque
+    // Rapier no modela resistencia a la rodadura.
+    const autoBrake =
+      engineForce === 0 && brakeInput <= 0 && this.control.handbrake <= 0
+        ? (this.config.autoBrakeForce ?? 0)
+        : 0;
+    const sideFrictionFactor = MathUtils.lerp(
+      1,
+      MathUtils.clamp(this.config.handbrakeSideFrictionFactor ?? 1, 0, 1),
+      this.control.handbrake,
+    );
 
     this.config.wheels.forEach((wheel, index) => {
       this.controller.setWheelSteering(index, wheel.steering ? steering : 0);
@@ -245,10 +309,19 @@ export class RaycastVehicleMotor implements VehicleMotor {
       );
       const brake =
         (wheel.braking ? serviceBrake : 0) +
-        (wheel.handbrake ? handbrake : 0);
+        (wheel.handbrake ? handbrake : 0) +
+        autoBrake;
       this.controller.setWheelBrake(index, brake);
+      // El tren de mano pierde agarre lateral: es lo que convierte el freno de
+      // mano en un derrape en vez de en un ancla.
+      this.controller.setWheelSideFrictionStiffness(
+        index,
+        wheel.sideFrictionStiffness *
+          (wheel.handbrake ? sideFrictionFactor : 1),
+      );
     });
 
+    this.applyChassisForces(delta);
     this.controller.updateVehicle(
       delta,
       this.config.filterFlags,
@@ -293,6 +366,59 @@ export class RaycastVehicleMotor implements VehicleMotor {
     }
   }
 
+  /**
+   * Chassis aids from the Source vehicle body block: extra gravity to keep the
+   * car planted, an angular speed ceiling so one bad landing can't spin it up,
+   * and a righting torque while airborne (`addGravity`, `maxAngularVelocity`
+   * and `keepUprightTorque`).
+   */
+  private applyChassisForces(delta: number): void {
+    const rotation = this.body.rotation();
+    this.rotation.set(rotation.x, rotation.y, rotation.z, rotation.w);
+    this.up.copy(LOCAL_UP).applyQuaternion(this.rotation);
+
+    const extraGravity = this.config.extraGravity ?? 0;
+    if (extraGravity > 0) {
+      this.body.addForce(
+        this.antiRollForce
+          .copy(WORLD_DOWN)
+          .multiplyScalar(this.body.mass() * GRAVITY * extraGravity),
+        true,
+      );
+    }
+
+    const maxAngular = this.config.maxAngularVelocity ?? 0;
+    if (maxAngular > 0) {
+      const angular = this.body.angvel();
+      const magnitude = Math.hypot(angular.x, angular.y, angular.z);
+      if (magnitude > maxAngular) {
+        const scale = maxAngular / magnitude;
+        this.body.setAngvel(
+          {
+            x: angular.x * scale,
+            y: angular.y * scale,
+            z: angular.z * scale,
+          },
+          true,
+        );
+      }
+    }
+
+    const uprightTorque = this.config.uprightTorque ?? 0;
+    // Con ruedas apoyadas manda la suspensión; asistir ahí haría que el chasis
+    // se "pegue" al piso de forma antinatural en rampas y peraltes.
+    if (uprightTorque > 0 && this.telemetry.contactCount === 0 && delta > 0) {
+      const tilt = this.up.angleTo(LOCAL_UP);
+      if (tilt > 0.02) {
+        this.antiRollForce
+          .crossVectors(this.up, LOCAL_UP)
+          .normalize()
+          .multiplyScalar(tilt * uprightTorque);
+        this.body.addTorque(this.antiRollForce, true);
+      }
+    }
+  }
+
   private applyAntiRoll(): void {
     const stiffness = this.config.antiRollStiffness ?? 0;
     if (stiffness <= 0) return;
@@ -309,18 +435,21 @@ export class RaycastVehicleMotor implements VehicleMotor {
       const rightConfig = this.config.wheels[rightIndex];
       if (!leftConfig || !rightConfig) continue;
 
-      const leftTravel = leftConfig.suspensionRestLength - leftLength;
-      const rightTravel = rightConfig.suspensionRestLength - rightLength;
-      const force = (leftTravel - rightTravel) * stiffness;
+      // Compresión, no longitud: la barra debe LEVANTAR el lado hundido y
+      // BAJAR el que se despega. Con los signos al revés cualquier asimetría se
+      // realimenta, el buggy se sube a dos ruedas y termina volando.
+      const leftCompression = leftConfig.suspensionRestLength - leftLength;
+      const rightCompression = rightConfig.suspensionRestLength - rightLength;
+      const force = (leftCompression - rightCompression) * stiffness;
 
       const leftPoint = this.controller.wheelHardPoint(leftIndex);
       const rightPoint = this.controller.wheelHardPoint(rightIndex);
       if (leftPoint && this.controller.wheelIsInContact(leftIndex)) {
-        this.antiRollForce.copy(this.up).multiplyScalar(-force);
+        this.antiRollForce.copy(this.up).multiplyScalar(force);
         this.body.addForceAtPoint(this.antiRollForce, leftPoint, true);
       }
       if (rightPoint && this.controller.wheelIsInContact(rightIndex)) {
-        this.antiRollForce.copy(this.up).multiplyScalar(force);
+        this.antiRollForce.copy(this.up).multiplyScalar(-force);
         this.body.addForceAtPoint(this.antiRollForce, rightPoint, true);
       }
     }
@@ -417,4 +546,9 @@ function copyOptionalVector(
 function damp(current: number, target: number, response: number, delta: number): number {
   if (response <= 0) return target;
   return MathUtils.lerp(current, target, 1 - Math.exp(-response * delta));
+}
+
+function curve(value: number, exponent: number): number {
+  if (exponent === 1) return value;
+  return Math.sign(value) * Math.abs(value) ** exponent;
 }

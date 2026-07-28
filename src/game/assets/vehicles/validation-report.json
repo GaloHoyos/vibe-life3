@@ -5,19 +5,19 @@
   "vehicles": [
     {
       "id": "buggy",
-      "bytes": 856028,
+      "bytes": 1113872,
       "budgetBytes": 8388608,
       "lods": [
         {
-          "triangles": 12680,
+          "triangles": 17268,
           "draws": 7
         },
         {
-          "triangles": 5140,
+          "triangles": 6532,
           "draws": 7
         },
         {
-          "triangles": 1632,
+          "triangles": 1676,
           "draws": 5
         }
       ],
@@ -30,7 +30,7 @@
     },
     {
       "id": "airboat",
-      "bytes": 786240,
+      "bytes": 836656,
       "budgetBytes": 8388608,
       "lods": [
         {
@@ -55,7 +55,7 @@
     },
     {
       "id": "helicopter",
-      "bytes": 820180,
+      "bytes": 810572,
       "budgetBytes": 14680064,
       "lods": [
         {

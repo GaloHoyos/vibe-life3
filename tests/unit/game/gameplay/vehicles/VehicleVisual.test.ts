@@ -42,9 +42,13 @@ describe("VehicleVisual", () => {
     visual.aim(0.3, 0.2);
 
     const wheel = model.getObjectByName("wheel_front_left")!;
-    expect(wheel.position.y).toBeCloseTo(1.09);
+    // `suspension` va en metros de compresión desde la extensión total, y se
+    // suma directo a la pose de reposo del nodo (baseY = 1 en este fixture).
+    expect(wheel.position.y).toBeCloseTo(1.5);
     expect(wheel.rotation.x).toBeCloseTo(2);
-    expect(wheel.rotation.y).toBeCloseTo(0.24);
+    // Signo negativo: girar sobre +Y lleva la rueda hacia +X, que es la
+    // izquierda. Ver la convención en VehicleSteering.test.ts.
+    expect(wheel.rotation.y).toBeCloseTo(-0.24);
     expect(model.getObjectByName("turret_yaw")?.rotation.y).toBeCloseTo(0.3);
     expect(model.getObjectByName("turret_pitch")?.rotation.x).toBeCloseTo(
       -0.2,

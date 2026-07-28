@@ -6,6 +6,22 @@ export type Euler = readonly [number, number, number];
 
 export type AtlasTile = 0 | 1 | 2 | 3;
 
+/**
+ * Acabado de una casilla del atlas. Las cuatro casillas son el vocabulario de
+ * materiales del vehículo: cada pieza de geometría elige `tile` y de acá salen
+ * color, PBR y cuánto castigo acumuló esa superficie.
+ */
+export interface AtlasFinish {
+  /** Color base en sRGB 0..255. */
+  readonly color: readonly [number, number, number];
+  readonly roughness: number;
+  readonly metallic: number;
+  /** Pintura saltada, óxido y rayones con metal expuesto, 0..1. */
+  readonly wear: number;
+  /** Frecuencia del grano: 1 chapa grande, >2 goma o fundición. */
+  readonly grain: number;
+}
+
 export interface VehicleAssetSpec {
   readonly id: VehicleAssetId;
   readonly displayName: string;
@@ -13,12 +29,7 @@ export interface VehicleAssetSpec {
   readonly maxTrianglesLod0: number;
   readonly maxDrawsPerLod: number;
   readonly maxGlbBytes: number;
-  readonly colors: readonly [
-    readonly [number, number, number],
-    readonly [number, number, number],
-    readonly [number, number, number],
-    readonly [number, number, number],
-  ];
+  readonly finishes: readonly [AtlasFinish, AtlasFinish, AtlasFinish, AtlasFinish];
   readonly requiredNodes: readonly string[];
 }
 
@@ -71,11 +82,12 @@ export const VEHICLE_SPECS: readonly VehicleAssetSpec[] = [
     maxTrianglesLod0: 75_000,
     maxDrawsPerLod: 18,
     maxGlbBytes: 8 * 1024 * 1024,
-    colors: [
-      [202, 190, 157],
-      [137, 60, 38],
-      [45, 48, 45],
-      [29, 31, 32],
+    // 0 chapa pintada, 1 acero oxidado, 2 metal mecanizado, 3 goma y tapizado.
+    finishes: [
+      { color: [201, 190, 160], roughness: 0.68, metallic: 0.05, wear: 0.58, grain: 1 },
+      { color: [139, 62, 39], roughness: 0.82, metallic: 0.22, wear: 0.86, grain: 1.25 },
+      { color: [88, 91, 89], roughness: 0.52, metallic: 0.82, wear: 0.45, grain: 1.6 },
+      { color: [33, 34, 35], roughness: 0.94, metallic: 0.02, wear: 0.24, grain: 2.6 },
     ],
     requiredNodes: [
       "visual_lod0",
@@ -109,11 +121,11 @@ export const VEHICLE_SPECS: readonly VehicleAssetSpec[] = [
     maxTrianglesLod0: 80_000,
     maxDrawsPerLod: 18,
     maxGlbBytes: 8 * 1024 * 1024,
-    colors: [
-      [224, 173, 39],
-      [43, 48, 48],
-      [125, 132, 128],
-      [109, 52, 35],
+    finishes: [
+      { color: [222, 172, 44], roughness: 0.7, metallic: 0.06, wear: 0.62, grain: 1 },
+      { color: [52, 57, 57], roughness: 0.6, metallic: 0.6, wear: 0.5, grain: 1.4 },
+      { color: [122, 128, 124], roughness: 0.5, metallic: 0.8, wear: 0.45, grain: 1.5 },
+      { color: [110, 54, 36], roughness: 0.86, metallic: 0.2, wear: 0.84, grain: 1.2 },
     ],
     requiredNodes: [
       "visual_lod0",
@@ -147,11 +159,11 @@ export const VEHICLE_SPECS: readonly VehicleAssetSpec[] = [
     maxTrianglesLod0: 125_000,
     maxDrawsPerLod: 24,
     maxGlbBytes: 14 * 1024 * 1024,
-    colors: [
-      [79, 91, 62],
-      [200, 190, 158],
-      [44, 49, 47],
-      [126, 62, 39],
+    finishes: [
+      { color: [80, 92, 63], roughness: 0.74, metallic: 0.08, wear: 0.5, grain: 1 },
+      { color: [198, 189, 158], roughness: 0.7, metallic: 0.06, wear: 0.55, grain: 1 },
+      { color: [72, 78, 75], roughness: 0.54, metallic: 0.78, wear: 0.4, grain: 1.5 },
+      { color: [124, 63, 40], roughness: 0.85, metallic: 0.2, wear: 0.8, grain: 1.2 },
     ],
     requiredNodes: [
       "visual_lod0",

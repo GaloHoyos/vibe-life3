@@ -388,6 +388,9 @@ export interface GameEventMap {
     archetype: VehicleArchetypeId;
     speed: number;
     forwardSpeed: number;
+    /** Velocidad punta del preset, para escalar el velocímetro. */
+    topSpeed: number;
+    handbrake: boolean;
     hull: number;
     hullMax: number;
     components: Readonly<Record<string, number>>;

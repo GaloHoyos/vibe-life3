@@ -1,5 +1,6 @@
 import type { GameEventMap } from "@game/GameEvents";
 import type { Disposable } from "@shared/types/lifecycle";
+import { VehicleIcon } from "./HudIcons";
 
 type VehicleHudState = GameEventMap["vehicle.telemetry"];
 
@@ -12,66 +13,68 @@ const componentLabels: Readonly<Record<string, string>> = {
   fuel: "Combustible",
 };
 
+const SPEED_SEGMENTS = 16;
+const METER_SEGMENTS = 12;
+
+/**
+ * Panel del vehículo en el lenguaje del traje HEV: ámbar, condensada y barras
+ * segmentadas, igual que salud y AUX. POWER. Vive abajo al centro, entre los
+ * vitales y la munición, que es la franja que queda libre.
+ */
 export class VehicleHUD implements Disposable {
   readonly element = document.createElement("section");
 
   private readonly name = document.createElement("div");
-  private readonly speed = document.createElement("strong");
-  private readonly speedUnit = document.createElement("span");
-  private readonly integrityFill = document.createElement("i");
-  private readonly integrityValue = document.createElement("span");
-  private readonly boostFill = document.createElement("i");
-  private readonly boostBlock: HTMLDivElement;
-  private readonly weaponFill = document.createElement("i");
-  private readonly weaponBlock: HTMLDivElement;
-  private readonly weaponValue = document.createElement("span");
-  private readonly components = document.createElement("div");
-  private readonly occupants = document.createElement("div");
+  private readonly speedValue = document.createElement("div");
+  private readonly gear = document.createElement("span");
+  private readonly speedBar: SegmentBar;
+  private readonly integrity: Meter;
+  private readonly boost: Meter;
+  private readonly weapon: Meter;
+  private readonly warnings = document.createElement("div");
+  private readonly crew = document.createElement("div");
 
   constructor() {
-    this.element.className = "vehicle-hud is-hidden";
+    this.element.className = "hl-vehicle is-hidden";
     this.element.setAttribute("aria-live", "polite");
-    this.name.className = "vehicle-hud__name";
-    this.speed.className = "vehicle-hud__speed";
-    this.speedUnit.className = "vehicle-hud__speed-unit";
-    this.speedUnit.textContent = "KM/H";
 
-    const integrity = meter(
-      "INTEGRIDAD",
-      this.integrityFill,
-      this.integrityValue,
-      "vehicle-hud__meter--integrity",
-    );
-    this.boostBlock = meter(
-      "IMPULSO",
-      this.boostFill,
-      undefined,
-      "vehicle-hud__meter--boost",
-    );
-    this.weaponBlock = meter(
-      "ARMA / CALOR",
-      this.weaponFill,
-      this.weaponValue,
-      "vehicle-hud__meter--weapon",
-    );
-    this.components.className = "vehicle-hud__components";
-    this.occupants.className = "vehicle-hud__occupants";
+    this.name.className = "hl-vehicle__name";
+    this.speedValue.className = "hl-vehicle__speed";
+    this.gear.className = "hl-vehicle__gear";
+    this.speedBar = new SegmentBar(SPEED_SEGMENTS, "hl-vehicle__speedbar");
 
-    const header = document.createElement("div");
-    header.className = "vehicle-hud__header";
-    const speedWrap = document.createElement("div");
-    speedWrap.className = "vehicle-hud__speed-wrap";
-    speedWrap.append(this.speed, this.speedUnit);
-    header.append(this.name, speedWrap);
+    const unit = document.createElement("span");
+    unit.className = "hl-vehicle__unit";
+    unit.textContent = "KM/H";
 
-    this.element.append(
-      header,
-      integrity,
-      this.boostBlock,
-      this.weaponBlock,
-      this.components,
-      this.occupants,
-    );
+    const readout = document.createElement("div");
+    readout.className = "hl-vehicle__readout";
+    readout.append(this.speedValue, unit, this.gear);
+
+    const icon = document.createElement("div");
+    icon.className = "hl-vehicle__icon";
+    icon.innerHTML = VehicleIcon;
+
+    const dial = document.createElement("div");
+    dial.className = "hl-vehicle__dial";
+    dial.append(readout, this.speedBar.element);
+
+    const head = document.createElement("div");
+    head.className = "hl-vehicle__head";
+    head.append(icon, dial);
+
+    this.integrity = new Meter("INTEGRIDAD", "hl-vehicle__meter--integrity");
+    this.boost = new Meter("IMPULSO", "hl-vehicle__meter--boost");
+    this.weapon = new Meter("ARMA", "hl-vehicle__meter--weapon");
+
+    const meters = document.createElement("div");
+    meters.className = "hl-vehicle__meters";
+    meters.append(this.integrity.element, this.boost.element, this.weapon.element);
+
+    this.warnings.className = "hl-vehicle__warnings";
+    this.crew.className = "hl-vehicle__crew";
+
+    this.element.append(this.name, head, meters, this.warnings, this.crew);
   }
 
   show(): void {
@@ -84,39 +87,60 @@ export class VehicleHUD implements Disposable {
 
   update(state: VehicleHudState): void {
     this.name.textContent = state.name.toUpperCase();
-    this.speed.textContent = String(Math.round(Math.abs(state.speed) * 3.6)).padStart(3, "0");
+
+    const kmh = Math.round(Math.abs(state.speed) * 3.6);
+    this.speedValue.textContent = String(kmh).padStart(3, "0");
+    const topKmh = Math.max(1, state.topSpeed * 3.6);
+    this.speedBar.set(kmh / topKmh);
+    this.gear.textContent = gearLabel(state);
+    this.element.classList.toggle("is-braking", state.handbrake);
+
     const hull01 = state.hullMax > 0 ? state.hull / state.hullMax : 0;
-    setMeter(this.integrityFill, hull01);
-    this.integrityValue.textContent = `${Math.max(0, Math.round(hull01 * 100))}%`;
+    this.integrity.set(hull01, `${Math.max(0, Math.round(hull01 * 100))}%`);
     this.element.classList.toggle("is-critical", hull01 <= 0.25);
+    this.element.classList.toggle("is-stalled", !state.engineOn);
 
-    this.boostBlock.classList.toggle("is-hidden", state.archetype === "helicopter");
-    setMeter(this.boostFill, state.boost);
+    // El helicóptero no tiene sobrealimentación que mostrar.
+    this.boost.element.classList.toggle(
+      "is-hidden",
+      state.archetype === "helicopter",
+    );
+    this.boost.set(state.boost);
 
-    this.weaponBlock.classList.toggle("is-hidden", !state.weaponEnabled);
-    setMeter(this.weaponFill, state.weaponHeat);
-    this.weaponValue.textContent = `${state.weaponAmmo} · ${Math.round(state.weaponHeat * 100)}%`;
+    this.weapon.element.classList.toggle("is-hidden", !state.weaponEnabled);
+    this.weapon.set(1 - state.weaponHeat, String(state.weaponAmmo));
+    this.weapon.element.classList.toggle("is-overheated", state.weaponHeat > 0.85);
 
     const degraded = Object.entries(state.components)
       .filter(([, value]) => value < 0.999)
       .sort((a, b) => a[1] - b[1]);
-    this.components.replaceChildren(
+    this.warnings.replaceChildren(
       ...degraded.map(([id, value]) => {
         const item = document.createElement("span");
-        item.className = value <= 0 ? "is-disabled" : value < 0.35 ? "is-damaged" : "";
-        item.textContent = `${componentLabels[id] ?? id}: ${Math.max(0, Math.round(value * 100))}%`;
+        item.className =
+          value <= 0 ? "is-disabled" : value < 0.35 ? "is-damaged" : "";
+        const label = (componentLabels[id] ?? id).toUpperCase();
+        item.textContent =
+          value <= 0
+            ? `${label} FUERA`
+            : `${label} ${Math.max(0, Math.round(value * 100))}%`;
         return item;
       }),
     );
-    this.components.classList.toggle("is-hidden", degraded.length === 0);
+    this.warnings.classList.toggle("is-hidden", degraded.length === 0);
 
-    this.occupants.replaceChildren(
-      ...state.occupants.map((occupant) => {
+    // El conductor ya sabe que va a bordo: sólo interesa quién lo acompaña.
+    const others = state.occupants.filter(
+      (occupant) => occupant.actor !== "!player",
+    );
+    this.crew.replaceChildren(
+      ...others.map((occupant) => {
         const item = document.createElement("span");
-        item.textContent = `${occupant.actor === "!player" ? "Gordon" : occupant.actor} · ${roleLabel(occupant.role)}`;
+        item.textContent = `${occupant.actor} · ${roleLabel(occupant.role)}`;
         return item;
       }),
     );
+    this.crew.classList.toggle("is-hidden", others.length === 0);
   }
 
   dispose(): void {
@@ -124,31 +148,61 @@ export class VehicleHUD implements Disposable {
   }
 }
 
-function meter(
-  label: string,
-  fill: HTMLElement,
-  value: HTMLElement | undefined,
-  modifier: string,
-): HTMLDivElement {
-  const root = document.createElement("div");
-  root.className = `vehicle-hud__meter ${modifier}`;
-  const labelElement = document.createElement("span");
-  labelElement.className = "vehicle-hud__meter-label";
-  labelElement.textContent = label;
-  const track = document.createElement("span");
-  track.className = "vehicle-hud__meter-track";
-  fill.className = "vehicle-hud__meter-fill";
-  track.append(fill);
-  root.append(labelElement, track);
-  if (value) {
-    value.className = "vehicle-hud__meter-value";
-    root.append(value);
+/** Barra segmentada al estilo AUX. POWER, reutilizada por todos los medidores. */
+class SegmentBar {
+  readonly element = document.createElement("div");
+
+  private readonly segments: HTMLElement[] = [];
+
+  constructor(count: number, className: string) {
+    this.element.className = `hl-vehicle__bar ${className}`;
+    for (let index = 0; index < count; index += 1) {
+      const segment = document.createElement("i");
+      segment.className = "hl-vehicle__seg";
+      this.segments.push(segment);
+      this.element.append(segment);
+    }
   }
-  return root;
+
+  set(value: number): void {
+    const lit = Math.round(
+      Math.min(1, Math.max(0, value)) * this.segments.length,
+    );
+    this.segments.forEach((segment, index) => {
+      segment.classList.toggle("is-on", index < lit);
+    });
+  }
 }
 
-function setMeter(fill: HTMLElement, value: number): void {
-  fill.style.transform = `scaleX(${Math.min(1, Math.max(0, value))})`;
+class Meter {
+  readonly element = document.createElement("div");
+
+  private readonly bar: SegmentBar;
+  private readonly value = document.createElement("span");
+
+  constructor(label: string, modifier: string) {
+    this.element.className = `hl-vehicle__meter ${modifier}`;
+    const caption = document.createElement("span");
+    caption.className = "hl-vehicle__meter-label";
+    caption.textContent = label;
+    this.value.className = "hl-vehicle__meter-value";
+    this.bar = new SegmentBar(METER_SEGMENTS, "hl-vehicle__meterbar");
+    this.element.append(caption, this.bar.element, this.value);
+  }
+
+  set(value: number, text = ""): void {
+    this.bar.set(value);
+    this.value.textContent = text;
+    this.element.classList.toggle("is-low", value <= 0.25);
+  }
+}
+
+function gearLabel(state: VehicleHudState): string {
+  if (!state.engineOn) return "OFF";
+  if (state.handbrake) return "FRENO";
+  if (state.forwardSpeed < -0.4) return "R";
+  if (Math.abs(state.forwardSpeed) < 0.4) return "N";
+  return "D";
 }
 
 function roleLabel(role: VehicleHudState["occupants"][number]["role"]): string {

@@ -1,4 +1,8 @@
-import type { VehiclePresetDefinition, VehiclePresetId } from '@game/config/vehicles.config';
+import {
+  vehicleTopSpeed,
+  type VehiclePresetDefinition,
+  type VehiclePresetId,
+} from '@game/config/vehicles.config';
 import type {
   VehicleAiBehavior,
   VehicleNavAreaDefinition,
@@ -254,25 +258,22 @@ export function navigationProfileFromPreset(
   preset: VehiclePresetDefinition,
 ): VehicleNavigationProfile {
   const navigation = preset.navigation;
-  let maxSpeed: number;
+  const maxSpeed = vehicleTopSpeed(preset);
   let maxAcceleration: number;
   let maxBraking: number;
   let maxSteeringAngle: number;
   switch (preset.motor.kind) {
     case 'raycast':
-      maxSpeed = Math.max(18, preset.motor.steeringFadeSpeed * 1.25);
       maxAcceleration = preset.motor.engineForce / preset.body.mass;
       maxBraking = preset.motor.brakeForce / Math.max(1, preset.body.mass * 0.08);
       maxSteeringAngle = preset.motor.maxSteeringAngle;
       break;
     case 'hover':
-      maxSpeed = Math.max(18, preset.motor.planingSpeed * 2.25);
       maxAcceleration = preset.motor.thrustForce / preset.body.mass;
       maxBraking = maxAcceleration * 1.25;
       maxSteeringAngle = 0.58;
       break;
     case 'onRails':
-      maxSpeed = preset.motor.cruiseSpeed;
       maxAcceleration = preset.motor.acceleration;
       maxBraking = preset.motor.braking;
       maxSteeringAngle = 0;

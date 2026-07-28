@@ -198,8 +198,8 @@ async function main(): Promise<void> {
       const metadata = await sharp(texturePath).metadata();
       assert(metadata.format === "webp", `${texturePath}: no es WebP.`);
       assert(
-        metadata.width === 512 && metadata.height === 512,
-        `${texturePath}: el atlas debe medir 512×512.`,
+        metadata.width === 1024 && metadata.height === 1024,
+        `${texturePath}: el atlas debe medir 1024×1024.`,
       );
     }
   }

@@ -105,6 +105,20 @@ interface ImportedVisualRig {
 const Y_AXIS = new Vector3(0, 1, 0);
 const X_AXIS = new Vector3(1, 0, 0);
 const Z_AXIS = new Vector3(0, 0, 1);
+// Ejes de rueda del buggy, derivados del preset físico (body.size 2.15×1.35×3.8,
+// colliderCenter.y 0.75) tal como los arma `VehicleEntity.createMotor`.
+const BUGGY_WHEEL_HALF_WIDTH = 2.15 * 0.46;
+const BUGGY_WHEEL_HALF_LENGTH = 3.8 * 0.36;
+/** Conexión (0.75 − 0.24) menos la suspensión totalmente extendida (0.36). */
+const BUGGY_WHEEL_REST_Y = 0.75 - 0.24 - 0.36;
+/**
+ * Puesto de manejo del buggy, en +X porque la derecha del proyecto es −X. Mismo
+ * reparto que el GLB generado: volante a la izquierda y cañón sobre el larguero
+ * del artillero. Este rig procedural es el respaldo si el modelo no carga, así
+ * que si los dos no coinciden el jugador cambia de lado al fallar la carga.
+ */
+const BUGGY_DRIVER_X = 0.42;
+const BUGGY_GUN_X = -0.72;
 const TMP_DIRECTION = new Vector3();
 const TMP_MIDPOINT = new Vector3();
 const TMP_QUATERNION = new Quaternion();
@@ -180,21 +194,26 @@ export function createVehicleVisual(archetype: VehicleArchetypeId): VehicleVisua
     },
     update(delta, telemetry): void {
       const steering = MathUtils.clamp(telemetry.steering, -1, 1);
+      // Girar sobre +Y lleva el morro hacia +X, que es la IZQUIERDA (la derecha
+      // del proyecto es `forward × up` = -X). Sin el signo las ruedas apuntaban
+      // al lado contrario del que doblaba el chasis.
       rig.frontWheelPivots.forEach((pivot) => {
-        pivot.rotation.y = steering * 0.48;
+        pivot.rotation.y = -steering * 0.48;
       });
       rig.wheels.forEach((wheel, index) => {
         wheel.rotation.x =
           telemetry.wheelRotation *
           (index % 2 === 0 ? 1 : -1);
         const suspension = telemetry.suspension[index] ?? 0;
-        wheel.position.y = suspension * 0.18;
+        wheel.position.y = suspension;
       });
       rig.suspensionArms.forEach((arm, index) => {
-        arm.rotation.x = (telemetry.suspension[index] ?? 0) * 0.16;
+        arm.rotation.x = (telemetry.suspension[index] ?? 0) * 0.6;
       });
       if (rig.steeringWheel) {
-        rig.steeringWheel.rotation.z = -steering * 1.7;
+        // Visto desde el asiento, +Z hacia adelante, girar sobre el eje del
+        // volante en positivo lo lleva en sentido horario: doblar a la derecha.
+        rig.steeringWheel.rotation.z = steering * 1.7;
       }
       if (rig.speedNeedle) {
         rig.speedNeedle.rotation.z =
@@ -489,11 +508,13 @@ function updateImportedRig(
   fanAngle: number,
 ): void {
   rig.wheels.forEach((entry) => {
+    // `suspension` viene en metros: `baseY` es la rueda con la suspensión
+    // totalmente extendida, y comprimirla la sube contra el chasis.
     const suspension = telemetry.suspension[entry.telemetryIndex] ?? 0;
-    entry.node.position.y = entry.baseY + suspension * 0.18;
+    entry.node.position.y = entry.baseY + suspension;
     entry.node.rotation.set(
       entry.baseRotation[0] + telemetry.wheelRotation * entry.direction,
-      entry.baseRotation[1] +
+      entry.baseRotation[1] -
         (entry.telemetryIndex < 2 ? steering * 0.48 : 0),
       entry.baseRotation[2],
     );
@@ -597,10 +618,12 @@ function buildBuggy(): VisualRig {
   const wheels: Group[] = [];
   const frontWheelPivots: Group[] = [];
   const suspensionArms: Object3D[] = [];
-  for (const z of [-1.28, 1.28]) {
-    for (const x of [-1.08, 1.08]) {
+  // Mismos ejes que arma `VehicleEntity.createMotor` para el raycast: el pivote
+  // va en la rueda con la suspensión extendida y sube al comprimirse.
+  for (const z of [-BUGGY_WHEEL_HALF_LENGTH, BUGGY_WHEEL_HALF_LENGTH]) {
+    for (const x of [-BUGGY_WHEEL_HALF_WIDTH, BUGGY_WHEEL_HALF_WIDTH]) {
       const pivot = namedGroup(z > 0 ? "wheel_front_pivot" : "wheel_rear_pivot");
-      pivot.position.set(x, 0.48, z);
+      pivot.position.set(x, BUGGY_WHEEL_REST_Y, z);
       const wheel = namedGroup("wheel");
       wheel.add(cylinder([0, 0, 0], 0.46, 0.34, mats.rubber, 18, Z_AXIS, Math.PI / 2));
       wheel.add(cylinder([0, 0, 0], 0.25, 0.35, mats.metal, 12, Z_AXIS, Math.PI / 2));
@@ -621,8 +644,8 @@ function buildBuggy(): VisualRig {
       if (z > 0) frontWheelPivots.push(pivot);
 
       const arm = tube(
-        new Vector3(x * 0.42, 0.67, z * 0.72),
-        new Vector3(x * 0.92, 0.5, z),
+        new Vector3(x * 0.42, BUGGY_WHEEL_REST_Y + 0.2, z * 0.72),
+        new Vector3(x * 0.92, BUGGY_WHEEL_REST_Y + 0.04, z),
         0.06,
         mats.metal,
       );
@@ -635,22 +658,22 @@ function buildBuggy(): VisualRig {
   const turret = addBuggyTurret(root, mats);
   const anchors = buildAnchors(root, {
     seats: {
-      driver: [-0.42, 1.05, 0.15],
-      gunner: [0.42, 1.05, 0.15],
+      driver: [BUGGY_DRIVER_X, 1.05, 0.15],
+      gunner: [-BUGGY_DRIVER_X, 1.05, 0.15],
     },
     cameras: {
-      driver: [-0.42, 1.42, 0.15],
-      gunner: [0.42, 1.42, 0.15],
+      driver: [BUGGY_DRIVER_X, 1.42, 0.15],
+      gunner: [-BUGGY_DRIVER_X, 1.42, 0.15],
     },
     exits: {
       driver: [
-        [-1.45, 0.25, 0.15],
         [1.45, 0.25, 0.15],
+        [-1.45, 0.25, 0.15],
         [0, 0.25, 2.25],
       ],
       gunner: [
-        [1.45, 0.25, 0.15],
         [-1.45, 0.25, 0.15],
+        [1.45, 0.25, 0.15],
       ],
     },
   });
@@ -757,7 +780,7 @@ function addBuggyCockpit(
   root.add(dash);
 
   const steeringWheel = namedGroup("steering_wheel");
-  steeringWheel.position.set(-0.42, 1.32, 0.55);
+  steeringWheel.position.set(BUGGY_DRIVER_X, 1.32, 0.55);
   steeringWheel.rotation.x = -0.48;
   steeringWheel.add(torusWheel(0.2, 0.025, mats.rubber));
   for (let i = 0; i < 3; i += 1) {
@@ -772,8 +795,8 @@ function addBuggyCockpit(
   }
   root.add(steeringWheel);
 
-  const speedNeedle = instrument(root, [-0.15, 1.34, 0.9], mats);
-  const engineNeedle = instrument(root, [0.13, 1.34, 0.9], mats);
+  const speedNeedle = instrument(root, [BUGGY_DRIVER_X - 0.14, 1.34, 0.9], mats);
+  const engineNeedle = instrument(root, [BUGGY_DRIVER_X + 0.14, 1.34, 0.9], mats);
   return { steeringWheel, speedNeedle, engineNeedle };
 }
 
@@ -782,8 +805,11 @@ function addBuggyTurret(
   mats: ReturnType<typeof buggyMaterials>,
 ): { yaw: Group; pitch: Group; muzzle: Object3D } {
   const yaw = namedGroup("turret_yaw");
-  yaw.position.set(0.42, 1.55, -0.15);
+  // El pivote de elevación cuelga 0.12 más arriba, así que el caño queda a la
+  // altura del pedestal del modelo generado.
+  yaw.position.set(BUGGY_GUN_X, 1.66, 0.6);
   yaw.add(cylinder([0, 0, 0], 0.24, 0.14, mats.metal, 16));
+  root.add(cylinder([BUGGY_GUN_X, 1.24, 0.6], 0.08, 0.8, mats.metal, 10));
   const pitch = namedGroup("turret_pitch");
   pitch.position.y = 0.12;
   pitch.add(box([0, 0, 0.18], [0.34, 0.24, 0.56], mats.patch));

@@ -38,6 +38,19 @@ export interface HoverVehicleMotorConfig {
   throttleResponse: number;
   steeringResponse: number;
   boostMultiplier?: number;
+  /**
+   * Maximum thrust deflection at full rudder, in radians. An airboat steers by
+   * aiming its propeller, so the same push that moves it is what turns it.
+   */
+  rudderAngle?: number;
+  /** Where thrust is applied, in body space. Behind the centre of mass. */
+  thrustPoint?: Vector3;
+  /** Extra drag while the water brake is held, as a multiple of the normal. */
+  waterBrakeDrag?: number;
+  /** Linear drag from the hull scraping while out of the water. */
+  landDrag?: number;
+  /** Centre of lateral resistance, in body space. Aft of the centre of mass. */
+  lateralDragPoint?: Vector3;
 }
 
 const LOCAL_FORWARD = new Vector3(0, 0, 1);
@@ -78,6 +91,8 @@ export class HoverVehicleMotor implements VehicleMotor {
   private readonly averageNormal = new Vector3();
   private readonly force = new Vector3();
   private readonly torque = new Vector3();
+  private readonly thrustDirection = new Vector3();
+  private readonly thrustOrigin = new Vector3();
   private readonly centerOfMass = new Vector3();
   private contactCount = 0;
   private submersion = 0;
@@ -122,7 +137,13 @@ export class HoverVehicleMotor implements VehicleMotor {
   }
 
   prePhysicsStep(delta: number): void {
-    if (!this.isEnabled() || delta <= 0 || !this.body.isValid()) return;
+    if (this.disposed || !this.body.isValid()) return;
+    // Rapier ACUMULA las fuerzas de usuario entre steps hasta que se resetean.
+    // Sin esto la flotación de cada frame se suma a la anterior y el casco sale
+    // disparado hacia arriba aunque ya no toque el agua.
+    this.body.resetForces(false);
+    this.body.resetTorques(false);
+    if (!this.isEnabled() || delta <= 0) return;
 
     this.smoothedThrottle = damp(
       this.smoothedThrottle,
@@ -271,36 +292,58 @@ export class HoverVehicleMotor implements VehicleMotor {
       (throttle >= 0
         ? throttle * this.config.maxForwardThrust * boost
         : throttle * this.config.maxReverseThrust) * waterFactor;
-    this.force.copy(this.forward).multiplyScalar(thrust);
-    this.body.addForce(this.force, true);
+
+    // Empuje vectorizado: la hélice apunta a donde manda el timón. Como entra
+    // por popa, el empuje se desvía hacia el MISMO lado del que se aparta la
+    // proa: mandar la cola a +X hace que el morro caiga a -X, o sea a estribor.
+    const rudder = this.smoothedSteering * (this.config.rudderAngle ?? 0);
+    this.thrustDirection.copy(this.forward);
+    if (rudder !== 0) {
+      this.thrustDirection.applyAxisAngle(this.averageNormal, rudder);
+    }
+    this.force.copy(this.thrustDirection).multiplyScalar(thrust);
+    const thrustPoint = this.config.thrustPoint;
+    if (thrustPoint) {
+      this.thrustOrigin
+        .copy(thrustPoint)
+        .applyQuaternion(this.rotation)
+        .add(this.bodyPosition);
+      this.body.addForceAtPoint(this.force, this.thrustOrigin, true);
+    } else {
+      this.body.addForce(this.force, true);
+    }
 
     if (this.contactCount > 0) {
+      // Un casco de hidrodeslizador no tiene quilla: el freno de agua es la
+      // única forma de raspar velocidad, y aun así derrapa.
+      const waterBrake =
+        Math.max(this.control.brake, this.control.handbrake) *
+        (this.config.waterBrakeDrag ?? 0);
       this.force
         .copy(this.forward)
-        .multiplyScalar(-forwardSpeed * this.config.forwardDrag)
-        .addScaledVector(
-          this.right,
-          -rightSpeed * this.config.lateralDrag,
-        )
+        .multiplyScalar(-forwardSpeed * this.config.forwardDrag * (1 + waterBrake))
         .addScaledVector(
           this.averageNormal,
           -verticalSpeed * this.config.verticalDrag,
         );
-      const serviceBrake = Math.max(
-        this.control.brake,
-        this.control.handbrake,
-      );
-      if (serviceBrake > 0) {
-        this.force.addScaledVector(
-          this.forward,
-          -forwardSpeed * this.config.forwardDrag * serviceBrake * 3,
-        );
-        this.force.addScaledVector(
-          this.right,
-          -rightSpeed * this.config.lateralDrag * serviceBrake * 2,
-        );
-      }
       this.body.addForce(this.force, true);
+
+      // La resistencia lateral se aplica por DETRÁS del centro de masa: así el
+      // casco se orienta solo hacia donde viaja en vez de trompear, igual que
+      // las plumas de una flecha. Aplicada por delante haría lo contrario.
+      this.force
+        .copy(this.right)
+        .multiplyScalar(-rightSpeed * this.config.lateralDrag * (1 + waterBrake));
+      const dragPoint = this.config.lateralDragPoint;
+      if (dragPoint) {
+        this.thrustOrigin
+          .copy(dragPoint)
+          .applyQuaternion(this.rotation)
+          .add(this.bodyPosition);
+        this.body.addForceAtPoint(this.force, this.thrustOrigin, true);
+      } else {
+        this.body.addForce(this.force, true);
+      }
 
       const planingSpeed = Math.max(0, forwardSpeed);
       const lift = Math.min(
@@ -309,6 +352,15 @@ export class HoverVehicleMotor implements VehicleMotor {
       );
       this.body.addForce(
         this.force.copy(this.averageNormal).multiplyScalar(lift),
+        true,
+      );
+    } else if ((this.config.landDrag ?? 0) > 0) {
+      // Fuera del agua el casco raspa: sin esto el hidrodeslizador patina por
+      // tierra indefinidamente porque nada se opone a su inercia.
+      this.body.addForce(
+        this.force
+          .copy(this.relativeVelocity)
+          .multiplyScalar(-(this.config.landDrag ?? 0)),
         true,
       );
     }
@@ -321,10 +373,11 @@ export class HoverVehicleMotor implements VehicleMotor {
       0,
       1,
     );
+    // Guiñada negativa = proa hacia -X = estribor, la derecha del proyecto.
     this.torque
       .copy(this.averageNormal)
       .multiplyScalar(
-        this.smoothedSteering *
+        -this.smoothedSteering *
           this.config.maxSteeringTorque *
           steeringAuthority *
           waterFactor,

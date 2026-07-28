@@ -76,6 +76,21 @@ describe("VehicleCameraRig", () => {
     expect(camera.camera.position.distanceTo(anchorWorld)).toBeLessThan(0.05);
   });
 
+  it("mira hacia adelante del vehículo, no hacia la cola", () => {
+    const { rig, anchor, vehicle, camera } = mount();
+    vehicle.rotation.y = 0.7;
+    rig.update(HZ_60, idleInput(), camera, 0);
+
+    // El ancla es un marcador de posición sin rotación propia: el rig es el que
+    // resuelve que el -Z de la cámara de Three mire al +Z del vehículo.
+    const vehicleForward = new Vector3(0, 0, 1).applyQuaternion(
+      anchor.getWorldQuaternion(new Quaternion()),
+    );
+    const cameraForward = camera.camera.getWorldDirection(new Vector3());
+
+    expect(cameraForward.dot(vehicleForward)).toBeGreaterThan(0.9);
+  });
+
   it("el impacto sacude y se disipa solo", () => {
     const { rig, anchor, camera } = mount();
     const anchorWorld = anchor.getWorldPosition(new Vector3());

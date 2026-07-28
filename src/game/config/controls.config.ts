@@ -1,4 +1,4 @@
-import type { BindingMap } from "@engine/input/KeyBindings";
+import type { BindingContextMap, BindingMap } from "@engine/input/KeyBindings";
 
 export type GameAction =
   | "moveForward"
@@ -16,6 +16,7 @@ export type GameAction =
   | "weaponSlot4"
   | "weaponSlot5"
   | "squadCommand"
+  | "vehicleHandbrake"
   | "vehicleHorn"
   | "vehicleLights"
   | "quickSave"
@@ -41,6 +42,7 @@ export const DefaultBindings: BindingMap<GameAction> = {
   weaponSlot4: ["Digit4"],
   weaponSlot5: ["Digit5"],
   squadCommand: ["KeyC"],
+  vehicleHandbrake: ["Space"],
   vehicleHorn: ["KeyH"],
   vehicleLights: ["KeyL"],
   quickSave: ["F6"],
@@ -67,6 +69,7 @@ export const ActionLabels: Record<GameAction, string> = {
   weaponSlot4: "Arma 4",
   weaponSlot5: "Arma 5",
   squadCommand: "Orden de escuadrón",
+  vehicleHandbrake: "Freno de mano",
   vehicleHorn: "Bocina",
   vehicleLights: "Luces del vehículo",
   quickSave: "Guardado rápido",
@@ -93,6 +96,7 @@ export const ActionOrder: readonly GameAction[] = [
   "weaponSlot4",
   "weaponSlot5",
   "squadCommand",
+  "vehicleHandbrake",
   "vehicleHorn",
   "vehicleLights",
   "quickSave",
@@ -102,6 +106,17 @@ export const ActionOrder: readonly GameAction[] = [
   "spawnDebugCombine",
   "pause",
 ];
+
+/**
+ * El freno de mano comparte Espacio con saltar a propósito, igual que en
+ * Half-Life 2. Declararlo en otro contexto evita que rebindear uno deje al
+ * otro sin tecla: nunca se está a pie y conduciendo al mismo tiempo.
+ */
+export const ActionContexts: BindingContextMap<GameAction> = {
+  vehicleHandbrake: "vehicle",
+  vehicleHorn: "vehicle",
+  vehicleLights: "vehicle",
+};
 
 /**
  * Pausa usa `Escape`, que el navegador reserva como salida de pointer lock
