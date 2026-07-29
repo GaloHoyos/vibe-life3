@@ -7,15 +7,14 @@ const BUDGETS = {
   buggy: { triangles: 75_000, draws: 18, bytes: 8 * 1024 * 1024 },
   airboat: { triangles: 80_000, draws: 18, bytes: 8 * 1024 * 1024 },
   helicopter: { triangles: 125_000, draws: 24, bytes: 14 * 1024 * 1024 },
+  rebelCrawler: { triangles: 90_000, draws: 18, bytes: 9 * 1024 * 1024 },
+  combineGlider: { triangles: 85_000, draws: 18, bytes: 9 * 1024 * 1024 },
 } as const;
 
 const REQUIRED_COMMON_NODES = [
   "visual_lod0",
   "visual_lod1",
   "visual_lod2",
-  "turret_yaw",
-  "turret_pitch",
-  "muzzle",
   "exit_left",
   "exit_right",
   "wreckage",
@@ -35,6 +34,8 @@ describe("vehicle asset contracts", () => {
       "buggy",
       "airboat",
       "helicopter",
+      "rebelCrawler",
+      "combineGlider",
     ]);
 
     for (const vehicle of manifest.vehicles) {
@@ -74,6 +75,7 @@ describe("vehicle asset contracts", () => {
       "rotor",
       "cabin",
       "alarm",
+      "hover",
       "damage",
       "crash",
     ]) {

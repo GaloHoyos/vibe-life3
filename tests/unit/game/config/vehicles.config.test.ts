@@ -24,6 +24,8 @@ describe("vehicles.config", () => {
     expect(isVehiclePresetId("buggy")).toBe(true);
     expect(isVehiclePresetId("airboat")).toBe(true);
     expect(isVehiclePresetId("helicopter")).toBe(true);
+    expect(isVehiclePresetId("rebelCrawler")).toBe(true);
+    expect(isVehiclePresetId("combineGlider")).toBe(true);
     expect(isVehiclePresetId("remote-glb")).toBe(false);
   });
 });

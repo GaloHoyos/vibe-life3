@@ -8,6 +8,7 @@ export * from './VehicleNavigationBakeClient';
 export * from './VehicleNavigationCache';
 export * from './VehicleNavigationHash';
 export * from './VehicleNavigationLevelAdapter';
+export * from './VehicleNavigationPlanClient';
 export * from './VehicleNavigationPlanner';
 export * from './VehiclePathFollower';
 export * from './VehicleTrafficCoordinator';

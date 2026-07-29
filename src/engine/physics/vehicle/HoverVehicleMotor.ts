@@ -17,6 +17,11 @@ export interface HoverProbeConfig {
   buoyancyStiffness: number;
   buoyancyDamping: number;
   maxBuoyancyForce: number;
+  /**
+   * Altura objetivo sobre una superficie sólida o fluida. Si se omite, la
+   * sonda conserva el comportamiento naval y sólo empuja al sumergirse.
+   */
+  hoverHeight?: number;
 }
 
 export interface HoverVehicleMotorConfig {
@@ -51,6 +56,14 @@ export interface HoverVehicleMotorConfig {
   landDrag?: number;
   /** Centre of lateral resistance, in body space. Aft of the centre of mass. */
   lateralDragPoint?: Vector3;
+  /** Restoring torque that keeps an antigravity hull aligned to its support. */
+  uprightTorque?: number;
+  /** Damping for pitch and roll without suppressing steering yaw. */
+  uprightDamping?: number;
+  /** Additional steering authority near zero speed, fading out as speed rises. */
+  lowSpeedSteeringAuthority?: number;
+  /** Forward speed where the low-speed steering assistance reaches zero. */
+  lowSpeedSteeringFadeSpeed?: number;
 }
 
 const LOCAL_FORWARD = new Vector3(0, 0, 1);
@@ -91,10 +104,13 @@ export class HoverVehicleMotor implements VehicleMotor {
   private readonly averageNormal = new Vector3();
   private readonly force = new Vector3();
   private readonly torque = new Vector3();
+  private readonly up = new Vector3();
+  private readonly tiltAngularVelocity = new Vector3();
   private readonly thrustDirection = new Vector3();
   private readonly thrustOrigin = new Vector3();
   private readonly centerOfMass = new Vector3();
   private contactCount = 0;
+  private fluidContactCount = 0;
   private submersion = 0;
 
   constructor(
@@ -177,6 +193,7 @@ export class HoverVehicleMotor implements VehicleMotor {
     this.averageSurfaceVelocity.set(0, 0, 0);
     this.averageNormal.set(0, 0, 0);
     this.contactCount = 0;
+    this.fluidContactCount = 0;
     this.submersion = 0;
 
     for (const probe of this.config.probes) {
@@ -188,13 +205,33 @@ export class HoverVehicleMotor implements VehicleMotor {
         this.probePoint,
         this.config.maxSubmersionDepth,
       );
-      if (!sample || sample.kind !== "fluid") continue;
+      if (!sample) continue;
 
-      const depth = this.force
+      const surfaceOffset = this.force
         .copy(sample.point)
         .sub(this.probePoint)
         .dot(sample.normal);
-      if (depth <= 0 || depth > this.config.maxSubmersionDepth) continue;
+      const hoverHeight = probe.hoverHeight;
+      let springCompression: number;
+      if (hoverHeight === undefined) {
+        if (
+          sample.kind !== "fluid" ||
+          surfaceOffset <= 0 ||
+          surfaceOffset > this.config.maxSubmersionDepth
+        ) {
+          continue;
+        }
+        springCompression = surfaceOffset;
+      } else {
+        const surfaceDistance = -surfaceOffset;
+        if (
+          surfaceDistance < -this.config.maxSubmersionDepth ||
+          surfaceDistance > this.config.maxSubmersionDepth
+        ) {
+          continue;
+        }
+        springCompression = hoverHeight - surfaceDistance;
+      }
 
       this.relativePoint.copy(this.probePoint).sub(this.centerOfMass);
       this.pointVelocity
@@ -212,7 +249,7 @@ export class HoverVehicleMotor implements VehicleMotor {
         .sub(this.surfaceVelocity)
         .dot(sample.normal);
       const buoyancy = MathUtils.clamp(
-        (depth * probe.buoyancyStiffness -
+        (springCompression * probe.buoyancyStiffness -
           normalVelocity * probe.buoyancyDamping) *
           Math.max(0, sample.density),
         0,
@@ -224,11 +261,17 @@ export class HoverVehicleMotor implements VehicleMotor {
       this.averageSurfaceVelocity.add(sample.velocity);
       this.averageNormal.add(sample.normal);
       this.contactCount += 1;
-      this.submersion += MathUtils.clamp(
-        depth / this.config.maxSubmersionDepth,
-        0,
-        1,
-      );
+      if (sample.kind === "fluid") {
+        this.fluidContactCount += 1;
+        const immersion = hoverHeight === undefined
+          ? surfaceOffset
+          : Math.max(0, surfaceOffset);
+        this.submersion += MathUtils.clamp(
+          immersion / this.config.maxSubmersionDepth,
+          0,
+          1,
+        );
+      }
     }
 
     this.applyPropulsionAndDrag();
@@ -365,10 +408,33 @@ export class HoverVehicleMotor implements VehicleMotor {
       );
     }
 
+    const speedSteeringAuthority =
+      Math.abs(forwardSpeed) /
+      Math.max(this.config.maxForwardSpeed, 0.001);
+    const lowSpeedFade = MathUtils.clamp(
+      1 -
+        Math.abs(forwardSpeed) /
+          Math.max(this.config.lowSpeedSteeringFadeSpeed ?? 0.001, 0.001),
+      0,
+      1,
+    );
+    const lowSpeedIntent = MathUtils.clamp(
+      Math.max(
+        Math.abs(this.smoothedThrottle) * 3,
+        Math.abs(forwardSpeed) * 0.5,
+      ),
+      0,
+      1,
+    );
+    const lowSpeedSteeringAuthority =
+      (this.config.lowSpeedSteeringAuthority ?? 0) *
+      lowSpeedFade *
+      lowSpeedIntent;
     const steeringAuthority = MathUtils.clamp(
       Math.max(
         Math.abs(this.smoothedThrottle) * 0.35,
-        Math.abs(forwardSpeed) / Math.max(this.config.maxForwardSpeed, 0.001),
+        speedSteeringAuthority,
+        lowSpeedSteeringAuthority,
       ),
       0,
       1,
@@ -391,6 +457,21 @@ export class HoverVehicleMotor implements VehicleMotor {
       this.averageNormal,
       -yawRate * this.config.angularDrag * contactRatio,
     );
+    const uprightTorque = this.config.uprightTorque ?? 0;
+    if (uprightTorque > 0) {
+      this.up.copy(LOCAL_UP).applyQuaternion(this.rotation).normalize();
+      this.torque.addScaledVector(
+        this.up.cross(this.averageNormal),
+        uprightTorque,
+      );
+      this.tiltAngularVelocity
+        .set(angularVelocity.x, angularVelocity.y, angularVelocity.z)
+        .addScaledVector(this.averageNormal, -yawRate);
+      this.torque.addScaledVector(
+        this.tiltAngularVelocity,
+        -(this.config.uprightDamping ?? 0),
+      );
+    }
     this.body.addTorque(this.torque, true);
   }
 
@@ -420,7 +501,7 @@ export class HoverVehicleMotor implements VehicleMotor {
     this.telemetry.contactCount = this.contactCount;
     this.telemetry.grounded = this.contactCount > 0;
     this.telemetry.submergedRatio =
-      this.contactCount > 0
+      this.fluidContactCount > 0
         ? this.submersion / this.config.probes.length
         : 0;
   }

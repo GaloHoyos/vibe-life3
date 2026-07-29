@@ -119,17 +119,23 @@ const BUGGY_WHEEL_REST_Y = 0.75 - 0.24 - 0.36;
  */
 const BUGGY_DRIVER_X = 0.42;
 const BUGGY_GUN_X = -0.72;
+const REBEL_CRAWLER_WHEEL_HALF_WIDTH = 2.7 * 0.46;
+const REBEL_CRAWLER_WHEEL_HALF_LENGTH = 4.9 * 0.36;
+const REBEL_CRAWLER_WHEEL_REST_Y = 1 - 0.24 - 0.42;
 const TMP_DIRECTION = new Vector3();
 const TMP_MIDPOINT = new Vector3();
 const TMP_QUATERNION = new Quaternion();
 
 export function createVehicleVisual(archetype: VehicleArchetypeId): VehicleVisual {
-  const rig =
-    archetype === "buggy"
-      ? buildBuggy()
-      : archetype === "airboat"
-        ? buildAirboat()
-        : buildHelicopter();
+  const rig = archetype === "buggy"
+    ? buildBuggy()
+    : archetype === "airboat"
+      ? buildAirboat()
+      : archetype === "helicopter"
+        ? buildHelicopter()
+        : archetype === "rebelCrawler"
+          ? buildRebelCrawler()
+          : buildCombineGlider();
 
   let rotorAngle = 0;
   let fanAngle = 0;
@@ -326,7 +332,7 @@ function bindImportedRig(
     throw new Error(`El modelo ${archetype} no contiene un LOD preparado.`);
   }
 
-  const wheels = archetype === "buggy"
+  const wheels = archetype === "buggy" || archetype === "rebelCrawler"
     ? [
         ...animatedVariants(root, "wheel_front_left", 0, 1, 2),
         ...animatedVariants(root, "wheel_front_right", 1, -1, 2),
@@ -334,10 +340,10 @@ function bindImportedRig(
         ...animatedVariants(root, "wheel_rear_right", 3, -1, 2),
       ]
     : [];
-  const fans = archetype === "airboat"
+  const fans = archetype === "airboat" || archetype === "combineGlider"
     ? animatedVariants(root, "fan_main", 0, 1, 1)
     : [];
-  const rudders = archetype === "airboat"
+  const rudders = archetype === "airboat" || archetype === "combineGlider"
     ? [
         ...animatedVariants(root, "rudder_left", 0, 1, 1),
         ...animatedVariants(root, "rudder_right", 1, 1, 1),
@@ -458,6 +464,21 @@ function bindImportedAnchors(
     return;
   }
   if (archetype === "airboat") {
+    bindAnchor(seats, "driver", root, "seat_driver");
+    bindAnchor(cameras, "driver", root, "camera_driver");
+    bindExits(exits, "driver", root, ["exit_left", "exit_right"]);
+    return;
+  }
+  if (archetype === "rebelCrawler") {
+    bindAnchor(seats, "driver", root, "seat_driver");
+    bindAnchor(seats, "passenger", root, "seat_passenger");
+    bindAnchor(cameras, "driver", root, "camera_driver");
+    bindAnchor(cameras, "passenger", root, "camera_passenger");
+    bindExits(exits, "driver", root, ["exit_left", "exit_right"]);
+    bindExits(exits, "passenger", root, ["exit_right", "exit_left"]);
+    return;
+  }
+  if (archetype === "combineGlider") {
     bindAnchor(seats, "driver", root, "seat_driver");
     bindAnchor(cameras, "driver", root, "camera_driver");
     bindExits(exits, "driver", root, ["exit_left", "exit_right"]);
@@ -830,6 +851,239 @@ function addBuggyTurret(
   return { yaw, pitch, muzzle };
 }
 
+function buildRebelCrawler(): VisualRig {
+  const root = namedGroup("vehicle-rebel-crawler");
+  const mats = rebelCrawlerMaterials();
+  const lod = new LOD();
+  lod.name = "visual_lods";
+  root.add(lod);
+
+  const full = namedGroup("visual_lod0");
+  addRebelCrawlerHull(full, mats, true);
+  lod.addLevel(full, 0);
+  const medium = namedGroup("visual_lod1");
+  addRebelCrawlerHull(medium, mats, false);
+  lod.addLevel(medium, 62);
+  const low = namedGroup("visual_lod2");
+  low.add(box([0, 0.75, 0], [2.55, 0.72, 4.45], mats.body));
+  low.add(box([0, 1.55, 0.82], [1.85, 1.28, 1.62], mats.patch));
+  lod.addLevel(low, 132);
+
+  const wheels: Group[] = [];
+  const wheelPositions = [
+    [-REBEL_CRAWLER_WHEEL_HALF_WIDTH, REBEL_CRAWLER_WHEEL_HALF_LENGTH],
+    [REBEL_CRAWLER_WHEEL_HALF_WIDTH, REBEL_CRAWLER_WHEEL_HALF_LENGTH],
+    [-REBEL_CRAWLER_WHEEL_HALF_WIDTH, -REBEL_CRAWLER_WHEEL_HALF_LENGTH],
+    [REBEL_CRAWLER_WHEEL_HALF_WIDTH, -REBEL_CRAWLER_WHEEL_HALF_LENGTH],
+  ] as const;
+  wheelPositions.forEach(([x, z], index) => {
+    const pivot = namedGroup(index < 2 ? "track_front_pivot" : "track_rear_pivot");
+    pivot.position.set(x, REBEL_CRAWLER_WHEEL_REST_Y, z);
+    const wheel = namedGroup("track_wheel");
+    wheel.add(cylinder([0, 0, 0], 0.46, 0.32, mats.rubber, 18, Z_AXIS, Math.PI / 2));
+    wheel.add(cylinder([0, 0, 0], 0.23, 0.34, mats.metal, 12, Z_AXIS, Math.PI / 2));
+    pivot.add(wheel);
+    root.add(pivot);
+    wheels.push(wheel);
+  });
+
+  const steeringWheel = namedGroup("steering_wheel");
+  steeringWheel.position.set(0.48, 1.55, 1.16);
+  steeringWheel.rotation.x = -0.48;
+  steeringWheel.add(torusWheel(0.19, 0.025, mats.rubber));
+  root.add(steeringWheel);
+  const speedNeedle = instrument(root, [0.34, 1.62, 1.42], mats);
+  const engineNeedle = instrument(root, [0.62, 1.62, 1.42], mats);
+  const anchors = buildAnchors(root, {
+    seats: {
+      driver: [0.48, 1.45, 0.78],
+      passenger: [-0.48, 1.45, 0.78],
+    },
+    cameras: {
+      driver: [0.48, 1.86, 0.82],
+      passenger: [-0.48, 1.86, 0.82],
+    },
+    exits: {
+      driver: [
+        [1.72, 0.35, 0.55],
+        [-1.72, 0.35, 0.55],
+        [0, 0.35, -2.8],
+      ],
+      passenger: [
+        [-1.72, 0.35, 0.55],
+        [1.72, 0.35, 0.55],
+        [0, 0.35, -2.8],
+      ],
+    },
+  });
+  const lights = addHeadlights(root, [
+    [-0.56, 1.2, 2.05],
+    [0.56, 1.2, 2.05],
+  ], mats.lens, 52);
+
+  return {
+    root,
+    wheels,
+    frontWheelPivots: [],
+    suspensionArms: [],
+    steeringWheel,
+    speedNeedle,
+    engineNeedle,
+    rotor: null,
+    tailRotor: null,
+    fans: [],
+    rudders: [],
+    turretYaw: null,
+    turretPitch: null,
+    muzzle: null,
+    lights,
+    damageMaterials: [mats.body, mats.patch],
+    ...anchors,
+  };
+}
+
+function addRebelCrawlerHull(
+  root: Group,
+  mats: ReturnType<typeof rebelCrawlerMaterials>,
+  detailed: boolean,
+): void {
+  root.add(box([0, 0.72, 0], [2.18, 0.62, 4.18], mats.body));
+  root.add(box([0, 1.02, 1.7], [1.78, 0.5, 0.92], mats.body, [-0.08, 0, 0]));
+  root.add(box([0, 1.08, -1.72], [1.82, 0.14, 1.08], mats.patch));
+  for (const side of [-1, 1]) {
+    const x = side * 1.25;
+    root.add(box([x, -0.08, 0], [0.42, 0.13, 4.05], mats.rubber));
+    root.add(box([x, 0.79, 0], [0.42, 0.13, 4.05], mats.rubber));
+    root.add(box([side * 1.13, 0.78, 0], [0.28, 0.32, 4.34], mats.patch));
+    for (const z of [-0.88, 0, 0.88]) {
+      root.add(cylinder([x, REBEL_CRAWLER_WHEEL_REST_Y, z], 0.36, 0.3, mats.metal, 12, Z_AXIS, Math.PI / 2));
+    }
+  }
+  root.add(box([0, 2.18, 0.92], [1.9, 0.14, 1.62], mats.body));
+  for (const x of [-0.84, 0.84]) {
+    root.add(tube(new Vector3(x, 1.06, 0.16), new Vector3(x, 2.17, 0.16), 0.05, mats.metal));
+    root.add(tube(new Vector3(x, 1.08, 1.6), new Vector3(x, 2.17, 1.6), 0.05, mats.metal));
+    root.add(box([x * 1.08, 1.3, 0.92], [0.08, 0.58, 1.1], mats.body));
+  }
+  root.add(tube(new Vector3(-0.84, 2.17, 0.16), new Vector3(0.84, 2.17, 0.16), 0.05, mats.metal));
+  root.add(tube(new Vector3(-0.84, 2.17, 1.6), new Vector3(0.84, 2.17, 1.6), 0.05, mats.metal));
+  root.add(box([0, 1.76, 1.56], [1.5, 0.62, 0.045], mats.glass, [-0.12, 0, 0]));
+  root.add(box([0, 1.42, -0.55], [1.24, 0.62, 0.92], mats.engine));
+  for (let index = 0; index < 5; index += 1) {
+    root.add(box([-0.42 + index * 0.21, 1.75, -0.55], [0.11, 0.07, 0.72], mats.metal));
+  }
+  root.add(tube(new Vector3(-0.86, 1.2, -2.1), new Vector3(-0.86, 1.52, -2.1), 0.045, mats.metal));
+  root.add(tube(new Vector3(0.86, 1.2, -2.1), new Vector3(0.86, 1.52, -2.1), 0.045, mats.metal));
+  root.add(tube(new Vector3(-0.86, 1.52, -2.1), new Vector3(0.86, 1.52, -2.1), 0.045, mats.metal));
+
+  if (!detailed) return;
+  root.add(seat([0.48, 1.28, 0.72], mats.fabric, mats.metal));
+  root.add(seat([-0.48, 1.28, 0.72], mats.fabric, mats.metal));
+  root.add(box([-0.58, 1.36, -1.68], [0.48, 0.42, 0.34], mats.patch));
+  root.add(box([0.56, 1.31, -1.72], [0.52, 0.34, 0.4], mats.body));
+  root.add(tube(new Vector3(-0.98, 0.72, 2.35), new Vector3(0.98, 0.72, 2.35), 0.065, mats.metal));
+  root.add(cylinder([0, 0.82, 2.26], 0.18, 0.52, mats.metal, 14, Z_AXIS, Math.PI / 2));
+}
+
+function buildCombineGlider(): VisualRig {
+  const root = namedGroup("vehicle-combine-glider");
+  const mats = combineGliderMaterials();
+  const lod = new LOD();
+  lod.name = "visual_lods";
+  root.add(lod);
+  const full = namedGroup("visual_lod0");
+  addCombineGliderHull(full, mats, true);
+  lod.addLevel(full, 0);
+  const medium = namedGroup("visual_lod1");
+  addCombineGliderHull(medium, mats, false);
+  lod.addLevel(medium, 68);
+  const low = namedGroup("visual_lod2");
+  low.add(box([0, 0.52, 0], [2.05, 0.52, 3.25], mats.body));
+  low.add(box([0, 0.9, -0.72], [1.28, 0.5, 1.15], mats.ceramic));
+  lod.addLevel(low, 145);
+
+  const fan = namedGroup("fan_main");
+  fan.position.set(0, 0.84, -1.4);
+  fan.add(cylinder([0, 0, 0], 0.34, 0.06, mats.energy, 18, Z_AXIS, Math.PI / 2));
+  for (let index = 0; index < 3; index += 1) {
+    const spoke = box([0, 0.2, 0], [0.055, 0.4, 0.035], mats.energy);
+    spoke.rotation.z = (index / 3) * Math.PI * 2;
+    fan.add(spoke);
+  }
+  root.add(fan);
+
+  const rudders: Object3D[] = [];
+  for (const x of [-0.82, 0.82]) {
+    const rudder = namedGroup(x < 0 ? "rudder_left" : "rudder_right");
+    rudder.position.set(x, 0.88, -1.28);
+    rudder.add(box([0, 0.15, 0], [0.12, 0.54, 0.58], mats.ceramic, [0.08, 0, 0]));
+    root.add(rudder);
+    rudders.push(rudder);
+  }
+  const anchors = buildAnchors(root, {
+    seats: { driver: [0, 0.98, -0.08] },
+    cameras: { driver: [0, 1.5, 0.02] },
+    exits: {
+      driver: [
+        [-1.48, 0.25, -0.05],
+        [1.48, 0.25, -0.05],
+        [0, 0.25, 2.15],
+      ],
+    },
+  });
+  const lights = addHeadlights(
+    root,
+    [[-0.38, 0.7, 1.55], [0.38, 0.7, 1.55]],
+    mats.energy,
+    58,
+    0x80dcff,
+  );
+  return {
+    root,
+    wheels: [],
+    frontWheelPivots: [],
+    suspensionArms: [],
+    steeringWheel: null,
+    speedNeedle: null,
+    engineNeedle: null,
+    rotor: null,
+    tailRotor: null,
+    fans: [fan],
+    rudders,
+    turretYaw: null,
+    turretPitch: null,
+    muzzle: null,
+    lights,
+    damageMaterials: [mats.body, mats.ceramic],
+    ...anchors,
+  };
+}
+
+function addCombineGliderHull(
+  root: Group,
+  mats: ReturnType<typeof combineGliderMaterials>,
+  detailed: boolean,
+): void {
+  root.add(box([0, 0.5, 0], [1.95, 0.48, 3.08], mats.body));
+  root.add(box([0, 0.72, 1.35], [1.25, 0.34, 0.82], mats.ceramic, [-0.12, 0, 0]));
+  root.add(box([-0.84, 0.56, -0.66], [0.34, 0.3, 1.7], mats.body, [0.02, -0.08, 0.03]));
+  root.add(box([0.84, 0.56, -0.66], [0.34, 0.3, 1.7], mats.body, [0.02, 0.08, -0.03]));
+  root.add(box([0, 0.92, -0.96], [1.22, 0.56, 0.92], mats.body));
+  root.add(box([0, 0.94, 0.18], [1.12, 0.42, 1.16], mats.dark));
+  root.add(box([0, 1.28, 0.52], [1.02, 0.48, 0.04], mats.glass, [-0.48, 0, 0]));
+
+  for (const [x, z] of [[0, 1.35], [-0.78, -0.92], [0.78, -0.92]] as const) {
+    root.add(cylinder([x, 0.23, z], 0.22, 0.08, mats.energy, 16));
+    root.add(cylinder([x, 0.3, z], 0.09, 0.12, mats.metal, 12));
+  }
+  if (!detailed) return;
+  root.add(seat([0, 0.86, -0.08], mats.fabric, mats.metal));
+  root.add(box([0, 1.08, 0.66], [0.72, 0.16, 0.28], mats.metal, [-0.22, 0, 0]));
+  root.add(scaledSphere([0, 0.9, 1.53], [0.14, 0.09, 0.08], mats.energy));
+  root.add(tube(new Vector3(-0.64, 0.5, 1.22), new Vector3(-0.9, 0.8, -0.6), 0.05, mats.metal));
+  root.add(tube(new Vector3(0.58, 0.48, 1.26), new Vector3(0.88, 0.78, -0.7), 0.045, mats.metal));
+}
+
 function buildAirboat(): VisualRig {
   const root = namedGroup("vehicle-airboat");
   const mats = airboatMaterials();
@@ -1189,6 +1443,50 @@ function buggyMaterials() {
   };
 }
 
+function rebelCrawlerMaterials() {
+  return {
+    body: standard(0x4d6170, 0.82, 0.2),
+    patch: standard(0x873f2d, 0.9, 0.14),
+    metal: standard(0x686d6d, 0.5, 0.82),
+    engine: standard(0x323638, 0.62, 0.76),
+    rubber: standard(0x17191a, 0.97, 0.02),
+    fabric: standard(0x30383a, 0.96, 0.02),
+    lens: standard(0xf5e4b8, 0.18, 0.05, 0xffcc68, 0.2),
+    instrument: standard(0x101a1c, 0.3, 0.14, 0x63dbe5, 1.15),
+    glass: new MeshPhysicalMaterial({
+      color: 0x7691a0,
+      roughness: 0.18,
+      metalness: 0.04,
+      transmission: 0.28,
+      transparent: true,
+      opacity: 0.46,
+      thickness: 0.04,
+      side: DoubleSide,
+    }),
+  };
+}
+
+function combineGliderMaterials() {
+  return {
+    body: standard(0x2d414d, 0.58, 0.42),
+    ceramic: standard(0xa5b1b1, 0.64, 0.14),
+    metal: standard(0x515c62, 0.4, 0.88),
+    dark: standard(0x171d21, 0.9, 0.08),
+    fabric: standard(0x242a2e, 0.96, 0.02),
+    energy: standard(0x62d8f2, 0.22, 0.18, 0x43cfff, 2.4),
+    glass: new MeshPhysicalMaterial({
+      color: 0x568da0,
+      roughness: 0.12,
+      metalness: 0.04,
+      transmission: 0.42,
+      transparent: true,
+      opacity: 0.44,
+      thickness: 0.035,
+      side: DoubleSide,
+    }),
+  };
+}
+
 function airboatMaterials() {
   return {
     yellow: standard(0xd29c19, 0.76, 0.22),
@@ -1455,12 +1753,13 @@ function addHeadlights(
   positions: readonly (readonly [number, number, number])[],
   material: MeshStandardMaterial,
   distance = 45,
+  color = 0xffe7bd,
 ): SpotLight[] {
   return positions.map((position) => {
     const housing = cylinder(position, 0.12, 0.08, material, 14, X_AXIS, Math.PI / 2);
     housing.name = "vehicle-headlight-lens";
     root.add(housing);
-    const light = new SpotLight(0xffe7bd, 0, distance, MathUtils.degToRad(24), 0.55, 1.15);
+    const light = new SpotLight(color, 0, distance, MathUtils.degToRad(24), 0.55, 1.15);
     light.position.set(...position);
     light.target.position.set(position[0], position[1] - 0.2, position[2] + 18);
     root.add(light, light.target);

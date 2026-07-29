@@ -36,18 +36,26 @@ export interface VehicleNavigationPlannerOptions {
 
 export class VehicleNavigationPlanner {
   private readonly profiles: ReadonlyMap<string, VehicleNavigationProfile>;
-  private readonly grids: ReadonlyMap<string, VehicleNavigationBake['grids'][number]>;
   private readonly laneGraph: VehicleLaneGraph;
   private readonly markersById: ReadonlyMap<string, VehicleNavMarkerDefinition>;
+  private readonly localPlanners: ReadonlyMap<string, HybridAStarPlanner>;
 
   constructor(
     readonly navigation: VehicleNavigationBake,
     profiles: readonly VehicleNavigationProfile[],
   ) {
     this.profiles = new Map(profiles.map((profile) => [profile.id, profile]));
-    this.grids = new Map(navigation.grids.map((grid) => [grid.profileId, grid]));
     this.laneGraph = new VehicleLaneGraph(navigation.laneGraph);
     this.markersById = new Map(navigation.markers.map((marker) => [marker.id, marker]));
+    const localPlanners = new Map<string, HybridAStarPlanner>();
+    for (const grid of navigation.grids) {
+      const profileId = grid.profileId;
+      const profile = this.profiles.get(profileId);
+      if (profile && profile.surface !== 'rail') {
+        localPlanners.set(profileId, new HybridAStarPlanner(grid, profile));
+      }
+    }
+    this.localPlanners = localPlanners;
   }
 
   static async create(
@@ -119,10 +127,7 @@ export class VehicleNavigationPlanner {
     goal: VehiclePose2D,
     options?: HybridAStarOptions,
   ): VehicleHybridPath | null {
-    const profile = this.profiles.get(profileId);
-    const grid = this.grids.get(profileId);
-    if (!profile || !grid || profile.surface === 'rail') return null;
-    return new HybridAStarPlanner(grid, profile).plan(start, goal, options);
+    return this.localPlanners.get(profileId)?.plan(start, goal, options) ?? null;
   }
 
   planGlobal(start: VehicleNavPoint, goal: VehicleNavPoint): VehicleLaneRoute | null {
@@ -138,7 +143,9 @@ export class VehicleNavigationPlanner {
     const profile = this.profiles.get(profileId);
     if (!profile || profile.surface === 'rail') return null;
     const laneRoute = this.planGlobal(start.position, goal.position);
-    const snapDistance = options.laneSnapDistance ?? Math.max(8, profile.minTurnRadius * 2);
+    const snapDistance =
+      options.laneSnapDistance ??
+      Math.max(24, profile.minTurnRadius * 4);
 
     if (!laneRoute || laneRoute.points.length < 2) {
       const direct = this.planLocal(profileId, start, goal, options.local);

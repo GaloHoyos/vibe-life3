@@ -67,4 +67,17 @@ describe('HybridAStarPlanner', () => {
       }
     }
   });
+
+  it('mantiene resultados deterministas cuando hay alternativas con el mismo costo', () => {
+    const grid = rectangularGrid(12, 12, new Set<string>(['5:5']));
+    const start = { position: [1.5, 0, 5.5] as const, heading: Math.PI / 2 };
+    const goal = { position: [10.5, 0, 5.5] as const, heading: Math.PI / 2 };
+    const expected = new HybridAStarPlanner(grid, groundProfile).plan(start, goal);
+
+    expect(expected?.reachedGoal).toBe(true);
+    for (let run = 0; run < 5; run += 1) {
+      const actual = new HybridAStarPlanner(grid, groundProfile).plan(start, goal);
+      expect(actual).toEqual(expected);
+    }
+  });
 });

@@ -77,6 +77,29 @@ describe("VehicleVisual", () => {
 
     visual.dispose();
   });
+
+  it("conserva conductor y pasajero en el fallback del transporte oruga", () => {
+    const visual = createVehicleVisual("rebelCrawler");
+
+    expect(visual.seatAnchors.get("driver")?.name).toBe("seat_driver");
+    expect(visual.seatAnchors.get("passenger")?.name).toBe("seat_passenger");
+    expect(visual.cameraAnchors.get("driver")?.name).toBe("camera_driver");
+    expect(visual.muzzle).toBeNull();
+
+    visual.dispose();
+  });
+
+  it("mantiene la cápsula conducible y desarmada en el fallback Combine", () => {
+    const visual = createVehicleVisual("combineGlider");
+
+    expect(visual.seatAnchors.get("driver")?.name).toBe("seat_driver");
+    expect(visual.cameraAnchors.get("driver")?.name).toBe("camera_driver");
+    expect(visual.cameraAnchors.get("driver")?.position.y).toBeCloseTo(1.5);
+    expect(visual.exitAnchors.get("driver")).toHaveLength(3);
+    expect(visual.muzzle).toBeNull();
+
+    visual.dispose();
+  });
 });
 
 function buggyModel(): Group {

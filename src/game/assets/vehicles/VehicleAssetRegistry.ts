@@ -51,6 +51,8 @@ export const VEHICLE_MODEL_URLS: Readonly<
   buggy: new URL("./models/buggy.glb", import.meta.url).href,
   airboat: new URL("./models/airboat.glb", import.meta.url).href,
   helicopter: new URL("./models/helicopter.glb", import.meta.url).href,
+  rebelCrawler: new URL("./models/rebelCrawler.glb", import.meta.url).href,
+  combineGlider: new URL("./models/combineGlider.glb", import.meta.url).href,
 };
 
 const LOD_DISTANCES: Readonly<
@@ -59,6 +61,8 @@ const LOD_DISTANCES: Readonly<
   buggy: [52, 112],
   airboat: [60, 128],
   helicopter: [92, 190],
+  rebelCrawler: [62, 132],
+  combineGlider: [68, 145],
 };
 
 export class VehicleAssetRegistry implements Disposable {

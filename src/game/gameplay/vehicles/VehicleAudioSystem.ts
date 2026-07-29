@@ -25,6 +25,8 @@ const VehicleClips: readonly AudioClipDefinition[] = [
   clip("vehicles.airboat.water", "airboat-water-loop.wav", true, 0.58),
   clip("vehicles.helicopter.rotor", "helicopter-rotor-loop.wav", true, 0.86),
   clip("vehicles.helicopter.cabin", "helicopter-cabin-loop.wav", true, 0.46),
+  clip("vehicles.combineGlider.engine", "combine-glider-engine-loop.wav", true, 0.72),
+  clip("vehicles.combineGlider.hover", "combine-glider-hover-loop.wav", true, 0.62),
   clip("vehicles.alarm", "vehicle-alarm-loop.wav", true, 0.55),
   clip("vehicles.crash", "vehicle-crash.wav", false, 0.95),
   clip("vehicles.damage", "vehicle-damage-hit.wav", false, 0.72),
@@ -90,7 +92,8 @@ export class VehicleAudioSystem {
     rig.engine.setLowpassFrequency(interiorFilter);
 
     switch (vehicle.preset.archetype) {
-      case "buggy": {
+      case "buggy":
+      case "rebelCrawler": {
         const transmission = rig.secondary[0];
         const skid = rig.secondary[1];
         transmission?.setVolume(
@@ -132,6 +135,19 @@ export class VehicleAudioSystem {
         cabin?.setVolume(running ? (listenerInside ? 0.52 : 0.24) : 0);
         cabin?.setPlaybackRate(0.82 + rpm01 * 0.38);
         cabin?.setLowpassFrequency(listenerInside ? 4_600 : 13_000);
+        break;
+      }
+      case "combineGlider": {
+        const hover = rig.secondary[0];
+        hover?.setVolume(
+          running
+            ? 0.24 + rpm01 * 0.28 + (telemetry.grounded ? 0.18 : 0)
+            : 0,
+        );
+        hover?.setPlaybackRate(
+          0.82 + Math.min(1, telemetry.speed / 32) * 0.46,
+        );
+        hover?.setLowpassFrequency(listenerInside ? 7_200 : 16_000);
         break;
       }
     }
@@ -227,6 +243,7 @@ function layerIds(archetype: VehicleArchetypeId): {
 } {
   switch (archetype) {
     case "buggy":
+    case "rebelCrawler":
       return {
         engine: "vehicles.buggy.engine",
         secondary: [
@@ -244,6 +261,11 @@ function layerIds(archetype: VehicleArchetypeId): {
         engine: "vehicles.helicopter.rotor",
         secondary: ["vehicles.helicopter.cabin"],
       };
+    case "combineGlider":
+      return {
+        engine: "vehicles.combineGlider.engine",
+        secondary: ["vehicles.combineGlider.hover"],
+      };
   }
 }
 
@@ -251,7 +273,11 @@ function loopOptions(
   archetype: VehicleArchetypeId,
   volume: number,
 ) {
-  const maxDistance = archetype === "helicopter" ? 95 : 48;
+  const maxDistance = archetype === "helicopter"
+    ? 95
+    : archetype === "combineGlider"
+      ? 58
+      : 48;
   return {
     bus: "vehicles" as const,
     loop: true,

@@ -1,4 +1,9 @@
-export type VehicleAssetId = "buggy" | "airboat" | "helicopter";
+export type VehicleAssetId =
+  | "buggy"
+  | "airboat"
+  | "helicopter"
+  | "rebelCrawler"
+  | "combineGlider";
 
 export type Vec3 = readonly [number, number, number];
 
@@ -201,6 +206,83 @@ export const VEHICLE_SPECS: readonly VehicleAssetSpec[] = [
       "damage_cockpit",
       "damage_fuel",
       "damage_weapon",
+      "wreckage",
+    ],
+  },
+  {
+    id: "rebelCrawler",
+    displayName: "Transporte oruga rebelde",
+    seed: 0x5f3759df,
+    maxTrianglesLod0: 90_000,
+    maxDrawsPerLod: 18,
+    maxGlbBytes: 9 * 1024 * 1024,
+    // 0 chapa azul de la Resistencia, 1 reparaciones oxidadas, 2 mecánica y
+    // herrajes, 3 orugas, lona y tapizado.
+    finishes: [
+      { color: [74, 91, 104], roughness: 0.76, metallic: 0.12, wear: 0.52, grain: 1 },
+      { color: [137, 65, 43], roughness: 0.86, metallic: 0.2, wear: 0.84, grain: 1.25 },
+      { color: [102, 108, 109], roughness: 0.5, metallic: 0.84, wear: 0.46, grain: 1.55 },
+      { color: [35, 37, 38], roughness: 0.95, metallic: 0.03, wear: 0.28, grain: 2.7 },
+    ],
+    grimeColor: [83, 91, 96],
+    requiredNodes: [
+      "visual_lod0",
+      "visual_lod1",
+      "visual_lod2",
+      "wheel_front_left",
+      "wheel_front_right",
+      "wheel_rear_left",
+      "wheel_rear_right",
+      "seat_driver",
+      "seat_passenger",
+      "camera_driver",
+      "camera_passenger",
+      "exit_left",
+      "exit_right",
+      "audio_engine",
+      "audio_transmission",
+      "damage_engine",
+      "damage_steering",
+      "damage_fuel",
+      "wreckage",
+    ],
+  },
+  {
+    id: "combineGlider",
+    displayName: "Deslizador Combine de reconocimiento",
+    seed: 0x6a09e667,
+    maxTrianglesLod0: 85_000,
+    maxDrawsPerLod: 18,
+    maxGlbBytes: 9 * 1024 * 1024,
+    // 0 blindaje azul petróleo, 1 cerámica Combine clara, 2 mecanismos
+    // mecanizados, 3 interior, juntas y superficies antideslizantes.
+    finishes: [
+      { color: [45, 62, 72], roughness: 0.54, metallic: 0.36, wear: 0.28, grain: 1 },
+      { color: [164, 174, 173], roughness: 0.62, metallic: 0.12, wear: 0.38, grain: 1.1 },
+      { color: [76, 84, 89], roughness: 0.38, metallic: 0.9, wear: 0.3, grain: 1.45 },
+      { color: [24, 28, 31], roughness: 0.88, metallic: 0.08, wear: 0.2, grain: 2.4 },
+    ],
+    grimeColor: [55, 68, 74],
+    requiredNodes: [
+      "visual_lod0",
+      "visual_lod1",
+      "visual_lod2",
+      "fan_main",
+      "rudder_left",
+      "rudder_right",
+      "stabilizer_front",
+      "stabilizer_rear_left",
+      "stabilizer_rear_right",
+      "seat_driver",
+      "camera_driver",
+      "exit_left",
+      "exit_right",
+      "audio_engine",
+      "audio_hover",
+      "damage_engine",
+      "damage_hull",
+      "damage_steering",
+      "damage_fuel",
       "wreckage",
     ],
   },

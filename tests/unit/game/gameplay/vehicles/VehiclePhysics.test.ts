@@ -88,6 +88,173 @@ describe("estabilidad física de los vehículos", () => {
     expect(trace.maxHeight).toBeLessThan(2.5);
   });
 
+  it("el transporte oruga se asienta y avanza sin volcar", async () => {
+    const rig = await spawn({
+      presetId: "rebelCrawler",
+      position: [0, 1.4, 0],
+    });
+    simulate(rig, 2.5);
+
+    const start = rig.vehicle.getWorldPosition();
+    rig.vehicle.setControl({
+      throttle: 1,
+      steering: 0,
+      brake: 0,
+      handbrake: 0,
+      boost: false,
+    });
+    const trace = simulate(rig, 5);
+    const end = rig.vehicle.getWorldPosition();
+
+    expect(end.z - start.z).toBeGreaterThan(5);
+    expect(Math.abs(end.x - start.x)).toBeLessThan(2.5);
+    expect(trace.maxTiltDegrees).toBeLessThan(30);
+    expect(rig.vehicle.isWreckage()).toBe(false);
+  });
+
+  it("el deslizador Combine mantiene altura y avanza sobre tierra", async () => {
+    const rig = await spawn({
+      presetId: "combineGlider",
+      position: [0, 1.4, 0],
+    });
+    simulate(rig, 3);
+
+    const settledHeight = rig.vehicle.getWorldPosition().y;
+    const start = rig.vehicle.getWorldPosition();
+    rig.vehicle.setControl({
+      throttle: 1,
+      steering: 0,
+      brake: 0,
+      handbrake: 0,
+      boost: false,
+    });
+    const trace = simulate(rig, 4);
+    const end = rig.vehicle.getWorldPosition();
+
+    expect(settledHeight).toBeGreaterThan(0.55);
+    expect(settledHeight).toBeLessThan(0.82);
+    expect(end.z - start.z).toBeGreaterThan(6);
+    expect(trace.maxTiltDegrees).toBeLessThan(25);
+    expect(rig.vehicle.getTelemetry().grounded).toBe(true);
+  });
+
+  it("el deslizador Combine gira desde el reposo sobre tierra", async () => {
+    const rig = await spawn({
+      presetId: "combineGlider",
+      position: [0, 1.15, 0],
+      rotation: [0, Math.PI, 0],
+    });
+    simulate(rig, 2);
+
+    rig.vehicle.setControl({
+      throttle: 1,
+      steering: 1,
+      brake: 0,
+      handbrake: 0,
+      boost: false,
+    });
+    const turn = simulate(rig, 2);
+
+    expect(Math.abs(turn.yaw)).toBeGreaterThan(0.35);
+    expect(rig.vehicle.getTelemetry().grounded).toBe(true);
+  });
+
+  it("el deslizador Combine responde con precisión a cambios de dirección", async () => {
+    const rig = await spawn({
+      presetId: "combineGlider",
+      position: [0, 1.15, 0],
+    });
+    simulate(rig, 2);
+    rig.vehicle.setControl({
+      throttle: 1,
+      steering: 0,
+      brake: 0,
+      handbrake: 0,
+      boost: false,
+    });
+    simulate(rig, 1);
+    const speedAfterOneSecond = rig.vehicle.getTelemetry().forwardSpeed;
+
+    rig.vehicle.setControl({
+      throttle: 1,
+      steering: 1,
+      brake: 0,
+      handbrake: 0,
+      boost: false,
+    });
+    const turn = simulate(rig, 1);
+    rig.vehicle.setControl({
+      throttle: 1,
+      steering: 0,
+      brake: 0,
+      handbrake: 0,
+      boost: false,
+    });
+    simulate(rig, 0.6);
+    expect(speedAfterOneSecond).toBeGreaterThan(6.5);
+    expect(Math.abs(turn.yaw)).toBeGreaterThan(0.35);
+    expect(Math.abs(turn.yaw)).toBeLessThan(0.65);
+    expect(turn.maxSlipDegrees).toBeLessThan(15);
+    expect(
+      Math.abs(rig.vehicle.getTelemetry().state.angularVelocity.y),
+    ).toBeLessThan(0.12);
+  });
+
+  it("el deslizador Combine gira de forma acentuada a baja velocidad", async () => {
+    const rig = await spawn({
+      presetId: "combineGlider",
+      position: [0, 1.15, 0],
+    });
+    simulate(rig, 2);
+    rig.vehicle.setControl({
+      throttle: 0.3,
+      steering: 1,
+      brake: 0,
+      handbrake: 0,
+      boost: false,
+    });
+    const turn = simulate(rig, 1);
+
+    expect(rig.vehicle.getTelemetry().forwardSpeed).toBeLessThan(4);
+    expect(Math.abs(turn.yaw)).toBeGreaterThan(0.55);
+    expect(turn.maxSlipDegrees).toBeLessThan(20);
+  });
+
+  it("el deslizador Combine cruza agua sin sumergirse", async () => {
+    const rig = await spawn(
+      { presetId: "combineGlider", position: [0, 1.8, 0] },
+      { water: true },
+    );
+    simulate(rig, 4);
+
+    expect(rig.vehicle.getWorldPosition().y).toBeGreaterThan(1.3);
+    expect(rig.vehicle.getTelemetry().grounded).toBe(true);
+    expect(rig.vehicle.getTelemetry().submergedRatio).toBeLessThan(0.1);
+  });
+
+  it("el deslizador Combine recupera una pose nivelada al salir del agua", async () => {
+    const rig = await spawn(
+      { presetId: "combineGlider", position: [0, 1.8, 82] },
+      { water: true },
+    );
+    simulate(rig, 3);
+    accelerate(rig, 5);
+
+    expect(rig.vehicle.getWorldPosition().z).toBeGreaterThan(105);
+    rig.vehicle.setControl({
+      throttle: 0,
+      steering: 0,
+      brake: 0,
+      handbrake: 0,
+      boost: false,
+    });
+    simulate(rig, 3);
+
+    const up = WORLD_UP.clone().applyQuaternion(rig.vehicle.getWorldRotation());
+    expect((up.angleTo(WORLD_UP) * 180) / Math.PI).toBeLessThan(8);
+    expect(rig.vehicle.getTelemetry().grounded).toBe(true);
+  });
+
   it("el buggy retrocede con acelerador negativo", async () => {
     const rig = await spawn({ presetId: "buggy", position: [0, 1.2, 0] });
     simulate(rig, 2);
@@ -525,7 +692,13 @@ async function corner(handbrake: number): Promise<{
 }
 
 async function spawn(
-  definition: Partial<VehicleDefinition> & { presetId: "buggy" | "airboat" },
+  definition: Partial<VehicleDefinition> & {
+    presetId:
+      | "buggy"
+      | "airboat"
+      | "rebelCrawler"
+      | "combineGlider";
+  },
   options: { readonly water?: boolean } = {},
 ): Promise<Rig> {
   const physics = new PhysicsWorld();

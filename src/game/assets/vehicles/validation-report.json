@@ -77,11 +77,61 @@
         "infos": 7,
         "hints": 0
       }
+    },
+    {
+      "id": "rebelCrawler",
+      "bytes": 1059336,
+      "budgetBytes": 9437184,
+      "lods": [
+        {
+          "triangles": 11816,
+          "draws": 6
+        },
+        {
+          "triangles": 6192,
+          "draws": 6
+        },
+        {
+          "triangles": 2888,
+          "draws": 5
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0,
+        "infos": 5,
+        "hints": 0
+      }
+    },
+    {
+      "id": "combineGlider",
+      "bytes": 766040,
+      "budgetBytes": 9437184,
+      "lods": [
+        {
+          "triangles": 4552,
+          "draws": 8
+        },
+        {
+          "triangles": 1800,
+          "draws": 8
+        },
+        {
+          "triangles": 1088,
+          "draws": 7
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0,
+        "infos": 29,
+        "hints": 0
+      }
     }
   ],
   "audio": {
-    "bytes": 1532960,
+    "bytes": 1841748,
     "budgetBytes": 12582912,
-    "files": 11
+    "files": 13
   }
 }

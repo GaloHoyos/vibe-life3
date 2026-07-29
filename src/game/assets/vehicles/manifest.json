@@ -181,6 +181,119 @@
         "wreckage_tail",
         "wreckage_rotor"
       ]
+    },
+    {
+      "id": "rebelCrawler",
+      "glbBytes": 1059336,
+      "lods": [
+        {
+          "triangles": 11816,
+          "draws": 6
+        },
+        {
+          "triangles": 6192,
+          "draws": 6
+        },
+        {
+          "triangles": 2888,
+          "draws": 5
+        }
+      ],
+      "nodeNames": [
+        "rebelCrawler_vehicle",
+        "visual_lod0",
+        "rebelCrawler_body",
+        "rebelCrawler_glass",
+        "wheel_front_left",
+        "wheel_front_right",
+        "wheel_rear_left",
+        "wheel_rear_right",
+        "visual_lod1",
+        "rebelCrawler_body_lod1",
+        "rebelCrawler_glass_lod1",
+        "wheel_front_left_lod1",
+        "wheel_front_right_lod1",
+        "wheel_rear_left_lod1",
+        "wheel_rear_right_lod1",
+        "visual_lod2",
+        "rebelCrawler_body_lod2",
+        "wheel_front_left_lod2",
+        "wheel_front_right_lod2",
+        "wheel_rear_left_lod2",
+        "wheel_rear_right_lod2",
+        "seat_driver",
+        "seat_passenger",
+        "camera_driver",
+        "camera_passenger",
+        "exit_left",
+        "exit_right",
+        "audio_engine",
+        "audio_transmission",
+        "damage_engine",
+        "damage_steering",
+        "damage_fuel",
+        "wreckage",
+        "wreckage_crawler_hull"
+      ]
+    },
+    {
+      "id": "combineGlider",
+      "glbBytes": 766040,
+      "lods": [
+        {
+          "triangles": 4552,
+          "draws": 8
+        },
+        {
+          "triangles": 1800,
+          "draws": 8
+        },
+        {
+          "triangles": 1088,
+          "draws": 7
+        }
+      ],
+      "nodeNames": [
+        "combineGlider_vehicle",
+        "visual_lod0",
+        "combineGlider_body",
+        "combineGlider_windscreen",
+        "fan_main",
+        "stabilizer_front",
+        "stabilizer_rear_left",
+        "stabilizer_rear_right",
+        "rudder_left",
+        "rudder_right",
+        "visual_lod1",
+        "combineGlider_body_lod1",
+        "combineGlider_windscreen_lod1",
+        "fan_main_lod1",
+        "stabilizer_front_lod1",
+        "stabilizer_rear_left_lod1",
+        "stabilizer_rear_right_lod1",
+        "rudder_left_lod1",
+        "rudder_right_lod1",
+        "visual_lod2",
+        "combineGlider_body_lod2",
+        "fan_main_lod2",
+        "stabilizer_front_lod2",
+        "stabilizer_rear_left_lod2",
+        "stabilizer_rear_right_lod2",
+        "rudder_left_lod2",
+        "rudder_right_lod2",
+        "seat_driver",
+        "camera_driver",
+        "exit_left",
+        "exit_right",
+        "audio_engine",
+        "audio_hover",
+        "damage_engine",
+        "damage_hull",
+        "damage_steering",
+        "damage_fuel",
+        "wreckage",
+        "wreckage_combine_glider"
+      ]
     }
   ],
   "audio": {
@@ -226,6 +339,16 @@
         "durationSeconds": 4
       },
       {
+        "path": "audio/combine-glider-engine-loop.wav",
+        "bytes": 176444,
+        "durationSeconds": 4
+      },
+      {
+        "path": "audio/combine-glider-hover-loop.wav",
+        "bytes": 132344,
+        "durationSeconds": 3
+      },
+      {
         "path": "audio/vehicle-alarm-loop.wav",
         "bytes": 88244,
         "durationSeconds": 2
@@ -241,6 +364,6 @@
         "durationSeconds": 3.5
       }
     ],
-    "totalBytes": 1532960
+    "totalBytes": 1841748
   }
 }

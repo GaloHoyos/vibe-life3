@@ -168,6 +168,28 @@ const AUDIO_LAYERS: readonly AudioLayerSpec[] = [
       ),
   },
   {
+    fileName: "combine-glider-engine-loop.wav",
+    durationSeconds: 4,
+    loop: true,
+    synth: (time, phase) =>
+      softClip(
+        Math.sin(Math.PI * 2 * 73 * time) * 0.2 +
+          Math.sin(Math.PI * 2 * 146 * time + Math.sin(phase * Math.PI * 2) * 0.22) * 0.13 +
+          periodicNoise(phase, 43) * 0.09,
+      ),
+  },
+  {
+    fileName: "combine-glider-hover-loop.wav",
+    durationSeconds: 3,
+    loop: true,
+    synth: (time, phase) =>
+      softClip(
+        Math.sin(Math.PI * 2 * 214 * time + Math.sin(phase * Math.PI * 4) * 0.7) * 0.11 +
+          Math.sin(Math.PI * 2 * 428 * time) * 0.045 +
+          periodicNoise(phase, 67) * 0.06,
+      ),
+  },
+  {
     fileName: "vehicle-alarm-loop.wav",
     durationSeconds: 2,
     loop: true,

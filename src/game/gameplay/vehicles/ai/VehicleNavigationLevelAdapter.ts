@@ -37,11 +37,7 @@ export function vehicleNavigationInputFromLevel(
         rotation: box.rotation,
       }))
     : [];
-  const presets = options.presets ?? [
-    VehiclePresets.buggy,
-    VehiclePresets.airboat,
-    VehiclePresets.helicopter,
-  ];
+  const presets = options.presets ?? navigationPresetsFromLevel(level);
   return {
     geometry: {
       revision: level.id,
@@ -55,6 +51,18 @@ export function vehicleNavigationInputFromLevel(
     profiles: presets.map(navigationProfileFromPreset),
     options: options.bake,
   };
+}
+
+function navigationPresetsFromLevel(
+  level: LevelDefinition,
+): VehiclePresetDefinition[] {
+  const presets = new Map<string, VehiclePresetDefinition>();
+  for (const vehicle of level.vehicles ?? []) {
+    const preset = VehiclePresets[vehicle.presetId];
+    if (!vehicle.ai?.enabled && preset.navigation.surface !== 'rail') continue;
+    presets.set(preset.id, preset);
+  }
+  return [...presets.values()];
 }
 
 function boxObstacle(box: StaticBoxDefinition): VehicleBakeObstacle {

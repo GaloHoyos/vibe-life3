@@ -172,6 +172,30 @@ const HELI_ROTOR = { y: 2.98, z: -0.12 } as const;
 /** Rotor de cola: de canto sobre la deriva, a dos tercios de su altura. */
 const HELI_TAIL_ROTOR = { x: 0.3, y: 2.33, z: -5.92 } as const;
 
+/**
+ * Tren de rodaje del transporte oruga. Conserva las cuatro muestras de
+ * suspensión del motor raycast, pero las ruedas quedan dentro de una banda
+ * continua: visualmente es un snowcat, aunque esta primera entrega todavía
+ * dobla como un vehículo terrestre convencional.
+ */
+const REBEL_CRAWLER_WHEEL = {
+  radius: 0.46,
+  halfWidth: 2.7 * 0.46,
+  halfLength: 4.9 * 0.36,
+  restY: 1 - 0.24 - 0.42,
+} as const;
+
+const REBEL_CRAWLER_DRIVER_X = 0.48;
+
+const COMBINE_GLIDER = {
+  halfWidth: 1.02,
+  noseZ: 1.72,
+  sternZ: -1.7,
+  deckY: 0.72,
+  coreY: 0.84,
+  coreZ: -0.9,
+} as const;
+
 function createHullGeometry(
   length: number,
   width: number,
@@ -562,6 +586,18 @@ function createGlassMaterial(
     .setAlphaMode("BLEND")
     // Desde la butaca se mira el cristal por su cara interna.
     .setDoubleSided(true);
+}
+
+function createCombineEnergyMaterial(
+  document: Document,
+  spec: VehicleAssetSpec,
+): Material {
+  return document
+    .createMaterial(`${spec.id}_energy`)
+    .setBaseColorFactor([0.2, 0.72, 0.9, 1])
+    .setEmissiveFactor([0.12, 0.78, 1])
+    .setMetallicFactor(0.16)
+    .setRoughnessFactor(0.24);
 }
 
 function createMesh(
@@ -1129,6 +1165,665 @@ function buildBuggy(context: BuildContext): void {
       tile: 3,
     },
     createTubePart([-0.75, 0.1, -1], [0.55, 0.65, 0.9], 0.07, 8, 1),
+  ]);
+}
+
+function buildRebelCrawlerLod(
+  context: BuildContext,
+  root: Node,
+  lod: 0 | 1 | 2,
+  glassMaterial: Material,
+): void {
+  const suffix = lod === 0 ? "" : `_lod${lod}`;
+  const detailed = lod === 0;
+  const segments = lod === 0 ? 16 : lod === 1 ? 10 : 6;
+  const { halfWidth, halfLength, restY, radius } = REBEL_CRAWLER_WHEEL;
+  const bodyParts: GeometryPart[] = [
+    // Bañera soldada sobre el tren de orugas.
+    {
+      geometry: chamferBox(2.18, 0.62, 4.18, 0.09),
+      position: [0, 0.72, -0.02],
+      tile: 0,
+    },
+    {
+      geometry: chamferWedge({
+        length: 0.9,
+        height: 0.54,
+        frontWidth: 1.74,
+        rearWidth: 2.08,
+        topFrontWidth: 1.48,
+        topRearWidth: 1.86,
+        chamfer: 0.06,
+      }),
+      position: [0, 1.08, 1.72],
+      rotation: [-0.08, 0, 0],
+      tile: 0,
+    },
+    // Piso de cabina y cubierta de carga trasera.
+    {
+      geometry: chamferBox(1.86, 0.16, 1.54, 0.04),
+      position: [0, 1.02, 0.86],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(1.82, 0.14, 1.08, 0.035),
+      position: [0, 1.1, -1.72],
+      tile: 1,
+    },
+    // Guardas robustas: protegen la banda y ensanchan la silueta.
+    {
+      geometry: chamferBox(0.28, 0.32, 4.34, 0.05),
+      position: [-1.13, 0.78, 0],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.28, 0.32, 4.34, 0.05),
+      position: [1.13, 0.78, 0],
+      tile: 1,
+    },
+  ];
+
+  // Bandas de oruga construidas con zapatas separadas. En los LOD lejanos se
+  // reducen, pero se conserva el ritmo que distingue una oruga de un patín.
+  const shoeCount = detailed ? 13 : lod === 1 ? 8 : 4;
+  const shoeLength = 3.76 / shoeCount;
+  for (const side of [-1, 1] as const) {
+    const x = side * 1.25;
+    for (let index = 0; index < shoeCount; index += 1) {
+      const z = -1.88 + shoeLength * (index + 0.5);
+      bodyParts.push(
+        {
+          geometry: chamferBox(0.42, 0.11, shoeLength * 0.9, 0.018),
+          position: [x, restY - radius + 0.03, z],
+          tile: 3,
+        },
+        {
+          geometry: chamferBox(0.42, 0.11, shoeLength * 0.9, 0.018),
+          position: [x, restY + radius - 0.02, z],
+          tile: 3,
+        },
+      );
+    }
+    const endShoeCount = detailed ? 5 : 3;
+    for (const end of [-1, 1] as const) {
+      for (let index = 0; index < endShoeCount; index += 1) {
+        const t = (index + 0.5) / endShoeCount;
+        const angle = -Math.PI / 2 + t * Math.PI;
+        bodyParts.push({
+          geometry: chamferBox(0.42, 0.11, 0.3, 0.018),
+          position: [
+            x,
+            restY + Math.sin(angle) * radius,
+            end * (1.88 + Math.cos(angle) * radius * 0.46),
+          ],
+          rotation: [end * angle, 0, 0],
+          tile: 3,
+        });
+      }
+    }
+    // Tres rodillos centrales quedan fijos; las ruedas de los extremos son los
+    // cuatro nodos animados que siguen las muestras de suspensión.
+    for (const z of [-0.88, 0, 0.88]) {
+      bodyParts.push(
+        {
+          geometry: new CylinderGeometry(0.36, 0.36, 0.3, segments),
+          position: [x, restY, z],
+          rotation: [0, 0, Math.PI / 2],
+          tile: 2,
+        },
+        {
+          geometry: new CylinderGeometry(0.16, 0.16, 0.32, segments),
+          position: [x, restY, z],
+          rotation: [0, 0, Math.PI / 2],
+          tile: 1,
+        },
+      );
+    }
+  }
+
+  if (lod < 2) {
+    // Cabina parcialmente cerrada: techo, pilares y media puerta, sin convertir
+    // el transporte en un blindado hermético.
+    bodyParts.push(
+      {
+        geometry: chamferBox(1.9, 0.14, 1.62, 0.045),
+        position: [0, 2.18, 0.92],
+        tile: 0,
+      },
+      {
+        geometry: chamferBox(0.14, 1.04, 0.16, 0.035),
+        position: [-0.83, 1.66, 1.58],
+        rotation: [0.08, 0, -0.04],
+        tile: 2,
+      },
+      {
+        geometry: chamferBox(0.14, 1.04, 0.16, 0.035),
+        position: [0.83, 1.66, 1.58],
+        rotation: [0.08, 0, 0.04],
+        tile: 2,
+      },
+      {
+        geometry: chamferBox(0.14, 1.08, 0.16, 0.035),
+        position: [-0.88, 1.65, 0.18],
+        tile: 2,
+      },
+      {
+        geometry: chamferBox(0.14, 1.08, 0.16, 0.035),
+        position: [0.88, 1.65, 0.18],
+        tile: 2,
+      },
+      {
+        geometry: chamferBox(0.08, 0.58, 1.1, 0.02),
+        position: [-0.91, 1.3, 0.92],
+        tile: 0,
+      },
+      {
+        geometry: chamferBox(0.08, 0.58, 1.1, 0.02),
+        position: [0.91, 1.3, 0.92],
+        tile: 0,
+      },
+      // Arco de supervivencia y rack de carga.
+      createTubePart([-0.88, 1.08, 0.08], [-0.88, 2.16, 0.08], 0.05, segments, 2),
+      createTubePart([0.88, 1.08, 0.08], [0.88, 2.16, 0.08], 0.05, segments, 2),
+      createTubePart([-0.88, 2.16, 0.08], [0.88, 2.16, 0.08], 0.05, segments, 2),
+      createTubePart([-0.86, 1.18, -2.1], [-0.86, 1.52, -2.1], 0.045, segments, 2),
+      createTubePart([0.86, 1.18, -2.1], [0.86, 1.52, -2.1], 0.045, segments, 2),
+      createTubePart([-0.86, 1.52, -2.1], [0.86, 1.52, -2.1], 0.045, segments, 2),
+      createTubePart([-0.86, 1.52, -2.1], [-0.86, 1.52, -1.25], 0.045, segments, 2),
+      createTubePart([0.86, 1.52, -2.1], [0.86, 1.52, -1.25], 0.045, segments, 2),
+    );
+  }
+
+  if (detailed) {
+    const driverX = REBEL_CRAWLER_DRIVER_X;
+    bodyParts.push(
+      // Butacas y controles.
+      { geometry: chamferBox(0.5, 0.16, 0.55, 0.035), position: [driverX, 1.2, 0.72], tile: 3 },
+      { geometry: chamferBox(0.5, 0.68, 0.14, 0.035), position: [driverX, 1.52, 0.45], rotation: [-0.12, 0, 0], tile: 3 },
+      { geometry: chamferBox(0.5, 0.16, 0.55, 0.035), position: [-driverX, 1.2, 0.72], tile: 3 },
+      { geometry: chamferBox(0.5, 0.68, 0.14, 0.035), position: [-driverX, 1.52, 0.45], rotation: [-0.12, 0, 0], tile: 3 },
+      { geometry: chamferBox(1.48, 0.2, 0.22, 0.04), position: [0, 1.55, 1.43], rotation: [-0.2, 0, 0], tile: 2 },
+      ...groupParts(steeringWheelParts([0, 0, 0], 0.19, 14, 2), {
+        position: [driverX, 1.55, 1.16],
+        rotation: [0.48, 0, 0],
+      }),
+      // Motor diésel expuesto entre cabina y plataforma.
+      { geometry: roundedBox(1.24, 0.62, 0.92, 0.08, 3), position: [0, 1.42, -0.55], tile: 2 },
+      ...ribParts([0, 1.75, -0.55], [1, 0, 0], 5, 0.21, [0.11, 0.07, 0.72], 2),
+      ...[-0.36, -0.12, 0.12, 0.36].map((x) => ({
+        geometry: new CylinderGeometry(0.055, 0.07, 0.18, 10),
+        position: [x, 1.84, -0.38] as Vec3,
+        tile: 1 as AtlasTile,
+      })),
+      createTubePart([0.46, 1.32, -0.72], [0.68, 2.02, -1.02], 0.055, 10, 2),
+      { geometry: new CylinderGeometry(0.09, 0.12, 0.34, 10), position: [0.72, 2.12, -1.08], rotation: [-0.34, 0, 0], tile: 3 },
+      // Batería, bidón y caja de herramientas en la zona de carga.
+      { geometry: chamferBox(0.48, 0.42, 0.34, 0.035), position: [-0.58, 1.36, -1.68], tile: 1 },
+      { geometry: chamferBox(0.52, 0.34, 0.4, 0.035), position: [0.56, 1.31, -1.72], tile: 0 },
+      { geometry: chamferBox(0.26, 0.24, 0.22, 0.025), position: [0, 1.29, -1.72], tile: 2 },
+      // Defensa y cabrestante visual, todavía sin mecánica propia.
+      createTubePart([-0.98, 0.72, 2.35], [0.98, 0.72, 2.35], 0.065, 12, 2),
+      { geometry: new CylinderGeometry(0.18, 0.18, 0.52, 14), position: [0, 0.82, 2.26], rotation: [0, 0, Math.PI / 2], tile: 2 },
+      { geometry: new TorusGeometry(0.22, 0.035, 7, 16), position: [0, 0.82, 2.27], rotation: [0, Math.PI / 2, 0], tile: 1 },
+      // Faros y marcas de reparación.
+      { geometry: new CylinderGeometry(0.12, 0.12, 0.12, 14), position: [-0.56, 1.22, 2.05], rotation: [Math.PI / 2, 0, 0], tile: 2 },
+      { geometry: new CylinderGeometry(0.12, 0.12, 0.12, 14), position: [0.56, 1.22, 2.05], rotation: [Math.PI / 2, 0, 0], tile: 2 },
+      { geometry: panel(0.06, 0.5, 0.9), position: [-1.09, 1.02, -0.25], rotation: [0, 0, 0.04], tile: 1 },
+      { geometry: rivetRow([-1.12, 0.82, -0.64], [-1.12, 1.2, 0.14], 8, 0.017, "x"), tile: 2 },
+    );
+  }
+
+  createVisualNode(context, root, `rebelCrawler_body${suffix}`, bodyParts);
+
+  if (lod < 2) {
+    createVisualNode(
+      context,
+      root,
+      `rebelCrawler_glass${suffix}`,
+      [
+        {
+          geometry: new BoxGeometry(1.48, 0.64, 0.035),
+          position: [0, 1.78, 1.53],
+          rotation: [-0.12, 0, 0],
+          tile: 0,
+        },
+        {
+          geometry: new BoxGeometry(0.035, 0.52, 0.72),
+          position: [-0.895, 1.78, 0.87],
+          tile: 0,
+        },
+        {
+          geometry: new BoxGeometry(0.035, 0.52, 0.72),
+          position: [0.895, 1.78, 0.87],
+          tile: 0,
+        },
+      ],
+      { material: glassMaterial, bakeOcclusion: false },
+    );
+  }
+
+  const builtWheel = buildWheel({
+    radius,
+    width: 0.32,
+    segments,
+    treadCount: detailed ? 14 : lod === 1 ? 8 : 0,
+  });
+  const wheelGeometry = mergeParts([
+    { geometry: builtWheel.tire, tile: 3 },
+    { geometry: builtWheel.rim, tile: 2 },
+  ]);
+  builtWheel.tire.dispose();
+  builtWheel.rim.dispose();
+  const wheelMesh = createMesh(
+    context,
+    `rebelCrawler_wheel_lod${lod}_mesh`,
+    wheelGeometry,
+  );
+  wheelGeometry.dispose();
+  const wheelNodes: readonly [string, Vec3][] = [
+    ["wheel_front_left", [-halfWidth, restY, halfLength]],
+    ["wheel_front_right", [halfWidth, restY, halfLength]],
+    ["wheel_rear_left", [-halfWidth, restY, -halfLength]],
+    ["wheel_rear_right", [halfWidth, restY, -halfLength]],
+  ];
+  for (const [name, position] of wheelNodes) {
+    createNode(context, root, `${name}${suffix}`, {
+      mesh: wheelMesh,
+      position,
+      extras: {
+        kind: "track-wheel",
+        axle: name.includes("front") ? "front" : "rear",
+        side: name.includes("left") ? "left" : "right",
+      },
+    });
+  }
+}
+
+function buildRebelCrawler(context: BuildContext): void {
+  const glassMaterial = createGlassMaterial(context.document, context.spec);
+  for (const lod of [0, 1, 2] as const) {
+    const root = createNode(context, context.sceneRoot, `visual_lod${lod}`, {
+      extras: {
+        kind: "vehicle-lod",
+        lod,
+        hiddenByDefault: lod !== 0,
+        screenCoverage: lod === 0 ? 0.3 : lod === 1 ? 0.1 : 0,
+      },
+    });
+    buildRebelCrawlerLod(context, root, lod, glassMaterial);
+  }
+
+  createAnchor(
+    context,
+    "seat_driver",
+    [REBEL_CRAWLER_DRIVER_X, 1.45, 0.78],
+    "seat",
+    { role: "driver" },
+  );
+  createAnchor(context, "seat_passenger", [-0.48, 1.45, 0.78], "seat", {
+    role: "passenger",
+  });
+  createAnchor(
+    context,
+    "camera_driver",
+    [REBEL_CRAWLER_DRIVER_X, 1.86, 0.82],
+    "camera",
+    { role: "driver", fov: 74 },
+    true,
+  );
+  createAnchor(
+    context,
+    "camera_passenger",
+    [-0.48, 1.86, 0.82],
+    "camera",
+    { role: "passenger", fov: 76 },
+    true,
+  );
+  createAnchor(context, "exit_left", [1.72, 0.72, 0.55], "exit", {
+    seats: ["seat_driver", "seat_passenger"],
+  });
+  createAnchor(context, "exit_right", [-1.72, 0.72, 0.55], "exit", {
+    seats: ["seat_driver", "seat_passenger"],
+  });
+  createAnchor(context, "audio_engine", [0, 1.42, -0.55], "audio", {
+    layer: "engine",
+  });
+  createAnchor(context, "audio_transmission", [0, 0.68, 0], "audio", {
+    layer: "transmission",
+  });
+  createAnchor(context, "damage_engine", [0, 1.42, -0.55], "damage", {
+    component: "engine",
+    halfExtents: [0.68, 0.48, 0.58],
+  });
+  createAnchor(
+    context,
+    "damage_steering",
+    [REBEL_CRAWLER_DRIVER_X, 1.48, 1.12],
+    "damage",
+    { component: "steering", halfExtents: [0.34, 0.36, 0.4] },
+  );
+  createAnchor(context, "damage_fuel", [-0.58, 1.36, -1.68], "damage", {
+    component: "fuel",
+    halfExtents: [0.32, 0.32, 0.3],
+  });
+  const wreckage = createNode(context, context.sceneRoot, "wreckage", {
+    extras: { kind: "wreckage", hiddenByDefault: true },
+  });
+  createVisualNode(context, wreckage, "wreckage_crawler_hull", [
+    {
+      geometry: chamferBox(2.2, 0.55, 3.7, 0.08),
+      rotation: [0.12, 0.06, -0.11],
+      tile: 3,
+    },
+    createTubePart([-0.9, 0.25, -1.5], [0.76, 0.9, 1.18], 0.07, 8, 1),
+    {
+      geometry: new BoxGeometry(0.42, 0.12, 2.8),
+      position: [1.18, -0.22, 0],
+      rotation: [0.08, 0.16, 0.24],
+      tile: 3,
+    },
+  ]);
+}
+
+function buildCombineGliderLod(
+  context: BuildContext,
+  root: Node,
+  lod: 0 | 1 | 2,
+  energyMaterial: Material,
+  glassMaterial: Material,
+): void {
+  const suffix = lod === 0 ? "" : `_lod${lod}`;
+  const detailed = lod === 0;
+  const segments = lod === 0 ? 18 : lod === 1 ? 10 : 6;
+  const { halfWidth, deckY, coreY, coreZ } = COMBINE_GLIDER;
+  const bodyParts: GeometryPart[] = [
+    // Vientre facetado y proa de reconocimiento: bajo, ancho atrás y afilado
+    // hacia adelante, a medio camino entre una cápsula y un hunter pequeño.
+    {
+      geometry: chamferWedge({
+        length: 3.22,
+        height: 0.5,
+        frontWidth: 0.72,
+        rearWidth: 1.72,
+        topFrontWidth: 1.38,
+        topRearWidth: 2.02,
+        chamfer: 0.07,
+      }),
+      position: [0, 0.48, 0],
+      rotation: [-0.025, 0, 0],
+      tile: 0,
+    },
+    {
+      geometry: chamferWedge({
+        length: 1.38,
+        height: 0.32,
+        frontWidth: 0.38,
+        rearWidth: 1.36,
+        topFrontWidth: 0.64,
+        topRearWidth: 1.56,
+        chamfer: 0.045,
+      }),
+      position: [0, 0.76, 1.12],
+      rotation: [-0.08, 0, 0],
+      tile: 1,
+    },
+    // Brazos laterales que abrazan los estabilizadores de popa.
+    {
+      geometry: chamferWedge({
+        length: 1.7,
+        height: 0.3,
+        frontWidth: 0.28,
+        rearWidth: 0.42,
+        topFrontWidth: 0.34,
+        topRearWidth: 0.5,
+        chamfer: 0.04,
+      }),
+      position: [-0.82, 0.58, -0.76],
+      rotation: [0.02, -0.08, 0.03],
+      tile: 0,
+    },
+    {
+      geometry: chamferWedge({
+        length: 1.7,
+        height: 0.3,
+        frontWidth: 0.28,
+        rearWidth: 0.42,
+        topFrontWidth: 0.34,
+        topRearWidth: 0.5,
+        chamfer: 0.04,
+      }),
+      position: [0.82, 0.58, -0.76],
+      rotation: [0.02, 0.08, -0.03],
+      tile: 0,
+    },
+    // Borde cerámico y defensa ventral.
+    { geometry: panel(1.42, 0.22, 0.05), position: [0, 0.7, 1.55], rotation: [-0.25, 0, 0], tile: 1 },
+    { geometry: chamferBox(1.54, 0.12, 0.28, 0.035), position: [0, 0.26, -1.35], tile: 2 },
+    // Cubeta del piloto y carenado del núcleo.
+    { geometry: roundedBox(1.18, 0.42, 1.22, 0.12, detailed ? 3 : 1), position: [0, 0.92, 0.18], tile: 3 },
+    { geometry: roundedBox(1.28, 0.56, 0.92, 0.12, detailed ? 3 : 1), position: [0, 0.92, -1.03], tile: 0 },
+    { geometry: new TorusGeometry(0.48, 0.075, 7, segments), position: [0, coreY, coreZ], tile: 2 },
+  ];
+
+  if (lod < 2) {
+    bodyParts.push(
+      // Costillas biomécanicas: la asimetría leve evita que parezca un vehículo
+      // humano pintado de azul.
+      createTubePart([-0.64, 0.5, 1.24], [-0.92, 0.82, -0.58], 0.055, segments, 2),
+      createTubePart([0.58, 0.48, 1.28], [0.88, 0.78, -0.72], 0.047, segments, 2),
+      createTubePart([-0.9, 0.62, -0.62], [-0.68, 0.72, -1.52], 0.05, segments, 2),
+      createTubePart([0.88, 0.6, -0.72], [0.68, 0.72, -1.52], 0.05, segments, 2),
+      { geometry: panel(0.48, 0.42, 0.045), position: [-0.74, 0.9, 0.5], rotation: [0.08, 0.22, -0.1], tile: 1 },
+      { geometry: panel(0.42, 0.38, 0.045), position: [0.72, 0.86, 0.42], rotation: [0.06, -0.18, 0.08], tile: 0 },
+      // Consola suspendida y apoyos del asiento.
+      { geometry: chamferBox(0.72, 0.16, 0.28, 0.045), position: [0, 1.08, 0.66], rotation: [-0.22, 0, 0], tile: 2 },
+      createTubePart([-0.34, 0.72, -0.2], [-0.28, 1.0, 0.15], 0.032, 8, 2),
+      createTubePart([0.34, 0.72, -0.2], [0.28, 1.0, 0.15], 0.032, 8, 2),
+    );
+  }
+
+  if (detailed) {
+    bodyParts.push(
+      // Asiento encastrado, controles laterales y batería Combine.
+      { geometry: chamferBox(0.56, 0.14, 0.58, 0.04), position: [0, 0.82, -0.08], tile: 3 },
+      { geometry: chamferBox(0.56, 0.7, 0.14, 0.04), position: [0, 1.15, -0.38], rotation: [-0.18, 0, 0], tile: 3 },
+      { geometry: chamferBox(0.16, 0.18, 0.48, 0.035), position: [-0.43, 1.02, 0.02], tile: 2 },
+      { geometry: chamferBox(0.16, 0.18, 0.48, 0.035), position: [0.43, 1.02, 0.02], tile: 2 },
+      createTubePart([-0.43, 1.08, 0.18], [-0.5, 1.24, 0.28], 0.028, 8, 2),
+      createTubePart([0.43, 1.08, 0.18], [0.5, 1.24, 0.28], 0.028, 8, 2),
+      { geometry: roundedBox(0.58, 0.34, 0.48, 0.07, 3), position: [0, 0.76, -1.15], tile: 2 },
+      ...ribParts([0, 1.13, -1.08], [1, 0, 0], 4, 0.2, [0.08, 0.05, 0.48], 2),
+      // Sensores y placas desparejas de campo.
+      { geometry: new SphereGeometry(0.11, 12, 8), position: [0, 0.9, 1.54], scale: [1.25, 0.78, 0.65], tile: 1 },
+      { geometry: new SphereGeometry(0.075, 10, 7), position: [-0.32, 0.84, 1.42], tile: 2 },
+      { geometry: new SphereGeometry(0.06, 10, 7), position: [0.38, 0.82, 1.38], tile: 2 },
+      { geometry: rivetRow([-0.64, 0.74, 1.18], [-0.86, 0.7, -0.72], 10, 0.015, "x"), tile: 2 },
+      { geometry: rivetRow([0.58, 0.72, 1.16], [0.82, 0.68, -0.82], 10, 0.015, "x"), tile: 2 },
+    );
+  }
+
+  createVisualNode(context, root, `combineGlider_body${suffix}`, bodyParts);
+
+  if (lod < 2) {
+    createVisualNode(
+      context,
+      root,
+      `combineGlider_windscreen${suffix}`,
+      [
+        {
+          geometry: new BoxGeometry(1.02, 0.48, 0.035),
+          position: [0, 1.29, 0.52],
+          rotation: [-0.48, 0, 0],
+          tile: 0,
+        },
+      ],
+      { material: glassMaterial, bakeOcclusion: false },
+    );
+  }
+
+  // Giroscopio central: tres radios hacen visible la rotación en runtime.
+  const coreParts: GeometryPart[] = [
+    { geometry: new TorusGeometry(0.34, 0.055, 7, segments), tile: 0 },
+    { geometry: new SphereGeometry(0.13, segments, Math.max(6, segments / 2)), tile: 0 },
+  ];
+  for (let index = 0; index < 3; index += 1) {
+    const angle = (index / 3) * Math.PI * 2;
+    coreParts.push({
+      geometry: chamferBox(0.07, 0.45, 0.035, 0.012),
+      position: [Math.cos(angle) * 0.14, Math.sin(angle) * 0.14, 0],
+      rotation: [0, 0, angle],
+      tile: 0,
+    });
+  }
+  createVisualNode(
+    context,
+    root,
+    `fan_main${suffix}`,
+    coreParts,
+    {
+      position: [0, coreY, coreZ - 0.5],
+      material: energyMaterial,
+      bakeOcclusion: false,
+      extras: { kind: "antigravity-core" },
+    },
+  );
+
+  const stabilizers = [
+    ["stabilizer_front", [0, 0.24, 1.35]],
+    ["stabilizer_rear_left", [-0.78, 0.24, -0.92]],
+    ["stabilizer_rear_right", [0.78, 0.24, -0.92]],
+  ] as const;
+  for (const [name, position] of stabilizers) {
+    createVisualNode(
+      context,
+      root,
+      `${name}${suffix}`,
+      [
+        { geometry: new TorusGeometry(0.22, 0.045, 6, segments), rotation: [Math.PI / 2, 0, 0], tile: 0 },
+        { geometry: new CylinderGeometry(0.08, 0.12, 0.08, segments), tile: 0 },
+      ],
+      {
+        position,
+        material: energyMaterial,
+        bakeOcclusion: false,
+        extras: { kind: "hover-stabilizer" },
+      },
+    );
+  }
+
+  for (const [name, x] of [["rudder_left", -halfWidth], ["rudder_right", halfWidth]] as const) {
+    createVisualNode(
+      context,
+      root,
+      `${name}${suffix}`,
+      [
+        {
+          geometry: chamferWedge({
+            length: 0.64,
+            height: 0.42,
+            frontWidth: 0.08,
+            rearWidth: 0.2,
+            topFrontWidth: 0.05,
+            topRearWidth: 0.14,
+            chamfer: 0.025,
+          }),
+          tile: 1,
+        },
+      ],
+      {
+        position: [x * 0.82, deckY + 0.16, -1.28],
+        extras: { kind: "control-fin" },
+      },
+    );
+  }
+}
+
+function buildCombineGlider(context: BuildContext): void {
+  const energyMaterial = createCombineEnergyMaterial(
+    context.document,
+    context.spec,
+  );
+  const glassMaterial = createGlassMaterial(context.document, context.spec);
+  for (const lod of [0, 1, 2] as const) {
+    const root = createNode(context, context.sceneRoot, `visual_lod${lod}`, {
+      extras: {
+        kind: "vehicle-lod",
+        lod,
+        hiddenByDefault: lod !== 0,
+        screenCoverage: lod === 0 ? 0.3 : lod === 1 ? 0.1 : 0,
+      },
+    });
+    buildCombineGliderLod(
+      context,
+      root,
+      lod,
+      energyMaterial,
+      glassMaterial,
+    );
+  }
+
+  createAnchor(context, "seat_driver", [0, 0.98, -0.08], "seat", {
+    role: "driver",
+  });
+  createAnchor(
+    context,
+    "camera_driver",
+    [0, 1.5, 0.02],
+    "camera",
+    { role: "driver", fov: 78 },
+    true,
+  );
+  createAnchor(context, "exit_left", [-1.48, 0.52, -0.05], "exit", {
+    seat: "seat_driver",
+  });
+  createAnchor(context, "exit_right", [1.48, 0.52, -0.05], "exit", {
+    seat: "seat_driver",
+  });
+  createAnchor(context, "audio_engine", [0, COMBINE_GLIDER.coreY, -1.08], "audio", {
+    layer: "engine",
+  });
+  createAnchor(context, "audio_hover", [0, 0.24, 0], "audio", {
+    layer: "hover",
+  });
+  createAnchor(context, "damage_engine", [0, 0.9, -1.05], "damage", {
+    component: "engine",
+    halfExtents: [0.64, 0.36, 0.46],
+  });
+  createAnchor(context, "damage_hull", [0, 0.52, 0.12], "damage", {
+    component: "hull",
+    halfExtents: [1.05, 0.4, 1.55],
+  });
+  createAnchor(context, "damage_steering", [0, 1.08, 0.5], "damage", {
+    component: "steering",
+    halfExtents: [0.42, 0.3, 0.34],
+  });
+  createAnchor(context, "damage_fuel", [0, 0.72, -0.72], "damage", {
+    component: "fuel",
+    halfExtents: [0.38, 0.28, 0.36],
+  });
+  const wreckage = createNode(context, context.sceneRoot, "wreckage", {
+    extras: { kind: "wreckage", hiddenByDefault: true },
+  });
+  createVisualNode(context, wreckage, "wreckage_combine_glider", [
+    {
+      geometry: chamferWedge({
+        length: 2.8,
+        height: 0.44,
+        frontWidth: 0.58,
+        rearWidth: 1.6,
+        topFrontWidth: 1.1,
+        topRearWidth: 1.82,
+        chamfer: 0.06,
+      }),
+      rotation: [0.14, 0.12, -0.18],
+      tile: 3,
+    },
+    {
+      geometry: new TorusGeometry(0.38, 0.07, 7, 12),
+      position: [0.72, 0.18, -0.88],
+      rotation: [0.32, 0.2, 0.5],
+      tile: 2,
+    },
   ]);
 }
 
@@ -2869,6 +3564,12 @@ export function createVehicleDocument(
       break;
     case "helicopter":
       buildHelicopter(context);
+      break;
+    case "rebelCrawler":
+      buildRebelCrawler(context);
+      break;
+    case "combineGlider":
+      buildCombineGlider(context);
       break;
   }
 

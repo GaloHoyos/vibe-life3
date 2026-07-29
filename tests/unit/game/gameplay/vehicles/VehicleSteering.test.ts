@@ -59,6 +59,16 @@ describe("convención de dirección de los vehículos", () => {
     expect(turn.noseTurnedRight).toBeLessThan(-0.2);
   });
 
+  it("el deslizador Combine gira en ambos sentidos sobre tierra", async () => {
+    const right = await steer("combineGlider", 1);
+    const left = await steer("combineGlider", -1);
+
+    expect(right.rightwardTravel).toBeGreaterThan(0.8);
+    expect(right.noseTurnedRight).toBeGreaterThan(0.25);
+    expect(left.rightwardTravel).toBeLessThan(-0.8);
+    expect(left.noseTurnedRight).toBeLessThan(-0.25);
+  });
+
   it("el vehículo sobre riel se corre hacia la derecha del piloto", async () => {
     const right = await slide(1);
     const left = await slide(-1);
@@ -86,7 +96,7 @@ function headingOf(rotation: Quaternion): number {
 }
 
 async function steer(
-  presetId: "buggy" | "airboat",
+  presetId: "buggy" | "airboat" | "combineGlider",
   steering: number,
   options: { water?: boolean } = {},
 ): Promise<{ rightwardTravel: number; noseTurnedRight: number }> {
@@ -150,7 +160,7 @@ function drive(
 }
 
 async function spawn(
-  presetId: "buggy" | "airboat",
+  presetId: "buggy" | "airboat" | "combineGlider",
   flooded: boolean,
 ): Promise<Rig> {
   const physics = new PhysicsWorld();

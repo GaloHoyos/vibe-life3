@@ -37,6 +37,54 @@ describe('vehicleNavigationInputFromLevel', () => {
     });
     expect(input.profiles.map((profile) => profile.id)).toEqual(['buggy']);
   });
+
+  it('hornea solo presets requeridos por IA y conserva vehiculos sobre rieles', () => {
+    const level = baseLevel();
+    level.vehicles = [
+      {
+        id: 'parked-glider',
+        presetId: 'combineGlider',
+        position: [0, 1, 0],
+      },
+      {
+        id: 'ai-buggy-a',
+        presetId: 'buggy',
+        position: [2, 1, 0],
+        ai: { enabled: true, behavior: 'patrol' },
+      },
+      {
+        id: 'disabled-airboat',
+        presetId: 'airboat',
+        position: [4, 1, 0],
+        ai: { enabled: false, behavior: 'hold' },
+      },
+      {
+        id: 'ai-buggy-b',
+        presetId: 'buggy',
+        position: [6, 1, 0],
+        ai: { enabled: true, behavior: 'escort' },
+      },
+      {
+        id: 'rail-helicopter',
+        presetId: 'helicopter',
+        position: [8, 6, 0],
+        pathStart: 'flight-path',
+      },
+    ];
+
+    const input = vehicleNavigationInputFromLevel(level);
+
+    expect(input.profiles.map((profile) => profile.id)).toEqual([
+      'buggy',
+      'helicopter',
+    ]);
+  });
+
+  it('no hornea perfiles por defecto en niveles sin vehiculos IA', () => {
+    const input = vehicleNavigationInputFromLevel(baseLevel());
+
+    expect(input.profiles).toEqual([]);
+  });
 });
 
 function baseLevel(): LevelDefinition {

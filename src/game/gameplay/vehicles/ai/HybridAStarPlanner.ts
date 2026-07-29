@@ -304,12 +304,7 @@ function heuristic(
 }
 
 class StateQueue {
-  private readonly entries: Array<{
-    key: string;
-    score: number;
-    pathCost: number;
-    serial: number;
-  }> = [];
+  private readonly entries: StateQueueEntry[] = [];
   private serial = 0;
 
   get size(): number {
@@ -318,10 +313,67 @@ class StateQueue {
 
   push(key: string, score: number, pathCost: number): void {
     this.entries.push({ key, score, pathCost, serial: this.serial++ });
-    this.entries.sort((a, b) => a.score - b.score || a.serial - b.serial);
+    this.siftUp(this.entries.length - 1);
   }
 
   pop(): { key: string; score: number; pathCost: number } | null {
-    return this.entries.shift() ?? null;
+    const first = this.entries[0];
+    if (!first) return null;
+    const last = this.entries.pop();
+    if (this.entries.length > 0 && last) {
+      this.entries[0] = last;
+      this.siftDown(0);
+    }
+    return first;
   }
+
+  private siftUp(startIndex: number): void {
+    let index = startIndex;
+    while (index > 0) {
+      const parentIndex = Math.floor((index - 1) / 2);
+      const entry = this.entries[index];
+      const parent = this.entries[parentIndex];
+      if (!entry || !parent || compareQueueEntries(entry, parent) >= 0) break;
+      this.entries[index] = parent;
+      this.entries[parentIndex] = entry;
+      index = parentIndex;
+    }
+  }
+
+  private siftDown(startIndex: number): void {
+    let index = startIndex;
+    while (true) {
+      const leftIndex = index * 2 + 1;
+      const rightIndex = leftIndex + 1;
+      let smallestIndex = index;
+      const current = this.entries[smallestIndex];
+      const left = this.entries[leftIndex];
+      if (left && current && compareQueueEntries(left, current) < 0) {
+        smallestIndex = leftIndex;
+      }
+      const candidate = this.entries[smallestIndex];
+      const right = this.entries[rightIndex];
+      if (right && candidate && compareQueueEntries(right, candidate) < 0) {
+        smallestIndex = rightIndex;
+      }
+      if (smallestIndex === index) return;
+      const entry = this.entries[index];
+      const replacement = this.entries[smallestIndex];
+      if (!entry || !replacement) return;
+      this.entries[index] = replacement;
+      this.entries[smallestIndex] = entry;
+      index = smallestIndex;
+    }
+  }
+}
+
+interface StateQueueEntry {
+  key: string;
+  score: number;
+  pathCost: number;
+  serial: number;
+}
+
+function compareQueueEntries(a: StateQueueEntry, b: StateQueueEntry): number {
+  return a.score - b.score || a.serial - b.serial;
 }

@@ -19,6 +19,7 @@ import {
   type RigidBodyState,
   type VehicleControlInput,
   type VehicleMotor,
+  type VehicleSurfaceProvider,
 } from "@engine/physics/vehicle";
 import {
   VehiclePresets,
@@ -96,6 +97,8 @@ const TMP_POSITION = new Vector3();
 const TMP_QUATERNION = new Quaternion();
 const TMP_FORWARD = new Vector3();
 const TMP_WORLD = new Vector3();
+const SURFACE_DOWN = new Vector3(0, -1, 0);
+const SURFACE_UP = new Vector3(0, 1, 0);
 /** Igual a la gravedad de `PhysicsWorld`; dimensiona el peso de reposo. */
 const GRAVITY_MAGNITUDE = 20.5;
 
@@ -979,18 +982,32 @@ export class VehicleEntity {
       });
     }
     if (config.kind === "hover") {
+      const antigrav = config.surfaceMode === "antigrav";
       const probeCount = config.probeOffsets.length;
       const supportForce =
         (this.preset.body.mass * 20.5 * config.buoyancy) / probeCount;
       return new HoverVehicleMotor(this.body, {
-        surfaceProvider: water,
+        surfaceProvider: antigrav
+          ? createAntigravitySurfaceProvider(
+              this.physics,
+              this.body,
+              water,
+            )
+          : water,
         probes: config.probeOffsets.map((position) => ({
           position: new Vector3(...position),
-          buoyancyStiffness: supportForce / 0.32,
-          buoyancyDamping: supportForce * 0.12,
+          buoyancyStiffness:
+            supportForce /
+            (antigrav ? (config.hoverSpringLength ?? 0.24) : 0.32),
+          buoyancyDamping:
+            supportForce *
+            (antigrav ? (config.hoverDamping ?? 0.12) : 0.12),
           maxBuoyancyForce: supportForce * 2.7,
+          ...(antigrav ? { hoverHeight: config.hoverHeight ?? 0.7 } : {}),
         })),
-        maxSubmersionDepth: 1.2,
+        maxSubmersionDepth: antigrav
+          ? (config.hoverHeight ?? 0.7) + 0.75
+          : 1.2,
         maxForwardThrust: config.thrustForce,
         maxReverseThrust: config.reverseForce,
         maxSteeringTorque: config.steeringTorque,
@@ -1000,17 +1017,21 @@ export class VehicleEntity {
         lateralDrag: this.preset.body.mass * config.lateralDrag,
         verticalDrag: this.preset.body.mass * 0.4,
         angularDrag: this.preset.body.mass * config.yawDamping,
-        planingLift: this.preset.body.mass * 1.4,
-        maxPlaningLift: this.preset.body.mass * 11,
+        planingLift: antigrav ? 0 : this.preset.body.mass * 1.4,
+        maxPlaningLift: antigrav ? 0 : this.preset.body.mass * 11,
         landThrustFactor: config.landThrustFactor,
-        throttleResponse: 4.8,
-        steeringResponse: 6.5,
+        throttleResponse: config.throttleResponse ?? 4.8,
+        steeringResponse: config.steeringResponse ?? 6.5,
         boostMultiplier: 1.32,
         rudderAngle: config.rudderAngle,
         thrustPoint: new Vector3(...config.thrustPoint),
         lateralDragPoint: new Vector3(...config.lateralDragPoint),
         waterBrakeDrag: config.waterBrakeDrag,
         landDrag: this.preset.body.mass * config.groundDrag,
+        uprightTorque: config.uprightTorque,
+        uprightDamping: config.uprightDamping,
+        lowSpeedSteeringAuthority: config.lowSpeedSteeringAuthority,
+        lowSpeedSteeringFadeSpeed: config.lowSpeedSteeringFadeSpeed,
       });
     }
 
@@ -1195,5 +1216,124 @@ function damageHitboxes(
         { zone: "weapon", position: [-1.2, 1.4, -0.1], size: [0.65, 0.72, 1.4] },
         { zone: "fuel", position: [0, 1.38, -1.45], size: [1.2, 0.72, 1.25] },
       ];
+    case "rebelCrawler":
+      return [
+        { zone: "engine", position: [0, 1.3, -0.75], size: [1.35, 0.8, 1.1] },
+        { zone: "steering", position: [0.48, 1.42, 1.05], size: [0.55, 0.58, 0.62] },
+        { zone: "fuel", position: [-0.78, 1.08, -1.45], size: [0.5, 0.72, 0.82] },
+      ];
+    case "combineGlider":
+      return [
+        { zone: "engine", position: [0, 0.92, -1.05], size: [1.25, 0.62, 0.85] },
+        { zone: "steering", position: [0, 1.08, 0.42], size: [0.72, 0.5, 0.52] },
+        { zone: "fuel", position: [0, 0.62, -0.62], size: [0.7, 0.42, 0.62] },
+      ];
   }
+}
+
+function createAntigravitySurfaceProvider(
+  physics: PhysicsWorld,
+  body: RAPIER.RigidBody,
+  water: WaterVolumeSystem,
+): VehicleSurfaceProvider {
+  return {
+    sampleSurface: (probePosition, maxDistance) => {
+      const origin = new Vector3(
+        probePosition.x,
+        probePosition.y,
+        probePosition.z,
+      );
+      const ray = new RAPIER.Ray(origin, SURFACE_DOWN);
+      let solidHit = physics.world.castRayAndGetNormal(
+        ray,
+        maxDistance,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        body,
+        (collider) => !collider.isSensor(),
+      );
+      let solidPoint = solidHit
+        ? origin.clone().addScaledVector(
+            SURFACE_DOWN,
+            solidHit.timeOfImpact,
+          )
+        : null;
+      if (
+        solidHit &&
+        solidHit.normal.x * solidHit.normal.x +
+          solidHit.normal.y * solidHit.normal.y +
+          solidHit.normal.z * solidHit.normal.z <
+          0.25
+      ) {
+        const recoveryOrigin = origin.clone().addScaledVector(
+          SURFACE_UP,
+          maxDistance,
+        );
+        const recoveryHit = physics.world.castRayAndGetNormal(
+          new RAPIER.Ray(recoveryOrigin, SURFACE_DOWN),
+          maxDistance * 2,
+          true,
+          undefined,
+          undefined,
+          undefined,
+          body,
+          (collider) => !collider.isSensor(),
+        );
+        const recoveryPoint = recoveryHit
+          ? recoveryOrigin.clone().addScaledVector(
+              SURFACE_DOWN,
+              recoveryHit.timeOfImpact,
+            )
+          : null;
+        if (
+          recoveryHit &&
+          recoveryPoint &&
+          recoveryHit.normal.y > 0.5 &&
+          Math.abs(recoveryPoint.y - origin.y) <= maxDistance
+        ) {
+          solidHit = recoveryHit;
+          solidPoint = recoveryPoint;
+        } else {
+          solidHit = null;
+          solidPoint = null;
+        }
+      }
+      const solidDistance = solidPoint
+        ? origin.y - solidPoint.y
+        : Infinity;
+      const waterSample = water.sampleWater(origin, maxDistance);
+      const waterDistance = waterSample
+        ? origin.y - waterSample.surfaceHeight
+        : Infinity;
+
+      if (
+        waterSample &&
+        waterDistance >= -maxDistance &&
+        waterDistance <= maxDistance &&
+        waterDistance <= solidDistance
+      ) {
+        return {
+          point: new Vector3(origin.x, waterSample.surfaceHeight, origin.z),
+          normal: waterSample.normal,
+          velocity: waterSample.flow,
+          kind: "fluid",
+          density: 1,
+        };
+      }
+      if (!solidHit || !solidPoint) return null;
+      return {
+        point: solidPoint,
+        normal: new Vector3(
+          solidHit.normal.x,
+          solidHit.normal.y,
+          solidHit.normal.z,
+        ),
+        velocity: new Vector3(),
+        kind: "solid",
+        density: 1,
+      };
+    },
+  };
 }

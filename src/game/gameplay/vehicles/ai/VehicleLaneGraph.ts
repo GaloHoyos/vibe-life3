@@ -24,7 +24,11 @@ export function buildVehicleLaneGraph(
   const defaultSpeedLimit = Math.max(1, options.defaultSpeedLimit ?? 14);
 
   for (const lane of [...lanes].sort((a, b) => a.id.localeCompare(b.id))) {
-    const laneNodes = lane.points.map<VehicleLaneNode>((position, pointIndex) => ({
+    const closesLoop =
+      lane.points.length > 2 &&
+      planarDistance(lane.points[0]!, lane.points[lane.points.length - 1]!) <= 0.05;
+    const lanePoints = closesLoop ? lane.points.slice(0, -1) : lane.points;
+    const laneNodes = lanePoints.map<VehicleLaneNode>((position, pointIndex) => ({
       id: `${lane.id}:${pointIndex}`,
       position: [...position],
       laneId: lane.id,
@@ -43,6 +47,16 @@ export function buildVehicleLaneGraph(
       }
       if (lane.direction === 'backward' || lane.direction === 'both') {
         edges.push(createLaneEdge(lane, backward, forward, defaultSpeedLimit, 'backward'));
+      }
+    }
+    const first = laneNodes[0];
+    const last = laneNodes[laneNodes.length - 1];
+    if (closesLoop && first && last && first !== last) {
+      if (lane.direction === 'forward' || lane.direction === 'both') {
+        edges.push(createLaneEdge(lane, last, first, defaultSpeedLimit, 'loop-forward'));
+      }
+      if (lane.direction === 'backward' || lane.direction === 'both') {
+        edges.push(createLaneEdge(lane, first, last, defaultSpeedLimit, 'loop-backward'));
       }
     }
   }

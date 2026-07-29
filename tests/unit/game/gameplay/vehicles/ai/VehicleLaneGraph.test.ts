@@ -18,6 +18,31 @@ describe('VehicleLaneGraph', () => {
     expect(graph.findRoute([0, 0, 10], [0, 0, 0])).toBeNull();
   });
 
+  it('cierra carriles circulares sin perder el sentido', () => {
+    const forward = new VehicleLaneGraph(buildVehicleLaneGraph([{
+      id: 'forward-loop',
+      points: [[0, 0, 0], [0, 0, 10], [10, 0, 10], [0, 0, 0]],
+      width: 3,
+      direction: 'forward',
+    }]));
+    const backward = new VehicleLaneGraph(buildVehicleLaneGraph([{
+      id: 'backward-loop',
+      points: [[0, 0, 0], [0, 0, 10], [10, 0, 10], [0, 0, 0]],
+      width: 3,
+      direction: 'backward',
+    }]));
+
+    expect(forward.findRoute([10, 0, 10], [0, 0, 0])?.nodeIds).toEqual([
+      'forward-loop:2',
+      'forward-loop:0',
+    ]);
+    expect(backward.findRoute([0, 0, 0], [0, 0, 10])?.nodeIds).toEqual([
+      'backward-loop:0',
+      'backward-loop:2',
+      'backward-loop:1',
+    ]);
+  });
+
   it('no conecta cruces geométricos ni puentes a distinta altura sin endpoints compatibles', () => {
     const data = buildVehicleLaneGraph([
       {

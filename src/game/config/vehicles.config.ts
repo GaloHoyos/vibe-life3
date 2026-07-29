@@ -1,7 +1,13 @@
 import type { Faction } from '@engine/ai/Faction';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 
-export const VEHICLE_ARCHETYPE_IDS = ['buggy', 'airboat', 'helicopter'] as const;
+export const VEHICLE_ARCHETYPE_IDS = [
+  'buggy',
+  'airboat',
+  'helicopter',
+  'rebelCrawler',
+  'combineGlider',
+] as const;
 export type VehicleArchetypeId = (typeof VEHICLE_ARCHETYPE_IDS)[number];
 export type VehiclePresetId = VehicleArchetypeId;
 
@@ -46,6 +52,9 @@ export type VehicleMotorPreset =
     }
   | {
       kind: 'hover';
+      surfaceMode: 'fluid' | 'antigrav';
+      /** Altura de las sondas sobre la superficie en modo antigravitatorio. */
+      hoverHeight?: number;
       thrustForce: number;
       reverseForce: number;
       /** Par de guiñada disponible sin acelerador, para maniobrar parado. */
@@ -75,6 +84,14 @@ export type VehicleMotorPreset =
       /** Multiplicador de arrastre con el freno de agua puesto. */
       waterBrakeDrag: number;
       groundDrag: number;
+      uprightTorque?: number;
+      uprightDamping?: number;
+      hoverSpringLength?: number;
+      hoverDamping?: number;
+      throttleResponse?: number;
+      steeringResponse?: number;
+      lowSpeedSteeringAuthority?: number;
+      lowSpeedSteeringFadeSpeed?: number;
       probeOffsets: readonly VectorTuple[];
     }
   | {
@@ -261,6 +278,7 @@ export const VehiclePresets = {
     defaultFaction: 'resistance',
     motor: {
       kind: 'hover',
+      surfaceMode: 'fluid',
       thrustForce: 4200,
       reverseForce: 1150,
       steeringTorque: 620,
@@ -419,6 +437,154 @@ export const VehiclePresets = {
       clearanceHeight: 3.2,
       minTurnRadius: 12,
       reverseAllowed: false,
+    },
+  },
+  rebelCrawler: {
+    id: 'rebelCrawler',
+    archetype: 'rebelCrawler',
+    displayName: 'Transporte oruga rebelde',
+    defaultFaction: 'resistance',
+    motor: {
+      kind: 'raycast',
+      engineForce: 4_600,
+      reverseForce: 2_900,
+      brakeForce: 105,
+      handbrakeForce: 165,
+      autoBrakeForce: 20,
+      handbrakeSideFriction: 0.45,
+      maxSteeringAngle: 0.42,
+      steeringFadeSpeed: 20,
+      steeringExponent: 1.25,
+      boostMultiplier: 1.15,
+      extraGravity: 0.55,
+      maxAngularVelocity: 3.2,
+      uprightTorque: 6_800,
+      suspensionRestLength: 0.42,
+      suspensionTravel: 0.28,
+      suspensionStiffness: 40,
+      suspensionCompression: 5,
+      suspensionRelaxation: 5.7,
+      tireFriction: 2,
+    },
+    body: {
+      size: [2.7, 2.05, 4.9],
+      colliderCenter: [0, 1, 0],
+      centerOfMass: [0, -0.58, 0.05],
+      mass: 2_100,
+      hullFriction: 0.82,
+    },
+    camera: {
+      ...groundCamera,
+      speedFovGain: 5,
+      positionDamping: 10,
+      rotationDamping: 9,
+    },
+    seats: [
+      {
+        id: 'driver',
+        role: 'driver',
+        position: [0.48, 1.45, 0.78],
+        cameraPosition: [0.48, 1.86, 0.82],
+        exits: [[1.72, 0.35, 0.55], [-1.72, 0.35, 0.55], [0, 0.35, -2.8]],
+        internalLinks: ['passenger'],
+      },
+      {
+        id: 'passenger',
+        role: 'passenger',
+        position: [-0.48, 1.45, 0.78],
+        cameraPosition: [-0.48, 1.86, 0.82],
+        exits: [[-1.72, 0.35, 0.55], [1.72, 0.35, 0.55], [0, 0.35, -2.8]],
+        internalLinks: ['driver'],
+      },
+    ],
+    damageZones: [
+      { id: 'hull', health: 750, damageMultiplier: 0.78 },
+      { id: 'engine', health: 220, damageMultiplier: 1.25, disableAtZero: true },
+      { id: 'steering', health: 140, damageMultiplier: 1.1 },
+      { id: 'fuel', health: 130, damageMultiplier: 1.45 },
+    ],
+    navigation: {
+      surface: 'ground',
+      halfWidth: 1.38,
+      halfLength: 2.45,
+      clearanceHeight: 2.6,
+      minTurnRadius: 5.2,
+      reverseAllowed: true,
+    },
+  },
+  combineGlider: {
+    id: 'combineGlider',
+    archetype: 'combineGlider',
+    displayName: 'Deslizador Combine de reconocimiento',
+    defaultFaction: 'combine',
+    motor: {
+      kind: 'hover',
+      surfaceMode: 'antigrav',
+      hoverHeight: 0.52,
+      thrustForce: 6_500,
+      reverseForce: 3_000,
+      steeringTorque: 3_200,
+      rudderAngle: 0.16,
+      thrustPoint: [0, 0.34, -1.34],
+      lateralDragPoint: [0, 0.05, -0.28],
+      landThrustFactor: 1,
+      planingSpeed: 14,
+      buoyancy: 1.06,
+      waterDrag: 0.18,
+      lateralDrag: 3.4,
+      yawDamping: 2.6,
+      waterBrakeDrag: 5.2,
+      groundDrag: 0.18,
+      uprightTorque: 7_200,
+      uprightDamping: 3_000,
+      hoverSpringLength: 0.16,
+      hoverDamping: 0.2,
+      throttleResponse: 8.5,
+      steeringResponse: 16,
+      lowSpeedSteeringAuthority: 1,
+      lowSpeedSteeringFadeSpeed: 9,
+      probeOffsets: [
+        [0, -0.36, 1.28],
+        [-0.78, -0.36, -0.92],
+        [0.78, -0.36, -0.92],
+      ],
+    },
+    body: {
+      size: [2.2, 1.25, 3.5],
+      colliderCenter: [0, 0.55, 0],
+      centerOfMass: [0, -0.3, -0.08],
+      mass: 680,
+      hullFriction: 0.06,
+    },
+    camera: {
+      ...groundCamera,
+      maxYaw: 1.9,
+      speedFovGain: 11,
+      positionDamping: 10,
+      rotationDamping: 9,
+    },
+    seats: [
+      {
+        id: 'driver',
+        role: 'driver',
+        position: [0, 0.98, -0.08],
+        cameraPosition: [0, 1.5, 0.02],
+        exits: [[-1.48, 0.25, -0.05], [1.48, 0.25, -0.05], [0, 0.25, 2.15]],
+      },
+    ],
+    damageZones: [
+      { id: 'hull', health: 360, damageMultiplier: 0.92 },
+      { id: 'engine', health: 120, damageMultiplier: 1.4, disableAtZero: true },
+      { id: 'steering', health: 90, damageMultiplier: 1.25 },
+      { id: 'fuel', health: 95, damageMultiplier: 1.5 },
+    ],
+    navigation: {
+      surface: 'ground',
+      halfWidth: 1.12,
+      halfLength: 1.78,
+      clearanceHeight: 1.65,
+      minTurnRadius: 3.8,
+      reverseAllowed: true,
     },
   },
 } as const satisfies Record<VehiclePresetId, VehiclePresetDefinition>;

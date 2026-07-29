@@ -4,7 +4,11 @@ import type { EntityConnection } from '@game/script/EntityIOTypes';
 import { Demo2Ravenholm } from '@game/levels/maps/campaign/Demo2Ravenholm';
 import { Demo3WhiteoutFlight } from '@game/levels/maps/campaign/Demo3WhiteoutFlight';
 import { VehicleSandboxLevel } from '@game/levels/maps/custom/VehicleSandboxLevel';
+import { SnowFieldLevel } from '@game/levels/maps/custom/SnowFieldLevel';
 import { getLevel } from '@game/levels/LevelRegistry';
+import { vehicleNavigationInputFromLevel } from '@game/gameplay/vehicles/ai/VehicleNavigationLevelAdapter';
+import { bakeVehicleNavigation } from '@game/gameplay/vehicles/ai/VehicleNavigationBake';
+import { VehicleNavigationPlanner } from '@game/gameplay/vehicles/ai/VehicleNavigationPlanner';
 
 function allConnections(level: LevelDefinition): EntityConnection[] {
   const authored = [
@@ -56,15 +60,42 @@ describe('niveles vehiculares', () => {
     expect(Demo3WhiteoutFlight.nextLevel).toBe('snow-field');
   });
 
-  it('ofrece seis vehículos con IA y seis estacionados en el sandbox', () => {
+  it('ofrece seis vehículos con IA y ocho estacionados en el sandbox', () => {
     const vehicles = VehicleSandboxLevel.vehicles ?? [];
-    expect(vehicles).toHaveLength(12);
+    expect(vehicles).toHaveLength(14);
     expect(vehicles.filter((vehicle) => vehicle.ai?.enabled)).toHaveLength(6);
-    expect(vehicles.filter((vehicle) => !vehicle.ai?.enabled)).toHaveLength(6);
+    expect(vehicles.filter((vehicle) => !vehicle.ai?.enabled)).toHaveLength(8);
     expect(new Set(vehicles.map((vehicle) => vehicle.presetId))).toEqual(
-      new Set(['buggy', 'airboat', 'helicopter']),
+      new Set(['buggy', 'airboat', 'helicopter', 'rebelCrawler', 'combineGlider']),
     );
     expect(vehicles.every((vehicle) => vehicle.portalTraversal === 'blocked')).toBe(true);
+  });
+
+  it('estaciona el deslizador Combine desarmado para pruebas', () => {
+    expect(
+      VehicleSandboxLevel.vehicles?.find(
+        (vehicle) => vehicle.id === 'vs-player-combine-glider',
+      ),
+    ).toMatchObject({
+      presetId: 'combineGlider',
+      faction: 'combine',
+      weaponEnabled: false,
+      engineOn: false,
+      transitionKey: 'sandbox-combine-glider',
+    });
+  });
+
+  it('deja el transporte oruga desarmado y conducible después del accidente', () => {
+    expect(SnowFieldLevel.vehicles).toEqual([
+      expect.objectContaining({
+        id: 'whiteout-rebel-crawler',
+        presetId: 'rebelCrawler',
+        faction: 'resistance',
+        weaponEnabled: false,
+        engineOn: false,
+        transitionKey: 'campaign-rebel-crawler',
+      }),
+    ]);
   });
 
   it('incluye agua, costa y navegación híbrida para tráfico y convoy', () => {
@@ -76,6 +107,86 @@ describe('niveles vehiculares', () => {
     expect(VehicleSandboxLevel.vehicleNavMarkers?.some((marker) => marker.kind === 'passingBay')).toBe(true);
     expect(VehicleSandboxLevel.vehicleNavMarkers?.some((marker) => marker.kind === 'recovery')).toBe(true);
     expect(VehicleSandboxLevel.checkpoints).toHaveLength(4);
+  });
+
+  it('resuelve las seis rutas iniciales sin abandonar el grafo vehicular', () => {
+    const input = vehicleNavigationInputFromLevel(VehicleSandboxLevel);
+    expect(input.profiles.map((profile) => profile.id)).toEqual([
+      'buggy',
+      'airboat',
+      'helicopter',
+    ]);
+    const navigation = bakeVehicleNavigation(input);
+    const planner = new VehicleNavigationPlanner(navigation, input.profiles);
+    const routes = [
+      {
+        id: 'buggy-lead',
+        profileId: 'buggy',
+        start: [-105, 0, 62],
+        startHeading: Math.PI,
+        goal: [-24, 0, -64],
+        goalHeading: Math.PI / 2,
+      },
+      {
+        id: 'buggy-wing',
+        profileId: 'buggy',
+        start: [-105, 0, 74],
+        startHeading: Math.PI,
+        goal: [-105, 0, 62],
+        goalHeading: Math.PI,
+      },
+      {
+        id: 'buggy-hunter',
+        profileId: 'buggy',
+        start: [-78, 0, -72],
+        startHeading: 0,
+        goal: [-105, 0, 62],
+        goalHeading: Math.PI,
+      },
+      {
+        id: 'buggy-flank',
+        profileId: 'buggy',
+        start: [-38, 0, -72],
+        startHeading: 0,
+        goal: [-114.765, 0, 56.698],
+        goalHeading: Math.atan2(-114.765 - -38, 56.698 - -72),
+      },
+      {
+        id: 'airboat-resistance',
+        profileId: 'airboat',
+        start: [60, 0.7, 66],
+        startHeading: Math.PI,
+        goal: [60, 0.7, 88],
+        goalHeading: Math.PI,
+      },
+      {
+        id: 'airboat-combine',
+        profileId: 'airboat',
+        start: [60, 0.7, -64],
+        startHeading: 0,
+        goal: [60, 0.7, 66],
+        goalHeading: Math.PI,
+      },
+    ] as const;
+
+    for (const routeDefinition of routes) {
+      const route = planner.plan(
+        routeDefinition.profileId,
+        {
+          position: routeDefinition.start,
+          heading: routeDefinition.startHeading,
+        },
+        {
+          position: routeDefinition.goal,
+          heading: routeDefinition.goalHeading,
+        },
+      );
+      expect(route, routeDefinition.id).not.toBeNull();
+      expect(route?.path.points.length, routeDefinition.id).toBeGreaterThan(4);
+      if (routeDefinition.id === 'buggy-flank') {
+        expect(route?.laneRoute, routeDefinition.id).not.toBeNull();
+      }
+    }
   });
 
   it('autoriza el ciclo aéreo del sandbox y mantiene su ruta enlazada', () => {

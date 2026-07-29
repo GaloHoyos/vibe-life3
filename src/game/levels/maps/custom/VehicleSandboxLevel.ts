@@ -161,6 +161,28 @@ const PARKED_VEHICLES = [
     engineOn: false,
     portalTraversal: 'blocked',
   },
+  {
+    id: 'vs-player-rebel-crawler',
+    presetId: 'rebelCrawler',
+    position: [-64, 1.25, 91],
+    rotation: [0, Math.PI, 0],
+    faction: 'resistance',
+    weaponEnabled: false,
+    engineOn: false,
+    transitionKey: 'sandbox-rebel-crawler',
+    portalTraversal: 'blocked',
+  },
+  {
+    id: 'vs-player-combine-glider',
+    presetId: 'combineGlider',
+    position: [96, 1.15, 86],
+    rotation: [0, Math.PI, 0],
+    faction: 'combine',
+    weaponEnabled: false,
+    engineOn: false,
+    transitionKey: 'sandbox-combine-glider',
+    portalTraversal: 'blocked',
+  },
 ] as const satisfies readonly VehicleDefinition[];
 
 const HELICOPTER_WAYPOINTS = [
@@ -233,7 +255,9 @@ const NAV_LANES = [
       [-28, 0, 62],
       [4, 0, 14],
       [0, 0, -44],
+      [-24, 0, -64],
       [-42, 0, -68],
+      [-78, 0, -72],
       [-96, 0, -58],
       [-108, 0, 6],
       [-102, 0, 62],
@@ -255,7 +279,14 @@ const NAV_LANES = [
   },
   {
     id: 'vs-lane-water-southbound',
-    points: [[69, 0.7, -88], [69, 0.7, -25], [69, 0.7, 35], [69, 0.7, 88]],
+    points: [
+      [69, 0.7, -88],
+      [60, 0.7, -64],
+      [69, 0.7, -25],
+      [69, 0.7, 35],
+      [60, 0.7, 66],
+      [69, 0.7, 88],
+    ],
     width: 8,
     direction: 'forward',
     speedLimit: 24,
@@ -276,6 +307,8 @@ const NAV_LANES = [
 const NAV_MARKERS = [
   { id: 'vs-marker-player-buggy', position: [-118, 0, 91], heading: Math.PI, kind: 'boarding', allowedPresets: ['buggy'] },
   { id: 'vs-marker-player-airboat', position: [47, 0.7, 88], heading: Math.PI, kind: 'boarding', allowedPresets: ['airboat'] },
+  { id: 'vs-marker-player-rebel-crawler', position: [-64, 0, 91], heading: Math.PI, kind: 'boarding', allowedPresets: ['rebelCrawler'] },
+  { id: 'vs-marker-player-combine-glider', position: [96, 0, 86], heading: Math.PI, kind: 'boarding', allowedPresets: ['combineGlider'] },
   { id: 'vs-marker-heli-pad', position: [111, 0, 78], heading: Math.PI, kind: 'landingZone', allowedPresets: ['helicopter'] },
   { id: 'vs-marker-convoy-goal', position: [-24, 0, -64], heading: Math.PI / 2, kind: 'dropZone', allowedPresets: ['buggy'] },
   { id: 'vs-marker-water-north', position: [60, 0.7, -88], heading: 0, kind: 'dropZone', allowedPresets: ['airboat'] },
@@ -296,8 +329,8 @@ const NAV_MARKERS = [
 const map = createMap({
   id: 'vehicle-sandbox',
   title: 'Sandbox vehicular',
-  description: 'Circuito de tierra, canal navegable, convoy, tráfico hostil, combate y helicóptero sobre rieles.',
-  objective: { text: 'Probá el buggy, el hidrodeslizador y el helicóptero', marker: [-118, 1.2, 91] },
+  description: 'Circuito de tierra, canal navegable, convoy, transporte oruga, deslizador Combine y helicóptero sobre rieles.',
+  objective: { text: 'Probá el transporte oruga, el deslizador Combine y el resto de los vehículos', marker: [-64, 1.2, 91] },
   background: 0x91a9b5,
   sun: { direction: [0.35, 0.9, 0.25], color: 0xffe3ba, intensity: 1.65 },
   playerStart: [-126, 1.2, 96],
@@ -466,7 +499,7 @@ map
     id: 'vs-msg-welcome',
     name: 'vs-msg-welcome',
     speaker: 'Campo de pruebas',
-    text: 'Seis tripulaciones están activas. Usá E para subir, R para cambiar de asiento y la consola azul para el helicóptero.',
+    text: 'Seis tripulaciones están activas. El transporte oruga y el deslizador Combine están estacionados; usá E para subir y R para cambiar de asiento.',
     duration: 7,
   })
   .logic({

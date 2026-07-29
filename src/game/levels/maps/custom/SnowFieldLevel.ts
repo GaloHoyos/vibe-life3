@@ -108,6 +108,19 @@ export const SnowFieldLevel: LevelDefinition = {
     { id: 'combine-sf-02', position: [-22, 5, 18], characterId: 'combine' },
     { id: 'combine-sf-03', position: [22, 5, 18], characterId: 'combine' },
   ],
+  vehicles: [
+    {
+      id: 'whiteout-rebel-crawler',
+      presetId: 'rebelCrawler',
+      position: [18, 3.9, -6.5],
+      rotation: [0, Math.PI, 0],
+      faction: 'resistance',
+      weaponEnabled: false,
+      engineOn: false,
+      transitionKey: 'campaign-rebel-crawler',
+      portalTraversal: 'blocked',
+    },
+  ],
   weaponPickups: [
     { id: 'pickup-pistol-sf', weaponId: 'pistol', position: [-5, 6, -2] },
     { id: 'pickup-smg-sf', weaponId: 'smg', position: [-3, 6, -2] },

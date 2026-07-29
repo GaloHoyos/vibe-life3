@@ -71,6 +71,41 @@ describe("HoverVehicleMotor", () => {
     );
     expect(motor.getTelemetry().contactCount).toBe(0);
   });
+
+  it("mantiene una sonda antigravitatoria sobre una superficie sólida", async () => {
+    const physics = new PhysicsWorld();
+    await physics.init();
+    const body = physics.createDynamicBox(
+      {
+        id: "combine-glider",
+        position: new Vector3(0, 0.85, 0),
+        size: new Vector3(2, 0.6, 3.4),
+        mass: 350,
+      },
+      new Object3D(),
+    );
+    const solid: VehicleSurfaceProvider = {
+      sampleSurface: (probePosition) => ({
+        point: new Vector3(probePosition.x, 0, probePosition.z),
+        normal: new Vector3(0, 1, 0),
+        velocity: new Vector3(),
+        kind: "solid",
+        density: 1,
+      }),
+    };
+    const config = hoverConfig(solid);
+    config.probes.forEach((probe) => {
+      probe.hoverHeight = 0.7;
+    });
+    const motor = new HoverVehicleMotor(body, config);
+
+    motor.prePhysicsStep(1 / 60);
+    motor.postPhysicsStep(1 / 60);
+
+    expect(body.userForce().y).toBeGreaterThan(0);
+    expect(motor.getTelemetry().contactCount).toBe(4);
+    expect(motor.getTelemetry().submergedRatio).toBe(0);
+  });
 });
 
 function waterAt(height: number): VehicleSurfaceProvider {
