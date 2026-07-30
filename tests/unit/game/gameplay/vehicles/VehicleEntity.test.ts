@@ -1,13 +1,20 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import RAPIER from "@dimforge/rapier3d-compat";
-import { Scene, Vector3 } from "three";
+import { Quaternion, Scene, Vector3 } from "three";
 import { EventBus } from "@engine/core/EventBus";
-import { PhysicsWorld } from "@engine/physics/PhysicsWorld";
+import {
+  PhysicsWorld,
+  type PhysicsContactForce,
+} from "@engine/physics/PhysicsWorld";
 import type { RaycastSource } from "@engine/physics/Raycast";
 import type { GameEventMap } from "@game/GameEvents";
 import type { EntityIOSystem } from "@game/script/EntityIOSystem";
 import type { VehicleDefinition, VehicleWaypointDefinition } from "@game/levels/LevelDefinition";
-import { VehicleEntity } from "@game/gameplay/vehicles/VehicleEntity";
+import {
+  VehicleEntity,
+  type VehicleEntityCallbacks,
+} from "@game/gameplay/vehicles/VehicleEntity";
+import { capsuleClearsVehicleHull } from "@game/gameplay/vehicles/VehicleSystem";
 import { WaterVolumeSystem } from "@game/gameplay/vehicles/water/WaterVolumeSystem";
 
 beforeAll(async () => {
@@ -37,7 +44,7 @@ describe("VehicleEntity", () => {
     expect(vehicle.getOccupants()).toHaveLength(1);
   });
 
-  it("cambia de asiento saltando los ocupados y vuelve si no hay libre", async () => {
+  it("cambia de asiento saltando los ocupados y no hace nada si no hay libre", async () => {
     const { vehicle } = await createVehicle();
     vehicle.attachOccupant("!player", "driver");
 
@@ -46,7 +53,8 @@ describe("VehicleEntity", () => {
 
     vehicle.attachOccupant("rebel-01", "gunner");
     // Sin asiento libre, el ocupante se queda donde estaba.
-    expect(vehicle.moveOccupantToNextSeat("!player")?.seatId).toBe("driver");
+    expect(vehicle.moveOccupantToNextSeat("!player")).toBeNull();
+    expect(vehicle.getOccupant("!player")?.seatId).toBe("driver");
   });
 
   it("detachOccupant libera la plaza para el siguiente actor", async () => {
@@ -56,6 +64,31 @@ describe("VehicleEntity", () => {
     expect(vehicle.detachOccupant("!player")?.seatId).toBe("driver");
     expect(vehicle.detachOccupant("!player")).toBeNull();
     expect(vehicle.attachOccupant("rebel-01", "driver")?.seatId).toBe("driver");
+  });
+
+  it("rechaza una salida que queda dentro del chasis al volcar", async () => {
+    const { vehicle } = await createVehicle();
+    const origin = vehicle.getWorldPosition();
+    const uprightExit = origin.clone().add(new Vector3(1.45, 0.98, 0.15));
+    expect(capsuleClearsVehicleHull(uprightExit, vehicle)).toBe(true);
+
+    vehicle.body.setRotation(
+      new Quaternion().setFromAxisAngle(
+        new Vector3(0, 0, 1),
+        Math.PI / 2,
+      ),
+      true,
+    );
+    const projectedRolledExit = origin
+      .clone()
+      .add(new Vector3(-0.25, 0, 0.15));
+    expect(capsuleClearsVehicleHull(projectedRolledExit, vehicle)).toBe(false);
+    expect(
+      capsuleClearsVehicleHull(
+        origin.clone().add(new Vector3(0, 0, 4)),
+        vehicle,
+      ),
+    ).toBe(true);
   });
 
   it("selfRight endereza y detiene el chasis, salvo con el jugador a bordo", async () => {
@@ -192,15 +225,93 @@ describe("VehicleEntity", () => {
     vehicle.dispose();
     expect(() => physics.step(1 / 60)).not.toThrow();
   });
+
+  it("atropella con velocidad previa, atribuye al conductor y no daña el chasis", async () => {
+    const onImpact = vi.fn();
+    const { vehicle, physics } = await createVehicle({
+      callbacks: { onImpact },
+    });
+    vehicle.attachOccupant("!player", "driver", "driver");
+    const hullBefore = vehicle.damage.getHull().current;
+    const firstDamage = vi.fn();
+    const secondDamage = vi.fn();
+    const firstBody = physics.createStaticBox({
+      id: "npc-a",
+      position: new Vector3(20, 1, 0),
+      size: new Vector3(0.8, 1.8, 0.8),
+      metadata: {
+        kind: "npc",
+        ownerId: "npc-a",
+        damageable: {
+          applyDamage: firstDamage,
+          isAlive: () => true,
+        },
+      },
+    });
+    const secondBody = physics.createStaticBox({
+      id: "npc-b",
+      position: new Vector3(-20, 1, 0),
+      size: new Vector3(0.8, 1.8, 0.8),
+      metadata: {
+        kind: "npc",
+        ownerId: "npc-b",
+        damageable: {
+          applyDamage: secondDamage,
+          isAlive: () => true,
+        },
+      },
+    });
+    const firstCollider = firstBody.collider(0);
+    const secondCollider = secondBody.collider(0);
+
+    vehicle.body.setLinvel({ x: 0, y: 0, z: 30 }, true);
+    physics.step(1 / 60);
+    vehicle.body.setLinvel({ x: 0, y: 0, z: 8 }, true);
+    const contact: PhysicsContactForce = {
+      collider1: vehicle.body.collider(0).handle,
+      collider2: firstCollider.handle,
+      totalForce: new Vector3(0, 0, 200_000),
+      totalForceMagnitude: 200_000,
+      maxForceDirection: new Vector3(0, 0, 1),
+      maxForceMagnitude: 200_000,
+    };
+
+    vehicle.processContactForce(contact, firstCollider);
+    vehicle.processContactForce(
+      { ...contact, collider2: secondCollider.handle },
+      secondCollider,
+    );
+    vehicle.processContactForce(contact, firstCollider);
+
+    expect(firstDamage).toHaveBeenCalledTimes(1);
+    expect(secondDamage).toHaveBeenCalledTimes(1);
+    expect(firstDamage).toHaveBeenCalledWith(
+      500,
+      expect.any(Vector3),
+      undefined,
+      "player",
+      expect.any(Vector3),
+      "physics",
+    );
+    expect(vehicle.damage.getHull().current).toBe(hullBefore);
+    expect(onImpact).not.toHaveBeenCalled();
+
+    physics.step(0.1);
+    physics.step(0.1);
+    vehicle.body.setLinvel({ x: 0, y: 0, z: 30 }, true);
+    vehicle.update(0, 0.2, false, null);
+    vehicle.processContactForce(contact, firstCollider);
+
+    expect(firstDamage).toHaveBeenCalledTimes(2);
+    expect(vehicle.damage.getHull().current).toBe(hullBefore);
+    expect(onImpact).not.toHaveBeenCalled();
+  });
 });
 
 async function createVehicle(options?: {
   definition?: Partial<VehicleDefinition>;
   waypoints?: readonly VehicleWaypointDefinition[];
-  callbacks?: Partial<{
-    onCrashStarted: (entity: VehicleEntity) => void;
-    onCrashFinished: (entity: VehicleEntity, survivable: boolean) => void;
-  }>;
+  callbacks?: Partial<VehicleEntityCallbacks>;
 }): Promise<{ vehicle: VehicleEntity; physics: PhysicsWorld }> {
   const physics = new PhysicsWorld();
   await physics.init();
@@ -235,10 +346,10 @@ async function createVehicle(options?: {
     new EventBus<GameEventMap>(),
     io,
     {
-      onImpact: vi.fn(),
+      onImpact: options?.callbacks?.onImpact ?? vi.fn(),
       onCrashStarted: options?.callbacks?.onCrashStarted ?? vi.fn(),
       onCrashFinished: options?.callbacks?.onCrashFinished ?? vi.fn(),
-      onDestroyed: vi.fn(),
+      onDestroyed: options?.callbacks?.onDestroyed ?? vi.fn(),
     },
   );
   return { vehicle, physics };

@@ -307,6 +307,27 @@ export interface NpcSeatPose {
   readonly handsOnControls: boolean;
 }
 
+export interface NpcVehicleCapability {
+  /** May occupy driver or pilot seats when allowed by the vehicle policy. */
+  readonly canDrive: boolean;
+}
+
+export interface NpcVehicleApproachOrder {
+  readonly vehicleId: string;
+  readonly seatId: string;
+  /** Walkable point beside the selected entrance. */
+  readonly target: Vector3;
+  /** Vehicle center used to face it during the approach. */
+  readonly facing: Vector3;
+  readonly arriveRadius: number;
+}
+
+export type NpcVehicleApproachStatus =
+  | "none"
+  | "moving"
+  | "arrived"
+  | "blocked";
+
 /** Interfaz uniforme que consume `Game`/`LevelLoader`. La implementa `Npc`. */
 export interface INpc {
   readonly id: string;
@@ -320,15 +341,24 @@ export interface INpc {
   readonly playerSquadEligible: boolean;
   /** Nombre visible si es compañera (preset con `companion`), o null. */
   readonly companionName: string | null;
+  /** Absent on creatures that cannot understand or use vehicles. */
+  readonly vehicleCapability?: NpcVehicleCapability | null;
 
   /**
    * Suspensión reversible para asientos. El runtime vehicular sincroniza la
    * pose visual; el NPC conserva vida, inventario y brain para retomarlos.
    */
-  setVehicleMounted?(mounted: boolean, exitPosition?: Vector3): void;
+  setVehicleMounted?(
+    mounted: boolean,
+    exitPosition?: Vector3,
+    exitVelocity?: Vector3,
+  ): void;
   isVehicleMounted?(): boolean;
   /** Pose visual del ocupante mientras el motor está suspendido. */
   setSeatPose?(pose: NpcSeatPose): void;
+  /** Transient order to walk toward a reserved entrance. */
+  setVehicleApproach?(order: NpcVehicleApproachOrder | null): void;
+  getVehicleApproachStatus?(): NpcVehicleApproachStatus;
 
   update(ctx: AiFrameContext): void;
   syncFromPhysics(): void;

@@ -37,6 +37,7 @@ describe("PlayerSquadService", () => {
     expect(squad.isMember("r5")).toBe(false);
     expect(squad.isMember("lejos")).toBe(false);
     expect(squad.isMember("zombie")).toBe(false);
+    expect(squad.memberIds()).toEqual(["r1", "r2", "r3", "r4"]);
     expect(changed.at(-1)).toMatchObject({ size: 4, max: 4 });
   });
 

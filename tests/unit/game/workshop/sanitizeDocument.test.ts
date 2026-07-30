@@ -337,6 +337,8 @@ describe("sanitizeDocument", () => {
             position: [0, 4, 0],
             pathStart: "wp-a",
             crashPolicy: "survivable",
+            accessPolicy: "player",
+            allowPlayerExit: true,
             crew: [{ actor: "!player", role: "gunner", seatId: "door-gunner" }],
             portalTraversal: "blocked",
             connections: [{ output: "OnWaypoint", target: "!self", input: "Stop" }],
@@ -425,6 +427,17 @@ describe("sanitizeDocument", () => {
       "al menos 3",
     ],
     [
+      "política de acceso desconocida",
+      [
+        {
+          eid: "vehicle",
+          kind: "vehicle",
+          def: { id: "bad", presetId: "buggy", position: [0, 0, 0], accessPolicy: "zombies" },
+        },
+      ],
+      "accessPolicy",
+    ],
+    [
       "política de crash desconocida",
       [
         {
@@ -434,6 +447,22 @@ describe("sanitizeDocument", () => {
         },
       ],
       "crashPolicy",
+    ],
+    [
+      "allowPlayerExit inválido",
+      [
+        {
+          eid: "vehicle",
+          kind: "vehicle",
+          def: {
+            id: "bad",
+            presetId: "buggy",
+            position: [0, 0, 0],
+            allowPlayerExit: "sí",
+          },
+        },
+      ],
+      "allowPlayerExit",
     ],
   ])("rechaza %s", (_case, entities, reason) => {
     expect(sanitizeDocument(testEditorDocument({ entities: entities as never }))).toMatchObject({

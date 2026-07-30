@@ -489,6 +489,81 @@ describe("estabilidad física de los vehículos", () => {
     expect(rig.vehicle.isWreckage()).toBe(false);
   });
 
+  it("un buggy a máxima velocidad mata al NPC aunque Rapier lo frene al impactar", async () => {
+    const rig = await spawn({ presetId: "buggy", position: [0, 1.2, 0] });
+    simulate(rig, 2);
+    accelerate(rig, 6);
+    const speedBeforeImpact = rig.vehicle.getLinearVelocity().length();
+    const targetPosition = rig.vehicle
+      .getWorldPosition()
+      .add(new Vector3(0, 0.25, 10));
+    const applyDamage = vi.fn();
+    rig.physics.createStaticBox({
+      id: "combine-runover-target",
+      position: targetPosition,
+      size: new Vector3(3, 1.8, 0.8),
+      metadata: {
+        kind: "npc",
+        ownerId: "combine-runover-target",
+        damageable: {
+          applyDamage,
+          isAlive: () => true,
+        },
+      },
+    });
+    rig.physics.updateQueryPipeline();
+
+    rig.vehicle.setControl({
+      throttle: 1,
+      steering: 0,
+      brake: 0,
+      handbrake: 0,
+      boost: false,
+    });
+    let speedAfterImpact = speedBeforeImpact;
+    for (
+      let frame = 0;
+      frame < 120 && applyDamage.mock.calls.length === 0;
+      frame += 1
+    ) {
+      rig.physics.step(DT);
+      for (const contact of rig.physics.consumeContactForceEvents()) {
+        if (rig.vehicle.containsCollider(contact.collider1)) {
+          rig.vehicle.processContactForce(
+            contact,
+            rig.physics.world.getCollider(contact.collider2),
+          );
+        } else if (rig.vehicle.containsCollider(contact.collider2)) {
+          rig.vehicle.processContactForce(
+            {
+              ...contact,
+              collider1: contact.collider2,
+              collider2: contact.collider1,
+              totalForce: contact.totalForce.clone().multiplyScalar(-1),
+              maxForceDirection: contact.maxForceDirection
+                .clone()
+                .multiplyScalar(-1),
+            },
+            rig.physics.world.getCollider(contact.collider1),
+          );
+        }
+      }
+      rig.vehicle.update(DT, frame * DT, false, null);
+      speedAfterImpact = rig.vehicle.getLinearVelocity().length();
+    }
+
+    expect(speedBeforeImpact).toBeGreaterThan(25.4);
+    expect(speedAfterImpact).toBeLessThan(speedBeforeImpact * 0.5);
+    expect(applyDamage).toHaveBeenCalledWith(
+      500,
+      expect.any(Vector3),
+      undefined,
+      rig.vehicle.id,
+      expect.any(Vector3),
+      "physics",
+    );
+  });
+
   it("ningún vehículo genera impactos de daño estando quieto", async () => {
     for (const presetId of ["buggy", "airboat"] as const) {
       const rig = await spawn({ presetId, position: [0, 0.9, 0] });

@@ -1,6 +1,6 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Color, MathUtils, Quaternion, Scene, Vector3 } from "three";
-import { isHostileTo } from "@engine/ai/Faction";
+import { isAlliedWith, isHostileTo } from "@engine/ai/Faction";
 import type { PositionalSoundManager } from "@engine/audio/core/PositionalSoundManager";
 import type { SoundManager } from "@engine/audio/core/SoundManager";
 import type { Input } from "@engine/input/Input";
@@ -19,11 +19,14 @@ import type { Controls } from "@game/gameplay/player/Controls";
 import type { Player } from "@game/gameplay/player/Player";
 import type {
   LevelDefinition,
+  VehicleAiBehavior,
+  VehicleAiDefinition,
   VehicleCrewAssignment,
   VehicleDefinition,
   VehicleNavMarkerDefinition,
   VehicleWaypointDefinition,
 } from "@game/levels/LevelDefinition";
+import { resolveVehicleAccessPolicy } from "@game/levels/LevelDefinition";
 import type { INpc } from "@game/npc/core/INpc";
 import { effectiveName } from "@game/script/EntityIOTypes";
 import type {
@@ -34,8 +37,18 @@ import type {
 } from "@game/script/EntityIOSystem";
 import type { InteractSystem } from "@game/gameplay/interactions";
 import { VehicleAudioSystem } from "./VehicleAudioSystem";
+import {
+  canUseVehicleRole,
+  isManualPlayerExitAllowed,
+} from "./VehicleAccessPolicy";
 import { VehicleCameraRig } from "./VehicleCameraRig";
 import { VehicleCrewVisuals } from "./VehicleCrewVisuals";
+import {
+  VehicleNpcCrewCoordinator,
+  type VehicleNpcAnchorCandidate,
+  type VehicleNpcAnchorSelection,
+  type VehicleNpcCrewAction,
+} from "./VehicleNpcCrewCoordinator";
 import {
   VehicleEntity,
   type VehicleEntitySnapshot,
@@ -44,17 +57,30 @@ import {
 import { WaterVolumeSystem } from "./water/WaterVolumeSystem";
 import {
   VehicleAiSystem,
+  VehicleReservationManager,
   vehicleNavigationInputFromLevel,
   type VehicleAiSnapshot,
   type VehicleBrainContext,
   type VehicleControlCommand,
   type VehicleDrivingPath,
   type VehicleNavPoint,
+  type VehicleObstacleObservation,
+  type VehicleShapeCastObservation,
 } from "./ai";
 
 export interface VehicleSystemSnapshot {
   readonly vehicles: readonly VehicleEntitySnapshot[];
   readonly ai?: readonly VehicleAiSnapshot[];
+  readonly npcDriveModes?: readonly {
+    readonly vehicleId: string;
+    readonly mode: VehicleNpcDriveMode;
+    readonly destination?: VehicleNavPoint;
+    readonly patrolPoints?: readonly VehicleNavPoint[];
+  }[];
+  readonly npcExitRequests?: readonly {
+    readonly actorId: string;
+    readonly emergency: boolean;
+  }[];
   readonly mountedVehicleId: string | null;
   readonly mountedSeatId: string | null;
 }
@@ -65,10 +91,26 @@ export interface VehicleRuntimeActor {
   readonly npc: INpc;
 }
 
+export interface VehicleNpcCrewSource {
+  followerIds(): readonly string[];
+  onFollowerExited?(actorId: string, position: Vector3): void;
+}
+
+export type VehicleNpcDriveMode =
+  | "hold"
+  | "automatic"
+  | "patrol"
+  | "destination";
+
+interface PendingPlayerSeatHandoff {
+  readonly vehicleId: string;
+  readonly actorId: string;
+  readonly seatId: string;
+}
+
 const PLAYER_ACTOR = "!player";
 const CAPSULE_HALF_HEIGHT = 0.55;
 const CAPSULE_RADIUS = 0.35;
-const MAX_REGULAR_EXIT_SPEED = 8;
 const EXIT_GROUND_CAST_HEIGHT = 1.7;
 const EXIT_GROUND_CAST_DISTANCE = 4.2;
 const EMPTY_CONTROL: VehicleControlInput = {
@@ -88,6 +130,20 @@ const PARKED_CONTROL: VehicleControlInput = {
 const DOWN = new Vector3(0, -1, 0);
 const WORLD_UP = new Vector3(0, 1, 0);
 const IDENTITY_ROTATION = new Quaternion();
+const EXIT_RADIAL_ANGLES = [
+  0,
+  Math.PI / 4,
+  -Math.PI / 4,
+  Math.PI / 2,
+  -Math.PI / 2,
+  (Math.PI * 3) / 4,
+  (-Math.PI * 3) / 4,
+  Math.PI,
+] as const;
+const NPC_DRIVE_MODE_ORDER: readonly Exclude<
+  VehicleNpcDriveMode,
+  "destination"
+>[] = ["hold", "automatic", "patrol"];
 
 /**
  * Orquestador game-owned de vehículos. Los motores y el fixed-step viven en
@@ -103,7 +159,10 @@ export class VehicleSystem {
   private readonly waypointDefinitions = new Map<string, VehicleWaypointDefinition>();
   private readonly cameraRig = new VehicleCameraRig();
   private readonly crewVisuals = new VehicleCrewVisuals();
+  private readonly npcCrew: VehicleNpcCrewCoordinator;
   private readonly ai = new VehicleAiSystem();
+  private readonly trafficReservations = new VehicleReservationManager();
+  private readonly trafficReservationKeys = new Map<string, string>();
   private readonly assets = new VehicleAssetRegistry();
   private readonly activeEffects = new Map<
     string,
@@ -114,12 +173,23 @@ export class VehicleSystem {
     }
   >();
   private player: Player | null = null;
+  private npcCrewSource: VehicleNpcCrewSource | null = null;
   private readonly driverInput = new VehicleDriverInputModel();
   private mountedVehicle: VehicleEntity | null = null;
   private mountedOccupant: VehicleOccupant | null = null;
   private currentLevel: LevelDefinition | null = null;
   private readonly blockedSeconds = new Map<string, number>();
   private readonly lastStuckOutputAt = new Map<string, number>();
+  private readonly npcDriveModes = new Map<string, VehicleNpcDriveMode>();
+  private readonly runtimePatrolPoints = new Map<
+    string,
+    readonly VehicleNavPoint[]
+  >();
+  private readonly runtimeDestinations = new Map<string, VehicleNavPoint>();
+  private readonly evacuationVehicles = new Set<string>();
+  private readonly followerCrewActors = new Set<string>();
+  private readonly npcExitRequests = new Map<string, boolean>();
+  private pendingPlayerSeatHandoff: PendingPlayerSeatHandoff | null = null;
   private elapsed = 0;
   private lastDismountAt = -Infinity;
   private disposed = false;
@@ -141,15 +211,21 @@ export class VehicleSystem {
   ) {
     this.water = new WaterVolumeSystem(scene);
     this.audio = new VehicleAudioSystem(sounds, positionalSounds);
+    this.npcCrew = new VehicleNpcCrewCoordinator({
+      selectExit: ({ npc, vehicle, candidates, emergency }) =>
+        this.selectNpcExit(npc, vehicle, candidates, emergency),
+    });
   }
 
   async load(
     level: LevelDefinition,
     player: Player,
     npcs: readonly INpc[],
+    npcCrewSource?: VehicleNpcCrewSource,
   ): Promise<void> {
     this.clear();
     this.player = player;
+    this.npcCrewSource = npcCrewSource ?? null;
     this.currentLevel = level;
     this.water.load(level.waterVolumes ?? []);
     (level.vehicleWaypoints ?? []).forEach((definition) => {
@@ -180,12 +256,24 @@ export class VehicleSystem {
       this.registerVehicleIo(vehicle);
       this.registerVehicleInteraction(vehicle);
       this.suspendAuthoredCrew(vehicle);
-      if (definition.ai) {
+      if (!vehicle.isOnRails()) {
+        const aiDefinition: VehicleAiDefinition =
+          definition.ai?.enabled
+            ? definition.ai
+            : {
+                enabled: true,
+                behavior: "hold",
+                allowRecoverySnap: false,
+              };
         this.ai.registerVehicle({
           vehicleId: vehicle.id,
           preset: vehicle.preset,
-          ai: definition.ai,
+          ai: aiDefinition,
         });
+        this.npcDriveModes.set(
+          vehicle.id,
+          definition.ai?.enabled ? "automatic" : "hold",
+        );
       }
     }
 
@@ -227,6 +315,8 @@ export class VehicleSystem {
     acceptPlayerInput = true,
   ): void {
     this.elapsed = elapsed;
+    this.trafficReservations.update(elapsed);
+    this.updateNpcCrew(delta);
     for (const vehicle of this.vehicles.values()) {
       if (vehicle !== this.mountedVehicle || !this.mountedOccupant) {
         if (!vehicle.isOnRails()) {
@@ -243,7 +333,9 @@ export class VehicleSystem {
       if (acceptPlayerInput && atTheControls) {
         vehicle.setControl(this.readPlayerControl(vehicle, delta));
       } else if (!vehicle.isOnRails()) {
-        vehicle.setControl(PARKED_CONTROL);
+        vehicle.setControl(
+          this.updateAiVehicle(vehicle, delta) ?? PARKED_CONTROL,
+        );
       }
     }
 
@@ -273,6 +365,9 @@ export class VehicleSystem {
         sourceId: this.mountedVehicle.id,
         sourceFaction: this.mountedVehicle.faction,
       });
+    }
+    if (this.controls.wasPressed("vehicleCommandMode")) {
+      this.cycleMountedNpcDriveMode();
     }
   }
 
@@ -349,6 +444,7 @@ export class VehicleSystem {
       this.audio.update(vehicle, vehicle === this.mountedVehicle);
       this.syncVehicleOccupants(vehicle);
       this.updateDamageEffects(vehicle);
+      this.updateEvacuation(vehicle);
     }
     // Después del `syncVisual` de todos: la pose sentada lee los anchors ya
     // interpolados de este frame.
@@ -384,11 +480,44 @@ export class VehicleSystem {
   }
 
   forceDismountPlayer(): boolean {
+    this.pendingPlayerSeatHandoff = null;
     return this.tryDismountPlayer(true);
   }
 
   getMountedVehicle(): VehicleEntity | null {
     return this.mountedVehicle;
+  }
+
+  /**
+   * Contextual command: passengers and gunners mark an NPC driver's destination
+   * through the crosshair. Returning false lets Game reuse C for squad orders.
+   */
+  commandMountedVehicleAtAim(): boolean {
+    const vehicle = this.mountedVehicle;
+    const occupant = this.mountedOccupant;
+    if (!vehicle || !occupant || isAtTheControls(occupant.role)) return false;
+    if (vehicle.isOnRails()) {
+      this.showMessage("Este vehículo sigue una ruta fija.");
+      return true;
+    }
+    if (!this.getNpcDriver(vehicle)) {
+      this.showMessage("No hay un conductor disponible.");
+      return true;
+    }
+    const hit = this.solidRaycast.cast(
+      this.camera.camera.position,
+      this.camera.getForwardDirection(),
+      140,
+      vehicle.body,
+      vehicle.id,
+      (_metadata, collider) => !collider.isSensor(),
+    );
+    if (!hit) {
+      this.showMessage("No hay un destino transitable en la mira.");
+      return true;
+    }
+    this.setNpcDriveDestination(vehicle, hit.point);
+    return true;
   }
 
   getVehicle(idOrName: string): VehicleEntity | null {
@@ -418,6 +547,27 @@ export class VehicleSystem {
     return {
       vehicles: [...this.vehicles.values()].map((vehicle) => vehicle.capture()),
       ai: this.ai.snapshots(),
+      npcDriveModes: [...this.npcDriveModes].map(([vehicleId, mode]) => {
+        const destination = this.runtimeDestinations.get(vehicleId);
+        const patrolPoints = this.runtimePatrolPoints.get(vehicleId);
+        return {
+          vehicleId,
+          mode,
+          ...(destination
+            ? { destination: [...destination] as VehicleNavPoint }
+            : {}),
+          ...(patrolPoints
+            ? {
+                patrolPoints: patrolPoints.map(
+                  (point) => [...point] as VehicleNavPoint,
+                ),
+              }
+            : {}),
+        };
+      }),
+      npcExitRequests: [...this.npcExitRequests].map(
+        ([actorId, emergency]) => ({ actorId, emergency }),
+      ),
       mountedVehicleId: this.mountedVehicle?.id ?? null,
       mountedSeatId: this.mountedOccupant?.seatId ?? null,
     };
@@ -427,13 +577,43 @@ export class VehicleSystem {
     if (this.mountedVehicle) {
       this.unmountPlayerRuntime(this.mountedVehicle, false);
     }
+    this.pendingPlayerSeatHandoff = null;
+    this.crewVisuals.clear();
+    this.npcCrew.dispose();
+    this.followerCrewActors.clear();
+    this.npcExitRequests.clear();
     snapshot.vehicles.forEach((vehicleSnapshot) => {
       this.vehicles.get(vehicleSnapshot.id)?.restore(vehicleSnapshot);
     });
     (snapshot.ai ?? []).forEach((aiSnapshot) => {
       this.ai.restoreSnapshot(aiSnapshot);
     });
+    if (snapshot.npcDriveModes) {
+      this.npcDriveModes.clear();
+      this.runtimeDestinations.clear();
+      this.runtimePatrolPoints.clear();
+      for (const state of snapshot.npcDriveModes) {
+        if (!this.vehicles.has(state.vehicleId)) continue;
+        this.npcDriveModes.set(state.vehicleId, state.mode);
+        if (state.destination) {
+          this.runtimeDestinations.set(
+            state.vehicleId,
+            [...state.destination],
+          );
+        }
+        if (state.patrolPoints) {
+          this.runtimePatrolPoints.set(
+            state.vehicleId,
+            state.patrolPoints.map((point) => [...point]),
+          );
+        }
+      }
+    }
     this.vehicles.forEach((vehicle) => this.suspendRuntimeCrew(vehicle));
+    for (const request of snapshot.npcExitRequests ?? []) {
+      this.requestNpcExit(request.actorId, request.emergency);
+    }
+    this.processNpcCrewActions();
 
     if (snapshot.mountedVehicleId) {
       const vehicle = this.vehicles.get(snapshot.mountedVehicleId);
@@ -466,15 +646,26 @@ export class VehicleSystem {
     }
     this.activeEffects.clear();
     this.crewVisuals.clear();
+    this.npcCrew.dispose();
     this.actors.clear();
     this.authoredCrew.clear();
     this.waypointDefinitions.clear();
     this.blockedSeconds.clear();
     this.lastStuckOutputAt.clear();
+    this.npcDriveModes.clear();
+    this.runtimePatrolPoints.clear();
+    this.runtimeDestinations.clear();
+    this.evacuationVehicles.clear();
+    this.followerCrewActors.clear();
+    this.npcExitRequests.clear();
+    this.pendingPlayerSeatHandoff = null;
     this.ai.dispose();
+    this.trafficReservations.clear();
+    this.trafficReservationKeys.clear();
     this.water.clear();
     this.currentLevel = null;
     this.player = null;
+    this.npcCrewSource = null;
     this.mountedVehicle = null;
     this.mountedOccupant = null;
   }
@@ -515,9 +706,33 @@ export class VehicleSystem {
       (occupant) =>
         occupant.actor !== PLAYER_ACTOR &&
         occupant.actor !== driver?.actor &&
-        this.actors.get(occupant.actor)?.isAlive(),
+        this.actors.get(occupant.actor)?.isAlive() &&
+        this.canNpcUseRole(
+          this.actors.get(occupant.actor) ?? null,
+          vehicle,
+          "driver",
+        ),
     );
     const position = vehicle.getWorldPosition();
+    const reservationKey = this.ai.reservationKey(vehicle.id, tuple(position));
+    const trafficGranted = this.updateTrafficReservation(
+      vehicle,
+      reservationKey,
+    );
+    const destination = this.runtimeDestinations.get(vehicle.id);
+    if (
+      destination &&
+      Math.hypot(
+        position.x - destination[0],
+        position.z - destination[2],
+      ) <=
+        Math.max(3.5, vehicle.preset.navigation.halfLength)
+    ) {
+      this.applyNpcDriveMode(vehicle, "hold");
+      if (vehicle === this.mountedVehicle) {
+        this.showMessage("Destino alcanzado.");
+      }
+    }
     const forward = new Vector3(0, 0, 1).applyQuaternion(
       vehicle.getWorldRotation(),
     );
@@ -526,14 +741,74 @@ export class VehicleSystem {
     const up = new Vector3(0, 1, 0).applyQuaternion(
       vehicle.getWorldRotation(),
     );
-    const target = this.resolveTarget(vehicle.definition.ai?.goal);
+    const target = destination
+      ? null
+      : this.resolveTarget(vehicle.definition.ai?.goal);
     const threat = this.findThreatTarget(vehicle);
     const route = this.authoredDrivingPath(vehicle.definition);
     const markers = this.currentLevel.vehicleNavMarkers ?? [];
     const recoveryMarker = nearestMarker(position, markers, "recovery");
     const passingBay = nearestMarker(position, markers, "passingBay");
-    const obstacleHit = this.observeForwardObstacle(vehicle);
+    const aggressiveBehavior =
+      this.ai.getBehavior(vehicle.id) === "intercept" ||
+      this.ai.getBehavior(vehicle.id) === "flank";
+    const shapeCasts = this.observeForwardObstacles(
+      vehicle,
+      aggressiveBehavior,
+      previous?.reverse ?? false,
+    );
+    const occupantIds = new Set(
+      vehicle.getOccupants().map((occupant) => occupant.actor),
+    );
+    const obstacles: VehicleObstacleObservation[] = [
+      ...[...this.vehicles.values()]
+        .filter((other) => other !== vehicle)
+        .map((other) => ({
+          id: other.id,
+          position: tuple(other.getWorldPosition()),
+          velocity: tuple(other.getLinearVelocity()),
+          radius: Math.max(
+            other.preset.navigation.halfWidth,
+            other.preset.navigation.halfLength,
+          ),
+          blocking: true,
+        })),
+    ];
+    if (
+      this.player?.isAlive() &&
+      !this.mountedVehicle &&
+      !occupantIds.has(PLAYER_ACTOR)
+    ) {
+      obstacles.push({
+        id: "player",
+        position: tuple(this.player.getPosition()),
+        velocity: [0, 0, 0],
+        radius: CAPSULE_RADIUS,
+        blocking:
+          !aggressiveBehavior ||
+          !isHostileTo(vehicle.faction, "player"),
+      });
+    }
+    for (const npc of new Set(this.actors.values())) {
+      if (
+        !npc.isAlive() ||
+        npc.isVehicleMounted?.() ||
+        occupantIds.has(npc.id)
+      ) {
+        continue;
+      }
+      obstacles.push({
+        id: npc.id,
+        position: tuple(npc.position),
+        velocity: [0, 0, 0],
+        radius: npc.radius,
+        blocking:
+          !aggressiveBehavior ||
+          !isHostileTo(vehicle.faction, npc.faction),
+      });
+    }
     const hull = vehicle.damage.getHull();
+    const patrolPoints = this.patrolPoints(vehicle);
     const context: VehicleBrainContext = {
       pose: {
         position: tuple(position),
@@ -544,15 +819,19 @@ export class VehicleSystem {
       visibleToPlayer: distanceToPlayer < 75,
       hasPlayerOccupant: vehicle.getPlayerOccupant() !== null,
       healthFraction: hull.max > 0 ? hull.current / hull.max : 0,
-      driverAvailable: Boolean(driverNpc?.isAlive()),
+      driverAvailable: Boolean(
+        driverNpc?.isAlive() &&
+          driver &&
+          !this.crewVisuals.isLeaving(driver.actor),
+      ),
       replacementDriverAvailable: Boolean(replacement),
       passengersOnboard: occupants.length > (driver ? 1 : 0),
       blocked: blockedSeconds > 1.1,
       overturned: up.dot(WORLD_UP) < 0.35,
       ...(route ? { route } : {}),
       ...(target ? { authoredGoal: target.position } : {}),
-      ...(this.patrolPoints(vehicle.definition).length > 0
-        ? { patrolPoints: this.patrolPoints(vehicle.definition) }
+      ...(patrolPoints.length > 0
+        ? { patrolPoints }
         : {}),
       ...(target
         ? {
@@ -580,19 +859,8 @@ export class VehicleSystem {
           }
         : {}),
       ...(passingBay ? { passingBay } : {}),
-      obstacles: [...this.vehicles.values()]
-        .filter((other) => other !== vehicle)
-        .map((other) => ({
-          id: other.id,
-          position: tuple(other.getWorldPosition()),
-          velocity: tuple(other.getLinearVelocity()),
-          radius: Math.max(
-            other.preset.navigation.halfWidth,
-            other.preset.navigation.halfLength,
-          ),
-          blocking: true,
-        })),
-      ...(obstacleHit ? { shapeCasts: [obstacleHit] } : {}),
+      obstacles,
+      ...(shapeCasts.length > 0 ? { shapeCasts } : {}),
     };
     const update = this.ai.update(vehicle.id, delta, context);
     const decision = update?.decision;
@@ -601,7 +869,9 @@ export class VehicleSystem {
       this.applyAiRecovery(vehicle, decision.recovery, context);
     }
     const command = decision?.control ?? this.ai.controlOutput(vehicle.id);
-    if (!command || !driverNpc?.isAlive()) return PARKED_CONTROL;
+    if (!command || !driverNpc?.isAlive() || !trafficGranted) {
+      return PARKED_CONTROL;
+    }
     return controlFromAi(command);
   }
 
@@ -650,7 +920,10 @@ export class VehicleSystem {
     return lanePoint ? { position: lanePoint } : null;
   }
 
-  private patrolPoints(definition: VehicleDefinition): readonly VehicleNavPoint[] {
+  private patrolPoints(vehicle: VehicleEntity): readonly VehicleNavPoint[] {
+    const runtime = this.runtimePatrolPoints.get(vehicle.id);
+    if (runtime) return runtime;
+    const definition = vehicle.definition;
     if (!this.currentLevel || definition.ai?.behavior !== "patrol") return [];
     const namedLane = (this.currentLevel.vehicleNavLanes ?? []).find(
       (lane) => lane.id === definition.ai?.goal,
@@ -658,6 +931,112 @@ export class VehicleSystem {
     if (namedLane) return namedLane.points;
     const route = this.authoredDrivingPath(definition);
     return route?.points.map((point) => point.position) ?? [];
+  }
+
+  private cycleMountedNpcDriveMode(): void {
+    const vehicle = this.mountedVehicle;
+    const occupant = this.mountedOccupant;
+    if (!vehicle || !occupant || isAtTheControls(occupant.role)) {
+      this.showMessage("Cambiá a un asiento de acompañante para dar órdenes.");
+      return;
+    }
+    if (vehicle.isOnRails()) {
+      this.showMessage("Este vehículo sigue una ruta fija.");
+      return;
+    }
+    if (!this.getNpcDriver(vehicle)) {
+      this.showMessage("No hay un conductor disponible.");
+      return;
+    }
+    const current = this.npcDriveModes.get(vehicle.id) ?? "hold";
+    const index = NPC_DRIVE_MODE_ORDER.indexOf(
+      current === "destination" ? "patrol" : current,
+    );
+    const next =
+      NPC_DRIVE_MODE_ORDER[(index + 1) % NPC_DRIVE_MODE_ORDER.length] ??
+      "hold";
+    this.applyNpcDriveMode(vehicle, next);
+    const label =
+      next === "hold"
+        ? "detenido"
+        : next === "automatic"
+          ? "automático"
+          : "patrulla circular";
+    this.showMessage(`Conducción IA: ${label}.`);
+  }
+
+  private setNpcDriveDestination(
+    vehicle: VehicleEntity,
+    destination: Vector3,
+  ): void {
+    const point = tuple(destination);
+    this.npcDriveModes.set(vehicle.id, "destination");
+    this.runtimeDestinations.set(vehicle.id, point);
+    this.runtimePatrolPoints.delete(vehicle.id);
+    this.ai.setBehavior(vehicle.id, "escort");
+    this.ai.setGoal(vehicle.id, point);
+    this.startNpcControlledEngine(vehicle);
+    this.showMessage("Conductor: avanzando al punto marcado.");
+  }
+
+  private applyNpcDriveMode(
+    vehicle: VehicleEntity,
+    mode: Exclude<VehicleNpcDriveMode, "destination">,
+  ): void {
+    this.npcDriveModes.set(vehicle.id, mode);
+    this.runtimeDestinations.delete(vehicle.id);
+    this.runtimePatrolPoints.delete(vehicle.id);
+    if (mode === "hold") {
+      this.ai.setBehavior(vehicle.id, "hold");
+      this.ai.clearGoal(vehicle.id);
+      return;
+    }
+    if (mode === "automatic") {
+      const authored = vehicle.definition.ai?.enabled
+        ? vehicle.definition.ai
+        : null;
+      const behavior: VehicleAiBehavior = authored?.behavior ?? "intercept";
+      this.ai.setBehavior(vehicle.id, behavior);
+      const target = this.resolveTarget(authored?.goal);
+      if (target) {
+        this.ai.setGoal(vehicle.id, target.position, target.heading);
+      } else {
+        this.ai.clearGoal(vehicle.id);
+      }
+      this.startNpcControlledEngine(vehicle);
+      return;
+    }
+
+    const center = vehicle.getWorldPosition();
+    const radius = Math.max(
+      14,
+      vehicle.preset.navigation.minTurnRadius * 2.4,
+    );
+    const points: VehicleNavPoint[] = [];
+    for (let index = 0; index < 8; index += 1) {
+      const angle = (index / 8) * Math.PI * 2;
+      points.push([
+        center.x + Math.sin(angle) * radius,
+        center.y,
+        center.z + Math.cos(angle) * radius,
+      ]);
+    }
+    this.runtimePatrolPoints.set(vehicle.id, points);
+    this.ai.setBehavior(vehicle.id, "patrol");
+    this.ai.clearGoal(vehicle.id);
+    this.startNpcControlledEngine(vehicle);
+  }
+
+  private getNpcDriver(vehicle: VehicleEntity): INpc | null {
+    const occupant = vehicle.getOccupants().find(
+      (candidate) =>
+        isAtTheControls(candidate.role) &&
+        candidate.actor !== PLAYER_ACTOR &&
+        !this.crewVisuals.isLeaving(candidate.actor),
+    );
+    if (!occupant) return null;
+    const npc = this.actors.get(occupant.actor);
+    return npc?.isAlive() ? npc : null;
   }
 
   private authoredDrivingPath(
@@ -687,44 +1066,99 @@ export class VehicleSystem {
       : null;
   }
 
-  private observeForwardObstacle(vehicle: VehicleEntity) {
+  private observeForwardObstacles(
+    vehicle: VehicleEntity,
+    aggressiveBehavior: boolean,
+    reversing: boolean,
+  ): VehicleShapeCastObservation[] {
     const telemetry = vehicle.getTelemetry();
     const forward = new Vector3(0, 0, 1).applyQuaternion(
       vehicle.getWorldRotation(),
     );
+    if (reversing) forward.multiplyScalar(-1);
+    const left = new Vector3(forward.z, 0, -forward.x).normalize();
     const origin = vehicle
       .getWorldPosition()
       .addScaledVector(WORLD_UP, 0.75)
       .addScaledVector(forward, vehicle.preset.navigation.halfLength * 0.5);
     const maxDistance = MathUtils.clamp(5 + telemetry.speed * 0.7, 6, 24);
-    const hit = this.solidRaycast.cast(
-      origin,
-      forward,
-      maxDistance,
-      vehicle.body,
-      vehicle.id,
-      (_metadata, collider) => !collider.isSensor(),
+    const sensorOffset = Math.max(
+      0.45,
+      vehicle.preset.navigation.halfWidth * 0.68,
     );
-    if (!hit) return null;
-    const parent = hit.collider.parent();
-    const otherVelocity = parent?.linvel();
-    const closingSpeed = otherVelocity
-      ? Math.max(
-          0,
-          telemetry.forwardSpeed -
-            new Vector3(
-              otherVelocity.x,
-              otherVelocity.y,
-              otherVelocity.z,
-            ).dot(forward),
-        )
-      : Math.max(0, telemetry.forwardSpeed);
-    return {
-      distance: hit.toi,
-      closingSpeed,
-      lateralOffset: 0,
-      radius: vehicle.preset.navigation.halfWidth,
-    };
+    const observations: VehicleShapeCastObservation[] = [];
+    for (const lateralOffset of [0, sensorOffset, -sensorOffset]) {
+      const hit = this.solidRaycast.cast(
+        origin.clone().addScaledVector(left, lateralOffset),
+        forward,
+        maxDistance,
+        vehicle.body,
+        vehicle.id,
+        (metadata, collider) => {
+          if (collider.isSensor()) return false;
+          const parent = collider.parent();
+          if (
+            metadata?.kind === "dynamic" &&
+            parent &&
+            parent.mass() < 90
+          ) {
+            return false;
+          }
+          if (
+            aggressiveBehavior &&
+            (metadata?.kind === "npc" || metadata?.kind === "player") &&
+            metadata.faction &&
+            isHostileTo(vehicle.faction, metadata.faction)
+          ) {
+            return false;
+          }
+          return true;
+        },
+      );
+      if (!hit) continue;
+      const parent = hit.collider.parent();
+      const otherVelocity = parent?.linvel();
+      const closingSpeed = otherVelocity
+        ? Math.max(
+            0,
+            (reversing
+              ? -telemetry.forwardSpeed
+              : telemetry.forwardSpeed) -
+              new Vector3(
+                otherVelocity.x,
+                otherVelocity.y,
+                otherVelocity.z,
+              ).dot(forward),
+          )
+        : Math.max(0, telemetry.forwardSpeed);
+      observations.push({
+        distance: hit.toi,
+        closingSpeed,
+        lateralOffset,
+        radius: 0.2,
+      });
+    }
+    return observations;
+  }
+
+  private updateTrafficReservation(
+    vehicle: VehicleEntity,
+    resourceId: string | null,
+  ): boolean {
+    const previous = this.trafficReservationKeys.get(vehicle.id);
+    if (previous && previous !== resourceId) {
+      this.trafficReservations.release(previous, vehicle.id, this.elapsed);
+      this.trafficReservationKeys.delete(vehicle.id);
+    }
+    if (!resourceId) return true;
+    this.trafficReservationKeys.set(vehicle.id, resourceId);
+    return this.trafficReservations.request({
+      resourceId,
+      vehicleId: vehicle.id,
+      now: this.elapsed,
+      leaseSeconds: 1.25,
+      priority: vehicle.getPlayerOccupant() ? 10 : 0,
+    }).granted;
   }
 
   private applyAiCrewAction(
@@ -736,6 +1170,7 @@ export class VehicleSystem {
       const moved = vehicle.moveOccupantToRole(replacement.actor, "driver");
       if (moved) {
         this.crewVisuals.moveToSeat(moved.actor, moved.seatId, moved.role);
+        this.startNpcControlledEngine(vehicle, moved.role);
       }
       return;
     }
@@ -812,6 +1247,7 @@ export class VehicleSystem {
       null;
     if (
       this.player?.isAlive() &&
+      !vehicle.getPlayerOccupant() &&
       isHostileTo(vehicle.faction, "player")
     ) {
       const position = this.player.getPosition().clone();
@@ -868,14 +1304,113 @@ export class VehicleSystem {
       maxDistance: 4,
       interact: () => {
         if (this.elapsed - this.lastDismountAt < 0.3) return;
-        this.mountPlayer(vehicle, false);
+        this.tryMountPlayerOrYieldAlly(vehicle);
       },
     });
   }
 
-  private mountPlayer(vehicle: VehicleEntity, authored: boolean): boolean {
+  private tryMountPlayerOrYieldAlly(vehicle: VehicleEntity): void {
     if (
       !this.player ||
+      !this.player.isAlive() ||
+      this.mountedVehicle ||
+      !vehicle.isEnabled() ||
+      vehicle.isWreckage() ||
+      vehicle.isLocked()
+    ) {
+      this.mountPlayer(vehicle, false);
+      return;
+    }
+    if (this.pendingPlayerSeatHandoff) {
+      const pendingVehicle = this.vehicles.get(
+        this.pendingPlayerSeatHandoff.vehicleId,
+      );
+      const pendingOccupant = pendingVehicle?.getOccupant(
+        this.pendingPlayerSeatHandoff.actorId,
+      );
+      if (pendingOccupant) return;
+      this.pendingPlayerSeatHandoff = null;
+    }
+
+    const occupant = this.selectAlliedOccupantToYield(vehicle);
+    if (
+      !occupant ||
+      (!isAtTheControls(occupant.role) && vehicle.findSeat() !== null)
+    ) {
+      this.mountPlayer(vehicle, false);
+      return;
+    }
+    const npc = this.actors.get(occupant.actor);
+    if (!npc) {
+      this.mountPlayer(vehicle, false);
+      return;
+    }
+
+    const assignment = this.npcCrew.getAssignment(npc.id);
+    if (
+      !assignment ||
+      assignment.vehicleId !== vehicle.id ||
+      (assignment.phase !== "mounted" && assignment.phase !== "exiting")
+    ) {
+      this.npcCrew.adoptMounted(npc, vehicle);
+    }
+    this.pendingPlayerSeatHandoff = {
+      vehicleId: vehicle.id,
+      actorId: npc.id,
+      seatId: occupant.seatId,
+    };
+    if (isAtTheControls(occupant.role) && !vehicle.isOnRails()) {
+      this.applyNpcDriveMode(vehicle, "hold");
+    }
+    const current = this.npcCrew.getAssignment(npc.id);
+    if (current?.phase === "exiting") return;
+
+    const result = this.requestNpcExit(npc.id, true);
+    if (result === "rejected") {
+      this.pendingPlayerSeatHandoff = null;
+      this.mountPlayer(vehicle, false);
+      return;
+    }
+    this.processNpcCrewActions();
+  }
+
+  private selectAlliedOccupantToYield(
+    vehicle: VehicleEntity,
+  ): VehicleOccupant | null {
+    const seatOrder = new Map(
+      vehicle.preset.seats.map((seat, index) => [seat.id, index]),
+    );
+    const candidates = vehicle
+      .getOccupants()
+      .filter((occupant) => {
+        if (occupant.actor === PLAYER_ACTOR) return false;
+        const npc = this.actors.get(occupant.actor);
+        return Boolean(
+          npc &&
+          npc.isAlive() &&
+          isAlliedWith("player", npc.faction),
+        );
+      })
+      .sort((first, second) => {
+        const firstControls = isAtTheControls(first.role) ? 0 : 1;
+        const secondControls = isAtTheControls(second.role) ? 0 : 1;
+        return (
+          firstControls - secondControls ||
+          (seatOrder.get(first.seatId) ?? Number.MAX_SAFE_INTEGER) -
+            (seatOrder.get(second.seatId) ?? Number.MAX_SAFE_INTEGER)
+        );
+      });
+    return candidates[0] ?? null;
+  }
+
+  private mountPlayer(
+    vehicle: VehicleEntity,
+    authored: boolean,
+    preferredSeatId?: string,
+  ): boolean {
+    if (
+      !this.player ||
+      !this.player.isAlive() ||
       this.mountedVehicle ||
       !vehicle.isEnabled() ||
       vehicle.isWreckage() ||
@@ -888,7 +1423,7 @@ export class VehicleSystem {
     }
     const occupant =
       vehicle.getOccupant(PLAYER_ACTOR) ??
-      vehicle.attachOccupant(PLAYER_ACTOR);
+      vehicle.attachOccupant(PLAYER_ACTOR, undefined, preferredSeatId);
     if (!occupant) {
       if (!authored) this.showMessage("No hay asientos libres.");
       return false;
@@ -905,6 +1440,7 @@ export class VehicleSystem {
     this.driverInput.reset();
     this.mountedVehicle = vehicle;
     this.mountedOccupant = occupant;
+    this.pendingPlayerSeatHandoff = null;
     this.player.mountVehicle(vehicle.id);
     this.player.syncMountedPose(seat);
     this.cameraRig.begin(anchor, vehicle.preset.camera, this.camera);
@@ -927,37 +1463,13 @@ export class VehicleSystem {
     if (!vehicle || !occupant || !player) return false;
 
     if (!force) {
-      if (
-        vehicle.preset.archetype === "helicopter" &&
-        !vehicle.isWreckage()
-      ) {
-        this.showMessage("No es seguro bajar durante el vuelo.");
-        return false;
-      }
-      if (
-        vehicle.getTelemetry().speed > MAX_REGULAR_EXIT_SPEED &&
-        !vehicle.isWreckage()
-      ) {
-        this.showMessage("Reducí la velocidad antes de bajar.");
-        return false;
-      }
-      const up = WORLD_UP.clone().applyQuaternion(vehicle.getWorldRotation());
-      if (up.dot(WORLD_UP) < 0.42 && !vehicle.isWreckage()) {
-        this.showMessage("No hay una salida segura con el vehículo volcado.");
+      if (!isManualPlayerExitAllowed(vehicle.definition)) {
+        this.showMessage("Este helicóptero no permite bajar.");
         return false;
       }
     }
 
-    const exit = this.findSafeExit(vehicle, occupant);
-    if (!exit && !force) {
-      this.showMessage("Las salidas están bloqueadas.");
-      return false;
-    }
-    const resolvedExit =
-      exit ??
-      vehicle
-        .getWorldPosition()
-        .add(new Vector3(vehicle.preset.body.size[0] * 0.75 + 0.7, 1.1, 0));
+    const resolvedExit = this.resolvePlayerExit(vehicle, occupant);
     const velocity = vehicle.getLinearVelocity().clampLength(0, 7);
     const oldSeat = occupant.seatId;
     vehicle.detachOccupant(PLAYER_ACTOR);
@@ -971,6 +1483,7 @@ export class VehicleSystem {
       seatId: oldSeat,
     });
     this.io.fireOutput(vehicle.source, "OnPlayerExited", { kind: "player" });
+    this.exitFollowingCrew(vehicle);
     return true;
   }
 
@@ -1032,26 +1545,204 @@ export class VehicleSystem {
   ): Vector3 | null {
     const anchors = vehicle.getExitWorldPositions(occupant.seatId);
     for (const anchor of anchors) {
-      const castOrigin = anchor
-        .clone()
-        .addScaledVector(WORLD_UP, EXIT_GROUND_CAST_HEIGHT);
-      const ground = this.solidRaycast.cast(
-        castOrigin,
-        DOWN,
-        EXIT_GROUND_CAST_DISTANCE,
-        vehicle.body,
-        vehicle.id,
-        (metadata, collider) =>
-          !collider.isSensor() &&
-          metadata?.kind !== "npc" &&
-          metadata?.kind !== "player",
-      );
-      if (!ground || (ground.normal?.y ?? 1) < 0.58) continue;
-      const candidate = ground.point.clone();
-      candidate.y += CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS + 0.08;
-      if (this.capsuleFits(candidate, vehicle)) return candidate;
+      const candidate = this.projectSafeExit(vehicle, anchor);
+      if (candidate) return candidate;
     }
     return null;
+  }
+
+  private resolvePlayerExit(
+    vehicle: VehicleEntity,
+    occupant: VehicleOccupant,
+  ): Vector3 {
+    const clearance = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS + 0.08;
+    const vehiclePosition = vehicle.getWorldPosition();
+    const anchors = vehicle.getExitWorldPositions(occupant.seatId);
+    for (const anchor of anchors) {
+      if (this.water.getSurfaceHeight(anchor.x, anchor.z) !== null) continue;
+      const candidate = this.projectSafeExit(vehicle, anchor);
+      if (candidate && capsuleClearsVehicleHull(candidate, vehicle)) {
+        return candidate;
+      }
+    }
+    for (const anchor of anchors) {
+      const waterHeight = this.water.getSurfaceHeight(anchor.x, anchor.z);
+      if (waterHeight === null) continue;
+      const candidate = anchor.clone();
+      candidate.y = Math.max(
+        candidate.y + clearance,
+        vehiclePosition.y + clearance,
+        waterHeight + clearance,
+      );
+      if (
+        capsuleClearsVehicleHull(candidate, vehicle) &&
+        this.capsuleFits(candidate, vehicle)
+      ) {
+        return candidate;
+      }
+    }
+    for (const anchor of anchors) {
+      const candidate = anchor.clone();
+      const waterHeight = this.water.getSurfaceHeight(
+        candidate.x,
+        candidate.z,
+      );
+      candidate.y = Math.max(
+        candidate.y + clearance,
+        vehiclePosition.y + clearance,
+        waterHeight === null ? -Infinity : waterHeight + clearance,
+      );
+      if (
+        capsuleClearsVehicleHull(candidate, vehicle) &&
+        this.capsuleFits(candidate, vehicle)
+      ) {
+        return candidate;
+      }
+    }
+
+    const anchor = anchors[0] ?? vehiclePosition.clone();
+    return this.findRadialExit(vehicle, anchor, clearance);
+  }
+
+  private findRadialExit(
+    vehicle: VehicleEntity,
+    anchor: Vector3,
+    clearance: number,
+  ): Vector3 {
+    const vehiclePosition = vehicle.getWorldPosition();
+    const outward = anchor.clone().sub(vehiclePosition).setY(0);
+    if (outward.lengthSq() < 1e-4) {
+      outward
+        .set(1, 0, 0)
+        .applyQuaternion(vehicle.getWorldRotation())
+        .setY(0);
+    }
+    if (outward.lengthSq() < 1e-4) outward.set(1, 0, 0);
+    const radius =
+      Math.hypot(...vehicle.preset.body.size) * 0.5 +
+      CAPSULE_HALF_HEIGHT +
+      CAPSULE_RADIUS +
+      0.3;
+    const direction = outward.normalize();
+    let firstFallback: Vector3 | null = null;
+    for (const angle of EXIT_RADIAL_ANGLES) {
+      const candidate = vehiclePosition
+        .clone()
+        .add(
+          direction
+            .clone()
+            .applyAxisAngle(WORLD_UP, angle)
+            .multiplyScalar(radius),
+        );
+      const waterHeight = this.water.getSurfaceHeight(
+        candidate.x,
+        candidate.z,
+      );
+      candidate.y = Math.max(
+        anchor.y + clearance,
+        vehiclePosition.y + clearance,
+        waterHeight === null ? -Infinity : waterHeight + clearance,
+      );
+      firstFallback ??= candidate;
+      if (this.capsuleFits(candidate, vehicle)) return candidate;
+    }
+    return firstFallback ?? vehiclePosition.add(new Vector3(radius, clearance, 0));
+  }
+
+  private selectNpcExit(
+    npc: INpc,
+    vehicle: VehicleEntity,
+    candidates: readonly VehicleNpcAnchorCandidate[],
+    emergency: boolean,
+  ): VehicleNpcAnchorSelection | null {
+    const ordered = [...candidates].sort(
+      (first, second) =>
+        first.position.distanceToSquared(npc.position) -
+        second.position.distanceToSquared(npc.position),
+    );
+    const clearance = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS + 0.08;
+    for (const candidate of ordered) {
+      if (
+        this.water.getSurfaceHeight(
+          candidate.position.x,
+          candidate.position.z,
+        ) !== null
+      ) {
+        continue;
+      }
+      const projected = this.projectSafeExit(vehicle, candidate.position);
+      if (projected && capsuleClearsVehicleHull(projected, vehicle)) {
+        return { index: candidate.index, position: projected };
+      }
+    }
+    for (const candidate of ordered) {
+      const waterHeight = this.water.getSurfaceHeight(
+        candidate.position.x,
+        candidate.position.z,
+      );
+      if (waterHeight === null) continue;
+      const position = candidate.position.clone();
+      position.y = Math.max(
+        position.y + clearance,
+        vehicle.getWorldPosition().y + clearance,
+        waterHeight + clearance,
+      );
+      if (
+        capsuleClearsVehicleHull(position, vehicle) &&
+        this.capsuleFits(position, vehicle)
+      ) {
+        return { index: candidate.index, position };
+      }
+    }
+    const fallback = ordered[0];
+    if (emergency && fallback) {
+      const position = fallback.position.clone();
+      const waterHeight = this.water.getSurfaceHeight(position.x, position.z);
+      position.y = Math.max(
+        position.y + clearance,
+        vehicle.getWorldPosition().y + clearance,
+        waterHeight === null ? -Infinity : waterHeight + clearance,
+      );
+      if (
+        capsuleClearsVehicleHull(position, vehicle) &&
+        this.capsuleFits(position, vehicle)
+      ) {
+        return { index: fallback.index, position };
+      }
+      return {
+        index: fallback.index,
+        position: this.findRadialExit(
+          vehicle,
+          fallback.position,
+          clearance,
+        ),
+      };
+    }
+    return null;
+  }
+
+  private projectSafeExit(
+    vehicle: VehicleEntity,
+    anchor: Vector3,
+  ): Vector3 | null {
+    const castOrigin = anchor
+      .clone()
+      .addScaledVector(WORLD_UP, EXIT_GROUND_CAST_HEIGHT);
+    const ground = this.solidRaycast.cast(
+      castOrigin,
+      DOWN,
+      EXIT_GROUND_CAST_DISTANCE,
+      vehicle.body,
+      vehicle.id,
+      (metadata, collider) =>
+        !collider.isSensor() &&
+        metadata?.kind !== "npc" &&
+        metadata?.kind !== "player",
+    );
+    if (!ground || (ground.normal?.y ?? 1) < 0.58) return null;
+    const candidate = ground.point.clone();
+    candidate.y += CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS + 0.08;
+    return this.capsuleFits(candidate, vehicle) ? candidate : null;
   }
 
   private capsuleFits(position: Vector3, vehicle: VehicleEntity): boolean {
@@ -1098,6 +1789,17 @@ export class VehicleSystem {
       if (occupant.actor === PLAYER_ACTOR) continue;
       const npc = this.actors.get(occupant.actor);
       if (!npc) continue;
+      if (!this.canNpcUseRole(npc, vehicle, occupant.role)) {
+        vehicle.detachOccupant(occupant.actor);
+        const exit =
+          this.findSafeExit(vehicle, occupant) ??
+          vehicle.getWorldPosition().add(new Vector3(0, 1, 0));
+        npc.setVehicleMounted?.(
+          false,
+          exit,
+        );
+        continue;
+      }
       npc.setVehicleMounted?.(true);
       this.crewVisuals.board(
         npc,
@@ -1106,6 +1808,13 @@ export class VehicleSystem {
         occupant.role,
         true,
       );
+      this.npcCrew.adoptMounted(npc, vehicle);
+      if (
+        vehicle.getPlayerOccupant() &&
+        this.followerIds().includes(npc.id)
+      ) {
+        this.followerCrewActors.add(npc.id);
+      }
     }
   }
 
@@ -1119,12 +1828,302 @@ export class VehicleSystem {
       const npc = this.actors.get(occupant.actor);
       if (!npc || npc.isAlive()) continue;
       vehicle.detachOccupant(occupant.actor);
+      this.npcCrew.forget(occupant.actor);
+      this.followerCrewActors.delete(occupant.actor);
+      this.npcExitRequests.delete(occupant.actor);
       this.crewVisuals.forget(occupant.actor);
       npc.setVehicleMounted?.(
         false,
         vehicle.getWorldPosition().add(new Vector3(0, 1, 0)),
       );
+      this.completePlayerSeatHandoff(
+        vehicle,
+        occupant.actor,
+        occupant.seatId,
+      );
     }
+  }
+
+  private updateNpcCrew(delta: number): void {
+    this.reconcileFollowerCrew();
+    this.requestFollowerBoarding();
+    this.requestAutonomousCrew();
+    this.npcCrew.update(delta);
+    this.processNpcCrewActions();
+  }
+
+  private reconcileFollowerCrew(): void {
+    const currentFollowers = new Set(this.followerIds());
+    for (const actorId of [...this.followerCrewActors]) {
+      if (currentFollowers.has(actorId)) continue;
+      const assignment = this.npcCrew.getAssignment(actorId);
+      if (!assignment) {
+        this.followerCrewActors.delete(actorId);
+        continue;
+      }
+      if (
+        assignment.phase === "approach" ||
+        assignment.phase === "boarding"
+      ) {
+        this.npcCrew.cancel(actorId);
+        this.followerCrewActors.delete(actorId);
+        continue;
+      }
+      if (assignment.phase === "mounted") {
+        this.requestNpcExit(actorId);
+      }
+    }
+  }
+
+  private requestFollowerBoarding(): void {
+    const vehicle = this.mountedVehicle;
+    if (!vehicle || this.evacuationVehicles.has(vehicle.id)) return;
+    const candidates = this.followerIds()
+      .map((actorId) => this.actors.get(actorId))
+      .filter((npc): npc is INpc => Boolean(npc?.isAlive()))
+      .filter(
+        (npc) =>
+          !npc.isVehicleMounted?.() &&
+          !this.npcCrew.getAssignment(npc.id) &&
+          npc.position.distanceTo(vehicle.getWorldPosition()) <= 26,
+      )
+      .sort(
+        (first, second) =>
+          first.position.distanceToSquared(vehicle.getWorldPosition()) -
+          second.position.distanceToSquared(vehicle.getWorldPosition()),
+      );
+    const controlsAssigned =
+      vehicle.getOccupants().some((occupant) =>
+        isAtTheControls(occupant.role),
+      ) ||
+      this.npcCrew.getAssignments(vehicle.id).some((assignment) =>
+        isAtTheControls(assignment.role),
+      );
+    if (!controlsAssigned) {
+      for (let index = 0; index < candidates.length; index += 1) {
+        const npc = candidates[index];
+        if (!npc) continue;
+        const assignment = this.npcCrew.requestBoarding(npc, vehicle, {
+          roles: ["driver", "pilot"],
+        });
+        if (!assignment) continue;
+        this.followerCrewActors.add(npc.id);
+        candidates.splice(index, 1);
+        break;
+      }
+    }
+    for (const npc of candidates) {
+      if (this.npcCrew.requestBoarding(npc, vehicle)) {
+        this.followerCrewActors.add(npc.id);
+      }
+    }
+  }
+
+  private requestAutonomousCrew(): void {
+    const followers = new Set(this.followerIds());
+    const actors = [...new Set(this.actors.values())];
+    for (const vehicle of this.vehicles.values()) {
+      const playerNeedsFactionCrew =
+        vehicle.getPlayerOccupant() !== null &&
+        resolveVehicleAccessPolicy(vehicle.definition) !== "player";
+      if (
+        vehicle.isOnRails() ||
+        (!vehicle.definition.ai?.enabled && !playerNeedsFactionCrew) ||
+        this.evacuationVehicles.has(vehicle.id)
+      ) {
+        continue;
+      }
+      if (this.ai.getBehavior(vehicle.id) === "transport") {
+        const dropoff = this.resolveTarget(vehicle.definition.ai?.goal);
+        const position = vehicle.getWorldPosition();
+        if (
+          dropoff &&
+          Math.hypot(
+            position.x - dropoff.position[0],
+            position.z - dropoff.position[2],
+          ) <= Math.max(7, vehicle.preset.navigation.halfLength * 2)
+        ) {
+          continue;
+        }
+      }
+      const nearby = actors
+        .filter(
+          (npc) =>
+            npc.isAlive() &&
+            npc.vehicleCapability &&
+            !npc.isVehicleMounted?.() &&
+            !this.npcCrew.getAssignment(npc.id) &&
+            !followers.has(npc.id) &&
+            npc.companionName === null &&
+            npc.position.distanceTo(vehicle.getWorldPosition()) <= 30,
+        )
+        .sort(
+          (first, second) =>
+            first.position.distanceToSquared(vehicle.getWorldPosition()) -
+            second.position.distanceToSquared(vehicle.getWorldPosition()),
+        );
+
+      const controlsAssigned =
+        vehicle.getOccupants().some((occupant) =>
+          isAtTheControls(occupant.role),
+        ) ||
+        this.npcCrew.getAssignments(vehicle.id).some((assignment) =>
+          isAtTheControls(assignment.role),
+        );
+      if (!controlsAssigned) {
+        const driver = nearby.find((npc) =>
+          Boolean(
+            this.npcCrew.requestBoarding(npc, vehicle, {
+              roles: ["driver", "pilot"],
+            }),
+          ),
+        );
+        if (driver) {
+          const index = nearby.indexOf(driver);
+          if (index >= 0) nearby.splice(index, 1);
+        }
+      }
+      for (const npc of nearby) {
+        this.npcCrew.requestBoarding(npc, vehicle, {
+          roles: ["gunner", "commander", "passenger"],
+        });
+      }
+    }
+  }
+
+  private processNpcCrewActions(): void {
+    for (const action of this.npcCrew.drainActions()) {
+      if (action.type === "board") {
+        this.commitNpcBoarding(action);
+      } else {
+        this.commitNpcExit(action);
+      }
+    }
+  }
+
+  private requestNpcExit(actorId: string, emergency = false) {
+    const result = this.npcCrew.requestExit(actorId, emergency);
+    if (result !== "rejected") {
+      this.npcExitRequests.set(actorId, emergency);
+    }
+    return result;
+  }
+
+  private commitNpcBoarding(
+    action: Extract<VehicleNpcCrewAction, { type: "board" }>,
+  ): void {
+    if (!action.npc.isAlive()) {
+      this.npcCrew.cancel(action.npc.id);
+      return;
+    }
+    const occupant = action.vehicle.attachOccupant(
+      action.npc.id,
+      action.role,
+      action.seatId,
+    );
+    if (!occupant) {
+      this.npcCrew.cancel(action.npc.id);
+      return;
+    }
+    action.npc.setVehicleMounted?.(true);
+    this.startNpcControlledEngine(action.vehicle, occupant.role);
+    this.crewVisuals.board(
+      action.npc,
+      action.vehicle,
+      occupant.seatId,
+      occupant.role,
+      false,
+    );
+    if (!this.npcCrew.confirmBoarded(action.npc.id)) {
+      action.vehicle.detachOccupant(action.npc.id);
+      this.crewVisuals.forget(action.npc.id);
+      action.npc.setVehicleMounted?.(false, action.approachPosition);
+    }
+  }
+
+  private commitNpcExit(
+    action: Extract<VehicleNpcCrewAction, { type: "exit" }>,
+  ): void {
+    const exitVelocity = action.vehicle
+      .getLinearVelocity()
+      .clampLength(0, 7);
+    const finish = (): void => {
+      action.vehicle.detachOccupant(action.npc.id);
+      this.npcCrew.confirmExited(action.npc.id);
+      this.npcCrewSource?.onFollowerExited?.(
+        action.npc.id,
+        action.exitPosition.clone(),
+      );
+      this.followerCrewActors.delete(action.npc.id);
+      this.npcExitRequests.delete(action.npc.id);
+      this.completePlayerSeatHandoff(
+        action.vehicle,
+        action.npc.id,
+        action.seatId,
+      );
+    };
+    if (
+      this.crewVisuals.leave(
+        action.npc.id,
+        action.exitPosition,
+        finish,
+        exitVelocity,
+      )
+    ) {
+      return;
+    }
+    finish();
+    action.npc.setVehicleMounted?.(
+      false,
+      action.exitPosition,
+      exitVelocity,
+    );
+  }
+
+  private completePlayerSeatHandoff(
+    vehicle: VehicleEntity,
+    actorId: string,
+    seatId: string,
+  ): void {
+    const pending = this.pendingPlayerSeatHandoff;
+    if (
+      !pending ||
+      pending.vehicleId !== vehicle.id ||
+      pending.actorId !== actorId ||
+      pending.seatId !== seatId
+    ) {
+      return;
+    }
+    this.pendingPlayerSeatHandoff = null;
+    if (this.mountedVehicle || vehicle.getOccupant(PLAYER_ACTOR)) return;
+    this.mountPlayer(vehicle, false, seatId);
+  }
+
+  private exitFollowingCrew(vehicle: VehicleEntity): void {
+    const followers = new Set(this.followerIds());
+    if (followers.size === 0) return;
+    const assignments = this.npcCrew
+      .getAssignments(vehicle.id)
+      .filter((assignment) => followers.has(assignment.actorId));
+    if (assignments.length === 0) return;
+    if (!vehicle.isOnRails()) this.applyNpcDriveMode(vehicle, "hold");
+    for (const assignment of assignments) {
+      if (
+        assignment.phase === "approach" ||
+        assignment.phase === "boarding"
+      ) {
+        this.npcCrew.cancel(assignment.actorId);
+        this.followerCrewActors.delete(assignment.actorId);
+        this.npcExitRequests.delete(assignment.actorId);
+      } else if (assignment.phase === "mounted") {
+        this.requestNpcExit(assignment.actorId, true);
+      }
+    }
+    this.processNpcCrewActions();
+  }
+
+  private followerIds(): readonly string[] {
+    return [...new Set(this.npcCrewSource?.followerIds() ?? [])];
   }
 
   private registerVehicleIo(vehicle: VehicleEntity): void {
@@ -1225,17 +2224,58 @@ export class VehicleSystem {
     }
     const npc = this.actors.get(actor);
     if (!npc || !npc.isAlive()) return;
+    const occupiedVehicle = [...this.vehicles.values()].find(
+      (candidate) => candidate.getOccupant(npc.id) !== null,
+    );
+    if (occupiedVehicle && occupiedVehicle !== vehicle) return;
+    const existingAssignment = this.npcCrew.getAssignment(npc.id);
+    if (
+      existingAssignment &&
+      existingAssignment.vehicleId !== vehicle.id
+    ) {
+      if (
+        existingAssignment.phase === "mounted" ||
+        existingAssignment.phase === "exiting"
+      ) {
+        return;
+      }
+      this.npcCrew.cancel(npc.id);
+    }
+    if (npc.isVehicleMounted?.() && !vehicle.getOccupant(npc.id)) return;
     const authored = this.authoredCrew
       .get(vehicle.id)
       ?.find((assignment) => assignment.actor === actor);
+    const seat = authored?.seatId
+      ? vehicle.preset.seats.find(
+          (candidate) =>
+            candidate.id === authored.seatId &&
+            candidate.role === authored.role &&
+            !vehicle.getOccupants().some(
+              (occupant) => occupant.seatId === candidate.id,
+            ) &&
+            this.canNpcUseRole(npc, vehicle, candidate.role),
+        )
+      : vehicle.preset.seats.find(
+          (candidate) =>
+            (!authored || candidate.role === authored.role) &&
+            !vehicle.getOccupants().some(
+              (occupant) => occupant.seatId === candidate.id,
+            ) &&
+            this.canNpcUseRole(npc, vehicle, candidate.role),
+        );
+    if (!seat) return;
     const occupant = vehicle.attachOccupant(
-      actor,
-      authored?.role,
-      authored?.seatId,
+      npc.id,
+      seat.role,
+      seat.id,
     );
     if (!occupant) return;
     npc.setVehicleMounted?.(true);
+    this.startNpcControlledEngine(vehicle, occupant.role);
     this.crewVisuals.board(npc, vehicle, occupant.seatId, occupant.role, false);
+    if (!this.npcCrew.confirmBoarded(npc.id)) {
+      this.npcCrew.adoptMounted(npc, vehicle);
+    }
   }
 
   /** Baja un actor al exit anchor libre mas cercano. Entrada `Detach` del IO. */
@@ -1247,16 +2287,40 @@ export class VehicleSystem {
       this.tryDismountPlayer(true);
       return;
     }
-    const occupant = vehicle.getOccupant(actor);
+    const npc = this.actors.get(actor);
+    const resolvedActor = npc?.id ?? actor;
+    const occupant = vehicle.getOccupant(resolvedActor);
     if (!occupant) return;
+    if (npc) {
+      const assignment = this.npcCrew.getAssignment(resolvedActor);
+      if (assignment?.phase === "exiting") return;
+      if (!assignment) {
+        this.npcCrew.adoptMounted(npc, vehicle);
+      }
+      const result = this.requestNpcExit(resolvedActor, true);
+      if (result !== "rejected") {
+        this.processNpcCrewActions();
+        return;
+      }
+    }
     const exit =
       this.findSafeExit(vehicle, occupant) ??
       vehicle.getWorldPosition().add(new Vector3(0, 1, 0));
-    // El asiento queda libre ya; el cuerpo sigue animando la bajada y recupera
-    // su motor cuando el blend llega al exit.
-    vehicle.detachOccupant(actor);
-    if (this.crewVisuals.leave(actor, exit)) return;
-    this.actors.get(actor)?.setVehicleMounted?.(false, exit);
+    const exitVelocity = vehicle.getLinearVelocity().clampLength(0, 7);
+    if (
+      this.crewVisuals.leave(
+        resolvedActor,
+        exit,
+        () => {
+          vehicle.detachOccupant(resolvedActor);
+        },
+        exitVelocity,
+      )
+    ) {
+      return;
+    }
+    vehicle.detachOccupant(resolvedActor);
+    npc?.setVehicleMounted?.(false, exit, exitVelocity);
   }
 
   private registerWaypointIo(): void {
@@ -1376,6 +2440,7 @@ export class VehicleSystem {
   }
 
   private handleDestroyed(vehicle: VehicleEntity): void {
+    this.requestEvacuation(vehicle);
     this.ensureDamageEffects(vehicle, true);
     if (vehicle.preset.archetype !== "helicopter") {
       this.vfx.explosion(vehicle.getWorldPosition(), {
@@ -1438,6 +2503,15 @@ export class VehicleSystem {
 
   private updateDamageEffects(vehicle: VehicleEntity): void {
     this.ensureDamageEffects(vehicle);
+    const damageState = vehicle.damage.getState();
+    if (
+      vehicle.damage.isBurning() ||
+      damageState === "disabled" ||
+      damageState === "crashing" ||
+      damageState === "destroyed"
+    ) {
+      this.requestEvacuation(vehicle);
+    }
     const effect = this.activeEffects.get(vehicle.id);
     if (!effect) return;
     effect.position.copy(vehicle.getWorldPosition()).add(new Vector3(0, 1.2, -0.4));
@@ -1447,6 +2521,49 @@ export class VehicleSystem {
       vehicle.isWreckage();
     effect.smoke.setActive(active);
     effect.fire.setActive(active);
+  }
+
+  private requestEvacuation(vehicle: VehicleEntity): void {
+    if (this.evacuationVehicles.has(vehicle.id)) return;
+    this.evacuationVehicles.add(vehicle.id);
+    if (!vehicle.isOnRails()) {
+      this.applyNpcDriveMode(vehicle, "hold");
+    }
+    if (vehicle === this.mountedVehicle) {
+      this.showMessage("¡Evacuá el vehículo!");
+    }
+  }
+
+  private updateEvacuation(vehicle: VehicleEntity): void {
+    if (!this.evacuationVehicles.has(vehicle.id)) return;
+    const canExitNow =
+      vehicle.isWreckage() || vehicle.getTelemetry().speed <= 1.8;
+    if (!canExitNow) return;
+    const playerOccupant = vehicle.getPlayerOccupant();
+    if (playerOccupant) {
+      this.ejectActor(vehicle, playerOccupant.actor);
+    }
+    for (const occupant of vehicle.getOccupants()) {
+      if (occupant.actor === PLAYER_ACTOR) continue;
+      const npc = this.actors.get(occupant.actor);
+      if (npc && !this.npcCrew.getAssignment(occupant.actor)) {
+        this.npcCrew.adoptMounted(npc, vehicle);
+      }
+      if (npc) this.npcExitRequests.set(occupant.actor, true);
+    }
+    this.npcCrew.evacuate(vehicle, true);
+    this.processNpcCrewActions();
+    const damageState = vehicle.damage.getState();
+    const stillDangerous =
+      vehicle.damage.isBurning() ||
+      vehicle.isCrashing() ||
+      vehicle.isWreckage() ||
+      damageState === "disabled" ||
+      damageState === "crashing" ||
+      damageState === "destroyed";
+    if (vehicle.getOccupants().length === 0 && !stillDangerous) {
+      this.evacuationVehicles.delete(vehicle.id);
+    }
   }
 
   private emitMountedTelemetry(vehicle: VehicleEntity): void {
@@ -1482,6 +2599,61 @@ export class VehicleSystem {
   private showMessage(text: string): void {
     this.eventBus.emit("subtitle.show", { text, duration: 2 });
   }
+
+  private canNpcUseRole(
+    npc: INpc | null,
+    vehicle: VehicleEntity,
+    role: VehicleOccupant["role"],
+  ): boolean {
+    if (!npc) return false;
+    return canUseVehicleRole(
+      {
+        kind: "npc",
+        faction: npc.faction,
+        vehicleCapability: npc.vehicleCapability,
+      },
+      vehicle.definition,
+      role,
+    );
+  }
+
+  private startNpcControlledEngine(
+    vehicle: VehicleEntity,
+    role?: VehicleOccupant["role"],
+  ): void {
+    const controlsOccupied = role
+      ? isAtTheControls(role)
+      : this.getNpcDriver(vehicle) !== null;
+    if (controlsOccupied && !vehicle.isEngineOn()) {
+      vehicle.tryStartEngine();
+    }
+  }
+}
+
+export function capsuleClearsVehicleHull(
+  position: Vector3,
+  vehicle: VehicleEntity,
+): boolean {
+  const inverseRotation = vehicle.getWorldRotation().invert();
+  const localPosition = position
+    .clone()
+    .sub(vehicle.getWorldPosition())
+    .applyQuaternion(inverseRotation);
+  const localUp = WORLD_UP.clone().applyQuaternion(inverseRotation);
+  const [sizeX, sizeY, sizeZ] = vehicle.preset.body.size;
+  const [centerX, centerY, centerZ] = vehicle.preset.body.colliderCenter;
+  const margin = 0.01;
+  const extentX =
+    CAPSULE_RADIUS + CAPSULE_HALF_HEIGHT * Math.abs(localUp.x) + margin;
+  const extentY =
+    CAPSULE_RADIUS + CAPSULE_HALF_HEIGHT * Math.abs(localUp.y) + margin;
+  const extentZ =
+    CAPSULE_RADIUS + CAPSULE_HALF_HEIGHT * Math.abs(localUp.z) + margin;
+  const overlaps =
+    Math.abs(localPosition.x - centerX) < sizeX * 0.5 + extentX &&
+    Math.abs(localPosition.y - centerY) < sizeY * 0.5 + extentY &&
+    Math.abs(localPosition.z - centerZ) < sizeZ * 0.5 + extentZ;
+  return !overlaps;
 }
 
 function numericParam(value: InputArgs["param"]): number | null {

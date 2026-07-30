@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  findAvoidanceSteering,
   findTimeToCollision,
   PidController,
   VehiclePathFollower,
@@ -75,6 +76,52 @@ describe('VehiclePathFollower', () => {
     expect(command.reverse).toBe(true);
     expect(command.throttle).toBeGreaterThan(0);
     expect(Math.abs(command.steering)).toBeGreaterThan(0.05);
+  });
+
+  it('esquiva al lado contrario de un obstáculo lateral', () => {
+    const base: VehicleFollowerInput = {
+      delta: 0.1,
+      pose: { position: [0, 0, 0], heading: 0 },
+      speed: 8,
+      path: { points: [{ position: [0, 0, 40], speedLimit: 14 }] },
+    };
+    const left = findAvoidanceSteering({
+      ...base,
+      obstacles: [{
+        id: 'left',
+        position: [0.8, 0, 7],
+        velocity: [0, 0, 0],
+        radius: 0.5,
+      }],
+    }, groundProfile);
+    const right = findAvoidanceSteering({
+      ...base,
+      obstacles: [{
+        id: 'right',
+        position: [-0.8, 0, 7],
+        velocity: [0, 0, 0],
+        radius: 0.5,
+      }],
+    }, groundProfile);
+    expect(left.steering).toBeGreaterThan(0);
+    expect(right.steering).toBeLessThan(0);
+  });
+
+  it('no esquiva objetivos marcados como embestibles', () => {
+    const command = new VehiclePathFollower(groundProfile).update({
+      delta: 0.1,
+      pose: { position: [0, 0, 0], heading: 0 },
+      speed: 8,
+      path: { points: [{ position: [0, 0, 40], speedLimit: 14 }] },
+      obstacles: [{
+        id: 'hostile',
+        position: [0.7, 0, 6],
+        velocity: [0, 0, 0],
+        radius: 0.5,
+        blocking: false,
+      }],
+    });
+    expect(Math.abs(command.steering)).toBeLessThan(0.01);
   });
 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LevelDefinition, VehicleWaypointDefinition } from '@game/levels/LevelDefinition';
+import { resolveVehicleAccessPolicy } from '@game/levels/LevelDefinition';
 import type { EntityConnection } from '@game/script/EntityIOTypes';
 import { Demo2Ravenholm } from '@game/levels/maps/campaign/Demo2Ravenholm';
 import { Demo3WhiteoutFlight } from '@game/levels/maps/campaign/Demo3WhiteoutFlight';
@@ -71,6 +72,35 @@ describe('niveles vehiculares', () => {
     expect(vehicles.every((vehicle) => vehicle.portalTraversal === 'blocked')).toBe(true);
   });
 
+  it('declara las tres políticas de acceso en el sandbox', () => {
+    const vehicles = VehicleSandboxLevel.vehicles ?? [];
+    expect(vehicles.every((vehicle) => vehicle.accessPolicy !== undefined)).toBe(true);
+    expect(vehicles.reduce<Record<string, number>>((counts, vehicle) => {
+      const policy = resolveVehicleAccessPolicy(vehicle);
+      counts[policy] = (counts[policy] ?? 0) + 1;
+      return counts;
+    }, {})).toEqual({
+      player: 3,
+      resistance: 7,
+      combine: 5,
+    });
+    expect(vehicles.find((vehicle) => vehicle.id === 'vs-player-buggy')).toMatchObject({
+      faction: 'resistance',
+      accessPolicy: 'player',
+    });
+  });
+
+  it('mantiene la política compatible de mapas anteriores según faction', () => {
+    expect(resolveVehicleAccessPolicy({ faction: 'combine' })).toBe('combine');
+    expect(resolveVehicleAccessPolicy({ faction: 'resistance' })).toBe('resistance');
+    expect(resolveVehicleAccessPolicy({ faction: 'neutral' })).toBe('player');
+    expect(resolveVehicleAccessPolicy({})).toBe('player');
+    expect(resolveVehicleAccessPolicy({
+      faction: 'combine',
+      accessPolicy: 'player',
+    })).toBe('player');
+  });
+
   it('deja un buggy tripulado y quieto para revisar la pose sentada', () => {
     const buggy = VehicleSandboxLevel.vehicles?.find(
       (vehicle) => vehicle.id === 'vs-parked-crewed-buggy',
@@ -131,7 +161,8 @@ describe('niveles vehiculares', () => {
     expect(input.profiles.map((profile) => profile.id)).toEqual([
       'buggy',
       'airboat',
-      'helicopter',
+      'rebelCrawler',
+      'combineGlider',
     ]);
     const navigation = bakeVehicleNavigation(input);
     const planner = new VehicleNavigationPlanner(navigation, input.profiles);
@@ -211,6 +242,7 @@ describe('niveles vehiculares', () => {
       (vehicle) => vehicle.id === 'vs-player-helicopter',
     );
     expect(helicopter?.pathLoop).toBe(true);
+    expect(helicopter?.allowPlayerExit).toBe(true);
     const ids = routeIds(
       VehicleSandboxLevel.vehicleWaypoints ?? [],
       helicopter?.pathStart ?? '',

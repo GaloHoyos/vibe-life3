@@ -42,9 +42,11 @@ describe("CompanionSystem", () => {
   it("toggle alterna follow↔wait; follow no da override, wait congela la posición", () => {
     const { system, npc } = setup();
     expect(system.anchorOverrideFor("alyx-1")).toBeNull(); // follow
+    expect(system.followingIds()).toEqual(["alyx-1"]);
 
     npc.position.set(3, 0, 4);
     expect(system.toggle("alyx-1")).toBe("wait");
+    expect(system.followingIds()).toEqual([]);
     expect(system.anchorOverrideFor("alyx-1")).toEqual(new Vector3(3, 0, 4));
 
     // La compañera se mueve pero el ancla de wait queda congelada.
@@ -53,6 +55,7 @@ describe("CompanionSystem", () => {
 
     expect(system.toggle("alyx-1")).toBe("follow");
     expect(system.anchorOverrideFor("alyx-1")).toBeNull();
+    expect(system.isFollowing("alyx-1")).toBe(true);
   });
 
   it("escort ancla al punto y al llegar dispara OnEscortArrived + pasa a wait", () => {
@@ -139,6 +142,17 @@ describe("CompanionSystem", () => {
     system.setMode("alyx-1", "follow");
 
     expect(changes.map((c) => c.mode)).toEqual(["wait", "follow"]);
+  });
+
+  it("actualiza el ancla wait cuando termina de bajar de un vehículo", () => {
+    const { system } = setup();
+    system.setMode("alyx-1", "wait");
+
+    system.syncWaitAnchor("alyx-1", new Vector3(12, 0, 7));
+
+    expect(system.anchorOverrideFor("alyx-1")).toEqual(
+      new Vector3(12, 0, 7),
+    );
   });
 
   it("los inputs de I/O StartFollowing/StopFollowing fuerzan el modo", () => {

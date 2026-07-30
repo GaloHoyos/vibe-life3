@@ -28,6 +28,7 @@ export interface VehicleAiBrainTuning {
 
 export class VehicleAiBrain {
   private readonly follower: VehiclePathFollower;
+  private behavior: VehicleAiBehavior;
   private secondsUntilTick = 0;
   private elapsedSinceTick = 0;
   private stuckSeconds = 0;
@@ -41,6 +42,7 @@ export class VehicleAiBrain {
     private readonly tuning: VehicleAiBrainTuning = {},
   ) {
     this.follower = new VehiclePathFollower(profile);
+    this.behavior = definition.behavior;
   }
 
   update(delta: number, context: VehicleBrainContext): VehicleBrainDecision | null {
@@ -96,7 +98,7 @@ export class VehicleAiBrain {
 
     return {
       tickInterval,
-      behavior: this.definition.behavior,
+      behavior: this.behavior,
       goal,
       requestPlan,
       control,
@@ -114,6 +116,12 @@ export class VehicleAiBrain {
     this.follower.reset();
   }
 
+  setBehavior(behavior: VehicleAiBehavior): void {
+    if (this.behavior === behavior) return;
+    this.behavior = behavior;
+    this.reset();
+  }
+
   private tickInterval(distanceToPlayer: number): number {
     const near = distanceToPlayer <= (this.tuning.nearDistance ?? 45);
     const rate = near
@@ -123,7 +131,7 @@ export class VehicleAiBrain {
   }
 
   private resolveGoal(context: VehicleBrainContext): VehicleNavPoint | null {
-    switch (this.definition.behavior) {
+    switch (this.behavior) {
       case 'hold':
         return null;
       case 'patrol':
@@ -176,7 +184,7 @@ export class VehicleAiBrain {
     goal: VehicleNavPoint | null,
   ): VehicleCrewAiAction {
     if (!context.driverAvailable && context.replacementDriverAvailable) return 'replaceDriver';
-    if (this.definition.behavior !== 'transport') return 'none';
+    if (this.behavior !== 'transport') return 'none';
     if (context.passengersOnboard === false) return 'requestBoarding';
     if (
       context.passengersOnboard &&
@@ -190,7 +198,7 @@ export class VehicleAiBrain {
 
   private updateStuckState(delta: number, context: VehicleBrainContext): void {
     const tryingToMove =
-      this.definition.behavior !== 'hold' &&
+      this.behavior !== 'hold' &&
       context.driverAvailable &&
       (context.route?.points.length ?? 0) > 0;
     if (context.overturned) {

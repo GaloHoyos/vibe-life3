@@ -19,6 +19,7 @@ export type GameAction =
   | "vehicleHandbrake"
   | "vehicleHorn"
   | "vehicleLights"
+  | "vehicleCommandMode"
   | "quickSave"
   | "quickLoad"
   | "toggleDebug"
@@ -45,6 +46,7 @@ export const DefaultBindings: BindingMap<GameAction> = {
   vehicleHandbrake: ["Space"],
   vehicleHorn: ["KeyH"],
   vehicleLights: ["KeyL"],
+  vehicleCommandMode: ["KeyV"],
   quickSave: ["F6"],
   quickLoad: ["F8"],
   toggleDebug: ["F3"],
@@ -72,6 +74,7 @@ export const ActionLabels: Record<GameAction, string> = {
   vehicleHandbrake: "Freno de mano",
   vehicleHorn: "Bocina",
   vehicleLights: "Luces del vehículo",
+  vehicleCommandMode: "Modo de conducción IA",
   quickSave: "Guardado rápido",
   quickLoad: "Carga rápida",
   toggleDebug: "Menu debug",
@@ -99,6 +102,7 @@ export const ActionOrder: readonly GameAction[] = [
   "vehicleHandbrake",
   "vehicleHorn",
   "vehicleLights",
+  "vehicleCommandMode",
   "quickSave",
   "quickLoad",
   "toggleDebug",
@@ -116,6 +120,7 @@ export const ActionContexts: BindingContextMap<GameAction> = {
   vehicleHandbrake: "vehicle",
   vehicleHorn: "vehicle",
   vehicleLights: "vehicle",
+  vehicleCommandMode: "vehicle",
 };
 
 /**

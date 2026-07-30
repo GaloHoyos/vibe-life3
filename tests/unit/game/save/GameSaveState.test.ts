@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   readPlayerRuntimeSaveState,
+  readVehicleSystemSnapshot,
   toJsonObject,
   toJsonValue,
 } from "@game/save/GameSaveState";
@@ -69,5 +70,46 @@ describe("GameSaveState", () => {
     expect(toJsonValue({ id: "map", optional: undefined })).toEqual({
       id: "map",
     });
+  });
+
+  it("validates NPC vehicle modes and navigation points", () => {
+    const valid = toJsonObject({
+      vehicles: [],
+      mountedVehicleId: null,
+      mountedSeatId: null,
+      npcDriveModes: [{
+        vehicleId: "buggy",
+        mode: "destination",
+        destination: [1, 2, 3],
+        patrolPoints: [[1, 0, 1], [2, 0, 2]],
+      }],
+      npcExitRequests: [{ actorId: "alyx", emergency: false }],
+    });
+    expect(readVehicleSystemSnapshot(valid).npcDriveModes?.[0]?.mode).toBe(
+      "destination",
+    );
+    expect(readVehicleSystemSnapshot(valid).npcExitRequests).toEqual([
+      { actorId: "alyx", emergency: false },
+    ]);
+
+    const invalidMode = toJsonObject({
+      ...valid,
+      npcDriveModes: [{ vehicleId: "buggy", mode: "teleport" }],
+    });
+    expect(() => readVehicleSystemSnapshot(invalidMode)).toThrow(
+      /mode no es compatible/,
+    );
+
+    const invalidPoint = toJsonObject({
+      ...valid,
+      npcDriveModes: [{
+        vehicleId: "buggy",
+        mode: "destination",
+        destination: [1, "dos", 3],
+      }],
+    });
+    expect(() => readVehicleSystemSnapshot(invalidPoint)).toThrow(
+      /número finito/,
+    );
   });
 });

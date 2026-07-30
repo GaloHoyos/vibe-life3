@@ -11,7 +11,11 @@ import type {
 } from '@game/levels/builders/BuildingBuilder';
 import type { HouseSpec } from '@game/levels/builders/HouseBuilder';
 import type { RampSpec } from '@game/levels/builders/RampBuilder';
-import type { TriggerDefinition } from '@game/levels/LevelDefinition';
+import {
+  resolveVehicleAccessPolicy,
+  VEHICLE_ACCESS_POLICIES,
+  type TriggerDefinition,
+} from '@game/levels/LevelDefinition';
 import type { EntityConnection, IOEntityFields, LogicEntityDefinition } from '@game/script/EntityIOTypes';
 import type { ScriptedSequenceDefinition, SequenceStep } from '@game/script/ScriptedSequenceTypes';
 import {
@@ -66,6 +70,11 @@ const AXES: readonly string[] = ['x', 'z'];
 const NO_DOOR = '(sin puerta)';
 const NO_WALL = '(ninguno)';
 const VEHICLE_FACTIONS = ['player', 'resistance', 'combine', 'zombies', 'blob', 'neutral'] as const;
+const VEHICLE_ACCESS_POLICY_LABELS = {
+  player: 'Jugador y acompañantes',
+  resistance: 'Resistencia',
+  combine: 'Combine',
+} as const;
 const WATER_SURFACES = ['canal', 'river', 'industrial'] as const;
 const VEHICLE_NAV_SURFACES = ['ground', 'water', 'both'] as const;
 const VEHICLE_LANE_DIRECTIONS = ['forward', 'backward', 'both'] as const;
@@ -369,12 +378,25 @@ export class InspectorView implements Disposable {
       case 'vehicle':
         this.append(selectField('Preset', entity.def.presetId, VEHICLE_ARCHETYPE_IDS, (v) => {
           entity.def.presetId = v as typeof entity.def.presetId;
+          if (entity.def.presetId !== 'helicopter') {
+            entity.def.allowPlayerExit = undefined;
+          }
           this.commitAndRerender();
         }));
         this.append(selectField('Facción', entity.def.faction ?? 'resistance', VEHICLE_FACTIONS, (v) => {
           entity.def.faction = v as NonNullable<typeof entity.def.faction>;
           this.commit();
         }));
+        this.append(selectField(
+          'Acceso de tripulación',
+          resolveVehicleAccessPolicy(entity.def),
+          VEHICLE_ACCESS_POLICIES,
+          (v) => {
+            entity.def.accessPolicy = v as NonNullable<typeof entity.def.accessPolicy>;
+            this.commit();
+          },
+          VEHICLE_ACCESS_POLICY_LABELS,
+        ));
         this.append(checkboxField('Arma habilitada', entity.def.weaponEnabled ?? true, (v) => {
           entity.def.weaponEnabled = v;
           this.commit();
@@ -387,6 +409,12 @@ export class InspectorView implements Disposable {
           entity.def.engineOn = v || undefined;
           this.commit();
         }));
+        if (entity.def.presetId === 'helicopter') {
+          this.append(checkboxField('Permitir bajar del helicóptero', entity.def.allowPlayerExit ?? false, (v) => {
+            entity.def.allowPlayerExit = v || undefined;
+            this.commit();
+          }));
+        }
         this.append(textField('Inicio de ruta', entity.def.pathStart ?? '', (v) => {
           entity.def.pathStart = v || undefined;
           this.commit();

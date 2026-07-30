@@ -21,6 +21,7 @@ import {
   noticeSuspicionSchedule,
   reloadSchedules,
   scriptedSchedules,
+  vehicleApproachSchedule,
 } from './commonSchedules';
 import type { NpcPreset } from './NpcPreset';
 
@@ -39,6 +40,7 @@ export function buildAlyxPreset(): NpcPreset {
     deadSchedule(),
     ...scriptedSchedules(),
     hitSchedule(0.18),
+    vehicleApproachSchedule(),
     ...reloadSchedules(),
     {
       id: 'regroup',
@@ -109,6 +111,7 @@ export function buildAlyxPreset(): NpcPreset {
       regroupDistance: REGROUP_DISTANCE,
     },
     companion: { displayName: 'Alyx' },
+    vehicle: { canDrive: true },
     movement: {
       walkSpeed: 3.4,
       sprintSpeed: 6.0,

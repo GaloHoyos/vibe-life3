@@ -73,6 +73,7 @@ export function createEntity(kind: PaletteKind, at: VectorTuple): EditorEntity {
           presetId: 'buggy',
           position: [x, y, z],
           faction: 'resistance',
+          accessPolicy: 'resistance',
           weaponEnabled: true,
           portalTraversal: 'blocked',
           connections: [],

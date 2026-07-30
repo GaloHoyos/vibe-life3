@@ -3,6 +3,7 @@ import { migrateDocument } from "@game/editor/migrateDocument";
 import { isEditorDocument } from "@game/editor/persistence";
 import { Soundscapes } from "@game/config/audio.config";
 import { isVehiclePresetId } from "@game/config/vehicles.config";
+import { isVehicleAccessPolicy } from "@game/levels/LevelDefinition";
 import {
   descriptorFor,
   type EntityClassId,
@@ -278,11 +279,18 @@ function validateVehicleShape(def: Record<string, unknown>, label: string): Vali
   if (def.faction !== undefined && (typeof def.faction !== "string" || !VEHICLE_FACTIONS.has(def.faction))) {
     return invalid(`${label}: faction desconocida.`);
   }
+  if (
+    def.accessPolicy !== undefined &&
+    !isVehicleAccessPolicy(def.accessPolicy)
+  ) {
+    return invalid(`${label}: accessPolicy desconocida.`);
+  }
   for (const field of [
     "weaponEnabled",
     "startDisabled",
     "startLocked",
     "engineOn",
+    "allowPlayerExit",
     "pathLoop",
   ] as const) {
     const check = optionalBoolean(def[field], `${label}: ${field}`);

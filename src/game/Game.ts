@@ -2638,7 +2638,9 @@ export class Game {
       void this.spawnDebugCombineAtAim();
     }
     if (controls.wasPressed("squadCommand")) {
-      this.handleSquadCommand(time.elapsed);
+      if (!vehicles.commandMountedVehicleAtAim()) {
+        this.handleSquadCommand(time.elapsed);
+      }
     }
 
     const stepped = footsteps.update(
@@ -3370,7 +3372,15 @@ export class Game {
     }
     this.playerModel = new PlayerModelSystem(sceneManager.scene, assets, physics);
     await this.playerModel.load(resolvePlayerModel(level.playerModel));
-    await vehicles.load(level, this.player, this.npcs);
+    await vehicles.load(level, this.player, this.npcs, {
+      followerIds: () => [
+        ...services.resolve(GameTokens.PlayerSquad).memberIds(),
+        ...(this.companionSystem?.followingIds() ?? []),
+      ],
+      onFollowerExited: (actorId, position) => {
+        this.companionSystem?.syncWaitAnchor(actorId, position);
+      },
+    });
     if (carry) {
       this.applyTransitionCarry(level, carry);
     }

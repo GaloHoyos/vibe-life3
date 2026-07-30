@@ -30,6 +30,9 @@ import type {
   NpcPortalHandle,
   NpcSaveSnapshot,
   NpcSeatPose,
+  NpcVehicleApproachOrder,
+  NpcVehicleApproachStatus,
+  NpcVehicleCapability,
 } from '@game/npc/core/INpc';
 import type {
   NpcBrainContext,
@@ -175,6 +178,7 @@ export class Npc implements INpc {
   readonly radius: number;
   readonly playerSquadEligible: boolean;
   readonly companionName: string | null;
+  readonly vehicleCapability: NpcVehicleCapability | null;
 
   private readonly motor: NpcMotor;
   /** Teleport para secuencias guionadas; undefined si el motor no lo soporta. */
@@ -187,6 +191,14 @@ export class Npc implements INpc {
   private readonly difficulty?: DifficultyProvider;
   private readonly sliceDamage: number;
   private vehicleMounted = false;
+  private vehicleApproach: {
+    vehicleId: string;
+    seatId: string;
+    target: Vector3;
+    facing: Vector3;
+    arriveRadius: number;
+    status: Exclude<NpcVehicleApproachStatus, "none">;
+  } | null = null;
   private readonly raycast: Raycast;
   private readonly losRaycast: RaycastSource;
   private readonly buildingRegistry: BuildingRegistry;
@@ -243,6 +255,9 @@ export class Npc implements INpc {
     this.radius = params.preset.radius;
     this.playerSquadEligible = params.preset.playerSquad === true;
     this.companionName = params.preset.companion?.displayName ?? null;
+    this.vehicleCapability = params.preset.vehicle
+      ? { canDrive: params.preset.vehicle.canDrive }
+      : null;
     this.height = params.height;
     this.difficulty = params.difficulty;
     // La vida enemiga se hornea con el mult de dificultad al spawnear (no cambia
@@ -490,6 +505,9 @@ export class Npc implements INpc {
       selfRoomId: this.roomIdOf(this.motor.getPosition()),
       threatRoomId: this.threatLastKnown ? this.roomIdOf(this.threatLastKnown) : null,
     });
+    if (this.vehicleApproach) {
+      conditions = add(conditions, Cond.VehicleApproach);
+    }
     // Si el NPC ya estaba en combate/JustHit al recibir Start, el schedule
     // scripted nunca llega a activarse y por tanto no existe un task que lo
     // aborte. Cerramos la orden aquí; para una secuencia ya corriendo esto es
@@ -533,6 +551,17 @@ export class Npc implements INpc {
         ? { target: healTarget, heal: (elapsed) => this.performHeal(elapsed, healTarget) }
         : null,
       script: scriptOrder,
+      vehicleApproach: this.vehicleApproach
+        ? {
+            vehicleId: this.vehicleApproach.vehicleId,
+            target: this.vehicleApproach.target,
+            facing: this.vehicleApproach.facing,
+            arriveRadius: this.vehicleApproach.arriveRadius,
+            setStatus: (status) => {
+              if (this.vehicleApproach) this.vehicleApproach.status = status;
+            },
+          }
+        : null,
       gesture: (id, duration) => this.animation?.playGesture?.(id, duration),
       conditions,
       navigation: this.navigationQueries,
@@ -568,20 +597,31 @@ export class Npc implements INpc {
     this.tickAnimation(delta);
   }
 
-  setVehicleMounted(mounted: boolean, exitPosition?: Vector3): void {
+  setVehicleMounted(
+    mounted: boolean,
+    exitPosition?: Vector3,
+    exitVelocity?: Vector3,
+  ): void {
     if (this.disposed || this.vehicleMounted === mounted) return;
     this.vehicleMounted = mounted;
-    this.motor.body.setEnabled(!mounted);
+    const enableMotor = !mounted && this.health.isAlive();
+    this.motor.body.setEnabled(enableMotor);
     for (let index = 0; index < this.motor.body.numColliders(); index += 1) {
-      this.motor.body.collider(index).setEnabled(!mounted);
+      this.motor.body.collider(index).setEnabled(enableMotor);
+    }
+    if (mounted) {
+      this.vehicleApproach = null;
+      this.locomotion.stop();
+      this.coverSensor?.releaseCover();
+      this.slotBoard?.unregister(this.id);
     }
     if (!mounted) {
       this.animation?.setSeated?.(0, false);
     }
-    if (!mounted && exitPosition) {
+    if (!mounted && this.health.isAlive() && exitPosition) {
       const portalMotor = this.motor as NpcMotor & Partial<PortalCapableMotor>;
       if (typeof portalMotor.teleport === "function") {
-        portalMotor.teleport(exitPosition, new Vector3());
+        portalMotor.teleport(exitPosition, exitVelocity ?? new Vector3());
       } else {
         this.motor.body.setTranslation(exitPosition, true);
         if (this.motor.body.isKinematic()) {
@@ -608,6 +648,40 @@ export class Npc implements INpc {
     this.mesh.quaternion.copy(pose.rotation);
     this.position.copy(pose.position);
     this.animation?.setSeated?.(pose.seated, pose.handsOnControls);
+  }
+
+  setVehicleApproach(order: NpcVehicleApproachOrder | null): void {
+    if (this.disposed || this.vehicleMounted || !this.vehicleCapability) return;
+    if (!order) {
+      this.vehicleApproach = null;
+      return;
+    }
+    const current = this.vehicleApproach;
+    if (
+      current &&
+      current.vehicleId === order.vehicleId &&
+      current.seatId === order.seatId
+    ) {
+      if (current.target.distanceToSquared(order.target) > 0.25) {
+        current.status = "moving";
+      }
+      current.target.copy(order.target);
+      current.facing.copy(order.facing);
+      current.arriveRadius = order.arriveRadius;
+      return;
+    }
+    this.vehicleApproach = {
+      vehicleId: order.vehicleId,
+      seatId: order.seatId,
+      target: order.target.clone(),
+      facing: order.facing.clone(),
+      arriveRadius: order.arriveRadius,
+      status: "moving",
+    };
+  }
+
+  getVehicleApproachStatus(): NpcVehicleApproachStatus {
+    return this.vehicleApproach?.status ?? "none";
   }
 
   /**

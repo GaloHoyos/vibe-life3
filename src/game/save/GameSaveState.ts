@@ -112,6 +112,69 @@ export function readVehicleSystemSnapshot(
   if (value.ai !== undefined) {
     requireArray(value.ai, "vehicles.ai");
   }
+  if (value.npcDriveModes !== undefined) {
+    requireArray(value.npcDriveModes, "vehicles.npcDriveModes").forEach(
+      (entry, index) => {
+        const mode = requireObject(
+          entry,
+          `vehicles.npcDriveModes[${index}]`,
+        );
+        requireString(
+          mode.vehicleId,
+          `vehicles.npcDriveModes[${index}].vehicleId`,
+        );
+        const driveMode = requireString(
+          mode.mode,
+          `vehicles.npcDriveModes[${index}].mode`,
+        );
+        if (
+          driveMode !== "hold" &&
+          driveMode !== "automatic" &&
+          driveMode !== "patrol" &&
+          driveMode !== "destination"
+        ) {
+          throw new Error(
+            `vehicles.npcDriveModes[${index}].mode no es compatible.`,
+          );
+        }
+        if (mode.destination !== undefined) {
+          requireTuple(
+            mode.destination,
+            `vehicles.npcDriveModes[${index}].destination`,
+          );
+        }
+        if (mode.patrolPoints !== undefined) {
+          requireArray(
+            mode.patrolPoints,
+            `vehicles.npcDriveModes[${index}].patrolPoints`,
+          ).forEach((point, pointIndex) => {
+            requireTuple(
+              point,
+              `vehicles.npcDriveModes[${index}].patrolPoints[${pointIndex}]`,
+            );
+          });
+        }
+      },
+    );
+  }
+  if (value.npcExitRequests !== undefined) {
+    requireArray(value.npcExitRequests, "vehicles.npcExitRequests").forEach(
+      (entry, index) => {
+        const request = requireObject(
+          entry,
+          `vehicles.npcExitRequests[${index}]`,
+        );
+        requireString(
+          request.actorId,
+          `vehicles.npcExitRequests[${index}].actorId`,
+        );
+        requireBoolean(
+          request.emergency,
+          `vehicles.npcExitRequests[${index}].emergency`,
+        );
+      },
+    );
+  }
   return value as unknown as VehicleSystemSnapshot;
 }
 

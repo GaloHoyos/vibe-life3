@@ -145,6 +145,8 @@ describe("toLevelDefinition", () => {
           position: [0, 4, 0],
           pathStart: "wp-a",
           crashPolicy: "survivable",
+          accessPolicy: "resistance",
+          allowPlayerExit: true,
           crew: [{ actor: "!player", role: "gunner", seatId: "door-gunner" }],
           weaponEnabled: true,
           portalTraversal: "blocked",
@@ -194,6 +196,8 @@ describe("toLevelDefinition", () => {
       presetId: "helicopter",
       pathStart: "wp-a",
       crashPolicy: "survivable",
+      accessPolicy: "resistance",
+      allowPlayerExit: true,
     });
     expect(level.vehicleWaypoints).toHaveLength(2);
     expect(level.waterVolumes?.[0].size).toEqual([12, 2, 30]);
@@ -204,6 +208,9 @@ describe("toLevelDefinition", () => {
 
     const roundTripped = fromLevelDefinition(level);
     expect(roundTripped.schemaVersion).toBe(1);
+    expect(roundTripped.entities.find((entity) => entity.kind === "vehicle")).toMatchObject({
+      def: { accessPolicy: "resistance", allowPlayerExit: true },
+    });
     expect(roundTripped.entities.map((entity) => entity.kind)).toEqual(
       expect.arrayContaining([
         "vehicle",
@@ -246,6 +253,40 @@ describe("toLevelDefinition", () => {
     ];
 
     expect(() => toLevelDefinition(testEditorDocument({ entities }))).toThrow("ciclo sin pathLoop");
+  });
+
+  it("rechaza políticas de acceso vehicular desconocidas", () => {
+    expect(() => toLevelDefinition(testEditorDocument({
+      entities: [
+        {
+          eid: "vehicle",
+          kind: "vehicle",
+          def: {
+            id: "vehicle",
+            presetId: "buggy",
+            position: [0, 1, 0],
+            accessPolicy: "zombies",
+          },
+        },
+      ] as never,
+    }))).toThrow("accessPolicy desconocida");
+  });
+
+  it("rechaza allowPlayerExit vehicular si no es booleano", () => {
+    expect(() => toLevelDefinition(testEditorDocument({
+      entities: [
+        {
+          eid: "vehicle",
+          kind: "vehicle",
+          def: {
+            id: "vehicle",
+            presetId: "buggy",
+            position: [0, 1, 0],
+            allowPlayerExit: "sí",
+          },
+        },
+      ] as never,
+    }))).toThrow("allowPlayerExit booleano");
   });
 
   it("falla con ids duplicados", () => {

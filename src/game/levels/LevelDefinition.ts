@@ -139,6 +139,19 @@ export interface VehicleAiDefinition {
   allowRecoverySnap?: boolean;
 }
 
+export const VEHICLE_ACCESS_POLICIES = [
+  'player',
+  'resistance',
+  'combine',
+] as const;
+
+export type VehicleAccessPolicy = (typeof VEHICLE_ACCESS_POLICIES)[number];
+
+export function isVehicleAccessPolicy(value: unknown): value is VehicleAccessPolicy {
+  return typeof value === 'string' &&
+    VEHICLE_ACCESS_POLICIES.some((policy) => policy === value);
+}
+
 /** Instancia autorada de un preset vehicular. */
 export interface VehicleDefinition extends IOEntityFields {
   id: string;
@@ -146,11 +159,22 @@ export interface VehicleDefinition extends IOEntityFields {
   position: VectorTuple;
   rotation?: RotationTuple;
   faction?: Faction;
+  /**
+   * Defines which crews may occupy the vehicle.
+   * - `player`: Gordon drives; allies may only ride as companions.
+   * - `resistance`: Gordon, Alyx, and Resistance humanoids may occupy it.
+   * - `combine`: Gordon or Combine may occupy it, without mixing factions.
+   *
+   * Omitting it preserves older maps by deriving the policy from `faction`.
+   */
+  accessPolicy?: VehicleAccessPolicy;
   crew?: VehicleCrewAssignment[];
   weaponEnabled?: boolean;
   startDisabled?: boolean;
   startLocked?: boolean;
   engineOn?: boolean;
+  /** Helicopters deny manual dismount by default; scripted/forced exits ignore this flag. */
+  allowPlayerExit?: boolean;
   /** Primer waypoint de la ruta normal; requerido por el helicóptero. */
   pathStart?: string;
   /** Primer waypoint de la secuencia de choque. */
@@ -163,6 +187,19 @@ export interface VehicleDefinition extends IOEntityFields {
   /** Identidad estable al cruzar un changelevel. */
   transitionKey?: string;
   portalTraversal?: 'blocked';
+}
+
+/**
+ * Backward compatibility for maps predating `accessPolicy`: Combine and
+ * Resistance vehicles inherit their faction; every other vehicle is player-only.
+ */
+export function resolveVehicleAccessPolicy(
+  definition: Pick<VehicleDefinition, 'accessPolicy' | 'faction'>,
+): VehicleAccessPolicy {
+  if (definition.accessPolicy) return definition.accessPolicy;
+  if (definition.faction === 'combine') return 'combine';
+  if (definition.faction === 'resistance') return 'resistance';
+  return 'player';
 }
 
 /** Nodo Source-style de una ruta vehicular enlazada por `next`. */

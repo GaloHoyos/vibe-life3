@@ -31,6 +31,8 @@ interface CrewVisual {
   readonly fromRotation: Quaternion;
   /** Destino de la bajada; sin usar mientras sube o va sentado. */
   readonly exitPosition: Vector3;
+  readonly exitVelocity: Vector3;
+  onLeaveComplete: (() => void) | null;
 }
 
 const tmpSeatPosition = new Vector3();
@@ -88,6 +90,8 @@ export class VehicleCrewVisuals {
       fromPosition: new Vector3(),
       fromRotation: new Quaternion(),
       exitPosition: new Vector3(),
+      exitVelocity: new Vector3(),
+      onLeaveComplete: null,
     };
     entry.vehicle = vehicle;
     entry.seatId = seatId;
@@ -100,6 +104,7 @@ export class VehicleCrewVisuals {
       tmpSeatPosition.distanceTo(entry.fromPosition) > MAX_BOARD_DISTANCE;
     entry.phase = instant ? "seated" : "boarding";
     entry.progress = instant ? 1 : 0;
+    entry.onLeaveComplete = null;
     this.crew.set(npc.id, entry);
     this.applyPose(entry);
   }
@@ -120,15 +125,29 @@ export class VehicleCrewVisuals {
    * Arranca la bajada desde la pose actual. Devuelve false si el actor no
    * estaba a bordo, para que quien llama haga el teleport directo.
    */
-  leave(actorId: string, exitPosition: Vector3): boolean {
+  leave(
+    actorId: string,
+    exitPosition: Vector3,
+    onComplete?: () => void,
+    exitVelocity?: Vector3,
+  ): boolean {
     const entry = this.crew.get(actorId);
     if (!entry) return false;
-    if (entry.phase === "leaving") return true;
+    if (entry.phase === "leaving") {
+      entry.onLeaveComplete ??= onComplete ?? null;
+      return true;
+    }
     entry.phase = "leaving";
     entry.progress = 0;
     entry.fromPosition.copy(entry.npc.mesh.position);
     entry.fromRotation.copy(entry.npc.mesh.quaternion);
     entry.exitPosition.copy(exitPosition);
+    if (exitVelocity) {
+      entry.exitVelocity.copy(exitVelocity);
+    } else {
+      entry.exitVelocity.set(0, 0, 0);
+    }
+    entry.onLeaveComplete = onComplete ?? null;
     return true;
   }
 
@@ -139,6 +158,10 @@ export class VehicleCrewVisuals {
 
   isAboard(actorId: string): boolean {
     return this.crew.has(actorId);
+  }
+
+  isLeaving(actorId: string): boolean {
+    return this.crew.get(actorId)?.phase === "leaving";
   }
 
   /** Llamar después de sincronizar el visual del vehículo: lee sus anchors. */
@@ -154,6 +177,7 @@ export class VehicleCrewVisuals {
       // que se le devuelve el motor donde cayó en vez de arrastrarlo al destino.
       if (!entry.npc.isAlive()) {
         this.crew.delete(actorId);
+        entry.onLeaveComplete?.();
         entry.npc.setVehicleMounted?.(false, entry.npc.position);
         continue;
       }
@@ -164,7 +188,12 @@ export class VehicleCrewVisuals {
       }
       if (entry.phase === "leaving" && entry.progress >= 1) {
         this.crew.delete(actorId);
-        entry.npc.setVehicleMounted?.(false, entry.exitPosition);
+        entry.onLeaveComplete?.();
+        entry.npc.setVehicleMounted?.(
+          false,
+          entry.exitPosition,
+          entry.exitVelocity,
+        );
         continue;
       }
       this.applyPose(entry);

@@ -15,6 +15,7 @@ const ACTIVE_VEHICLES = [
     position: [-105, 1.1, 62],
     rotation: [0, Math.PI, 0],
     faction: 'resistance',
+    accessPolicy: 'resistance',
     crew: [
       { actor: 'vs-driver-res-lead', role: 'driver', seatId: 'driver' },
       { actor: 'vs-gunner-res-lead', role: 'gunner', seatId: 'gunner' },
@@ -30,6 +31,7 @@ const ACTIVE_VEHICLES = [
     position: [-105, 1.1, 74],
     rotation: [0, Math.PI, 0],
     faction: 'resistance',
+    accessPolicy: 'resistance',
     crew: [{ actor: 'vs-driver-res-wing', role: 'driver', seatId: 'driver' }],
     weaponEnabled: true,
     engineOn: true,
@@ -41,6 +43,7 @@ const ACTIVE_VEHICLES = [
     presetId: 'buggy',
     position: [-78, 1.1, -72],
     faction: 'combine',
+    accessPolicy: 'combine',
     crew: [
       { actor: 'vs-driver-combine-hunter', role: 'driver', seatId: 'driver' },
       { actor: 'vs-gunner-combine-hunter', role: 'gunner', seatId: 'gunner' },
@@ -55,6 +58,7 @@ const ACTIVE_VEHICLES = [
     presetId: 'buggy',
     position: [-38, 1.1, -72],
     faction: 'combine',
+    accessPolicy: 'combine',
     crew: [{ actor: 'vs-driver-combine-flank', role: 'driver', seatId: 'driver' }],
     weaponEnabled: true,
     engineOn: true,
@@ -67,6 +71,7 @@ const ACTIVE_VEHICLES = [
     position: [60, 0.6, 66],
     rotation: [0, Math.PI, 0],
     faction: 'resistance',
+    accessPolicy: 'resistance',
     crew: [{ actor: 'vs-driver-res-airboat', role: 'driver', seatId: 'driver' }],
     weaponEnabled: true,
     engineOn: true,
@@ -78,6 +83,7 @@ const ACTIVE_VEHICLES = [
     presetId: 'airboat',
     position: [60, 0.6, -64],
     faction: 'combine',
+    accessPolicy: 'combine',
     crew: [{ actor: 'vs-driver-combine-airboat', role: 'driver', seatId: 'driver' }],
     weaponEnabled: true,
     engineOn: true,
@@ -95,6 +101,7 @@ const PARKED_VEHICLES = [
     position: [-109, 1.1, 91],
     rotation: [0, Math.PI, 0],
     faction: 'resistance',
+    accessPolicy: 'resistance',
     crew: [
       { actor: 'vs-parked-driver', role: 'driver', seatId: 'driver' },
       { actor: 'vs-parked-gunner', role: 'gunner', seatId: 'gunner' },
@@ -109,6 +116,7 @@ const PARKED_VEHICLES = [
     position: [-118, 1.1, 91],
     rotation: [0, Math.PI, 0],
     faction: 'resistance',
+    accessPolicy: 'player',
     weaponEnabled: true,
     engineOn: false,
     transitionKey: 'sandbox-player-buggy',
@@ -120,6 +128,7 @@ const PARKED_VEHICLES = [
     position: [47, 0.65, 88],
     rotation: [0, Math.PI, 0],
     faction: 'resistance',
+    accessPolicy: 'player',
     weaponEnabled: true,
     engineOn: false,
     transitionKey: 'sandbox-player-airboat',
@@ -131,9 +140,11 @@ const PARKED_VEHICLES = [
     position: [111, 2.1, 78],
     rotation: [0, Math.PI, 0],
     faction: 'resistance',
+    accessPolicy: 'resistance',
     crew: [{ actor: 'vs-heli-pilot', role: 'pilot', seatId: 'pilot' }],
     weaponEnabled: true,
     engineOn: true,
+    allowPlayerExit: true,
     pathStart: 'vs-heli-route-01',
     crashPathStart: 'vs-heli-crash-01',
     crashPolicy: 'survivable',
@@ -152,6 +163,7 @@ const PARKED_VEHICLES = [
     position: [-100, 1.1, 91],
     rotation: [0, Math.PI, 0],
     faction: 'resistance',
+    accessPolicy: 'resistance',
     weaponEnabled: false,
     engineOn: false,
     portalTraversal: 'blocked',
@@ -162,6 +174,7 @@ const PARKED_VEHICLES = [
     position: [-82, 1.1, 91],
     rotation: [0, Math.PI, 0],
     faction: 'combine',
+    accessPolicy: 'combine',
     weaponEnabled: true,
     engineOn: false,
     startLocked: true,
@@ -173,6 +186,7 @@ const PARKED_VEHICLES = [
     position: [73, 0.65, 88],
     rotation: [0, Math.PI, 0],
     faction: 'neutral',
+    accessPolicy: 'player',
     weaponEnabled: false,
     engineOn: false,
     portalTraversal: 'blocked',
@@ -183,6 +197,7 @@ const PARKED_VEHICLES = [
     position: [-64, 1.25, 91],
     rotation: [0, Math.PI, 0],
     faction: 'resistance',
+    accessPolicy: 'resistance',
     weaponEnabled: false,
     engineOn: false,
     transitionKey: 'sandbox-rebel-crawler',
@@ -194,6 +209,7 @@ const PARKED_VEHICLES = [
     position: [96, 1.15, 86],
     rotation: [0, Math.PI, 0],
     faction: 'combine',
+    accessPolicy: 'combine',
     weaponEnabled: false,
     engineOn: false,
     transitionKey: 'sandbox-combine-glider',
@@ -495,6 +511,7 @@ map
   .npc({ id: 'vs-heli-pilot', characterId: 'rebelM3', position: [111, 1.2, 78] })
   .npc({ id: 'vs-parked-driver', characterId: 'rebelM3', position: [-109, 1.2, 91] })
   .npc({ id: 'vs-parked-gunner', characterId: 'rebelF3', position: [-108, 1.2, 91] })
+  .npc({ id: 'vs-alyx-companion', characterId: 'alyx', position: [-123, 1.2, 92] })
   // Suelto al lado del buggy vacío: banco de pruebas de `Attach`/`Detach`.
   .npc({ id: 'vs-rebel-hitchhiker', characterId: 'rebelM1', position: [-100, 1.2, 95] })
   .pickup({ id: 'vs-pickup-rpg', weaponId: 'rpg', position: [-124, 0.5, 88] })
@@ -519,8 +536,8 @@ map
     id: 'vs-msg-welcome',
     name: 'vs-msg-welcome',
     speaker: 'Campo de pruebas',
-    text: 'Seis tripulaciones están activas. El transporte oruga y el deslizador Combine están estacionados; usá E para subir y R para cambiar de asiento.',
-    duration: 7,
+    text: 'Seis tripulaciones están activas. Usá E para subir, R para cambiar de asiento y, como artillero, V para cambiar la conducción o C para marcar un destino.',
+    duration: 9,
   })
   .logic({
     kind: 'message',

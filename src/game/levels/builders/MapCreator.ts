@@ -26,6 +26,7 @@ import type {
   WaterVolumeDefinition,
   WeaponPickupDefinition,
 } from '@game/levels/LevelDefinition';
+import { isVehicleAccessPolicy } from '@game/levels/LevelDefinition';
 import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
 import type { CheckpointDefinition } from '@game/levels/CheckpointSystem';
 import type { ExplosiveBarrelDefinition } from '@game/gameplay/hazards/ExplosiveBarrel';
@@ -493,6 +494,22 @@ export class MapBuilder {
     };
 
     for (const vehicle of this.vehicleList) {
+      if (
+        vehicle.accessPolicy !== undefined &&
+        !isVehicleAccessPolicy(vehicle.accessPolicy)
+      ) {
+        throw new Error(
+          `MapBuilder('${this.meta.id}'): vehiculo '${vehicle.id}' tiene accessPolicy desconocida.`,
+        );
+      }
+      if (
+        vehicle.allowPlayerExit !== undefined &&
+        typeof vehicle.allowPlayerExit !== 'boolean'
+      ) {
+        throw new Error(
+          `MapBuilder('${this.meta.id}'): vehiculo '${vehicle.id}' requiere allowPlayerExit booleano.`,
+        );
+      }
       if (vehicle.presetId === 'helicopter' && !vehicle.pathStart) {
         throw new Error(
           `MapBuilder('${this.meta.id}'): helicoptero '${vehicle.id}' requiere pathStart.`,

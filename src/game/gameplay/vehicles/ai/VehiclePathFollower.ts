@@ -21,6 +21,8 @@ export interface VehiclePathFollowerTuning {
   obstacleHalfWidthMargin?: number;
   cautionTtc?: number;
   emergencyTtc?: number;
+  avoidanceDistance?: number;
+  avoidanceSteeringGain?: number;
   waypointReachDistance?: number;
   speedPid?: {
     proportional: number;
@@ -70,6 +72,7 @@ export class VehiclePathFollower {
   private readonly speedController: PidController;
   private pathCursor = 0;
   private previousPath: VehicleDrivingPath | null = null;
+  private avoidanceSide: -1 | 1 = 1;
 
   constructor(
     private readonly profile: VehicleNavigationProfile,
@@ -118,6 +121,19 @@ export class VehiclePathFollower {
     // mandaba doblar para el lado opuesto al de su propio camino.
     let steering = -clamp(steeringAngle / steeringDenominator, -1, 1);
     if (direction === 'reverse') steering *= -1;
+    const avoidance = findAvoidanceSteering(
+      input,
+      this.profile,
+      this.tuning,
+      this.avoidanceSide,
+    );
+    if (avoidance.side !== null) this.avoidanceSide = avoidance.side;
+    steering = clamp(
+      steering +
+        avoidance.steering * (this.tuning.avoidanceSteeringGain ?? 0.9),
+      -1,
+      1,
+    );
 
     const targetSpeedLimit = target.speedLimit ?? this.profile.maxSpeed;
     const curvatureSpeed = curveSafeSpeed(
@@ -163,6 +179,7 @@ export class VehiclePathFollower {
   reset(): void {
     this.previousPath = null;
     this.pathCursor = 0;
+    this.avoidanceSide = 1;
     this.speedController.reset();
   }
 
@@ -189,6 +206,98 @@ export class VehiclePathFollower {
     }
     this.pathCursor = bestIndex;
   }
+}
+
+export function findAvoidanceSteering(
+  input: VehicleFollowerInput,
+  profile: VehicleNavigationProfile,
+  tuning: VehiclePathFollowerTuning = {},
+  fallbackSide: -1 | 1 = 1,
+): { steering: number; side: -1 | 1 | null } {
+  const nearestDirection = nearestPathDirection(input.path, input.pose.position);
+  const travelHeading = input.pose.heading +
+    (nearestDirection === 'reverse' ? Math.PI : 0);
+  const forward = headingToVector(travelHeading);
+  const influenceDistance =
+    tuning.avoidanceDistance ??
+    Math.max(9, profile.halfLength * 2 + Math.abs(input.speed) * 1.15);
+  const corridor = profile.halfWidth * 2.4 +
+    (tuning.obstacleHalfWidthMargin ?? 0.45);
+  let leftThreat = 0;
+  let rightThreat = 0;
+  let centerThreat = 0;
+
+  const accumulate = (
+    longitudinal: number,
+    lateral: number,
+    radius: number,
+    closingSpeed: number,
+  ): void => {
+    if (
+      longitudinal <= 0 ||
+      longitudinal > influenceDistance + radius ||
+      Math.abs(lateral) > corridor + radius
+    ) {
+      return;
+    }
+    const freeDistance = Math.max(
+      0,
+      longitudinal - profile.halfLength - radius,
+    );
+    const proximity = clamp(1 - freeDistance / influenceDistance, 0, 1);
+    const closingFactor = clamp(
+      closingSpeed / Math.max(2, profile.maxSpeed * 0.5),
+      0.25,
+      1.4,
+    );
+    const threat = proximity * proximity * closingFactor;
+    const centerBand = Math.max(0.28, profile.halfWidth * 0.32);
+    if (lateral > centerBand) leftThreat += threat;
+    else if (lateral < -centerBand) rightThreat += threat;
+    else centerThreat += threat;
+  };
+
+  for (const obstacle of input.obstacles ?? []) {
+    if (obstacle.blocking === false) continue;
+    const relativeX = obstacle.position[0] - input.pose.position[0];
+    const relativeZ = obstacle.position[2] - input.pose.position[2];
+    const longitudinal = relativeX * forward[0] + relativeZ * forward[1];
+    const lateral = relativeX * forward[1] - relativeZ * forward[0];
+    const obstacleSpeed =
+      obstacle.velocity[0] * forward[0] + obstacle.velocity[2] * forward[1];
+    accumulate(
+      longitudinal,
+      lateral,
+      obstacle.radius,
+      Math.max(0, Math.abs(input.speed) - obstacleSpeed),
+    );
+  }
+  for (const cast of input.shapeCasts ?? []) {
+    accumulate(
+      cast.distance,
+      cast.lateralOffset,
+      cast.radius ?? 0,
+      cast.closingSpeed,
+    );
+  }
+
+  const sideDifference = leftThreat - rightThreat;
+  let side: -1 | 1 | null = null;
+  if (Math.abs(sideDifference) > 0.02) {
+    side = sideDifference > 0 ? 1 : -1;
+  } else if (centerThreat > 0.01) {
+    side = fallbackSide;
+  }
+  if (side === null) return { steering: 0, side: null };
+  const sideThreat = Math.abs(sideDifference);
+  return {
+    steering: clamp(
+      sideDifference + centerThreat * side + sideThreat * 0.35,
+      -1,
+      1,
+    ),
+    side,
+  };
 }
 
 export function findTimeToCollision(

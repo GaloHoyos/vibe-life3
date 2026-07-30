@@ -55,6 +55,8 @@ export interface PhysicsMetadata {
    * que el personaje reaccione al golpe sin que la granada sea un prop letal.
    */
   impactDamageOverride?: number;
+  /** Excludes owner-handled dynamic bodies from the generic prop-impact pass. */
+  propImpactExcluded?: boolean;
   /**
    * Colliders que representan un mismo organismo se deduplican con esta clave
    * durante daño radial. Esto permite mantener hitboxes de detalle para balas

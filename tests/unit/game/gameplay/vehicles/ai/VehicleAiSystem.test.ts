@@ -43,9 +43,17 @@ describe('VehicleAiSystem', () => {
     const snapshot = system.snapshot('buggy-ai');
     expect(snapshot?.goal?.position).toEqual([18, 0, 18]);
     expect(snapshot?.path?.points.length).toBeGreaterThan(2);
+    const reservationBeforeRestore = system.reservationKey(
+      'buggy-ai',
+      [3.5, 0, 3.5],
+    );
+    expect(reservationBeforeRestore).toBe('lane:test-lane');
     system.clearGoal('buggy-ai');
     expect(system.restoreSnapshot(snapshot!)).toBe(true);
     expect(system.snapshot('buggy-ai')?.goal).toEqual(snapshot?.goal);
+    expect(system.reservationKey('buggy-ai', [3.5, 0, 3.5])).toBe(
+      reservationBeforeRestore,
+    );
     system.dispose();
     expect(system.snapshot('buggy-ai')).toBeNull();
   });
@@ -116,6 +124,22 @@ describe('VehicleAiSystem', () => {
     system.dispose();
     expect(dispose).toHaveBeenCalledOnce();
   });
+
+  it('cambia el comportamiento en runtime para órdenes del pasajero', async () => {
+    const system = new VehicleAiSystem(new MemoryVehicleNavigationCache());
+    await system.load(navigationInput());
+    system.registerVehicle({
+      vehicleId: 'commanded',
+      preset: VehiclePresets.buggy,
+      ai: { enabled: true, behavior: 'patrol' },
+    });
+
+    expect(system.getBehavior('commanded')).toBe('patrol');
+    expect(system.setBehavior('commanded', 'hold')).toBe(true);
+    expect(system.update('commanded', 0.1, brainContext())?.decision)
+      .toMatchObject({ behavior: 'hold', goal: null });
+    expect(system.snapshot('commanded')?.behavior).toBe('hold');
+  });
 });
 
 function brainContext(): VehicleBrainContext {
@@ -150,7 +174,13 @@ function navigationInput(): VehicleNavigationBakeInput {
       polygon: [[0, 0, 0], [24, 0, 0], [24, 0, 24], [0, 0, 24]],
       surface: 'ground',
     }],
-    lanes: [],
+    lanes: [{
+      id: 'test-lane',
+      points: [[2, 0, 2], [12, 0, 12], [22, 0, 22]],
+      width: 2.5,
+      direction: 'both',
+      tags: ['singleLane'],
+    }],
     markers: [],
     profiles: [navigationProfileFromPreset(VehiclePresets.buggy)],
     options: { cellSize: 1 },

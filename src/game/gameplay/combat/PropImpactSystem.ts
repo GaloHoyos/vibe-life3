@@ -73,7 +73,7 @@ export class PropImpactSystem {
       const metadata = collider
         ? this.physics.getColliderMetadata(collider)
         : undefined;
-      if (metadata?.kind !== "dynamic") return;
+      if (metadata?.kind !== "dynamic" || metadata.propImpactExcluded) return;
 
       const v = body.linvel();
       const speed = Math.hypot(v.x, v.y, v.z);

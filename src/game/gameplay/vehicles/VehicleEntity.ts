@@ -7,7 +7,12 @@ import {
   Vector3,
 } from "three";
 import type { Faction } from "@engine/ai/Faction";
-import type { PhysicsContactForce, PhysicsWorld } from "@engine/physics/PhysicsWorld";
+import {
+  PHYSICS_FIXED_TIMESTEP,
+  PHYSICS_MAX_SUBSTEPS,
+  type PhysicsContactForce,
+  type PhysicsWorld,
+} from "@engine/physics/PhysicsWorld";
 import type { RaycastSource } from "@engine/physics/Raycast";
 import {
   HoverVehicleMotor,
@@ -22,6 +27,7 @@ import {
   type VehicleSurfaceProvider,
 } from "@engine/physics/vehicle";
 import {
+  isAtTheControls,
   VehiclePresets,
   type VehicleCrewRole,
   type VehiclePresetDefinition,
@@ -102,6 +108,23 @@ const SURFACE_DOWN = new Vector3(0, -1, 0);
 const SURFACE_UP = new Vector3(0, 1, 0);
 /** Igual a la gravedad de `PhysicsWorld`; dimensiona el peso de reposo. */
 const GRAVITY_MAGNITUDE = 20.5;
+const IMPACT_COOLDOWN = 0.18;
+// Source SDK impact-table speeds converted from inches per second to meters per second.
+const NPC_IMPACT_DAMAGE_STEPS = [
+  { speed: 3.81, damage: 5 },
+  { speed: 6.35, damage: 10 },
+  { speed: 8.89, damage: 50 },
+  { speed: 12.7, damage: 100 },
+  { speed: 25.4, damage: 500 },
+] as const;
+const PLAYER_IMPACT_DAMAGE_STEPS = [
+  { speed: 3.81, damage: 5 },
+  { speed: 6.35, damage: 10 },
+  { speed: 11.43, damage: 20 },
+  { speed: 13.97, damage: 50 },
+  { speed: 17.78, damage: 100 },
+  { speed: 25.4, damage: 500 },
+] as const;
 
 export class VehicleEntity {
   readonly id: string;
@@ -132,8 +155,15 @@ export class VehicleEntity {
   private crashing = false;
   private wreckage = false;
   private disposed = false;
-  private lastImpactAt = -Infinity;
-  private elapsed = 0;
+  private lastChassisImpactAt = -Infinity;
+  private readonly actorImpactCooldowns = new Map<string, number>();
+  private readonly preStepVelocities = Array.from(
+    { length: PHYSICS_MAX_SUBSTEPS },
+    () => new Vector3(),
+  );
+  private preStepVelocityCursor = 0;
+  private preStepVelocityCount = 0;
+  private impactElapsed = 0;
   /**
    * Un casco apoyado transmite su propio peso por el contacto: el airboat en
    * tierra son ~16 kN, muy por encima del umbral fijo anterior de 14 kN, así que
@@ -231,7 +261,10 @@ export class VehicleEntity {
     this.syncVisual(1);
 
     this.disposePreHook = physics.addPreStepHook((delta) => {
-      if (this.disposed || this.wreckage) return;
+      if (this.disposed) return;
+      this.impactElapsed += delta;
+      this.capturePreStepVelocity();
+      if (this.wreckage) return;
       this.motor.prePhysicsStep(delta);
     });
     this.disposePostHook = physics.addPostStepHook((delta) => {
@@ -283,7 +316,11 @@ export class VehicleEntity {
     aimDirection: Vector3 | null,
     attackerId = "player",
   ): void {
-    this.elapsed = elapsed;
+    for (const [actorId, cooldownUntil] of this.actorImpactCooldowns) {
+      if (cooldownUntil <= this.impactElapsed) {
+        this.actorImpactCooldowns.delete(actorId);
+      }
+    }
     this.weapon?.update(delta);
     const telemetry = this.motor.getTelemetry();
     const boosting =
@@ -351,11 +388,53 @@ export class VehicleEntity {
     event: PhysicsContactForce,
     otherCollider: RAPIER.Collider | null,
   ): void {
-    if (this.wreckage || event.totalForceMagnitude < this.impactForceThreshold) {
-      return;
+    if (this.wreckage) return;
+
+    const metadata = otherCollider
+      ? this.physics.getColliderMetadata(otherCollider)
+      : undefined;
+    const actorContact =
+      metadata?.kind === "npc" || metadata?.kind === "player";
+    if (
+      otherCollider &&
+      actorContact &&
+      metadata.damageable?.isAlive()
+    ) {
+      const actorId = metadata.ownerId ?? metadata.id;
+      const cooldownUntil = this.actorImpactCooldowns.get(actorId) ?? -Infinity;
+      if (this.impactElapsed >= cooldownUntil) {
+        const closingSpeed = this.getImpactClosingSpeed(event, otherCollider);
+        const impactDamage = impactDamageForSpeed(
+          closingSpeed,
+          metadata.kind === "player",
+        );
+        if (impactDamage > 0) {
+          const hitDirection = event.maxForceDirection.clone();
+          if (Math.abs(hitDirection.y) < 0.12) {
+            hitDirection.y = 0.12;
+          }
+          hitDirection.normalize();
+          const position = otherCollider.translation();
+          metadata.damageable.applyDamage(
+            impactDamage,
+            hitDirection,
+            metadata.bodyPart?.name,
+            this.impactAttackerId(),
+            new Vector3(position.x, position.y, position.z),
+            "physics",
+          );
+          this.actorImpactCooldowns.set(
+            actorId,
+            this.impactElapsed + IMPACT_COOLDOWN,
+          );
+        }
+      }
     }
-    if (this.elapsed - this.lastImpactAt < 0.18) return;
-    this.lastImpactAt = this.elapsed;
+    if (actorContact) return;
+
+    if (event.totalForceMagnitude < this.impactForceThreshold) return;
+    if (this.impactElapsed - this.lastChassisImpactAt < IMPACT_COOLDOWN) return;
+    this.lastChassisImpactAt = this.impactElapsed;
     const damage = MathUtils.clamp(
       (event.totalForceMagnitude - this.impactForceThreshold) / 4_500,
       2,
@@ -369,30 +448,6 @@ export class VehicleEntity {
       this.currentPose.position,
       "physics",
     );
-    this.callbacks.onImpact(this, MathUtils.clamp(damage / 45, 0.1, 1.25));
-
-    const metadata = otherCollider
-      ? this.physics.getColliderMetadata(otherCollider)
-      : undefined;
-    if (
-      metadata?.damageable &&
-      (metadata.kind === "npc" || metadata.kind === "player") &&
-      this.motor.getTelemetry().speed > 4
-    ) {
-      const impactDamage = MathUtils.clamp(
-        this.motor.getTelemetry().speed * 4.2,
-        8,
-        95,
-      );
-      metadata.damageable.applyDamage(
-        impactDamage,
-        event.maxForceDirection,
-        metadata.bodyPart?.name,
-        this.id,
-        this.currentPose.position,
-        "physics",
-      );
-    }
   }
 
   containsCollider(handle: number): boolean {
@@ -716,7 +771,7 @@ export class VehicleEntity {
       this.occupantsBySeat.set(seat.id, next);
       return next;
     }
-    return current;
+    return null;
   }
 
   moveOccupantToRole(
@@ -933,6 +988,77 @@ export class VehicleEntity {
     });
   }
 
+  private capturePreStepVelocity(): void {
+    const velocity = this.body.linvel();
+    this.preStepVelocities[this.preStepVelocityCursor].set(
+      velocity.x,
+      velocity.y,
+      velocity.z,
+    );
+    this.preStepVelocityCursor =
+      (this.preStepVelocityCursor + 1) % this.preStepVelocities.length;
+    this.preStepVelocityCount = Math.min(
+      this.preStepVelocityCount + 1,
+      this.preStepVelocities.length,
+    );
+  }
+
+  private impactAttackerId(): string {
+    const driver = this.getOccupants().find((occupant) =>
+      isAtTheControls(occupant.role),
+    );
+    if (!driver) return this.id;
+    return driver.actor === "!player" ? "player" : driver.actor;
+  }
+
+  private getImpactClosingSpeed(
+    event: PhysicsContactForce,
+    otherCollider: RAPIER.Collider,
+  ): number {
+    const normal = event.maxForceDirection.clone();
+    if (normal.lengthSq() < 1e-6) return 0;
+    normal.normalize();
+
+    const otherBody = otherCollider.parent();
+    const otherVelocity = otherBody?.linvel() ?? { x: 0, y: 0, z: 0 };
+    const relativeAlongNormal = (velocity: {
+      readonly x: number;
+      readonly y: number;
+      readonly z: number;
+    }): number =>
+      Math.max(
+        0,
+        (velocity.x - otherVelocity.x) * normal.x +
+          (velocity.y - otherVelocity.y) * normal.y +
+          (velocity.z - otherVelocity.z) * normal.z,
+      );
+
+    const postVelocity = this.body.linvel();
+    let closingSpeed = relativeAlongNormal(postVelocity);
+    for (let index = 0; index < this.preStepVelocityCount; index += 1) {
+      closingSpeed = Math.max(
+        closingSpeed,
+        relativeAlongNormal(this.preStepVelocities[index]),
+      );
+    }
+
+    const projectedForce = Math.max(
+      0,
+      event.totalForce.dot(normal),
+      event.maxForceMagnitude,
+    );
+    const otherInverseMass =
+      otherBody?.isDynamic() && otherBody.mass() > 0
+        ? 1 / otherBody.mass()
+        : 0;
+    const reconstructedSpeed =
+      relativeAlongNormal(postVelocity) +
+      projectedForce *
+        PHYSICS_FIXED_TIMESTEP *
+        (1 / this.preset.body.mass + otherInverseMass);
+    return Math.max(closingSpeed, reconstructedSpeed);
+  }
+
   private addCollider(
     desc: RAPIER.ColliderDesc,
     zone: string,
@@ -954,6 +1080,7 @@ export class VehicleEntity {
       explosionGroupId: this.id,
       explosionDamageable: this.damage,
       selfPortalTraversal: true,
+      propImpactExcluded: true,
       navigationObstacleSize: sensor
         ? undefined
         : [
@@ -1193,6 +1320,22 @@ function activatorFor(attackerId: string | undefined): ActivatorRef {
     return { kind: "player" };
   }
   return { kind: "entity", name: attackerId };
+}
+
+function impactDamageForSpeed(
+  closingSpeed: number,
+  playerTarget: boolean,
+): number {
+  if (!Number.isFinite(closingSpeed) || closingSpeed <= 0) return 0;
+  const steps = playerTarget
+    ? PLAYER_IMPACT_DAMAGE_STEPS
+    : NPC_IMPACT_DAMAGE_STEPS;
+  let damage = 0;
+  for (const step of steps) {
+    if (closingSpeed < step.speed) break;
+    damage = step.damage;
+  }
+  return damage;
 }
 
 function serializeBodyState(state: Readonly<RigidBodyState>): VehicleEntitySnapshot["motor"] {

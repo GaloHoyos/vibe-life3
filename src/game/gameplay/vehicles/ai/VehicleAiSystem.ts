@@ -5,6 +5,8 @@ import type {
   VehicleBrainDecision,
   VehicleControlCommand,
   VehicleDrivingPath,
+  VehicleLaneEdge,
+  VehicleLaneRoute,
   VehicleNavigationBakeInput,
   VehicleNavigationProfile,
   VehicleNavPoint,
@@ -27,6 +29,7 @@ import {
   type VehicleNavigationPlanService,
 } from './VehicleNavigationPlanClient';
 import { VehicleAiBrain, type VehicleAiBrainTuning } from './VehicleAiBrain';
+import { vehicleLaneReservationKey } from './VehicleTrafficCoordinator';
 
 export interface VehicleAiRegistration {
   vehicleId: string;
@@ -50,12 +53,14 @@ export interface VehicleAiSnapshot {
     heading: number | null;
   } | null;
   path: VehicleDrivingPath | null;
+  navigationHash?: string | null;
+  laneRoute?: VehicleLaneRoute | null;
   lastDecision: VehicleBrainDecision | null;
 }
 
 interface VehicleAiRecord {
   profile: VehicleNavigationProfile;
-  definition: VehicleAiDefinition;
+  behavior: VehicleAiDefinition['behavior'];
   brain: VehicleAiBrain;
   goal: { position: VehicleNavPoint; heading: number | null } | null;
   plannedRoute: VehiclePlannedRoute | null;
@@ -72,6 +77,7 @@ interface VehicleAiRecord {
 export class VehicleAiSystem {
   private plannerClient: VehicleNavigationPlanService | null = null;
   private currentNavigationHash: string | null = null;
+  private readonly laneEdges = new Map<string, VehicleLaneEdge>();
   private readonly vehicles = new Map<string, VehicleAiRecord>();
 
   constructor(
@@ -87,6 +93,10 @@ export class VehicleAiSystem {
     this.plannerClient = null;
     this.currentNavigationHash = null;
     const result = await VehicleNavigationPlanner.create(input, this.cache);
+    this.laneEdges.clear();
+    for (const edge of result.planner.navigation.laneGraph.edges) {
+      this.laneEdges.set(edge.id, edge);
+    }
     this.plannerClient = await this.createPlanClient(
       result.planner.navigation,
       input.profiles,
@@ -118,7 +128,7 @@ export class VehicleAiSystem {
     if (profile.surface === 'rail') return false;
     this.vehicles.set(registration.vehicleId, {
       profile,
-      definition: registration.ai,
+      behavior: registration.ai.behavior,
       brain: new VehicleAiBrain(
         registration.vehicleId,
         registration.ai,
@@ -141,6 +151,47 @@ export class VehicleAiSystem {
 
   unregisterVehicle(vehicleId: string): void {
     this.vehicles.delete(vehicleId);
+  }
+
+  setBehavior(
+    vehicleId: string,
+    behavior: VehicleAiDefinition['behavior'],
+  ): boolean {
+    const record = this.vehicles.get(vehicleId);
+    if (!record) return false;
+    record.behavior = behavior;
+    record.brain.setBehavior(behavior);
+    record.plannedRoute = null;
+    record.restoredPath = null;
+    record.lastDecision = null;
+    this.invalidatePendingPlan(record);
+    return true;
+  }
+
+  getBehavior(vehicleId: string): VehicleAiDefinition['behavior'] | null {
+    return this.vehicles.get(vehicleId)?.behavior ?? null;
+  }
+
+  reservationKey(
+    vehicleId: string,
+    position: VehicleNavPoint,
+  ): string | null {
+    const route = this.vehicles.get(vehicleId)?.plannedRoute?.laneRoute;
+    if (!route || route.edgeIds.length === 0) return null;
+    let nearestIndex = 0;
+    let nearestDistance = Infinity;
+    for (let index = 0; index < route.points.length; index += 1) {
+      const distance = planarDistance(position, route.points[index]);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = index;
+      }
+    }
+    if (nearestIndex >= route.points.length - 1) return null;
+    const edgeId =
+      route.edgeIds[Math.min(nearestIndex, route.edgeIds.length - 1)];
+    const edge = edgeId ? this.laneEdges.get(edgeId) : null;
+    return edge ? vehicleLaneReservationKey(edge) : null;
   }
 
   setGoal(vehicleId: string, position: VehicleNavPoint, heading?: number): boolean {
@@ -235,7 +286,7 @@ export class VehicleAiSystem {
     return {
       vehicleId,
       profileId: record.profile.id,
-      behavior: record.definition.behavior,
+      behavior: record.behavior,
       goal: record.goal
         ? {
             position: [...record.goal.position],
@@ -243,6 +294,8 @@ export class VehicleAiSystem {
           }
         : null,
       path: clonePath(record.plannedRoute?.path ?? record.restoredPath ?? null),
+      navigationHash: this.currentNavigationHash,
+      laneRoute: cloneLaneRoute(record.plannedRoute?.laneRoute ?? null),
       lastDecision: record.lastDecision,
     };
   }
@@ -263,9 +316,25 @@ export class VehicleAiSystem {
           heading: snapshot.goal.heading,
         }
       : null;
-    record.plannedRoute = null;
-    record.restoredPath = clonePath(snapshot.path);
+    const restoredPath = clonePath(snapshot.path);
+    const restoredLaneRoute =
+      snapshot.navigationHash === this.currentNavigationHash
+        ? cloneLaneRoute(snapshot.laneRoute ?? null)
+        : null;
+    record.plannedRoute =
+      restoredPath && restoredLaneRoute
+        ? {
+            hash: this.currentNavigationHash ?? "restored",
+            path: restoredPath,
+            laneRoute: restoredLaneRoute,
+            startManeuver: null,
+            endManeuver: null,
+          }
+        : null;
+    record.restoredPath = record.plannedRoute ? null : restoredPath;
     record.lastDecision = snapshot.lastDecision;
+    record.behavior = snapshot.behavior;
+    record.brain.setBehavior(snapshot.behavior);
     this.invalidatePendingPlan(record);
     record.pathChangedPending = false;
     record.brain.reset();
@@ -276,6 +345,7 @@ export class VehicleAiSystem {
     this.plannerClient?.dispose();
     this.plannerClient = null;
     this.currentNavigationHash = null;
+    this.laneEdges.clear();
     this.vehicles.clear();
   }
 
@@ -356,5 +426,15 @@ function clonePath(path: VehicleDrivingPath | null): VehicleDrivingPath | null {
       ...point,
       position: [...point.position],
     })),
+  };
+}
+
+function cloneLaneRoute(route: VehicleLaneRoute | null): VehicleLaneRoute | null {
+  if (!route) return null;
+  return {
+    nodeIds: [...route.nodeIds],
+    edgeIds: [...route.edgeIds],
+    points: route.points.map((point) => [...point]),
+    cost: route.cost,
   };
 }

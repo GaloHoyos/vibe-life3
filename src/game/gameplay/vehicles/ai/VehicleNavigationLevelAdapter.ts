@@ -59,7 +59,7 @@ function navigationPresetsFromLevel(
   const presets = new Map<string, VehiclePresetDefinition>();
   for (const vehicle of level.vehicles ?? []) {
     const preset = VehiclePresets[vehicle.presetId];
-    if (!vehicle.ai?.enabled && preset.navigation.surface !== 'rail') continue;
+    if (preset.navigation.surface === 'rail') continue;
     presets.set(preset.id, preset);
   }
   return [...presets.values()];

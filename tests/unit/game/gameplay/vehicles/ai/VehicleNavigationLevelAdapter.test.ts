@@ -38,7 +38,7 @@ describe('vehicleNavigationInputFromLevel', () => {
     expect(input.profiles.map((profile) => profile.id)).toEqual(['buggy']);
   });
 
-  it('hornea solo presets requeridos por IA y conserva vehiculos sobre rieles', () => {
+  it('hornea todos los vehículos autónomos posibles y excluye los de riel', () => {
     const level = baseLevel();
     level.vehicles = [
       {
@@ -75,8 +75,9 @@ describe('vehicleNavigationInputFromLevel', () => {
     const input = vehicleNavigationInputFromLevel(level);
 
     expect(input.profiles.map((profile) => profile.id)).toEqual([
+      'combineGlider',
       'buggy',
-      'helicopter',
+      'airboat',
     ]);
   });
 

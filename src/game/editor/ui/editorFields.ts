@@ -154,13 +154,14 @@ export function selectField(
   value: string,
   options: readonly string[],
   onChange: (value: string) => void,
+  optionLabels?: Readonly<Record<string, string>>,
 ): Field<string> {
   const select = document.createElement('select');
   select.className = 'editor-input';
   for (const option of options) {
     const opt = document.createElement('option');
     opt.value = option;
-    opt.textContent = option;
+    opt.textContent = optionLabels?.[option] ?? option;
     if (option === value) opt.selected = true;
     select.append(opt);
   }
