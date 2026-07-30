@@ -83,3 +83,26 @@ export function headingBetween(from: VehicleNavPoint, to: VehicleNavPoint): numb
 export function finiteOr(value: number | undefined | null, fallback: number): number {
   return value === undefined || value === null || !Number.isFinite(value) ? fallback : value;
 }
+
+/**
+ * Hash estable id+salt a 0..1. Sirve para darle a cada vehículo su propia
+ * variación (velocidad, reacción, puntería) sin estado ni RNG: dos buggies del
+ * mismo preset dejan de conducir idéntico y el resultado sobrevive a un save.
+ */
+export function stableUnitFromId(id: string, salt = 0): number {
+  let hash = 0x811c9dc5 ^ Math.imul(salt + 1, 0x9e3779b1);
+  for (let index = 0; index < id.length; index += 1) {
+    hash = Math.imul(hash ^ id.charCodeAt(index), 0x45d9f3b);
+    hash ^= hash >>> 15;
+  }
+  return ((hash >>> 0) % 100_000) / 100_000;
+}
+
+/** Variación simétrica determinista: `1 ± spread`. */
+export function stableJitter(id: string, salt: number, spread: number): number {
+  return 1 + (stableUnitFromId(id, salt) * 2 - 1) * spread;
+}
+
+export function stableSide(id: string, salt = 0): 1 | -1 {
+  return stableUnitFromId(id, salt) < 0.5 ? -1 : 1;
+}

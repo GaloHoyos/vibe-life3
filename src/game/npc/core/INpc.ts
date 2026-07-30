@@ -305,6 +305,11 @@ export interface NpcSeatPose {
   readonly seated: number;
   /** Conductores y pilotos llevan las manos a los controles. */
   readonly handsOnControls: boolean;
+  /**
+   * Hacia dónde mira, en espacio LOCAL del asiento. Sin esto el ocupante va
+   * sentado de frente aunque su torreta esté siguiendo a alguien.
+   */
+  readonly lookDirection?: Vector3;
 }
 
 export interface NpcVehicleCapability {

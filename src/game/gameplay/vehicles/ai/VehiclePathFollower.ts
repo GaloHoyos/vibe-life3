@@ -24,6 +24,15 @@ export interface VehiclePathFollowerTuning {
   avoidanceDistance?: number;
   avoidanceSteeringGain?: number;
   waypointReachDistance?: number;
+  /** Fracción de la velocidad máxima que este conductor usa en recta. */
+  cruiseSpeedFactor?: number;
+  /**
+   * Piso de velocidad en curva como fracción del máximo, el `driverminspeed` de
+   * HL2: sin esto el límite por curvatura hace que gatee en cada esquina.
+   */
+  minimumSpeedFactor?: number;
+  /** Desaceleración con la que rueda hasta parar en el destino (m/s²). */
+  arrivalDeceleration?: number;
   speedPid?: {
     proportional: number;
     integral: number;
@@ -31,6 +40,16 @@ export interface VehiclePathFollowerTuning {
     integralLimit?: number;
   };
 }
+
+/** Margen para que el morro quede sobre la meta y no la pase de largo. */
+const ARRIVAL_MARGIN = 0.5;
+/**
+ * Debajo de esta velocidad no hay frenada por colisión inminente. A paso de
+ * hombre no hay nada contra qué estrellarse, y sin este piso un vehículo
+ * detenido contra un obstáculo se auto-frena para siempre: el TTC tiende a cero,
+ * el `targetSpeed` queda en cero y nunca llega a intentar maniobrar.
+ */
+const COLLISION_BRAKE_SPEED = 0.8;
 
 export class PidController {
   private integral = 0;
@@ -135,15 +154,44 @@ export class VehiclePathFollower {
       1,
     );
 
-    const targetSpeedLimit = target.speedLimit ?? this.profile.maxSpeed;
-    const curvatureSpeed = curveSafeSpeed(
-      input.path,
-      this.pathCursor,
-      this.tuning.maximumLateralAcceleration ?? 5.5,
-      targetSpeedLimit,
+    const cruiseSpeed = this.profile.maxSpeed *
+      clamp(this.tuning.cruiseSpeedFactor ?? 1, 0.1, 1);
+    const targetSpeedLimit = Math.min(
+      target.speedLimit ?? this.profile.maxSpeed,
+      input.speedLimit ?? this.profile.maxSpeed,
     );
-    let targetSpeed = Math.min(this.profile.maxSpeed, targetSpeedLimit, curvatureSpeed);
-    const timeToCollision = findTimeToCollision(input, this.profile, this.tuning);
+    const curvatureSpeed = Math.max(
+      this.profile.maxSpeed * clamp(this.tuning.minimumSpeedFactor ?? 0, 0, 1),
+      curveSafeSpeed(
+        input.path,
+        this.pathCursor,
+        this.tuning.maximumLateralAcceleration ?? 5.5,
+        targetSpeedLimit,
+      ),
+    );
+    let targetSpeed = Math.min(cruiseSpeed, targetSpeedLimit, curvatureSpeed);
+    // Frenada de llegada: sin esto el vehículo cruza la meta a velocidad de
+    // crucero y sólo clava los frenos cuando el cerebro le suelta el goal.
+    const arrivalDeceleration = this.tuning.arrivalDeceleration ?? 3;
+    if (input.path.loop !== true) {
+      const remaining = distanceToPathEnd(
+        input.path,
+        this.pathCursor,
+        input.pose.position,
+        brakingHorizon(input.speed, arrivalDeceleration, this.profile.halfLength),
+      );
+      if (remaining !== null) {
+        targetSpeed = Math.min(
+          targetSpeed,
+          Math.sqrt(
+            2 * arrivalDeceleration * Math.max(0, remaining - ARRIVAL_MARGIN),
+          ),
+        );
+      }
+    }
+    const timeToCollision = Math.abs(input.speed) > COLLISION_BRAKE_SPEED
+      ? findTimeToCollision(input, this.profile, this.tuning)
+      : null;
     const cautionTtc = this.tuning.cautionTtc ?? 2.4;
     const emergencyTtc = this.tuning.emergencyTtc ?? 0.75;
     if (timeToCollision !== null) {
@@ -389,6 +437,37 @@ function findLookAheadTarget(
     previous = point.position;
   }
   return path.points[path.points.length - 1];
+}
+
+function brakingHorizon(
+  speed: number,
+  deceleration: number,
+  halfLength: number,
+): number {
+  const stoppingDistance = (speed * speed) / Math.max(0.5, 2 * deceleration);
+  return stoppingDistance + halfLength + 2;
+}
+
+/**
+ * Longitud restante del path desde la posición actual. Devuelve `null` si el
+ * final está más lejos que `horizon`, para no recorrer paths de cientos de
+ * puntos cuando la llegada todavía no manda.
+ */
+function distanceToPathEnd(
+  path: VehicleDrivingPath,
+  cursor: number,
+  position: VehicleNavPoint,
+  horizon: number,
+): number | null {
+  if (path.points.length === 0) return null;
+  let previous = position;
+  let total = 0;
+  for (let index = cursor; index < path.points.length; index += 1) {
+    total += planarDistance(previous, path.points[index].position);
+    if (total > horizon) return null;
+    previous = path.points[index].position;
+  }
+  return total;
 }
 
 function curveSafeSpeed(

@@ -24,6 +24,23 @@ declare global {
       eject: (vehicleId: string, actor?: string) => string;
       /** Aplica daño a una zona (default `hull`): humo, fuego y destrucción. */
       damage: (vehicleId: string, amount: number, zone?: string) => string;
+      /** Estado de la IA: decisión, blanco percibido y torreta. */
+      ai: () => Array<{
+        id: string;
+        behavior: string | null;
+        state: string | null;
+        goal: [number, number, number] | null;
+        targetSpeed: number | null;
+        timeToCollision: number | null;
+        blockedSeconds: number;
+        steering: number | null;
+        recovery: string | null;
+        threat: string | null;
+        threatVisible: boolean;
+        threatMemoryAge: number | null;
+        turretYaw: number | null;
+        hull: number;
+      }>;
     };
   }
 }
@@ -86,6 +103,29 @@ export function installVehicleConsole(
       );
       const hull = vehicle.damage.getHull();
       return `${vehicle.id} casco ${Math.round(hull.current)}/${hull.max}`;
+    },
+    ai: () => {
+      const system = getVehicles();
+      return (system?.getVehicles() ?? []).map((vehicle) => {
+        const report = system?.getAiReport(vehicle.id) ?? null;
+        const hull = vehicle.damage.getHull();
+        return {
+          id: vehicle.id,
+          behavior: report?.behavior ?? null,
+          state: report?.state ?? null,
+          goal: report?.goal ?? null,
+          targetSpeed: report?.targetSpeed ?? null,
+          timeToCollision: report?.timeToCollision ?? null,
+          blockedSeconds: report?.blockedSeconds ?? 0,
+          steering: vehicle.getTelemetry().steering,
+          recovery: report?.recovery ?? null,
+          threat: report?.threat ?? null,
+          threatVisible: report?.threatVisible ?? false,
+          threatMemoryAge: report?.threatMemoryAge ?? null,
+          turretYaw: report?.turretYaw ?? null,
+          hull: hull.max > 0 ? hull.current / hull.max : 0,
+        };
+      });
     },
   };
   window.__vehicles = api;

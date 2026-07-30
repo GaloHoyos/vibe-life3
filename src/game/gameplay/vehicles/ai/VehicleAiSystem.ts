@@ -29,6 +29,11 @@ import {
   type VehicleNavigationPlanService,
 } from './VehicleNavigationPlanClient';
 import { VehicleAiBrain, type VehicleAiBrainTuning } from './VehicleAiBrain';
+import {
+  VehicleControlSmoother,
+  type VehicleControlSmootherTuning,
+} from './VehicleControlSmoother';
+import { vehicleAiTuning } from './VehicleAiTuning';
 import { vehicleLaneReservationKey } from './VehicleTrafficCoordinator';
 
 export interface VehicleAiRegistration {
@@ -36,6 +41,7 @@ export interface VehicleAiRegistration {
   preset: VehiclePresetDefinition;
   ai: VehicleAiDefinition;
   tuning?: VehicleAiBrainTuning;
+  smoothing?: VehicleControlSmootherTuning;
 }
 
 export interface VehicleAiUpdate {
@@ -62,6 +68,7 @@ interface VehicleAiRecord {
   profile: VehicleNavigationProfile;
   behavior: VehicleAiDefinition['behavior'];
   brain: VehicleAiBrain;
+  smoother: VehicleControlSmoother;
   goal: { position: VehicleNavPoint; heading: number | null } | null;
   plannedRoute: VehiclePlannedRoute | null;
   restoredPath: VehicleDrivingPath | null;
@@ -109,6 +116,7 @@ export class VehicleAiSystem {
       this.invalidatePendingPlan(record);
       record.pathChangedPending = false;
       record.brain.reset();
+      record.smoother.reset();
     }
     return { hash: result.planner.navigation.hash, cacheHit: result.cacheHit };
   }
@@ -126,6 +134,11 @@ export class VehicleAiSystem {
     if (!registration.ai.enabled) return false;
     const profile = navigationProfileFromPreset(registration.preset);
     if (profile.surface === 'rail') return false;
+    const tuning = vehicleAiTuning(
+      registration.vehicleId,
+      registration.preset,
+      registration.ai,
+    );
     this.vehicles.set(registration.vehicleId, {
       profile,
       behavior: registration.ai.behavior,
@@ -133,8 +146,9 @@ export class VehicleAiSystem {
         registration.vehicleId,
         registration.ai,
         profile,
-        registration.tuning,
+        registration.tuning ?? tuning.brain,
       ),
+      smoother: new VehicleControlSmoother(registration.smoothing ?? tuning.smoother),
       goal: null,
       plannedRoute: null,
       restoredPath: null,
@@ -215,8 +229,42 @@ export class VehicleAiSystem {
     record.restoredPath = null;
     this.invalidatePendingPlan(record);
     record.brain.reset();
+    record.smoother.reset();
     record.lastDecision = null;
     return true;
+  }
+
+  /**
+   * Bookkeeping por frame: adelanta el reloj del cerebro y dice si en este frame
+   * toca decidir. El caller sólo arma el contexto completo (raycasts, lista de
+   * obstáculos, markers) cuando devuelve `true`, que es ~1 de cada 10 frames.
+   *
+   * Devolviendo `true` hay que llamar a `update(id, 0, context)`: el delta ya
+   * quedó acumulado acá.
+   */
+  advance(vehicleId: string, delta: number): boolean {
+    const record = this.vehicles.get(vehicleId);
+    if (!record) return false;
+    const step = Math.max(0, delta);
+    record.planRetrySeconds = Math.max(0, record.planRetrySeconds - step);
+    return record.brain.advance(step);
+  }
+
+  /**
+   * Control suavizado del frame actual, a partir de la última decisión. Sin esto
+   * el volante da escalones a la frecuencia de tick del cerebro.
+   */
+  smoothControl(vehicleId: string, delta: number): VehicleControlCommand | null {
+    const record = this.vehicles.get(vehicleId);
+    const decision = record?.lastDecision;
+    if (!record || !decision) return null;
+    return record.smoother.update(delta, decision.control, {
+      immediate: decision.recovery !== 'none',
+    });
+  }
+
+  getState(vehicleId: string): VehicleBrainDecision['state'] | null {
+    return this.vehicles.get(vehicleId)?.lastDecision?.state ?? null;
   }
 
   update(
@@ -338,6 +386,7 @@ export class VehicleAiSystem {
     this.invalidatePendingPlan(record);
     record.pathChangedPending = false;
     record.brain.reset();
+    record.smoother.reset();
     return true;
   }
 

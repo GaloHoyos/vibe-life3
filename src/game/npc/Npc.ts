@@ -648,6 +648,7 @@ export class Npc implements INpc {
     this.mesh.quaternion.copy(pose.rotation);
     this.position.copy(pose.position);
     this.animation?.setSeated?.(pose.seated, pose.handsOnControls);
+    this.animation?.setLookDirection?.(pose.lookDirection ?? null);
   }
 
   setVehicleApproach(order: NpcVehicleApproachOrder | null): void {

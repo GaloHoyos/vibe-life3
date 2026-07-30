@@ -22,6 +22,55 @@ describe('VehiclePathFollower', () => {
     expect(command.targetSpeed).toBe(12);
   });
 
+  it('llega rodando al final del camino en vez de clavar los frenos', () => {
+    const follower = new VehiclePathFollower(groundProfile, {
+      arrivalDeceleration: 3,
+    });
+    const speeds: number[] = [];
+    for (const z of [0, 10, 16, 19, 19.6]) {
+      follower.reset();
+      speeds.push(
+        follower.update({
+          delta: 0.1,
+          pose: { position: [0, 0, z], heading: 0 },
+          speed: 10,
+          path: { points: [{ position: [0, 0, 20], speedLimit: 20 }] },
+        }).targetSpeed,
+      );
+    }
+    // Lejos manda el límite del tramo; cerca manda la frenada de llegada.
+    expect(speeds[0]).toBe(20);
+    for (let index = 2; index < speeds.length; index += 1) {
+      expect(speeds[index]).toBeLessThan(speeds[index - 1]);
+    }
+    expect(speeds.at(-1) ?? 99).toBeLessThan(1);
+  });
+
+  it('no aplica frenada de llegada en un circuito cerrado', () => {
+    const follower = new VehiclePathFollower(groundProfile, {
+      arrivalDeceleration: 3,
+    });
+    const command = follower.update({
+      delta: 0.1,
+      pose: { position: [0, 0, 19.6], heading: 0 },
+      speed: 10,
+      path: { loop: true, points: [{ position: [0, 0, 20], speedLimit: 20 }] },
+    });
+    expect(command.targetSpeed).toBe(20);
+  });
+
+  it('respeta el tope de velocidad externo del convoy', () => {
+    const follower = new VehiclePathFollower(groundProfile);
+    const command = follower.update({
+      delta: 0.1,
+      pose: { position: [0, 0, 0], heading: 0 },
+      speed: 5,
+      speedLimit: 6,
+      path: { points: [{ position: [0, 0, 40], speedLimit: 20 }] },
+    });
+    expect(command.targetSpeed).toBe(6);
+  });
+
   it('anticipa curvas y reduce velocidad por aceleración lateral', () => {
     const follower = new VehiclePathFollower(groundProfile, {
       maximumLateralAcceleration: 2.5,

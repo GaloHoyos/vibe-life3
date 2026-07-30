@@ -17,6 +17,10 @@ const preset: VehicleMountedWeaponPreset = {
   yawLimit: Math.PI,
   pitchMin: -Math.PI / 4,
   pitchMax: Math.PI / 4,
+  traverseSpeed: 2,
+  firingConeRadians: 0.06,
+  burstSize: 10,
+  burstPauseSeconds: 2,
 };
 
 const ORIGIN = new Vector3(0, 2, 0);

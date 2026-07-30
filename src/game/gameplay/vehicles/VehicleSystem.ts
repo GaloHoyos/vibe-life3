@@ -56,17 +56,28 @@ import {
 } from "./VehicleEntity";
 import { WaterVolumeSystem } from "./water/WaterVolumeSystem";
 import {
+  VehicleAiPerception,
   VehicleAiSystem,
+  VehicleConvoyCoordinator,
+  VehicleGunnerController,
   VehicleReservationManager,
   vehicleNavigationInputFromLevel,
+  vehiclePerceptionConfig,
   type VehicleAiSnapshot,
+  type VehicleAiTarget,
   type VehicleBrainContext,
   type VehicleControlCommand,
   type VehicleDrivingPath,
   type VehicleNavPoint,
   type VehicleObstacleObservation,
+  type VehiclePerceptionSnapshot,
   type VehicleShapeCastObservation,
 } from "./ai";
+import {
+  defaultGunnerProfileId,
+  gunnerProfile,
+} from "@game/config/vehicleAi.config";
+import type { PerceptionTarget } from "@engine/ai/perception/PerceptionSystem";
 
 export interface VehicleSystemSnapshot {
   readonly vehicles: readonly VehicleEntitySnapshot[];
@@ -108,6 +119,21 @@ interface PendingPlayerSeatHandoff {
   readonly seatId: string;
 }
 
+/** Lectura de la IA de un vehículo para debug y verificación en runtime. */
+export interface VehicleAiReport {
+  behavior: VehicleAiBehavior;
+  state: string | null;
+  goal: [number, number, number] | null;
+  targetSpeed: number | null;
+  timeToCollision: number | null;
+  blockedSeconds: number;
+  recovery: string | null;
+  threat: string | null;
+  threatVisible: boolean;
+  threatMemoryAge: number | null;
+  turretYaw: number | null;
+}
+
 const PLAYER_ACTOR = "!player";
 const CAPSULE_HALF_HEIGHT = 0.55;
 const CAPSULE_RADIUS = 0.35;
@@ -144,6 +170,12 @@ const NPC_DRIVE_MODE_ORDER: readonly Exclude<
   VehicleNpcDriveMode,
   "destination"
 >[] = ["hold", "automatic", "patrol"];
+/** Tope de obstáculos que la IA sigue por tick; los más cercanos alcanzan. */
+const MAX_TRACKED_OBSTACLES = 12;
+/** Radio en el que un peatón puede llegar a importarle a un vehículo. */
+const OBSTACLE_RANGE = 40;
+/** Fracción del crucero a la que baja quien pierde una reserva de carril. */
+const YIELD_SPEED_FACTOR = 0.4;
 
 /**
  * Orquestador game-owned de vehículos. Los motores y el fixed-step viven en
@@ -163,6 +195,14 @@ export class VehicleSystem {
   private readonly ai = new VehicleAiSystem();
   private readonly trafficReservations = new VehicleReservationManager();
   private readonly trafficReservationKeys = new Map<string, string>();
+  private readonly convoys = new VehicleConvoyCoordinator();
+  private readonly convoyIds = new Map<string, string>();
+  private readonly perception = new Map<string, VehicleAiPerception>();
+  private readonly perceptionSnapshots = new Map<string, VehiclePerceptionSnapshot>();
+  private readonly gunners = new Map<string, VehicleGunnerController>();
+  private readonly aiTickDelta = new Map<string, number>();
+  private readonly turretAtLimit = new Set<string>();
+  private readonly trafficGranted = new Set<string>();
   private readonly assets = new VehicleAssetRegistry();
   private readonly activeEffects = new Map<
     string,
@@ -270,6 +310,7 @@ export class VehicleSystem {
           preset: vehicle.preset,
           ai: aiDefinition,
         });
+        this.registerVehicleSenses(vehicle, aiDefinition);
         this.npcDriveModes.set(
           vehicle.id,
           definition.ai?.enabled ? "automatic" : "hold",
@@ -283,6 +324,7 @@ export class VehicleSystem {
         vehicle.visual.installModel(lease);
       }),
     );
+    this.buildConvoys();
     this.registerWaypointIo();
     this.registerNavMarkerIo(level);
     this.audio.load([...this.vehicles.values()]);
@@ -420,18 +462,11 @@ export class VehicleSystem {
           : null;
       let attackerId = playerOccupant ? "player" : vehicle.id;
       if (!playerOccupant) {
-        const shot = this.resolveAiShot(vehicle);
+        const shot = this.resolveAiShot(vehicle, delta);
         if (shot) {
           firing = true;
           aimDirection = shot.direction;
           attackerId = shot.attackerId;
-          const localDirection = shot.direction
-            .clone()
-            .applyQuaternion(vehicle.getWorldRotation().invert());
-          vehicle.aimWeapon(
-            Math.atan2(localDirection.x, localDirection.z),
-            Math.asin(MathUtils.clamp(localDirection.y, -1, 1)),
-          );
         }
       }
       vehicle.update(
@@ -442,6 +477,7 @@ export class VehicleSystem {
         attackerId,
       );
       this.audio.update(vehicle, vehicle === this.mountedVehicle);
+      this.updateCrewAttention(vehicle);
       this.syncVehicleOccupants(vehicle);
       this.updateDamageEffects(vehicle);
       this.updateEvacuation(vehicle);
@@ -532,6 +568,27 @@ export class VehicleSystem {
 
   getVehicles(): readonly VehicleEntity[] {
     return [...this.vehicles.values()];
+  }
+
+  /** Estado de IA para la consola de debug y la verificación en runtime. */
+  getAiReport(vehicleId: string): VehicleAiReport | null {
+    const snapshot = this.ai.snapshot(vehicleId);
+    if (!snapshot) return null;
+    const decision = snapshot.lastDecision;
+    const perception = this.perceptionSnapshots.get(vehicleId) ?? null;
+    return {
+      behavior: snapshot.behavior,
+      state: decision?.state ?? null,
+      goal: decision?.goal ? [...decision.goal] : null,
+      targetSpeed: decision?.control.targetSpeed ?? null,
+      timeToCollision: decision?.control.timeToCollision ?? null,
+      blockedSeconds: this.blockedSeconds.get(vehicleId) ?? 0,
+      recovery: decision?.recovery ?? null,
+      threat: perception?.targetId ?? null,
+      threatVisible: perception?.visible ?? false,
+      threatMemoryAge: perception?.hasMemory === true ? perception.memoryAge : null,
+      turretYaw: this.gunners.get(vehicleId)?.getYaw() ?? null,
+    };
   }
 
   /** Identidad estable entre niveles: la usa el carry-over de `changelevel`. */
@@ -662,6 +719,14 @@ export class VehicleSystem {
     this.ai.dispose();
     this.trafficReservations.clear();
     this.trafficReservationKeys.clear();
+    this.trafficGranted.clear();
+    this.convoys.clear();
+    this.convoyIds.clear();
+    this.perception.clear();
+    this.perceptionSnapshots.clear();
+    this.gunners.clear();
+    this.aiTickDelta.clear();
+    this.turretAtLimit.clear();
     this.water.clear();
     this.currentLevel = null;
     this.player = null;
@@ -679,20 +744,79 @@ export class VehicleSystem {
     this.assets.dispose();
   }
 
+  /**
+   * Se llama todos los frames, pero el contexto completo (raycasts, lista de
+   * obstáculos, barridos de markers) sólo se arma cuando el cerebro va a decidir:
+   * a 10 Hz eso es 1 de cada ~6-14 frames. El resto del tiempo sólo se suaviza
+   * la última decisión, que es lo que hace que el volante no dé escalones.
+   */
   private updateAiVehicle(
     vehicle: VehicleEntity,
     delta: number,
   ): VehicleControlInput | null {
     if (!this.ai.hasVehicle(vehicle.id) || !this.currentLevel) return null;
-    const telemetry = vehicle.getTelemetry();
-    const previous = this.ai.controlOutput(vehicle.id);
-    const demandingMotion = (previous?.targetSpeed ?? 0) > 2;
+    const accumulated = (this.aiTickDelta.get(vehicle.id) ?? 0) + delta;
+    this.aiTickDelta.set(vehicle.id, accumulated);
+    this.updateBlockedSeconds(vehicle, delta);
+
+    if (this.ai.advance(vehicle.id, delta)) {
+      this.aiTickDelta.set(vehicle.id, 0);
+      this.tickAiVehicle(vehicle, accumulated);
+    }
+
+    const driverNpc = this.driverActor(vehicle);
+    const command = this.ai.smoothControl(vehicle.id, delta);
+    if (!command || !driverNpc?.isAlive() || !this.trafficGranted.has(vehicle.id)) {
+      return PARKED_CONTROL;
+    }
+    return controlFromAi(command);
+  }
+
+  /**
+   * "Quiere moverse y no se mueve" se mide contra el ESTADO del cerebro, no
+   * contra la velocidad que pidió: la frenada de emergencia deja `targetSpeed`
+   * en cero, así que atarse a ella hacía que un vehículo encajado contra otro
+   * nunca se contara como trabado y jamás intentara desatascarse.
+   */
+  private updateBlockedSeconds(vehicle: VehicleEntity, delta: number): void {
+    const state = this.ai.getState(vehicle.id);
+    const wantsToMove =
+      state === "driving" ||
+      state === "engaging" ||
+      state === "pursuing" ||
+      state === "evading";
     const blockedSeconds =
-      demandingMotion && telemetry.speed < 0.45
+      wantsToMove && vehicle.getTelemetry().speed < 0.45
         ? (this.blockedSeconds.get(vehicle.id) ?? 0) + delta
         : 0;
     this.blockedSeconds.set(vehicle.id, blockedSeconds);
+  }
 
+  private driverActor(vehicle: VehicleEntity): INpc | null {
+    const driver = vehicle
+      .getOccupants()
+      .find((occupant) => isAtTheControls(occupant.role));
+    if (!driver || driver.actor === PLAYER_ACTOR) return null;
+    return this.actors.get(driver.actor) ?? null;
+  }
+
+  private tickAiVehicle(vehicle: VehicleEntity, delta: number): void {
+    const context = this.buildBrainContext(vehicle, delta);
+    if (!context) return;
+    const update = this.ai.update(vehicle.id, 0, context.brain);
+    const decision = update?.decision;
+    if (!decision) return;
+    this.applyAiCrewAction(vehicle, decision.crewAction, context.replacement);
+    this.applyAiRecovery(vehicle, decision.recovery, context.brain);
+    this.applyAiSignals(vehicle, decision.signals);
+  }
+
+  private buildBrainContext(
+    vehicle: VehicleEntity,
+    delta: number,
+  ): { brain: VehicleBrainContext; replacement: VehicleOccupant | null } | null {
+    if (!this.currentLevel) return null;
+    const telemetry = vehicle.getTelemetry();
     const occupants = vehicle.getOccupants();
     const driver = occupants.find(
       (occupant) =>
@@ -733,18 +857,15 @@ export class VehicleSystem {
         this.showMessage("Destino alcanzado.");
       }
     }
-    const forward = new Vector3(0, 0, 1).applyQuaternion(
-      vehicle.getWorldRotation(),
-    );
+    const rotation = vehicle.getWorldRotation();
+    const forward = new Vector3(0, 0, 1).applyQuaternion(rotation);
     const playerPosition = this.player?.getPosition() ?? position;
     const distanceToPlayer = position.distanceTo(playerPosition);
-    const up = new Vector3(0, 1, 0).applyQuaternion(
-      vehicle.getWorldRotation(),
-    );
+    const up = new Vector3(0, 1, 0).applyQuaternion(rotation);
     const target = destination
       ? null
       : this.resolveTarget(vehicle.definition.ai?.goal);
-    const threat = this.findThreatTarget(vehicle);
+    const threat = this.updatePerception(vehicle, delta, position, forward);
     const route = this.authoredDrivingPath(vehicle.definition);
     const markers = this.currentLevel.vehicleNavMarkers ?? [];
     const recoveryMarker = nearestMarker(position, markers, "recovery");
@@ -752,64 +873,19 @@ export class VehicleSystem {
     const aggressiveBehavior =
       this.ai.getBehavior(vehicle.id) === "intercept" ||
       this.ai.getBehavior(vehicle.id) === "flank";
+    const previous = this.ai.controlOutput(vehicle.id);
     const shapeCasts = this.observeForwardObstacles(
       vehicle,
       aggressiveBehavior,
       previous?.reverse ?? false,
     );
-    const occupantIds = new Set(
-      vehicle.getOccupants().map((occupant) => occupant.actor),
-    );
-    const obstacles: VehicleObstacleObservation[] = [
-      ...[...this.vehicles.values()]
-        .filter((other) => other !== vehicle)
-        .map((other) => ({
-          id: other.id,
-          position: tuple(other.getWorldPosition()),
-          velocity: tuple(other.getLinearVelocity()),
-          radius: Math.max(
-            other.preset.navigation.halfWidth,
-            other.preset.navigation.halfLength,
-          ),
-          blocking: true,
-        })),
-    ];
-    if (
-      this.player?.isAlive() &&
-      !this.mountedVehicle &&
-      !occupantIds.has(PLAYER_ACTOR)
-    ) {
-      obstacles.push({
-        id: "player",
-        position: tuple(this.player.getPosition()),
-        velocity: [0, 0, 0],
-        radius: CAPSULE_RADIUS,
-        blocking:
-          !aggressiveBehavior ||
-          !isHostileTo(vehicle.faction, "player"),
-      });
-    }
-    for (const npc of new Set(this.actors.values())) {
-      if (
-        !npc.isAlive() ||
-        npc.isVehicleMounted?.() ||
-        occupantIds.has(npc.id)
-      ) {
-        continue;
-      }
-      obstacles.push({
-        id: npc.id,
-        position: tuple(npc.position),
-        velocity: [0, 0, 0],
-        radius: npc.radius,
-        blocking:
-          !aggressiveBehavior ||
-          !isHostileTo(vehicle.faction, npc.faction),
-      });
-    }
+    const obstacles = this.collectObstacles(vehicle, position, aggressiveBehavior);
     const hull = vehicle.damage.getHull();
     const patrolPoints = this.patrolPoints(vehicle);
-    const context: VehicleBrainContext = {
+    const blockedSeconds = this.blockedSeconds.get(vehicle.id) ?? 0;
+    const blocked = blockedSeconds > 1.1;
+    const speedLimit = this.convoySpeedLimit(vehicle, position, trafficGranted);
+    const brain: VehicleBrainContext = {
       pose: {
         position: tuple(position),
         heading: Math.atan2(forward.x, forward.z),
@@ -826,8 +902,12 @@ export class VehicleSystem {
       ),
       replacementDriverAvailable: Boolean(replacement),
       passengersOnboard: occupants.length > (driver ? 1 : 0),
-      blocked: blockedSeconds > 1.1,
+      blocked,
+      blockedBy: blocked ? this.nearestBlockerId(vehicle, obstacles, position) : null,
       overturned: up.dot(WORLD_UP) < 0.35,
+      weaponRange: vehicle.isWeaponEnabled() ? vehicle.preset.weapon?.range ?? 0 : 0,
+      turretAtTraverseLimit: this.turretAtLimit.has(vehicle.id),
+      ...(speedLimit !== null ? { externalSpeedLimit: speedLimit } : {}),
       ...(route ? { route } : {}),
       ...(target ? { authoredGoal: target.position } : {}),
       ...(patrolPoints.length > 0
@@ -844,14 +924,7 @@ export class VehicleSystem {
             },
           }
         : {}),
-      ...(threat
-        ? {
-            threat: {
-              id: threat.id,
-              position: tuple(threat.position),
-            },
-          }
-        : {}),
+      ...(threat ? { threat } : {}),
       ...(recoveryMarker
         ? {
             retreatPoint: recoveryMarker.position,
@@ -862,17 +935,103 @@ export class VehicleSystem {
       obstacles,
       ...(shapeCasts.length > 0 ? { shapeCasts } : {}),
     };
-    const update = this.ai.update(vehicle.id, delta, context);
-    const decision = update?.decision;
-    if (decision) {
-      this.applyAiCrewAction(vehicle, decision.crewAction, replacement ?? null);
-      this.applyAiRecovery(vehicle, decision.recovery, context);
+    return { brain, replacement: replacement ?? null };
+  }
+
+  /**
+   * Sólo los obstáculos que pueden importar: los más cercanos alcanzan para el
+   * corredor de esquive y el TTC, y así no se recorre el nivel entero por
+   * vehículo y por tick.
+   */
+  private collectObstacles(
+    vehicle: VehicleEntity,
+    position: Vector3,
+    aggressiveBehavior: boolean,
+  ): VehicleObstacleObservation[] {
+    const occupantIds = new Set(
+      vehicle.getOccupants().map((occupant) => occupant.actor),
+    );
+    const scored: { observation: VehicleObstacleObservation; distanceSq: number }[] = [];
+    for (const other of this.vehicles.values()) {
+      if (other === vehicle) continue;
+      const otherPosition = other.getWorldPosition();
+      scored.push({
+        distanceSq: otherPosition.distanceToSquared(position),
+        observation: {
+          id: other.id,
+          position: tuple(otherPosition),
+          velocity: tuple(other.getLinearVelocity()),
+          radius: Math.max(
+            other.preset.navigation.halfWidth,
+            other.preset.navigation.halfLength,
+          ),
+          blocking: true,
+        },
+      });
     }
-    const command = decision?.control ?? this.ai.controlOutput(vehicle.id);
-    if (!command || !driverNpc?.isAlive() || !trafficGranted) {
-      return PARKED_CONTROL;
+    if (
+      this.player?.isAlive() &&
+      !this.mountedVehicle &&
+      !occupantIds.has(PLAYER_ACTOR)
+    ) {
+      const playerPosition = this.player.getPosition();
+      scored.push({
+        distanceSq: playerPosition.distanceToSquared(position),
+        observation: {
+          id: "player",
+          position: tuple(playerPosition),
+          // Peatones sin velocidad: subestimar el cierre hace que la IA frene
+          // antes, que es el lado seguro del error.
+          velocity: [0, 0, 0],
+          radius: CAPSULE_RADIUS,
+          blocking:
+            !aggressiveBehavior || !isHostileTo(vehicle.faction, "player"),
+        },
+      });
     }
-    return controlFromAi(command);
+    for (const npc of new Set(this.actors.values())) {
+      if (!npc.isAlive() || npc.isVehicleMounted?.() || occupantIds.has(npc.id)) {
+        continue;
+      }
+      const distanceSq = npc.position.distanceToSquared(position);
+      if (distanceSq > OBSTACLE_RANGE * OBSTACLE_RANGE) continue;
+      scored.push({
+        distanceSq,
+        observation: {
+          id: npc.id,
+          position: tuple(npc.position),
+          velocity: [0, 0, 0],
+          radius: npc.radius,
+          blocking:
+            !aggressiveBehavior || !isHostileTo(vehicle.faction, npc.faction),
+        },
+      });
+    }
+    return scored
+      .sort((a, b) => a.distanceSq - b.distanceSq)
+      .slice(0, MAX_TRACKED_OBSTACLES)
+      .map((entry) => entry.observation);
+  }
+
+  private nearestBlockerId(
+    vehicle: VehicleEntity,
+    obstacles: readonly VehicleObstacleObservation[],
+    position: Vector3,
+  ): string | null {
+    const forward = new Vector3(0, 0, 1).applyQuaternion(vehicle.getWorldRotation());
+    let best: { id: string; distance: number } | null = null;
+    for (const obstacle of obstacles) {
+      const dx = obstacle.position[0] - position.x;
+      const dz = obstacle.position[2] - position.z;
+      const longitudinal = dx * forward.x + dz * forward.z;
+      if (longitudinal <= 0 || longitudinal > 12) continue;
+      const lateral = Math.abs(dx * forward.z - dz * forward.x);
+      if (lateral > vehicle.preset.navigation.halfWidth + obstacle.radius) continue;
+      if (!best || longitudinal < best.distance) {
+        best = { id: obstacle.id, distance: longitudinal };
+      }
+    }
+    return best?.id ?? null;
   }
 
   private resolveInitialAiGoals(level: LevelDefinition): void {
@@ -1150,15 +1309,191 @@ export class VehicleSystem {
       this.trafficReservations.release(previous, vehicle.id, this.elapsed);
       this.trafficReservationKeys.delete(vehicle.id);
     }
-    if (!resourceId) return true;
-    this.trafficReservationKeys.set(vehicle.id, resourceId);
-    return this.trafficReservations.request({
-      resourceId,
+    const granted = !resourceId ||
+      this.trafficReservations.request({
+        resourceId,
+        vehicleId: vehicle.id,
+        now: this.elapsed,
+        leaseSeconds: 1.25,
+        priority: vehicle.getPlayerOccupant() ? 10 : 0,
+        ...(this.convoyIds.has(vehicle.id)
+          ? { convoyId: this.convoyIds.get(vehicle.id) as string }
+          : {}),
+      }).granted;
+    if (resourceId) this.trafficReservationKeys.set(vehicle.id, resourceId);
+    // El perdedor de una intersección ya no frena en seco: cede el paso rodando.
+    if (granted) this.trafficGranted.add(vehicle.id);
+    else this.trafficGranted.delete(vehicle.id);
+    return granted;
+  }
+
+  private registerVehicleSenses(
+    vehicle: VehicleEntity,
+    ai: VehicleAiDefinition,
+  ): void {
+    this.perception.set(
+      vehicle.id,
+      new VehicleAiPerception(
+        vehicle.id,
+        vehiclePerceptionConfig(vehicle.preset),
+        // La propia tripulación no tapa la línea de visión: sus colliders siguen
+        // en el mundo aunque el motor esté suspendido.
+        (metadata) => {
+          const owner = metadata?.ownerId ?? metadata?.id;
+          return !owner || !vehicle.getOccupant(owner);
+        },
+      ),
+    );
+    const weapon = vehicle.preset.weapon;
+    if (weapon) {
+      this.gunners.set(
+        vehicle.id,
+        new VehicleGunnerController(
+          weapon,
+          gunnerProfile(ai.gunnerProfile ?? defaultGunnerProfileId(vehicle.preset.id)),
+        ),
+      );
+    }
+    if (ai.convoyId) this.convoyIds.set(vehicle.id, ai.convoyId);
+  }
+
+  /**
+   * El orden de miembros define el líder, así que los convoyes se arman recién
+   * cuando ya están todos los vehículos del nivel cargados.
+   */
+  private buildConvoys(): void {
+    const members = new Map<string, string[]>();
+    for (const [vehicleId, convoyId] of this.convoyIds) {
+      const list = members.get(convoyId) ?? [];
+      list.push(vehicleId);
+      members.set(convoyId, list);
+    }
+    for (const [convoyId, list] of members) {
+      this.convoys.setConvoy(convoyId, list);
+    }
+  }
+
+  /**
+   * Percepción del vehículo: LOS real, cono y memoria del último-visto. Antes la
+   * torreta elegía al hostil más cercano del nivel atravesando paredes.
+   */
+  private updatePerception(
+    vehicle: VehicleEntity,
+    delta: number,
+    position: Vector3,
+    forward: Vector3,
+  ): VehicleAiTarget | null {
+    const perception = this.perception.get(vehicle.id);
+    if (!perception) return null;
+    // Un vehículo vacío no percibe: sin tripulación no hay quien mire ni quien
+    // dispare, y cada percepción cuesta raycasts.
+    if (!this.hasLivingCrew(vehicle)) {
+      this.perceptionSnapshots.delete(vehicle.id);
+      perception.reset();
+      return null;
+    }
+    const snapshot = perception.update(
+      delta,
+      position,
+      forward,
+      this.threatCandidates(vehicle),
+      this.solidRaycast,
+    );
+    this.perceptionSnapshots.set(vehicle.id, snapshot);
+    return perception.toBrainTarget(snapshot);
+  }
+
+  private hasLivingCrew(vehicle: VehicleEntity): boolean {
+    return vehicle.getOccupants().some(
+      (occupant) =>
+        occupant.actor !== PLAYER_ACTOR &&
+        this.actors.get(occupant.actor)?.isAlive() === true,
+    );
+  }
+
+  private threatCandidates(vehicle: VehicleEntity): PerceptionTarget[] {
+    const candidates: PerceptionTarget[] = [];
+    if (
+      this.player?.isAlive() &&
+      !vehicle.getPlayerOccupant() &&
+      isHostileTo(vehicle.faction, "player")
+    ) {
+      candidates.push({
+        id: "player",
+        position: this.player.getPosition(),
+        isAlive: true,
+      });
+    }
+    for (const npc of new Set(this.actors.values())) {
+      if (!isHostileTo(vehicle.faction, npc.faction) || vehicle.getOccupant(npc.id)) {
+        continue;
+      }
+      candidates.push({
+        id: npc.id,
+        position: npc.position,
+        isAlive: npc.isAlive(),
+      });
+    }
+    return candidates;
+  }
+
+  /**
+   * Tope de velocidad externo: separación de convoy y cesión del paso. Devuelve
+   * `null` cuando nada limita al vehículo.
+   */
+  private convoySpeedLimit(
+    vehicle: VehicleEntity,
+    position: Vector3,
+    trafficGranted: boolean,
+  ): number | null {
+    const cruise = vehicleTopSpeed(vehicle.preset);
+    const yielding = trafficGranted ? null : cruise * YIELD_SPEED_FACTOR;
+    if (!this.convoyIds.has(vehicle.id)) return yielding;
+    const forward = new Vector3(0, 0, 1).applyQuaternion(vehicle.getWorldRotation());
+    this.convoys.updateMember({
       vehicleId: vehicle.id,
-      now: this.elapsed,
-      leaseSeconds: 1.25,
-      priority: vehicle.getPlayerOccupant() ? 10 : 0,
-    }).granted;
+      pose: {
+        position: tuple(position),
+        heading: Math.atan2(forward.x, forward.z),
+      },
+      speed: vehicle.getTelemetry().speed,
+    });
+    const guidance = this.convoys.guidance(vehicle.id, cruise);
+    if (!guidance) return yielding;
+    return yielding === null
+      ? guidance.targetSpeed
+      : Math.min(guidance.targetSpeed, yielding);
+  }
+
+  /**
+   * Lo que mira la tripulación: el blanco si hay uno a la vista, y si no el
+   * conductor acompaña el volante. Es la diferencia entre pasajeros vivos y
+   * maniquíes sentados.
+   */
+  private updateCrewAttention(vehicle: VehicleEntity): void {
+    const snapshot = this.perceptionSnapshots.get(vehicle.id);
+    this.crewVisuals.setAttention(
+      vehicle.id,
+      snapshot?.visible === true ? snapshot.position : null,
+    );
+    this.crewVisuals.setSteering(vehicle.id, vehicle.getTelemetry().steering);
+  }
+
+  private applyAiSignals(
+    vehicle: VehicleEntity,
+    signals: { horn: boolean; headlights: boolean | null },
+  ): void {
+    if (signals.horn) {
+      this.audio.horn(vehicle);
+      this.eventBus.emit("world.noise", {
+        kind: "movement",
+        position: vehicle.getWorldPosition(),
+        radius: 24,
+        sourceId: vehicle.id,
+        sourceFaction: vehicle.faction,
+      });
+    }
+    if (signals.headlights !== null) vehicle.setLights(signals.headlights);
   }
 
   private applyAiCrewAction(
@@ -1216,66 +1551,61 @@ export class VehicleSystem {
     }
   }
 
+  /**
+   * Artillero IA: la torreta gira a velocidad limitada hacia el último-visto y
+   * sólo dispara con el cañón alineado y el blanco a la vista, en ráfagas con
+   * pausa. El disparo sale de la dirección REAL del cañón con su dispersión, no
+   * de una línea perfecta al blanco.
+   */
   private resolveAiShot(
     vehicle: VehicleEntity,
+    delta: number,
   ): { direction: Vector3; attackerId: string } | null {
-    if (!vehicle.weapon || !vehicle.isWeaponEnabled()) return null;
+    const controller = this.gunners.get(vehicle.id);
+    if (!controller || !vehicle.weapon) return null;
     const gunner = vehicle.getOccupants().find(
       (occupant) =>
         vehicle.canSeatUseWeapon(occupant.seatId) &&
         occupant.actor !== PLAYER_ACTOR &&
         this.actors.get(occupant.actor)?.isAlive(),
     );
-    if (!gunner) return null;
-    const threat = this.findThreatTarget(vehicle);
-    if (!threat) return null;
+    const snapshot = this.perceptionSnapshots.get(vehicle.id);
+    const rotation = vehicle.getWorldRotation();
+    const inverseRotation = rotation.clone().invert();
     const muzzle = vehicle.getMuzzleWorldPosition();
-    const direction = threat.position
-      .clone()
-      .addScaledVector(WORLD_UP, 0.9)
-      .sub(muzzle);
-    const maxRange = vehicle.preset.weapon?.range ?? 0;
-    if (direction.lengthSq() > maxRange * maxRange) return null;
-    return { direction: direction.normalize(), attackerId: gunner.actor };
-  }
-
-  private findThreatTarget(
-    vehicle: VehicleEntity,
-  ): { id: string; position: Vector3 } | null {
-    const origin = vehicle.getWorldPosition();
-    let best: { id: string; position: Vector3; distanceSq: number } | null =
-      null;
-    if (
-      this.player?.isAlive() &&
-      !vehicle.getPlayerOccupant() &&
-      isHostileTo(vehicle.faction, "player")
-    ) {
-      const position = this.player.getPosition().clone();
-      best = {
-        id: "player",
-        position,
-        distanceSq: position.distanceToSquared(origin),
-      };
-    }
-    const uniqueActors = new Set(this.actors.values());
-    for (const npc of uniqueActors) {
-      if (
-        !npc.isAlive() ||
-        !isHostileTo(vehicle.faction, npc.faction) ||
-        vehicle.getOccupant(npc.id)
-      ) {
-        continue;
-      }
-      const distanceSq = npc.position.distanceToSquared(origin);
-      if (!best || distanceSq < best.distanceSq) {
-        best = {
-          id: npc.id,
-          position: npc.position.clone(),
-          distanceSq,
-        };
+    let targetLocalDirection: Vector3 | null = null;
+    let distance = Infinity;
+    if (gunner && snapshot?.position) {
+      const toTarget = snapshot.position
+        .clone()
+        .addScaledVector(WORLD_UP, 0.9)
+        .sub(muzzle);
+      distance = toTarget.length();
+      if (distance > 1e-3) {
+        targetLocalDirection = toTarget
+          .divideScalar(distance)
+          .applyQuaternion(inverseRotation);
       }
     }
-    return best ? { id: best.id, position: best.position } : null;
+    const output = controller.update({
+      delta,
+      targetLocalDirection,
+      visible: snapshot?.visible === true,
+      distance,
+      ready: Boolean(
+        gunner &&
+          vehicle.isWeaponEnabled() &&
+          vehicle.damage.getZoneFraction("weapon") > 0,
+      ),
+    });
+    if (output.atTraverseLimit) this.turretAtLimit.add(vehicle.id);
+    else this.turretAtLimit.delete(vehicle.id);
+    vehicle.aimWeapon(output.yaw, output.pitch);
+    if (!output.fireLocalDirection || !gunner) return null;
+    return {
+      direction: output.fireLocalDirection.applyQuaternion(rotation).normalize(),
+      attackerId: gunner.actor,
+    };
   }
 
   private readPlayerControl(

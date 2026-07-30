@@ -41,7 +41,11 @@ const tmpPosition = new Vector3();
 const tmpRotation = new Quaternion();
 const tmpUpright = new Quaternion();
 const tmpForward = new Vector3();
+const tmpLook = new Vector3();
+const tmpInverse = new Quaternion();
 const WORLD_UP = new Vector3(0, 1, 0);
+/** Cuánto acompaña la cabeza del conductor al volante. */
+const DRIVER_LOOK_STEER = 0.7;
 
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t);
@@ -67,6 +71,28 @@ function uprightFrom(source: Quaternion, out: Quaternion): Quaternion {
  */
 export class VehicleCrewVisuals {
   private readonly crew = new Map<string, CrewVisual>();
+  private readonly attention = new Map<string, Vector3>();
+  private readonly steering = new Map<string, number>();
+
+  /**
+   * Punto que mira la tripulación de un vehículo: el blanco de la torreta. Sin
+   * esto los ocupantes van sentados de frente como maniquíes aunque el cañón
+   * esté siguiendo a alguien.
+   */
+  setAttention(vehicleId: string, point: Vector3 | null): void {
+    if (!point) {
+      this.attention.delete(vehicleId);
+      return;
+    }
+    const stored = this.attention.get(vehicleId);
+    if (stored) stored.copy(point);
+    else this.attention.set(vehicleId, point.clone());
+  }
+
+  /** Dirección normalizada del volante, para que el conductor mire la curva. */
+  setSteering(vehicleId: string, steering: number): void {
+    this.steering.set(vehicleId, steering);
+  }
 
   /**
    * `snap` sienta al NPC sin transición: lo usa la tripulación autorada del
@@ -205,6 +231,32 @@ export class VehicleCrewVisuals {
 
   clear(): void {
     this.crew.clear();
+    this.attention.clear();
+    this.steering.clear();
+  }
+
+  /**
+   * Dirección de mirada en espacio LOCAL del asiento, que es lo que consume
+   * `LookAtLayer` para el offset del cuello. El artillero mira al blanco; el
+   * conductor acompaña el volante.
+   */
+  private lookDirection(
+    entry: CrewVisual,
+    seatPosition: Vector3,
+    seatRotation: Quaternion,
+  ): Vector3 | undefined {
+    const attention = this.attention.get(entry.vehicle.id);
+    if (attention) {
+      tmpLook.copy(attention).sub(seatPosition);
+      if (tmpLook.lengthSq() < 1e-4) return undefined;
+      tmpInverse.copy(seatRotation).invert();
+      return tmpLook.normalize().applyQuaternion(tmpInverse);
+    }
+    if (!entry.handsOnControls) return undefined;
+    const steering = this.steering.get(entry.vehicle.id) ?? 0;
+    if (Math.abs(steering) < 0.05) return undefined;
+    // `steering` positivo dobla a la izquierda (+X en este proyecto).
+    return tmpLook.set(steering * DRIVER_LOOK_STEER, 0, 1).normalize();
   }
 
   private applyPose(entry: CrewVisual): void {
@@ -218,6 +270,7 @@ export class VehicleCrewVisuals {
         rotation: tmpSeatRotation,
         seated: 1,
         handsOnControls: entry.handsOnControls,
+        lookDirection: this.lookDirection(entry, tmpSeatPosition, tmpSeatRotation),
       });
       return;
     }

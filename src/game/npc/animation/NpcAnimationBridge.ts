@@ -55,6 +55,8 @@ export class NpcAnimationBridge implements NpcAnimator {
   private targetSeated = 0;
   private currentSeated = 0;
   private seatedControls = 0;
+  /** Mirada impuesta desde afuera (asiento de vehículo), en espacio local. */
+  private lookOverride: Vector3 | null = null;
   private activity: AnimationActivity = "none";
   private aimActive = false;
   private weaponPose: WeaponHandedness = "none";
@@ -172,6 +174,16 @@ export class NpcAnimationBridge implements NpcAnimator {
     this.targetSeated = Math.max(0, Math.min(1, amount));
     this.currentSeated = this.targetSeated;
     this.seatedControls = handsOnControls ? 1 : 0;
+  }
+
+  setLookDirection(direction: Vector3 | null): void {
+    if (this.disposed) return;
+    if (!direction) {
+      this.lookOverride = null;
+      return;
+    }
+    this.lookOverride ??= new Vector3();
+    this.lookOverride.copy(direction);
   }
 
   /**
@@ -328,6 +340,7 @@ export class NpcAnimationBridge implements NpcAnimator {
       },
       activity: "none",
       events: { shotJustFired: false },
+      ...(this.lookOverride ? { lookDirection: this.lookOverride } : {}),
       isDead: !!opts.dead || this.isDead,
       desiredDirection: new Vector3(),
     };

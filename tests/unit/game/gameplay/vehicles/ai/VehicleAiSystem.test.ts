@@ -142,6 +142,63 @@ describe('VehicleAiSystem', () => {
   });
 });
 
+describe('VehicleAiSystem por frame', () => {
+  it('sólo pide contexto en los frames de decisión y suaviza el resto', async () => {
+    const system = new VehicleAiSystem(new MemoryVehicleNavigationCache());
+    await system.load(navigationInput());
+    system.registerVehicle({
+      vehicleId: 'buggy-ai',
+      preset: VehiclePresets.buggy,
+      ai: { enabled: true, behavior: 'patrol' },
+      smoothing: {
+        steeringRate: 1,
+        throttleRate: 1,
+        brakeRate: 2,
+        reactionSeconds: 0,
+      },
+    });
+    system.setGoal('buggy-ai', [18, 0, 18]);
+
+    // A 10 Hz con frames de 1/60 s, de 60 frames deciden ~10.
+    let ticks = 0;
+    for (let frame = 0; frame < 60; frame += 1) {
+      if (system.advance('buggy-ai', 1 / 60)) {
+        ticks += 1;
+        system.update('buggy-ai', 0, brainContext());
+      }
+      // El suavizado corre todos los frames, decida o no el cerebro.
+      expect(system.smoothControl('buggy-ai', 1 / 60)).not.toBeNull();
+    }
+    expect(ticks).toBeGreaterThanOrEqual(9);
+    expect(ticks).toBeLessThanOrEqual(11);
+  });
+
+  it('baja la frecuencia de decisión con la distancia al jugador', async () => {
+    const system = new VehicleAiSystem(new MemoryVehicleNavigationCache());
+    await system.load(navigationInput());
+    system.registerVehicle({
+      vehicleId: 'far-ai',
+      preset: VehiclePresets.buggy,
+      ai: { enabled: true, behavior: 'patrol' },
+    });
+    const count = (distanceToPlayer: number): number => {
+      let ticks = 0;
+      for (let frame = 0; frame < 120; frame += 1) {
+        if (system.advance('far-ai', 1 / 60)) {
+          ticks += 1;
+          system.update('far-ai', 0, { ...brainContext(), distanceToPlayer });
+        }
+      }
+      return ticks;
+    };
+    const near = count(20);
+    const far = count(150);
+    const dormant = count(400);
+    expect(far).toBeLessThan(near);
+    expect(dormant).toBeLessThan(far);
+  });
+});
+
 function brainContext(): VehicleBrainContext {
   return {
     pose: { position: [3.5, 0, 3.5], heading: Math.PI / 4 },

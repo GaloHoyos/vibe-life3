@@ -22,6 +22,10 @@ import type {
   VehicleCrewRole,
   VehiclePresetId,
 } from '@game/config/vehicles.config';
+import type {
+  VehicleDriverProfileId,
+  VehicleGunnerProfileId,
+} from '@game/config/vehicleAi.config';
 import type { LandmarkReference } from '@game/levels/LevelTransition';
 
 /** Rotacion Euler XYZ en radianes. Omitida = alineado a los ejes. */
@@ -137,6 +141,17 @@ export interface VehicleAiDefinition {
   /** Targetname de marker, actor o vehículo según el comportamiento. */
   goal?: string;
   allowRecoverySnap?: boolean;
+  /** Estilo de conducción. Default según el preset. */
+  driverProfile?: VehicleDriverProfileId;
+  /** Disciplina de tiro de la tripulación. Default según el preset. */
+  gunnerProfile?: VehicleGunnerProfileId;
+  /**
+   * Si puede abandonar temporalmente su `behavior` para pelear o huir. Default
+   * según el comportamiento: los ofensivos sí, los de logística no.
+   */
+  allowMissionDeviation?: boolean;
+  /** Vehículos que comparten `convoyId` mantienen separación entre sí. */
+  convoyId?: string;
 }
 
 export const VEHICLE_ACCESS_POLICIES = [

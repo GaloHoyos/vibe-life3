@@ -177,6 +177,8 @@ export interface VehicleFollowerInput {
   path: VehicleDrivingPath;
   obstacles?: readonly VehicleObstacleObservation[];
   shapeCasts?: readonly VehicleShapeCastObservation[];
+  /** Tope externo (convoy, ceder el paso) por encima del límite del path. */
+  speedLimit?: number;
 }
 
 export interface VehicleControlCommand {
@@ -202,7 +204,26 @@ export interface VehicleAiTarget {
   position: VehicleNavPoint;
   velocity?: VehicleNavPoint;
   heading?: number;
+  /** LOS confirmada ahora mismo. Sin esto la posición es un último-visto. */
+  visible?: boolean;
+  /** Segundos desde la última vez que se lo vio. */
+  memoryAge?: number;
 }
+
+/**
+ * Estado runtime, ortogonal al `behavior` autorado: el comportamiento es la
+ * misión y el estado es lo que el vehículo está haciendo ahora, que puede
+ * apartarse de la misión y después retomarla.
+ */
+export type VehicleAiState =
+  | 'idle'
+  | 'driving'
+  | 'engaging'
+  | 'pursuing'
+  | 'searching'
+  | 'evading'
+  | 'recovering'
+  | 'stopped';
 
 export interface VehicleBrainContext {
   pose: VehiclePose2D;
@@ -215,6 +236,8 @@ export interface VehicleBrainContext {
   replacementDriverAvailable?: boolean;
   passengersOnboard?: boolean;
   blocked: boolean;
+  /** Id de quien bloquea el paso, para decidir si vale la pena tocar bocina. */
+  blockedBy?: string | null;
   overturned: boolean;
   route?: VehicleDrivingPath;
   authoredGoal?: VehicleNavPoint;
@@ -226,6 +249,19 @@ export interface VehicleBrainContext {
   recoveryMarker?: VehicleNavMarkerDefinition;
   obstacles?: readonly VehicleObstacleObservation[];
   shapeCasts?: readonly VehicleShapeCastObservation[];
+  /** Alcance del arma montada; 0 si el vehículo va desarmado. */
+  weaponRange?: number;
+  /** La torreta se quedó sin recorrido: conviene reposicionar el casco. */
+  turretAtTraverseLimit?: boolean;
+  /** Tope de velocidad impuesto por convoy o por ceder el paso. */
+  externalSpeedLimit?: number;
+}
+
+/** Señales no-motrices que el conductor puede accionar. */
+export interface VehicleAiSignals {
+  horn: boolean;
+  /** `null` deja las luces como estén. */
+  headlights: boolean | null;
 }
 
 export type VehicleRecoveryAction =
@@ -247,11 +283,13 @@ export type VehicleCrewAiAction =
 export interface VehicleBrainDecision {
   tickInterval: number;
   behavior: VehicleAiBehavior;
+  state: VehicleAiState;
   goal: VehicleNavPoint | null;
   requestPlan: boolean;
   control: VehicleControlCommand;
   recovery: VehicleRecoveryAction;
   crewAction: VehicleCrewAiAction;
+  signals: VehicleAiSignals;
 }
 
 export function navigationProfileFromPreset(

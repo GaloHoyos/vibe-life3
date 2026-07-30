@@ -148,6 +148,18 @@ export interface VehicleMountedWeaponPreset {
   yawLimit: number;
   pitchMin: number;
   pitchMax: number;
+  /**
+   * Velocidad de giro de la torreta en rad/s. No hay rango mínimo autorado: un
+   * blanco demasiado cerca y abajo cae fuera de `pitchMin` y la zona muerta sale
+   * sola de los límites de recorrido, como el `m_bInFiringCone` del APC de HL2.
+   */
+  traverseSpeed: number;
+  /** Error de puntería máximo con el que el artillero se permite disparar. */
+  firingConeRadians: number;
+  /** Disparos por ráfaga antes de la pausa. */
+  burstSize: number;
+  /** Pausa entre ráfagas. */
+  burstPauseSeconds: number;
 }
 
 export interface VehiclePresetDefinition {
@@ -274,6 +286,10 @@ export const VehiclePresets = {
       yawLimit: 1.25,
       pitchMin: -0.45,
       pitchMax: 0.65,
+      traverseSpeed: 1.5,
+      firingConeRadians: 0.055,
+      burstSize: 4,
+      burstPauseSeconds: 1.8,
     },
     navigation: {
       surface: 'ground',
@@ -351,6 +367,10 @@ export const VehiclePresets = {
       yawLimit: 1.05,
       pitchMin: -0.35,
       pitchMax: 0.55,
+      traverseSpeed: 1.9,
+      firingConeRadians: 0.07,
+      burstSize: 12,
+      burstPauseSeconds: 1.4,
     },
     navigation: {
       surface: 'water',
@@ -443,6 +463,11 @@ export const VehiclePresets = {
       yawLimit: 1.4,
       pitchMin: -0.75,
       pitchMax: 0.55,
+      // Calcado del APC de HL2: 10 tiros a ~0.075 s y 2 s de pausa.
+      traverseSpeed: 2.2,
+      firingConeRadians: 0.06,
+      burstSize: 10,
+      burstPauseSeconds: 2,
     },
     navigation: {
       surface: 'rail',
