@@ -13,7 +13,7 @@ import {
   type VehicleControlInput,
 } from "@engine/physics/vehicle";
 import { VehicleAssetRegistry } from "@game/assets/vehicles/VehicleAssetRegistry";
-import { vehicleTopSpeed } from "@game/config/vehicles.config";
+import { isAtTheControls, vehicleTopSpeed } from "@game/config/vehicles.config";
 import type { GameEventBus } from "@game/GameEvents";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { Player } from "@game/gameplay/player/Player";
@@ -35,6 +35,7 @@ import type {
 import type { InteractSystem } from "@game/gameplay/interactions";
 import { VehicleAudioSystem } from "./VehicleAudioSystem";
 import { VehicleCameraRig } from "./VehicleCameraRig";
+import { VehicleCrewVisuals } from "./VehicleCrewVisuals";
 import {
   VehicleEntity,
   type VehicleEntitySnapshot,
@@ -101,6 +102,7 @@ export class VehicleSystem {
   private readonly authoredCrew = new Map<string, readonly VehicleCrewAssignment[]>();
   private readonly waypointDefinitions = new Map<string, VehicleWaypointDefinition>();
   private readonly cameraRig = new VehicleCameraRig();
+  private readonly crewVisuals = new VehicleCrewVisuals();
   private readonly ai = new VehicleAiSystem();
   private readonly assets = new VehicleAssetRegistry();
   private readonly activeEffects = new Map<
@@ -237,9 +239,7 @@ export class VehicleSystem {
 
       // El piloto de un vehículo sobre riel también manda: el trazado define
       // el recorrido, pero la velocidad y el corredor lateral son suyos.
-      const atTheControls =
-        this.mountedOccupant.role === "driver" ||
-        this.mountedOccupant.role === "pilot";
+      const atTheControls = isAtTheControls(this.mountedOccupant.role);
       if (acceptPlayerInput && atTheControls) {
         vehicle.setControl(this.readPlayerControl(vehicle, delta));
       } else if (!vehicle.isOnRails()) {
@@ -350,6 +350,9 @@ export class VehicleSystem {
       this.syncVehicleOccupants(vehicle);
       this.updateDamageEffects(vehicle);
     }
+    // Después del `syncVisual` de todos: la pose sentada lee los anchors ya
+    // interpolados de este frame.
+    this.crewVisuals.update(delta);
 
     if (this.mountedVehicle && this.mountedOccupant) {
       const anchor = this.mountedVehicle.getCameraAnchor(
@@ -462,6 +465,7 @@ export class VehicleSystem {
       effect.fire.dispose();
     }
     this.activeEffects.clear();
+    this.crewVisuals.clear();
     this.actors.clear();
     this.authoredCrew.clear();
     this.waypointDefinitions.clear();
@@ -729,7 +733,10 @@ export class VehicleSystem {
     replacement: VehicleOccupant | null,
   ): void {
     if (action === "replaceDriver" && replacement) {
-      vehicle.moveOccupantToRole(replacement.actor, "driver");
+      const moved = vehicle.moveOccupantToRole(replacement.actor, "driver");
+      if (moved) {
+        this.crewVisuals.moveToSeat(moved.actor, moved.seatId, moved.role);
+      }
       return;
     }
     if (
@@ -738,7 +745,7 @@ export class VehicleSystem {
     ) {
       for (const occupant of [...vehicle.getOccupants()]) {
         if (occupant.role === "driver" || occupant.role === "pilot") continue;
-        this.detachActor(vehicle, occupant.actor);
+        this.ejectActor(vehicle, occupant.actor);
       }
     }
   }
@@ -901,6 +908,7 @@ export class VehicleSystem {
     this.player.mountVehicle(vehicle.id);
     this.player.syncMountedPose(seat);
     this.cameraRig.begin(anchor, vehicle.preset.camera, this.camera);
+    this.startEngineForOccupant(vehicle, occupant, !authored);
     this.eventBus.emit("vehicle.player.entered", {
       id: vehicle.id,
       name: vehicle.name,
@@ -983,6 +991,20 @@ export class VehicleSystem {
     this.mountedOccupant = null;
   }
 
+  /**
+   * El jugador toma los mandos: el motor arranca solo. `notify` avisa cuando el
+   * vehículo no puede encender — si no, el HUD dice "OFF" sin explicar por qué.
+   */
+  private startEngineForOccupant(
+    vehicle: VehicleEntity,
+    occupant: VehicleOccupant,
+    notify: boolean,
+  ): void {
+    if (!isAtTheControls(occupant.role) || vehicle.isEngineOn()) return;
+    if (vehicle.tryStartEngine()) return;
+    if (notify) this.showMessage("El motor no arranca.");
+  }
+
   private movePlayerToNextSeat(): void {
     const vehicle = this.mountedVehicle;
     if (!vehicle) return;
@@ -994,6 +1016,7 @@ export class VehicleSystem {
     this.mountedOccupant = occupant;
     this.player?.syncMountedPose(seat);
     this.cameraRig.begin(anchor, vehicle.preset.camera, this.camera);
+    this.startEngineForOccupant(vehicle, occupant, true);
     this.eventBus.emit("vehicle.player.entered", {
       id: vehicle.id,
       name: vehicle.name,
@@ -1066,25 +1089,41 @@ export class VehicleSystem {
     this.suspendRuntimeCrew(vehicle);
   }
 
+  /**
+   * Tripulación que ya arranca a bordo (crew autorada, restore de un save):
+   * se sienta sin transición para no verla trepando durante la carga.
+   */
   private suspendRuntimeCrew(vehicle: VehicleEntity): void {
     for (const occupant of vehicle.getOccupants()) {
       if (occupant.actor === PLAYER_ACTOR) continue;
-      this.actors.get(occupant.actor)?.setVehicleMounted?.(true);
+      const npc = this.actors.get(occupant.actor);
+      if (!npc) continue;
+      npc.setVehicleMounted?.(true);
+      this.crewVisuals.board(
+        npc,
+        vehicle,
+        occupant.seatId,
+        occupant.role,
+        true,
+      );
     }
   }
 
+  /**
+   * Un ocupante muerto deja el asiento en el acto: el ragdoll cae al lado del
+   * vehículo en vez de quedar pegado a la pose del asiento.
+   */
   private syncVehicleOccupants(vehicle: VehicleEntity): void {
     for (const occupant of [...vehicle.getOccupants()]) {
       if (occupant.actor === PLAYER_ACTOR) continue;
       const npc = this.actors.get(occupant.actor);
-      if (!npc) continue;
-      if (npc.isAlive()) {
-        const seat = vehicle.getSeatWorldPosition(occupant.seatId);
-        if (seat) npc.position.copy(seat);
-        continue;
-      }
+      if (!npc || npc.isAlive()) continue;
       vehicle.detachOccupant(occupant.actor);
-      npc.setVehicleMounted?.(false, vehicle.getWorldPosition().add(new Vector3(0, 1, 0)));
+      this.crewVisuals.forget(occupant.actor);
+      npc.setVehicleMounted?.(
+        false,
+        vehicle.getWorldPosition().add(new Vector3(0, 1, 0)),
+      );
     }
   }
 
@@ -1146,12 +1185,12 @@ export class VehicleSystem {
         return;
       case "Attach": {
         const actor = actorParam(args);
-        if (actor) this.attachActor(vehicle, actor);
+        if (actor) this.boardActor(vehicle, actor);
         return;
       }
       case "Detach": {
         const actor = actorParam(args);
-        if (actor) this.detachActor(vehicle, actor);
+        if (actor) this.ejectActor(vehicle, actor);
         return;
       }
       case "SetGoal":
@@ -1178,7 +1217,8 @@ export class VehicleSystem {
     }
   }
 
-  private attachActor(vehicle: VehicleEntity, actor: string): void {
+  /** Sube un actor (`!player` o id de NPC) al vehiculo. Entrada `Attach` del IO. */
+  boardActor(vehicle: VehicleEntity, actor: string): void {
     if (actor === PLAYER_ACTOR || actor === "player") {
       this.mountPlayer(vehicle, true);
       return;
@@ -1193,10 +1233,13 @@ export class VehicleSystem {
       authored?.role,
       authored?.seatId,
     );
-    if (occupant) npc.setVehicleMounted?.(true);
+    if (!occupant) return;
+    npc.setVehicleMounted?.(true);
+    this.crewVisuals.board(npc, vehicle, occupant.seatId, occupant.role, false);
   }
 
-  private detachActor(vehicle: VehicleEntity, actor: string): void {
+  /** Baja un actor al exit anchor libre mas cercano. Entrada `Detach` del IO. */
+  ejectActor(vehicle: VehicleEntity, actor: string): void {
     if (
       (actor === PLAYER_ACTOR || actor === "player") &&
       vehicle === this.mountedVehicle
@@ -1209,7 +1252,10 @@ export class VehicleSystem {
     const exit =
       this.findSafeExit(vehicle, occupant) ??
       vehicle.getWorldPosition().add(new Vector3(0, 1, 0));
+    // El asiento queda libre ya; el cuerpo sigue animando la bajada y recupera
+    // su motor cuando el blend llega al exit.
     vehicle.detachOccupant(actor);
+    if (this.crewVisuals.leave(actor, exit)) return;
     this.actors.get(actor)?.setVehicleMounted?.(false, exit);
   }
 
@@ -1321,7 +1367,7 @@ export class VehicleSystem {
       const npc = this.actors.get(occupant.actor);
       if (!npc) continue;
       if (survivable) {
-        this.detachActor(vehicle, occupant.actor);
+        this.ejectActor(vehicle, occupant.actor);
         npc.applyDamage(25, undefined, undefined, vehicle.id);
       } else {
         npc.applyDamage(npc.health.max * 10, undefined, undefined, vehicle.id);

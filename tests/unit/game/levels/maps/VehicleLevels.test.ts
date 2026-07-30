@@ -60,15 +60,32 @@ describe('niveles vehiculares', () => {
     expect(Demo3WhiteoutFlight.nextLevel).toBe('snow-field');
   });
 
-  it('ofrece seis vehículos con IA y ocho estacionados en el sandbox', () => {
+  it('ofrece seis vehículos con IA y nueve estacionados en el sandbox', () => {
     const vehicles = VehicleSandboxLevel.vehicles ?? [];
-    expect(vehicles).toHaveLength(14);
+    expect(vehicles).toHaveLength(15);
     expect(vehicles.filter((vehicle) => vehicle.ai?.enabled)).toHaveLength(6);
-    expect(vehicles.filter((vehicle) => !vehicle.ai?.enabled)).toHaveLength(8);
+    expect(vehicles.filter((vehicle) => !vehicle.ai?.enabled)).toHaveLength(9);
     expect(new Set(vehicles.map((vehicle) => vehicle.presetId))).toEqual(
       new Set(['buggy', 'airboat', 'helicopter', 'rebelCrawler', 'combineGlider']),
     );
     expect(vehicles.every((vehicle) => vehicle.portalTraversal === 'blocked')).toBe(true);
+  });
+
+  it('deja un buggy tripulado y quieto para revisar la pose sentada', () => {
+    const buggy = VehicleSandboxLevel.vehicles?.find(
+      (vehicle) => vehicle.id === 'vs-parked-crewed-buggy',
+    );
+    expect(buggy).toMatchObject({ presetId: 'buggy', engineOn: false });
+    expect(buggy?.ai).toBeUndefined();
+    const crew = buggy?.crew ?? [];
+    expect(crew.map((assignment) => assignment.seatId)).toEqual([
+      'driver',
+      'gunner',
+    ]);
+    const npcIds = new Set((VehicleSandboxLevel.npcs ?? []).map((npc) => npc.id));
+    crew.forEach((assignment) => {
+      expect(npcIds.has(assignment.actor)).toBe(true);
+    });
   });
 
   it('estaciona el deslizador Combine desarmado para pruebas', () => {

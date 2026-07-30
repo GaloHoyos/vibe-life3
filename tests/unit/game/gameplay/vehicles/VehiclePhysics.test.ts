@@ -67,6 +67,34 @@ describe("estabilidad física de los vehículos", () => {
     expect(rig.vehicle.getWorldPosition().y).toBeLessThan(2.5);
   });
 
+  it("un buggy estacionado no se mueve hasta encender, y ahí sí anda", async () => {
+    const rig = await spawn({
+      presetId: "buggy",
+      position: [0, 1.2, 0],
+      engineOn: false,
+    });
+    simulate(rig, 2);
+    const throttle = {
+      throttle: 1,
+      steering: 0,
+      brake: 0,
+      handbrake: 0,
+      boost: false,
+    };
+
+    const parked = rig.vehicle.getWorldPosition().clone();
+    rig.vehicle.setControl(throttle);
+    simulate(rig, 3);
+    expect(rig.vehicle.getWorldPosition().distanceTo(parked)).toBeLessThan(0.5);
+
+    // Sentarse al volante lo enciende: mismo acelerador, ahora avanza.
+    expect(rig.vehicle.tryStartEngine()).toBe(true);
+    const start = rig.vehicle.getWorldPosition().clone();
+    rig.vehicle.setControl(throttle);
+    simulate(rig, 3);
+    expect(rig.vehicle.getWorldPosition().z - start.z).toBeGreaterThan(4);
+  });
+
   it("el buggy avanza recto con acelerador y frena sin volcar", async () => {
     const rig = await spawn({ presetId: "buggy", position: [0, 1.2, 0] });
     simulate(rig, 2);

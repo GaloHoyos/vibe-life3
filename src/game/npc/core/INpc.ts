@@ -1,4 +1,4 @@
-﻿import type { Group, Vector3 } from "three";
+﻿import type { Group, Quaternion, Vector3 } from "three";
 import type { Faction } from "@engine/ai/Faction";
 import type { Damageable } from "@shared/types/lifecycle";
 import type { Health } from "@game/gameplay/Health";
@@ -293,6 +293,20 @@ export interface NpcSaveSnapshot {
   };
 }
 
+/**
+ * Pose que el runtime vehicular le impone al ocupante de un asiento. `seated`
+ * es el peso de la pose sentada, así la subida y la bajada pueden mezclarse
+ * desde/hacia la pose de pie sin que el NPC recupere su motor.
+ */
+export interface NpcSeatPose {
+  readonly position: Vector3;
+  readonly rotation: Quaternion;
+  /** 0 = de pie (en plena transición), 1 = sentado completo. */
+  readonly seated: number;
+  /** Conductores y pilotos llevan las manos a los controles. */
+  readonly handsOnControls: boolean;
+}
+
 /** Interfaz uniforme que consume `Game`/`LevelLoader`. La implementa `Npc`. */
 export interface INpc {
   readonly id: string;
@@ -313,6 +327,8 @@ export interface INpc {
    */
   setVehicleMounted?(mounted: boolean, exitPosition?: Vector3): void;
   isVehicleMounted?(): boolean;
+  /** Pose visual del ocupante mientras el motor está suspendido. */
+  setSeatPose?(pose: NpcSeatPose): void;
 
   update(ctx: AiFrameContext): void;
   syncFromPhysics(): void;

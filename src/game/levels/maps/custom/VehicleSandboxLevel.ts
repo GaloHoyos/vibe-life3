@@ -88,6 +88,22 @@ const ACTIVE_VEHICLES = [
 
 const PARKED_VEHICLES = [
   {
+    // Tripulación quieta al lado del spawn: sirve para revisar la pose sentada
+    // y las transiciones de subida/bajada sin correr atrás de un convoy.
+    id: 'vs-parked-crewed-buggy',
+    presetId: 'buggy',
+    position: [-109, 1.1, 91],
+    rotation: [0, Math.PI, 0],
+    faction: 'resistance',
+    crew: [
+      { actor: 'vs-parked-driver', role: 'driver', seatId: 'driver' },
+      { actor: 'vs-parked-gunner', role: 'gunner', seatId: 'gunner' },
+    ],
+    weaponEnabled: true,
+    engineOn: false,
+    portalTraversal: 'blocked',
+  },
+  {
     id: 'vs-player-buggy',
     presetId: 'buggy',
     position: [-118, 1.1, 91],
@@ -477,6 +493,10 @@ map
   .npc({ id: 'vs-driver-res-airboat', characterId: 'rebelF1', position: [60, 1, 66] })
   .npc({ id: 'vs-driver-combine-airboat', characterId: 'combine', position: [60, 1, -64] })
   .npc({ id: 'vs-heli-pilot', characterId: 'rebelM3', position: [111, 1.2, 78] })
+  .npc({ id: 'vs-parked-driver', characterId: 'rebelM3', position: [-109, 1.2, 91] })
+  .npc({ id: 'vs-parked-gunner', characterId: 'rebelF3', position: [-108, 1.2, 91] })
+  // Suelto al lado del buggy vacío: banco de pruebas de `Attach`/`Detach`.
+  .npc({ id: 'vs-rebel-hitchhiker', characterId: 'rebelM1', position: [-100, 1.2, 95] })
   .pickup({ id: 'vs-pickup-rpg', weaponId: 'rpg', position: [-124, 0.5, 88] })
   .pickup({ id: 'vs-pickup-gravity-gun', weaponId: 'gravityGun', position: [-122, 0.5, 88] })
   .item({ id: 'vs-item-medkit', itemId: 'medkit', position: [-120, 0.45, 88] })

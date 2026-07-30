@@ -29,6 +29,7 @@ import type {
   NpcFreezeHandle,
   NpcPortalHandle,
   NpcSaveSnapshot,
+  NpcSeatPose,
 } from '@game/npc/core/INpc';
 import type {
   NpcBrainContext,
@@ -337,7 +338,16 @@ export class Npc implements INpc {
 
   update(ctx: AiFrameContext): void {
     if (this.disposed) return;
-    if (this.vehicleMounted) return;
+    if (this.vehicleMounted) {
+      // Sentado: el motor está suspendido y el asiento manda la pose, pero el
+      // animador sigue corriendo para que el ocupante respire y se vea vivo.
+      this.lastViewerDistance =
+        ctx.viewerDistance ?? (ctx.aiLod === 'near' ? 0 : ctx.aiLod === 'mid' ? 30 : 65);
+      this.animation?.updateStandalone(ctx.delta, {
+        dead: !this.health.isAlive(),
+      });
+      return;
+    }
     const delta = ctx.delta;
     this.lastViewerDistance = ctx.viewerDistance ?? (ctx.aiLod === 'near' ? 0 : ctx.aiLod === 'mid' ? 30 : 65);
     if (this.justHitTimer > 0) this.justHitTimer = Math.max(0, this.justHitTimer - delta);
@@ -565,7 +575,9 @@ export class Npc implements INpc {
     for (let index = 0; index < this.motor.body.numColliders(); index += 1) {
       this.motor.body.collider(index).setEnabled(!mounted);
     }
-    this.mesh.visible = !mounted;
+    if (!mounted) {
+      this.animation?.setSeated?.(0, false);
+    }
     if (!mounted && exitPosition) {
       const portalMotor = this.motor as NpcMotor & Partial<PortalCapableMotor>;
       if (typeof portalMotor.teleport === "function") {
@@ -583,6 +595,19 @@ export class Npc implements INpc {
 
   isVehicleMounted(): boolean {
     return this.vehicleMounted;
+  }
+
+  /**
+   * Coloca el visual en el asiento. Sólo tiene sentido con el motor suspendido:
+   * si el NPC no está montado, `syncMeshFromMotor` sobreescribiría la pose en
+   * el mismo frame.
+   */
+  setSeatPose(pose: NpcSeatPose): void {
+    if (this.disposed || !this.vehicleMounted) return;
+    this.mesh.position.copy(pose.position);
+    this.mesh.quaternion.copy(pose.rotation);
+    this.position.copy(pose.position);
+    this.animation?.setSeated?.(pose.seated, pose.handsOnControls);
   }
 
   /**

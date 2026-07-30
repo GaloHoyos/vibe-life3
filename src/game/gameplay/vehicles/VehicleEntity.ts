@@ -97,6 +97,7 @@ const TMP_POSITION = new Vector3();
 const TMP_QUATERNION = new Quaternion();
 const TMP_FORWARD = new Vector3();
 const TMP_WORLD = new Vector3();
+const TMP_SEAT_OFFSET = new Vector3();
 const SURFACE_DOWN = new Vector3(0, -1, 0);
 const SURFACE_UP = new Vector3(0, 1, 0);
 /** Igual a la gravedad de `PhysicsWorld`; dimensiona el peso de reposo. */
@@ -450,6 +451,21 @@ export class VehicleEntity {
     this.locked = locked;
   }
 
+  /**
+   * Arranca el motor al tomar los mandos. Como en HL2 no hay contacto aparte:
+   * el que se sienta al volante ya se lo encuentra en marcha, y por eso los
+   * vehículos estacionados se autoran con `engineOn: false` sin dejar de ser
+   * conducibles. Un chasis inutilizado no vuelve a encender (mismo criterio que
+   * `repair`). Devuelve si quedó en marcha, para avisarle al jugador si no.
+   */
+  tryStartEngine(): boolean {
+    if (!this.enabled || this.wreckage) return false;
+    const state = this.damage.getState();
+    if (state === "disabled" || state === "destroyed") return false;
+    this.setEngineOn(true);
+    return true;
+  }
+
   setEngineOn(engineOn: boolean): void {
     if (this.engineOn === engineOn) return;
     this.engineOn = engineOn;
@@ -585,6 +601,31 @@ export class VehicleEntity {
     const anchor = this.visual.seatAnchors.get(seatId);
     if (!anchor) return null;
     return anchor.getWorldPosition(out);
+  }
+
+  /**
+   * Pose completa del asiento, incluida la rotación: el ocupante tiene que
+   * inclinarse con el chasis (baches del buggy, alabeo del helicóptero).
+   * `occupantOffset` del preset corrige donde queda el cuerpo respecto del
+   * anchor, que está calibrado para la cámara del jugador.
+   */
+  getSeatWorldPose(
+    seatId: string,
+    outPosition: Vector3,
+    outRotation: Quaternion,
+  ): boolean {
+    const anchor = this.visual.seatAnchors.get(seatId);
+    if (!anchor) return false;
+    anchor.getWorldQuaternion(outRotation);
+    anchor.getWorldPosition(outPosition);
+    const offset = this.preset.seats.find((seat) => seat.id === seatId)
+      ?.occupantOffset;
+    if (offset) {
+      outPosition.add(
+        TMP_SEAT_OFFSET.set(offset[0], offset[1], offset[2]).applyQuaternion(outRotation),
+      );
+    }
+    return true;
   }
 
   getCameraAnchor(seatId: string) {

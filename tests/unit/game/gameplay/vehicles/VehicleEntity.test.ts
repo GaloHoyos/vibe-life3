@@ -123,6 +123,42 @@ describe("VehicleEntity", () => {
     expect(onCrashFinished).toHaveBeenCalledWith(vehicle, true);
   });
 
+  it("un vehículo estacionado enciende al tomar los mandos", async () => {
+    const { vehicle } = await createVehicle({
+      definition: { engineOn: false },
+    });
+    expect(vehicle.isEngineOn()).toBe(false);
+
+    expect(vehicle.tryStartEngine()).toBe(true);
+    expect(vehicle.isEngineOn()).toBe(true);
+  });
+
+  it("un chasis inutilizado o hecho pedazos no vuelve a encender", async () => {
+    const { vehicle: disabled } = await createVehicle({
+      definition: { engineOn: false },
+    });
+    // Motor a cero: `disableAtZero` deja el vehículo inutilizado.
+    disabled.damage.applyDamage(1000, undefined, "engine", "combine-01");
+    expect(disabled.tryStartEngine()).toBe(false);
+    expect(disabled.isEngineOn()).toBe(false);
+
+    const { vehicle: wreck } = await createVehicle({
+      definition: { engineOn: false },
+    });
+    wreck.damage.applyDamage(10_000, undefined, "hull", "combine-01");
+    expect(wreck.tryStartEngine()).toBe(false);
+    expect(wreck.isEngineOn()).toBe(false);
+  });
+
+  it("un vehículo deshabilitado por el nivel sigue apagado", async () => {
+    const { vehicle } = await createVehicle({
+      definition: { engineOn: false, startDisabled: true },
+    });
+
+    expect(vehicle.tryStartEngine()).toBe(false);
+    expect(vehicle.isEngineOn()).toBe(false);
+  });
+
   it("el snapshot restaura pose, flags, daño y ocupantes válidos", async () => {
     const { vehicle } = await createVehicle();
     vehicle.attachOccupant("!player", "driver");

@@ -28,6 +28,7 @@ import { installNpcConsole } from "@game/debug/NpcConsole";
 import { installPlayerConsole } from "@game/debug/PlayerConsole";
 import { installPortalConsole } from "@game/debug/PortalConsole";
 import { installPlayerModelConsole } from "@game/debug/PlayerModelConsole";
+import { installVehicleConsole } from "@game/debug/VehicleConsole";
 import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
 import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
 import { NpcsModule } from "@game/ui/overlay/debug/modules/NpcsModule";
@@ -227,6 +228,9 @@ export interface GameOptions {
 /** Dirección reutilizable para el raycast de superficie bajo el jugador. */
 const DOWN_DIRECTION = new Vector3(0, -1, 0);
 const GAME_BUILD = "0.1.0-vehicles";
+/** Vecinos de un NPC que no corre IA este frame (sentado en un vehiculo). */
+const NO_NEIGHBORS: ActorSnapshot[] = [];
+const SHADER_PREWARM_TIMEOUT_MS = 8000;
 
 type ActiveCustomSource =
   | {
@@ -286,6 +290,7 @@ export class Game {
   private uninstallIceConsole: (() => void) | null = null;
   private uninstallPlayerModelConsole: (() => void) | null = null;
   private uninstallPortalConsole: (() => void) | null = null;
+  private uninstallVehicleConsole: (() => void) | null = null;
   private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
@@ -443,6 +448,8 @@ export class Game {
     this.uninstallPlayerModelConsole = null;
     this.uninstallPortalConsole?.();
     this.uninstallPortalConsole = null;
+    this.uninstallVehicleConsole?.();
+    this.uninstallVehicleConsole = null;
 
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
@@ -2395,6 +2402,9 @@ export class Game {
     this.uninstallPortalConsole = installPortalConsole(() =>
       s.resolve(GameTokens.Portals),
     );
+    this.uninstallVehicleConsole = installVehicleConsole(() =>
+      s.resolve(GameTokens.Vehicles),
+    );
 
     const debugMenu = new DebugMenu(this.root, input, controls, eventBus);
     debugMenu.register(new StatsModule());
@@ -2739,7 +2749,7 @@ export class Game {
       this.navigationRequests?.process();
       this.navigation?.update(time.delta);
       this.npcs.forEach((npc) => {
-        if (npc.isVehicleMounted?.()) return;
+        const mounted = npc.isVehicleMounted?.() ?? false;
         ctx.aiLod = this.computeNpcAiLod(npc.position, playerPosition);
         let viewerDistance = npc.position.distanceTo(playerPosition);
         for (const ghost of portalGhosts) {
@@ -2748,7 +2758,11 @@ export class Game {
           }
         }
         ctx.viewerDistance = viewerDistance;
-        ctx.npcs = npcIndex.query(npc.position, this.npcContextRadius, npc.id);
+        // Sentado en un vehiculo no corre IA ni necesita vecinos, pero igual
+        // tickea para que el animador mantenga viva la pose del asiento.
+        ctx.npcs = mounted
+          ? NO_NEIGHBORS
+          : npcIndex.query(npc.position, this.npcContextRadius, npc.id);
         npc.update(ctx);
       });
       this.squadDirector.tickAssignments(time.elapsed, null);
@@ -3374,6 +3388,7 @@ export class Game {
       camera.setYaw(spawn.yaw);
     }
     this.registerSaveEntities();
+    await this.prewarmShaders();
     levelEvents.announceLevel(level.title);
 
     // Objetivo inicial del nivel (vacío lo oculta y limpia la brújula).
@@ -3390,6 +3405,35 @@ export class Game {
         ? tupleToVector3(this.currentObjective.marker)
         : null,
     });
+  }
+
+  /**
+   * Precompila los shaders del nivel mientras la pantalla de carga sigue arriba.
+   *
+   * Three compila cada material la PRIMERA vez que se dibuja, así que el costo
+   * caía en pleno juego: subir a un vehículo (aparece su interior, que nunca
+   * se había renderizado) o la primera explosión congelaban el frame cientos de
+   * ms. Requiere que el conteo de luces de la escena ya sea el definitivo — si
+   * algo agrega o saca una luz después, Three vuelve a compilar todo.
+   *
+   * El timeout es un seguro: si un driver no reporta los programas como listos,
+   * es preferible entrar al nivel con un hitch que colgarse en la carga.
+   */
+  private async prewarmShaders(): Promise<void> {
+    const services = this.engine.services;
+    const renderer = services.resolve(EngineTokens.Renderer).renderer;
+    const camera = services.resolve(EngineTokens.Camera).camera;
+    const scene = services.resolve(EngineTokens.Scene).scene;
+    try {
+      await Promise.race([
+        renderer.compileAsync(scene, camera),
+        new Promise<void>((resolve) =>
+          window.setTimeout(resolve, SHADER_PREWARM_TIMEOUT_MS),
+        ),
+      ]);
+    } catch (error) {
+      console.warn("[Game] No se pudieron precompilar los shaders.", error);
+    }
   }
 
   /**

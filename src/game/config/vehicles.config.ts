@@ -20,6 +20,11 @@ export const VEHICLE_CREW_ROLES = [
 ] as const;
 export type VehicleCrewRole = (typeof VEHICLE_CREW_ROLES)[number];
 
+/** Puestos que manejan: deciden el control, el arranque y la pose de manos. */
+export function isAtTheControls(role: VehicleCrewRole): boolean {
+  return role === 'driver' || role === 'pilot';
+}
+
 export type VehicleMotorPreset =
   | {
       kind: 'raycast';
@@ -118,6 +123,12 @@ export interface VehicleSeatPreset {
   exits: readonly VectorTuple[];
   internalLinks?: readonly string[];
   canUseWeapon?: boolean;
+  /**
+   * Corrimiento local del cuerpo del ocupante respecto del anchor del asiento.
+   * `position` está calibrado para el collider del jugador, así que el modelo
+   * sentado necesita su propio ajuste (altura de cadera, distancia al volante).
+   */
+  occupantOffset?: VectorTuple;
 }
 
 export interface VehicleDamageZonePreset {
@@ -231,6 +242,7 @@ export const VehiclePresets = {
         role: 'driver',
         position: [0.42, 1.05, 0.15],
         cameraPosition: [0.42, 1.42, 0.15],
+        occupantOffset: [0, 0.12, -0.12],
         exits: [[1.45, 0.25, 0.15], [-1.45, 0.25, 0.15], [0, 0.25, 2.25]],
         internalLinks: ['gunner'],
       },
@@ -239,6 +251,7 @@ export const VehiclePresets = {
         role: 'gunner',
         position: [-0.42, 1.05, 0.15],
         cameraPosition: [-0.42, 1.42, 0.15],
+        occupantOffset: [0, 0.12, -0.12],
         exits: [[-1.45, 0.25, 0.15], [1.45, 0.25, 0.15]],
         internalLinks: ['driver'],
         canUseWeapon: true,
@@ -316,6 +329,7 @@ export const VehiclePresets = {
         role: 'driver',
         position: [0, 0.95, -0.35],
         cameraPosition: [0, 1.38, -0.25],
+        occupantOffset: [0, 0.16, 0.1],
         exits: [[-1.55, 0.25, -0.1], [1.55, 0.25, -0.1], [0, 0.25, 2.55]],
         canUseWeapon: true,
       },
@@ -485,6 +499,7 @@ export const VehiclePresets = {
         role: 'driver',
         position: [0.48, 1.45, 0.78],
         cameraPosition: [0.48, 1.86, 0.82],
+        occupantOffset: [0, 0.1, 0],
         exits: [[1.72, 0.35, 0.55], [-1.72, 0.35, 0.55], [0, 0.35, -2.8]],
         internalLinks: ['passenger'],
       },
@@ -493,6 +508,7 @@ export const VehiclePresets = {
         role: 'passenger',
         position: [-0.48, 1.45, 0.78],
         cameraPosition: [-0.48, 1.86, 0.82],
+        occupantOffset: [0, 0.1, 0],
         exits: [[-1.72, 0.35, 0.55], [1.72, 0.35, 0.55], [0, 0.35, -2.8]],
         internalLinks: ['driver'],
       },
@@ -569,6 +585,7 @@ export const VehiclePresets = {
         role: 'driver',
         position: [0, 0.98, -0.08],
         cameraPosition: [0, 1.5, 0.02],
+        occupantOffset: [0, 0.14, 0],
         exits: [[-1.48, 0.25, -0.05], [1.48, 0.25, -0.05], [0, 0.25, 2.15]],
       },
     ],
