@@ -35,6 +35,7 @@ interface SoundInstance {
  */
 const VoiceCaps: Partial<Record<AudioBusName, number>> = {
   weapons: 16,
+  vehicles: 20,
   enemies: 12,
   footsteps: 4,
   sfx: 12,
@@ -57,14 +58,74 @@ export class SoundManager {
   private readonly buffers = new Map<string, AudioBuffer>();
   private readonly active = new Map<string, SoundInstance[]>();
   private readonly lastPlayedAt = new Map<string, number>();
+  private readonly registeredClips = new Map<
+    string,
+    { definition: AudioClipDefinition; leases: number }
+  >();
 
   constructor(private readonly audio: AudioSystem) {}
 
   preload(soundIds?: string[]): void {
-    const ids = soundIds ?? Object.keys(AudioClipCatalog);
+    const ids =
+      soundIds ??
+      [...Object.keys(AudioClipCatalog), ...this.registeredClips.keys()];
     ids.forEach((id) => {
       void this.loadBuffer(id);
     });
+  }
+
+  /**
+   * Registro descartable para contenido game-owned. Engine conserva un
+   * catálogo base, mientras niveles o módulos pueden alquilar clips propios
+   * sin hacer que `AudioManifest` conozca contenido del juego.
+   */
+  registerClips(definitions: readonly AudioClipDefinition[]): () => void {
+    for (const definition of definitions) {
+      if (AudioClipCatalog[definition.id]) {
+        throw new Error(
+          `[SoundManager] El clip dinámico '${definition.id}' colisiona con el catálogo base.`,
+        );
+      }
+      const registered = this.registeredClips.get(definition.id);
+      if (
+        registered &&
+        (registered.definition.path !== definition.path ||
+          registered.definition.bus !== definition.bus ||
+          registered.definition.category !== definition.category)
+      ) {
+        throw new Error(
+          `[SoundManager] El clip dinámico '${definition.id}' ya fue registrado con otra definición.`,
+        );
+      }
+    }
+
+    definitions.forEach((definition) => {
+      const registered = this.registeredClips.get(definition.id);
+      if (registered) {
+        registered.leases += 1;
+      } else {
+        this.registeredClips.set(definition.id, {
+          definition: { ...definition },
+          leases: 1,
+        });
+      }
+    });
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      definitions.forEach((definition) => {
+        const registered = this.registeredClips.get(definition.id);
+        if (!registered) return;
+        registered.leases -= 1;
+        if (registered.leases > 0) return;
+        this.stop(definition.id);
+        this.buffers.delete(definition.id);
+        this.lastPlayedAt.delete(definition.id);
+        this.registeredClips.delete(definition.id);
+      });
+    };
   }
 
   play(soundId: string, options: PlayOptions = {}): void {
@@ -111,7 +172,7 @@ export class SoundManager {
 
   stopAllByCategory(category: AudioCategory): void {
     [...this.active.entries()].forEach(([id, instances]) => {
-      const clip = AudioClipCatalog[id];
+      const clip = this.getClip(id);
       if (clip && clip.category === category) {
         instances.forEach((instance) => instance.source.stop());
         this.active.delete(id);
@@ -132,7 +193,7 @@ export class SoundManager {
   }
 
   hasSound(soundId: string): boolean {
-    return Boolean(AudioClipCatalog[soundId]);
+    return this.getClip(soundId) !== null;
   }
 
   async getBuffer(soundId: string): Promise<AudioBuffer | null> {
@@ -305,7 +366,9 @@ export class SoundManager {
   }
 
   private getClip(soundId: string): AudioClipDefinition | null {
-    const clip = AudioClipCatalog[soundId];
+    const clip =
+      this.registeredClips.get(soundId)?.definition ??
+      AudioClipCatalog[soundId];
     if (!clip) {
       return null;
     }

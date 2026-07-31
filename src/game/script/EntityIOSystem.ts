@@ -31,6 +31,32 @@ export interface EntityHandle {
   readonly classId: EntityClassId;
   acceptInput(input: string, args: InputArgs): void;
   update?(delta: number): void;
+  captureState?(): Readonly<Record<string, string | number | boolean | null>>;
+  restoreState?(
+    state: Readonly<Record<string, string | number | boolean | null>>,
+  ): void;
+}
+
+export interface EntityIOSnapshot {
+  readonly clock: number;
+  readonly pendingSerial: number;
+  readonly connections: readonly {
+    readonly sourceKey: string;
+    readonly firesLeft: readonly (number | null)[];
+  }[];
+  readonly handles: readonly {
+    readonly key: string;
+    readonly state: Readonly<Record<string, string | number | boolean | null>>;
+  }[];
+  readonly pending: readonly {
+    readonly source: EntityOutputSource;
+    readonly target: ResolvedTarget;
+    readonly input: string;
+    readonly param?: ConnectionParam;
+    readonly activator: ActivatorRef;
+    readonly remaining: number;
+    readonly serial: number;
+  }[];
 }
 
 interface ConnectionRuntime {
@@ -173,6 +199,30 @@ export class EntityIOSystem {
     }
   }
 
+  /**
+   * Manda un input como si lo hubiera disparado un output. Es la entrada del
+   * debug/verificación headless: sin esto, un nivel guionado sólo se puede
+   * recorrer apretando botones a mano.
+   */
+  sendInput(
+    target: string,
+    input: string,
+    param?: ConnectionParam,
+    caller = 'debug-console',
+  ): number {
+    const source = { key: caller, name: caller };
+    const resolved = this.resolveTarget(target, source, { kind: 'none' });
+    if (!resolved) return 0;
+    const handles = this.resolveHandles(resolved);
+    this.dispatch(source, resolved, input, param, { kind: 'none' });
+    return handles.length;
+  }
+
+  /** Nombres registrados, para saber a qué se le puede mandar algo. */
+  targetNames(): string[] {
+    return [...this.handles.keys()].sort();
+  }
+
   update(delta: number): void {
     this.clock += Math.max(0, delta);
     for (const handle of this.updatables) handle.update?.(delta);
@@ -192,6 +242,68 @@ export class EntityIOSystem {
     for (const entry of due) {
       this.dispatch(entry.source, entry.target, entry.input, entry.param, entry.activator);
     }
+  }
+
+  capture(): EntityIOSnapshot {
+    return {
+      clock: this.clock,
+      pendingSerial: this.pendingSerial,
+      connections: [...this.connections.entries()].map(
+        ([sourceKey, connections]) => ({
+          sourceKey,
+          firesLeft: connections.map((connection) =>
+            Number.isFinite(connection.firesLeft)
+              ? connection.firesLeft
+              : null,
+          ),
+        }),
+      ),
+      handles: [...this.handlesByKey.entries()].flatMap(([key, handle]) => {
+        const state = handle.captureState?.();
+        return state ? [{ key, state }] : [];
+      }),
+      pending: this.pending.map((entry) => ({
+        source: { ...entry.source },
+        target: { ...entry.target },
+        input: entry.input,
+        ...(entry.param === undefined ? {} : { param: entry.param }),
+        activator: { ...entry.activator },
+        remaining: Math.max(0, entry.dueAt - this.clock),
+        serial: entry.serial,
+      })),
+    };
+  }
+
+  restore(snapshot: EntityIOSnapshot): void {
+    this.clock = Math.max(0, snapshot.clock);
+    this.pendingSerial = Math.max(0, Math.floor(snapshot.pendingSerial));
+
+    snapshot.connections.forEach((saved) => {
+      const runtime = this.connections.get(saved.sourceKey);
+      if (!runtime) return;
+      runtime.forEach((connection, index) => {
+        const firesLeft = saved.firesLeft[index];
+        if (firesLeft === undefined) return;
+        connection.firesLeft =
+          firesLeft === null ? Number.POSITIVE_INFINITY : Math.max(0, firesLeft);
+      });
+    });
+    snapshot.handles.forEach(({ key, state }) => {
+      this.handlesByKey.get(key)?.restoreState?.(state);
+    });
+
+    this.pending.length = 0;
+    snapshot.pending.forEach((entry) => {
+      this.pending.push({
+        source: { ...entry.source },
+        target: { ...entry.target },
+        input: entry.input,
+        ...(entry.param === undefined ? {} : { param: entry.param }),
+        activator: { ...entry.activator },
+        dueAt: this.clock + Math.max(0, entry.remaining),
+        serial: Math.max(0, Math.floor(entry.serial)),
+      });
+    });
   }
 
   clear(): void {

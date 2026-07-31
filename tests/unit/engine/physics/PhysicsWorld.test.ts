@@ -98,6 +98,68 @@ describe("PhysicsWorld.createDynamicSphere", () => {
   });
 });
 
+describe("PhysicsWorld.snapBody", () => {
+  it("re-siembra la interpolación tras un teleport fuera del step", async () => {
+    const physics = new PhysicsWorld();
+    await physics.init();
+    const mesh = new Object3D();
+    const body = physics.createDynamicBox(
+      {
+        id: "portal-prop",
+        position: new Vector3(0, 5, 0),
+        size: new Vector3(1, 1, 1),
+        mass: 1,
+      },
+      mesh,
+    );
+    // Dos frames de 144 Hz sin completar un substep: el binding conserva la
+    // pose vieja como origen de la interpolación.
+    physics.step(1 / 144);
+    physics.step(1 / 144);
+
+    body.setTranslation({ x: 40, y: 5, z: -20 }, true);
+    physics.snapBody(body);
+    expect(mesh.position.x).toBeCloseTo(40, 6);
+    expect(mesh.position.z).toBeCloseTo(-20, 6);
+
+    // Sin snap, este step interpolaría la malla entre (0,5,0) y el destino.
+    physics.step(1 / 144);
+    expect(mesh.position.x).toBeCloseTo(40, 1);
+    expect(mesh.position.z).toBeCloseTo(-20, 1);
+  });
+
+  it("ignora cuerpos sin binding de malla", async () => {
+    const physics = new PhysicsWorld();
+    await physics.init();
+    const body = physics.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(0, 1, 0),
+    );
+
+    expect(() => physics.snapBody(body)).not.toThrow();
+  });
+});
+
+describe("PhysicsWorld.reset", () => {
+  it("limpia los hooks de step para no tocar bodies del mundo descartado", async () => {
+    const physics = new PhysicsWorld();
+    await physics.init();
+    let preCalls = 0;
+    let postCalls = 0;
+    physics.addPreStepHook(() => {
+      preCalls += 1;
+    });
+    physics.addPostStepHook(() => {
+      postCalls += 1;
+    });
+
+    physics.reset();
+    physics.step(1 / 60);
+
+    expect(preCalls).toBe(0);
+    expect(postCalls).toBe(0);
+  });
+});
+
 describe("PhysicsWorld.createStaticBoxes", () => {
   it("crea un solo body y conserva pose y metadata por collider", async () => {
     const physics = new PhysicsWorld();

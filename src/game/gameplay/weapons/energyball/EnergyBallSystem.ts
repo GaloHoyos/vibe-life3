@@ -16,7 +16,16 @@ import type { Raycast } from "@engine/physics/Raycast";
 import type { PortalRaycast } from "@engine/portals/PortalRaycast";
 import type { VfxSystem } from "@engine/render/effects/VfxSystem";
 import type { GameEventBus } from "@game/GameEvents";
+import type { GrenadeOwnerKind } from "@game/gameplay/weapons/grenade/Grenade";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import {
+  assertFiniteNumber,
+  assertNonNegativeNumber,
+  assertSnapshotVersion,
+  captureVector3,
+  restoreVector3,
+  type Vector3SaveState,
+} from "@game/gameplay/weapons/ProjectileSaveState";
 import type { Disposable } from "@shared/types/lifecycle";
 
 /** Daño garantizado-letal: la bola vaporiza cualquier orgánico hostil de un toque. */
@@ -63,6 +72,8 @@ export interface EnergyBallSpawnOptions {
   direction: Vector3;
   speed: number;
   sourceId?: string;
+  ownerKind?: GrenadeOwnerKind;
+  sourceFaction?: Faction;
   now: number;
 }
 
@@ -70,12 +81,31 @@ interface ActiveBall {
   position: Vector3;
   velocity: Vector3;
   sourceId?: string;
+  ownerKind: GrenadeOwnerKind;
+  sourceFaction: Faction;
   bouncesLeft: number;
   hardExpiresAt: number;
+  flybySoundId: (typeof FLYBY_SOUNDS)[number];
   root: Object3D;
   core: Object3D;
   glow: Object3D;
   light: PointLight;
+}
+
+export interface EnergyBallSaveState {
+  position: Vector3SaveState;
+  velocity: Vector3SaveState;
+  sourceId: string | null;
+  ownerKind: GrenadeOwnerKind;
+  sourceFaction: Faction;
+  bouncesLeft: number;
+  hardExpiresAt: number;
+  flybySoundId: (typeof FLYBY_SOUNDS)[number];
+}
+
+export interface EnergyBallSystemSaveState {
+  version: 1;
+  balls: EnergyBallSaveState[];
 }
 
 /**
@@ -99,28 +129,102 @@ export class EnergyBallSystem implements Disposable {
   ) {}
 
   spawn(options: EnergyBallSpawnOptions): void {
+    this.spawnActive(options);
+  }
+
+  capture(): EnergyBallSystemSaveState {
+    return {
+      version: 1,
+      balls: this.balls.map((ball) => ({
+        position: captureVector3(ball.position),
+        velocity: captureVector3(ball.velocity),
+        sourceId: ball.sourceId ?? null,
+        ownerKind: ball.ownerKind,
+        sourceFaction: ball.sourceFaction,
+        bouncesLeft: ball.bouncesLeft,
+        hardExpiresAt: ball.hardExpiresAt,
+        flybySoundId: ball.flybySoundId,
+      })),
+    };
+  }
+
+  restore(state: EnergyBallSystemSaveState): void {
+    assertSnapshotVersion(state.version, 1, "El estado de bolas de energía");
+    for (const [index, ball] of state.balls.entries()) {
+      this.validateSaveState(ball, index);
+      restoreVector3(ball.position, `energyBalls[${index}].position`);
+      restoreVector3(ball.velocity, `energyBalls[${index}].velocity`);
+    }
+
+    this.clear();
+    try {
+      for (const [index, saved] of state.balls.entries()) {
+        const velocity = restoreVector3(
+          saved.velocity,
+          `energyBalls[${index}].velocity`,
+        );
+        const speed = velocity.length();
+        const ball = this.spawnActive(
+          {
+            origin: restoreVector3(
+              saved.position,
+              `energyBalls[${index}].position`,
+            ),
+            direction:
+              speed > 1e-8
+                ? velocity.clone().divideScalar(speed)
+                : new Vector3(),
+            speed,
+            sourceId: saved.sourceId ?? undefined,
+            ownerKind: saved.ownerKind,
+            sourceFaction: saved.sourceFaction,
+            now: saved.hardExpiresAt - HARD_LIFETIME,
+          },
+          saved.flybySoundId,
+        );
+        ball.velocity.copy(velocity);
+        ball.bouncesLeft = saved.bouncesLeft;
+        ball.hardExpiresAt = saved.hardExpiresAt;
+      }
+    } catch (error) {
+      this.clear();
+      throw error;
+    }
+  }
+
+  private spawnActive(
+    options: EnergyBallSpawnOptions,
+    restoredFlybySoundId?: (typeof FLYBY_SOUNDS)[number],
+  ): ActiveBall {
     const direction = normalizedOrForward(options.direction);
     const { root, core, glow, light } = createBallMesh();
     root.position.copy(options.origin);
     this.scene.add(root);
-    this.positionalSounds.attachToObject(this.pickRandom(FLYBY_SOUNDS), root, {
+    const flybySoundId =
+      restoredFlybySoundId ?? this.pickRandom(FLYBY_SOUNDS);
+    this.positionalSounds.attachToObject(flybySoundId, root, {
       loop: true,
       refDistance: 1.8,
       maxDistance: 35,
       volume: 0.38,
     });
 
-    this.balls.push({
+    const ball: ActiveBall = {
       position: options.origin.clone(),
       velocity: direction.multiplyScalar(options.speed),
       sourceId: options.sourceId,
+      ownerKind: options.ownerKind ?? "player",
+      sourceFaction: options.sourceFaction ?? "player",
       bouncesLeft: MAX_BOUNCES,
       hardExpiresAt: options.now + HARD_LIFETIME,
+      flybySoundId,
       root,
       core,
       glow,
       light,
-    });
+    };
+    this.balls.push(ball);
+    return ball;
   }
 
   update(delta: number, elapsed: number, targets: readonly EnergyBallTarget[]): void {
@@ -154,6 +258,15 @@ export class EnergyBallSystem implements Disposable {
 
   dispose(): void {
     this.clear();
+  }
+
+  private validateSaveState(state: EnergyBallSaveState, index: number): void {
+    const label = `energyBalls[${index}]`;
+    assertNonNegativeInteger(state.bouncesLeft, `${label}.bouncesLeft`);
+    assertFiniteNumber(state.hardExpiresAt, `${label}.hardExpiresAt`);
+    if (!FLYBY_SOUNDS.includes(state.flybySoundId)) {
+      throw new Error(`${label}.flybySoundId no es válido.`);
+    }
   }
 
   /** Mueve la bola un frame resolviendo impactos. Devuelve true si detonó. */
@@ -204,7 +317,7 @@ export class EnergyBallSystem implements Disposable {
       const hostile =
         isNpc &&
         !!meta?.damageable &&
-        isHostileTo("player", meta.faction ?? "neutral");
+        isHostileTo(ball.sourceFaction, meta.faction ?? "neutral");
 
       // Atraviesa pickups y orgánicos NO hostiles (aliados/neutrales) sin efecto.
       if (meta?.kind === "weaponPickup" || (isNpc && !hostile)) {
@@ -219,7 +332,8 @@ export class EnergyBallSystem implements Disposable {
           VAPORIZE_DAMAGE,
           tmpDir.clone(),
           undefined,
-          "player",
+          ball.sourceId ??
+            (ball.ownerKind === "player" ? "player" : undefined),
           hit.point,
         );
         this.vfx.explosion(hit.point, { scale: 1.1, color: CYAN });
@@ -257,7 +371,10 @@ export class EnergyBallSystem implements Disposable {
     let nearest: EnergyBallTarget | null = null;
     let nearestSq = NUDGE_RANGE * NUDGE_RANGE;
     for (const target of targets) {
-      if (!target.isAlive() || !isHostileTo("player", target.faction)) {
+      if (
+        !target.isAlive() ||
+        !isHostileTo(ball.sourceFaction, target.faction)
+      ) {
         continue;
       }
       const distSq = target.position.distanceToSquared(from);
@@ -301,9 +418,9 @@ export class EnergyBallSystem implements Disposable {
       damage: 35,
       radius: 2.2,
       impulse: 6,
-      ownerKind: "player",
-      sourceId: "player",
-      sourceFaction: "player",
+      ownerKind: ball.ownerKind,
+      sourceId: ball.sourceId,
+      sourceFaction: ball.sourceFaction,
       weaponName: "AR3 Energy Ball",
       // Pulso de energía, no explosivo: no daña a jefes solo-explosivo.
       damageType: "energy",
@@ -346,7 +463,7 @@ export class EnergyBallSystem implements Disposable {
     });
   }
 
-  private pickRandom(soundIds: readonly string[]): string {
+  private pickRandom<T extends string>(soundIds: readonly T[]): T {
     return soundIds[Math.floor(Math.random() * soundIds.length)] ?? soundIds[0]!;
   }
 }
@@ -362,6 +479,13 @@ function normalizedOrForward(direction: Vector3): Vector3 {
     return new Vector3(0, 0, -1);
   }
   return direction.clone().normalize();
+}
+
+function assertNonNegativeInteger(value: number, label: string): void {
+  assertNonNegativeNumber(value, label);
+  if (!Number.isInteger(value)) {
+    throw new Error(`${label} debe ser un entero.`);
+  }
 }
 
 interface BallParts {

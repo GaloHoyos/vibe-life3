@@ -1,5 +1,5 @@
 ﻿import RAPIER from '@dimforge/rapier3d-compat';
-import type { Object3D, Quaternion, Vector3 } from 'three';
+import { Quaternion, Vector3, type Object3D } from 'three';
 import type { Damageable } from '@shared/types/lifecycle';
 import type { SurfaceType } from '@shared/types/Surface';
 import type { HeightField } from '@shared/math/HeightField';
@@ -7,7 +7,21 @@ import type { Faction } from '@engine/ai/Faction';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import { createBoxCollider } from './Colliders';
 
-const GRAVITY = { x: 0, y: -20.5, z: 0 } as const;
+/**
+ * Magnitud de la gravedad del mundo. Es la de Half-Life, no la terrestre: todo
+ * lo que dimensione empuje o sustentación tiene que leerla de acá en vez de
+ * asumir 9.81, o la cuenta sale a menos de la mitad.
+ */
+export const WORLD_GRAVITY = 20.5;
+
+const GRAVITY = { x: 0, y: -WORLD_GRAVITY, z: 0 } as const;
+
+export const PHYSICS_FIXED_TIMESTEP = 1 / 60;
+export const PHYSICS_MAX_FRAME_DELTA = 0.1;
+/** Alcanza para cubrir `PHYSICS_MAX_FRAME_DELTA` entero: nunca se descarta tiempo. */
+export const PHYSICS_MAX_SUBSTEPS = Math.ceil(
+  PHYSICS_MAX_FRAME_DELTA / PHYSICS_FIXED_TIMESTEP,
+);
 
 export interface PhysicsMetadata {
   id: string;
@@ -33,6 +47,11 @@ export interface PhysicsMetadata {
   /** Superficie física (para pasos e impactos). La derivan loader/builders del material. */
   surface?: SurfaceType;
   /**
+   * Política explícita de cruce. `blocked` conserva el contacto con el respaldo
+   * del portal; `self` delega el cruce al dueño del motor.
+   */
+  portalTraversal?: "allowed" | "blocked" | "self";
+  /**
    * El dueño del cuerpo maneja sus propios cruces de portal (motor de flyer):
    * el traveller de props debe ignorarlo o lo teleportaría dos veces.
    */
@@ -43,6 +62,8 @@ export interface PhysicsMetadata {
    * que el personaje reaccione al golpe sin que la granada sea un prop letal.
    */
   impactDamageOverride?: number;
+  /** Excludes owner-handled dynamic bodies from the generic prop-impact pass. */
+  propImpactExcluded?: boolean;
   /**
    * Colliders que representan un mismo organismo se deduplican con esta clave
    * durante daño radial. Esto permite mantener hitboxes de detalle para balas
@@ -83,6 +104,13 @@ export interface PhysicsMetadata {
 export interface PhysicsBinding {
   mesh: Object3D;
   rigidBody: RAPIER.RigidBody;
+}
+
+interface InterpolatedPhysicsBinding extends PhysicsBinding {
+  previousPosition: Vector3;
+  previousRotation: Quaternion;
+  currentPosition: Vector3;
+  currentRotation: Quaternion;
 }
 
 export interface PhysicsBoxOptions {
@@ -141,10 +169,22 @@ export type ContactPairFilter = (
   body2: number,
 ) => RAPIER.SolverFlags | null;
 
+/** Callback invoked once for each fixed Rapier substep. */
+export type PhysicsStepHook = (fixedDelta: number) => void;
+
+export interface PhysicsContactForce {
+  readonly collider1: number;
+  readonly collider2: number;
+  readonly totalForce: Vector3;
+  readonly totalForceMagnitude: number;
+  readonly maxForceDirection: Vector3;
+  readonly maxForceMagnitude: number;
+}
+
 export class PhysicsWorld {
   world!: RAPIER.World;
 
-  private readonly bindings: PhysicsBinding[] = [];
+  private readonly bindings: InterpolatedPhysicsBinding[] = [];
   private readonly metadataByCollider = new Map<number, PhysicsMetadata>();
   /**
    * Visual de un body cuyo dueño sincroniza su propia malla (pickups, etc.) y
@@ -165,6 +205,11 @@ export class PhysicsWorld {
   // Rapier-compat solo aplica hooks via `stepWithEvents`, que exige una
   // EventQueue aunque nadie consuma los eventos (autoDrain la vacía).
   private eventQueue: RAPIER.EventQueue | null = null;
+  private readonly preStepHooks = new Set<PhysicsStepHook>();
+  private readonly postStepHooks = new Set<PhysicsStepHook>();
+  private accumulator = 0;
+  private interpolationAlpha = 0;
+  private readonly contactForceEvents: PhysicsContactForce[] = [];
 
   async init(): Promise<void> {
     if (this.initialized) {
@@ -186,10 +231,18 @@ export class PhysicsWorld {
   reset(): void {
     this.world = new RAPIER.World(GRAVITY);
     this.bindings.length = 0;
+    // Los hooks referencian bodies del mundo descartado: dejarlos vivos hace que
+    // el próximo `step()` los toque y Rapier trape en WASM.
+    this.preStepHooks.clear();
+    this.postStepHooks.clear();
     this.metadataByCollider.clear();
     this.bodyVisuals.clear();
     this.heldBodyHandles.clear();
     this.heldRestoreGravityScales.clear();
+    this.accumulator = 0;
+    this.interpolationAlpha = 0;
+    this.contactForceEvents.length = 0;
+    this.eventQueue?.clear();
   }
 
   markHeld(body: RAPIER.RigidBody, held: boolean): void {
@@ -284,7 +337,7 @@ export class PhysicsWorld {
     const volume = Math.max(options.size.x * options.size.y * options.size.z, 0.001);
     const density = (options.mass ?? 1) / volume;
     const collider = this.world.createCollider(createBoxCollider(options.size).setDensity(density), rigidBody);
-    this.bindings.push({ mesh, rigidBody });
+    this.bindMesh(mesh, rigidBody);
     this.registerCollider(collider, {
       id: options.id,
       kind: 'dynamic',
@@ -309,7 +362,7 @@ export class PhysicsWorld {
       rigidBody,
     );
     const diameter = options.radius * 2;
-    this.bindings.push({ mesh, rigidBody });
+    this.bindMesh(mesh, rigidBody);
     this.registerCollider(collider, {
       id: options.id,
       kind: 'dynamic',
@@ -449,20 +502,92 @@ export class PhysicsWorld {
       : null;
   }
 
+  /**
+   * Registers force/pose logic before each substep. The returned idempotent
+   * disposer must follow the lifecycle of the owning system.
+   */
+  addPreStepHook(hook: PhysicsStepHook): () => void {
+    this.preStepHooks.add(hook);
+    return () => {
+      this.preStepHooks.delete(hook);
+    };
+  }
+
+  /** Registers synchronization/telemetry after each resolved substep. */
+  addPostStepHook(hook: PhysicsStepHook): () => void {
+    this.postStepHooks.add(hook);
+    return () => {
+      this.postStepHooks.delete(hook);
+    };
+  }
+
+  /** Explicit aliases for consumers that name the phase as registration. */
+  registerPreStepHook(hook: PhysicsStepHook): () => void {
+    return this.addPreStepHook(hook);
+  }
+
+  registerPostStepHook(hook: PhysicsStepHook): () => void {
+    return this.addPostStepHook(hook);
+  }
+
+  getInterpolationAlpha(): number {
+    return this.interpolationAlpha;
+  }
+
+  /**
+   * Entrega una copia de los impactos acumulados por todos los substeps desde
+   * la última lectura. Los consumidores procesan daño fuera del callback WASM.
+   */
+  consumeContactForceEvents(): PhysicsContactForce[] {
+    return this.contactForceEvents.splice(0);
+  }
+
   step(delta: number): void {
-    this.world.timestep = Math.min(delta, 1 / 30);
-    if (this.hooks) {
-      // Lazy: la EventQueue necesita el WASM de Rapier cargado, que recién
-      // está garantizado en el primer step (post-`init`), no al registrar el
-      // filtro (puede correr antes de `init`).
-      if (!this.eventQueue) {
-        this.eventQueue = new RAPIER.EventQueue(true);
+    const frameDelta = Number.isFinite(delta)
+      ? Math.min(Math.max(delta, 0), PHYSICS_MAX_FRAME_DELTA)
+      : 0;
+    this.accumulator += frameDelta;
+
+    let substeps = 0;
+    while (
+      this.accumulator + Number.EPSILON >= PHYSICS_FIXED_TIMESTEP &&
+      substeps < PHYSICS_MAX_SUBSTEPS
+    ) {
+      this.capturePreviousBindingState();
+      for (const hook of [...this.preStepHooks]) {
+        hook(PHYSICS_FIXED_TIMESTEP);
       }
-      this.world.step(this.eventQueue, this.hooks);
-    } else {
-      this.world.step();
+      this.stepWorld();
+      for (const hook of [...this.postStepHooks]) {
+        hook(PHYSICS_FIXED_TIMESTEP);
+      }
+      this.captureCurrentBindingState();
+      this.accumulator = Math.max(
+        0,
+        this.accumulator - PHYSICS_FIXED_TIMESTEP,
+      );
+      substeps += 1;
     }
-    this.syncMeshes();
+
+    // Una pausa larga no debe dejar deuda que produzca cámara lenta en los
+    // frames siguientes. Con `PHYSICS_MAX_SUBSTEPS` cubriendo el delta máximo
+    // esto sólo puede dispararse si alguien sube el clamp de `Time.delta`.
+    if (this.accumulator >= PHYSICS_FIXED_TIMESTEP) {
+      this.accumulator %= PHYSICS_FIXED_TIMESTEP;
+    }
+    this.interpolationAlpha = Math.min(
+      this.accumulator / PHYSICS_FIXED_TIMESTEP,
+      1,
+    );
+
+    // `step(0)` es un sync explícito post-setup/teleport, sin avanzar el mundo.
+    if (frameDelta === 0 && substeps === 0) {
+      this.interpolationAlpha = 1;
+      this.snapAllBodies();
+      this.syncMeshes(1);
+      return;
+    }
+    this.syncMeshes(this.interpolationAlpha);
   }
 
   /**
@@ -505,12 +630,124 @@ export class PhysicsWorld {
     this.removeBody(body);
   }
 
-  private syncMeshes(): void {
-    this.bindings.forEach(({ mesh, rigidBody }) => {
-      const position = rigidBody.translation();
-      const rotation = rigidBody.rotation();
-      mesh.position.set(position.x, position.y, position.z);
-      mesh.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
+  private bindMesh(mesh: Object3D, rigidBody: RAPIER.RigidBody): void {
+    const position = rigidBody.translation();
+    const rotation = rigidBody.rotation();
+    this.bindings.push({
+      mesh,
+      rigidBody,
+      previousPosition: new Vector3(position.x, position.y, position.z),
+      previousRotation: new Quaternion(
+        rotation.x,
+        rotation.y,
+        rotation.z,
+        rotation.w,
+      ),
+      currentPosition: new Vector3(position.x, position.y, position.z),
+      currentRotation: new Quaternion(
+        rotation.x,
+        rotation.y,
+        rotation.z,
+        rotation.w,
+      ),
+    });
+  }
+
+  private stepWorld(): void {
+    this.world.timestep = PHYSICS_FIXED_TIMESTEP;
+    // Lazy: EventQueue necesita el WASM cargado. Se drena después de cada
+    // substep y sólo copia números/vectores, nunca refs temporales de Rapier.
+    if (!this.eventQueue) {
+      this.eventQueue = new RAPIER.EventQueue(false);
+    }
+    this.world.step(this.eventQueue, this.hooks ?? undefined);
+    this.eventQueue.drainCollisionEvents(() => undefined);
+    this.eventQueue.drainContactForceEvents((event) => {
+      const total = event.totalForce();
+      const direction = event.maxForceDirection();
+      this.contactForceEvents.push({
+        collider1: event.collider1(),
+        collider2: event.collider2(),
+        totalForce: new Vector3(total.x, total.y, total.z),
+        totalForceMagnitude: event.totalForceMagnitude(),
+        maxForceDirection: new Vector3(direction.x, direction.y, direction.z),
+        maxForceMagnitude: event.maxForceMagnitude(),
+      });
+      if (this.contactForceEvents.length > 1024) {
+        this.contactForceEvents.splice(0, this.contactForceEvents.length - 1024);
+      }
+    });
+  }
+
+  private capturePreviousBindingState(): void {
+    this.bindings.forEach((binding) => {
+      binding.previousPosition.copy(binding.currentPosition);
+      binding.previousRotation.copy(binding.currentRotation);
+    });
+  }
+
+  private captureCurrentBindingState(): void {
+    this.bindings.forEach((binding) => {
+      const position = binding.rigidBody.translation();
+      const rotation = binding.rigidBody.rotation();
+      binding.currentPosition.set(position.x, position.y, position.z);
+      binding.currentRotation.set(
+        rotation.x,
+        rotation.y,
+        rotation.z,
+        rotation.w,
+      );
+    });
+  }
+
+  /**
+   * Re-siembra la interpolación de TODAS las mallas bindeadas. Lo usa el sync
+   * explícito y el restore de un save, donde muchos cuerpos saltan a la vez.
+   */
+  snapAllBodies(): void {
+    this.captureCurrentBindingState();
+    this.bindings.forEach((binding) => {
+      binding.previousPosition.copy(binding.currentPosition);
+      binding.previousRotation.copy(binding.currentRotation);
+      binding.mesh.position.copy(binding.currentPosition);
+      binding.mesh.quaternion.copy(binding.currentRotation);
+    });
+  }
+
+  /**
+   * Re-siembra la interpolación de un cuerpo teleportado FUERA del step. Sin
+   * esto `syncMeshes` interpola entre la pose vieja y la nueva y la malla se
+   * estira por el nivel durante un frame (props cruzando un portal).
+   *
+   * Escribe la malla en el acto: los teleports ocurren después de `step()`, o
+   * sea que `syncMeshes` de este frame ya corrió con la pose vieja.
+   * No-op para cuerpos sin binding (clones de portal, actores, vehículos).
+   */
+  snapBody(body: RAPIER.RigidBody): void {
+    const binding = this.bindings.find((b) => b.rigidBody === body);
+    if (!binding) return;
+    const position = body.translation();
+    const rotation = body.rotation();
+    binding.currentPosition.set(position.x, position.y, position.z);
+    binding.currentRotation.set(rotation.x, rotation.y, rotation.z, rotation.w);
+    binding.previousPosition.copy(binding.currentPosition);
+    binding.previousRotation.copy(binding.currentRotation);
+    binding.mesh.position.copy(binding.currentPosition);
+    binding.mesh.quaternion.copy(binding.currentRotation);
+  }
+
+  private syncMeshes(alpha: number): void {
+    this.bindings.forEach((binding) => {
+      binding.mesh.position.lerpVectors(
+        binding.previousPosition,
+        binding.currentPosition,
+        alpha,
+      );
+      binding.mesh.quaternion.slerpQuaternions(
+        binding.previousRotation,
+        binding.currentRotation,
+        alpha,
+      );
     });
   }
 }

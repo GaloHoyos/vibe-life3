@@ -97,6 +97,7 @@ function context(
 
 function input(options: {
   crouch?: number;
+  seated?: number;
   deltaTime?: number;
   localForwardSpeed?: number;
 }): AnimationInput {
@@ -109,7 +110,12 @@ function input(options: {
       localVelocity,
       isGrounded: true,
     },
-    posture: { crouch: options.crouch ?? 0, lean: 0 },
+    posture: {
+      crouch: options.crouch ?? 0,
+      lean: 0,
+      seated: options.seated ?? 0,
+      seatedControls: 0,
+    },
     aim: {
       active: false,
       weight: 0,

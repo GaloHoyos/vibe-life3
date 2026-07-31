@@ -84,6 +84,11 @@ export class PlayerSquadService {
     return this.members.includes(id);
   }
 
+  /** Stable snapshot for external coordinators such as vehicles and transitions. */
+  memberIds(): readonly string[] {
+    return [...this.members];
+  }
+
   size(): number {
     return this.members.length;
   }

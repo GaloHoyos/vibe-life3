@@ -49,9 +49,22 @@ import type { GameEventBus } from "@game/GameEvents";
 import { PortalConfig } from "@game/config/portal.config";
 import { PlayerConfig } from "@game/config/gameplay.config";
 import type { Player } from "@game/gameplay/player/Player";
+import {
+  assertNonNegativeNumber,
+  assertSnapshotVersion,
+  captureQuaternion,
+  captureVector3,
+  restoreQuaternion,
+  restoreVector3,
+  type QuaternionSaveState,
+  type Vector3SaveState,
+} from "@game/gameplay/weapons/ProjectileSaveState";
 import type { NpcPortalHandle } from "@game/npc/core/INpc";
 import type { Disposable } from "@shared/types/lifecycle";
-import { computePortalPlacement } from "./PortalPlacement";
+import {
+  computePortalPlacement,
+  resolvePortalBackingColliders,
+} from "./PortalPlacement";
 
 export interface PortalFireOptions {
   slot: PortalSlot;
@@ -68,6 +81,19 @@ export interface PortalProjection {
   viewPosition: Vector3;
   /** Normal saliente (frente) del disco de salida. */
   viewNormal: Vector3;
+}
+
+export interface PortalSaveState {
+  slot: PortalSlot;
+  position: Vector3SaveState;
+  quaternion: QuaternionSaveState;
+  halfWidth: number;
+  halfHeight: number;
+}
+
+export interface PortalGunSystemSaveState {
+  version: 1;
+  portals: PortalSaveState[];
 }
 
 interface PlacedPortal {
@@ -607,6 +633,68 @@ export class PortalGunSystem implements Disposable {
     return this.portals.get(slot);
   }
 
+  capture(): PortalGunSystemSaveState {
+    return {
+      version: 1,
+      portals: [...this.portals.values()].map((portal) => ({
+        slot: portal.slot,
+        position: captureVector3(portal.frame.position),
+        quaternion: captureQuaternion(portal.frame.quaternion),
+        halfWidth: portal.frame.halfWidth,
+        halfHeight: portal.frame.halfHeight,
+      })),
+    };
+  }
+
+  restore(state: PortalGunSystemSaveState): void {
+    assertSnapshotVersion(state.version, 1, "El estado de portales");
+    const slots = new Set<PortalSlot>();
+    const resolved: Array<{
+      slot: PortalSlot;
+      frame: PortalFrame;
+      backingColliders: RAPIER.Collider[];
+    }> = [];
+
+    for (const portal of state.portals) {
+      if (slots.has(portal.slot)) {
+        throw new Error(`El estado de portales repite el slot "${portal.slot}".`);
+      }
+      slots.add(portal.slot);
+      assertPositiveNumber(portal.halfWidth, `${portal.slot}.halfWidth`);
+      assertPositiveNumber(portal.halfHeight, `${portal.slot}.halfHeight`);
+      const frame: PortalFrame = {
+        position: restoreVector3(portal.position, `${portal.slot}.position`),
+        quaternion: restoreQuaternion(
+          portal.quaternion,
+          `${portal.slot}.quaternion`,
+        ),
+        halfWidth: portal.halfWidth,
+        halfHeight: portal.halfHeight,
+      };
+      const backingColliders = resolvePortalBackingColliders(
+        this.raycast,
+        frame,
+        "player",
+      );
+      if (!backingColliders) {
+        throw new Error(
+          `El portal "${portal.slot}" ya no cabe en la geometría del nivel.`,
+        );
+      }
+      resolved.push({ slot: portal.slot, frame, backingColliders });
+    }
+
+    this.clearPlacedPortals(false);
+    try {
+      for (const portal of resolved) {
+        this.place(portal.slot, portal.frame, portal.backingColliders);
+      }
+    } catch (error) {
+      this.clearPlacedPortals(false);
+      throw error;
+    }
+  }
+
   /**
    * Proyecciones de un punto a través del par linked (0–2 resultados): dónde
    * "aparece" el punto mirando por cada portal. Alimenta los ghost snapshots
@@ -640,10 +728,12 @@ export class PortalGunSystem implements Disposable {
 
   /** Removes both portals (level teardown / editor toggle). */
   clear(): void {
+    this.clearPlacedPortals(true);
+  }
+
+  private clearPlacedPortals(emitEvent: boolean): void {
     this.resetNpcTraversalStates();
-    if (this.portals.size === 0) {
-      return;
-    }
+    const hadPortals = this.portals.size > 0;
     for (const portal of this.portals.values()) {
       this.scene.remove(portal.root);
       portal.surface.material.dispose();
@@ -654,7 +744,9 @@ export class PortalGunSystem implements Disposable {
     this.transit.clear();
     this.traveller.clear();
     this.restoreShadowPolicy();
-    this.eventBus.emit("portal.cleared", {});
+    if (emitEvent && hadPortals) {
+      this.eventBus.emit("portal.cleared", {});
+    }
   }
 
   dispose(): void {
@@ -748,5 +840,12 @@ export class PortalGunSystem implements Disposable {
       }
     }
     return TMP_FORWARD.normalize().clone();
+  }
+}
+
+function assertPositiveNumber(value: number, label: string): void {
+  assertNonNegativeNumber(value, label);
+  if (value <= 0) {
+    throw new Error(`${label} debe ser mayor que cero.`);
   }
 }

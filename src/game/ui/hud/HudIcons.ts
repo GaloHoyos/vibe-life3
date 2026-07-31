@@ -20,6 +20,14 @@ export const ArmorIcon = `
   <path d="M 19 5 L 9 17 L 15 17 L 13 27 L 23 14 L 17 14 L 19 5 Z" fill="currentColor"/>
 </svg>`.trim();
 
+export const VehicleIcon = `
+<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <rect x="1.5" y="1.5" width="29" height="29" fill="none" stroke="currentColor" stroke-width="1.6"/>
+  <path d="M 5 20 L 7 13 L 14 13 L 17 9 L 24 9 L 26 20 Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="miter"/>
+  <circle cx="10" cy="22" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+  <circle cx="22" cy="22" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+</svg>`.trim();
+
 const Crowbar = `
 <svg viewBox="0 0 48 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" xmlns="http://www.w3.org/2000/svg">
   <path d="M 3 13 L 36 13 L 44 6"/>

@@ -269,7 +269,14 @@ export class PortalTravellerSystem {
       const metadata = collider
         ? this.physics.getColliderMetadata(collider)
         : undefined;
-      if (metadata?.kind === "ragdoll" || metadata?.selfPortalTraversal) return;
+      if (
+        metadata?.kind === "ragdoll" ||
+        metadata?.portalTraversal === "blocked" ||
+        metadata?.portalTraversal === "self" ||
+        metadata?.selfPortalTraversal
+      ) {
+        return;
+      }
 
       const boundingRadius = this.bodyBoundingRadius(body);
       // El clon en sí es un cuerpo dinámico cerca del portal: computa su
@@ -558,6 +565,10 @@ export class PortalTravellerSystem {
     dst.setRotation({ x: TMP_C_QUAT.x, y: TMP_C_QUAT.y, z: TMP_C_QUAT.z, w: TMP_C_QUAT.w }, true);
     dst.setLinvel({ x: TMP_C_LIN.x, y: TMP_C_LIN.y, z: TMP_C_LIN.z }, true);
     dst.setAngvel({ x: TMP_C_ANG.x, y: TMP_C_ANG.y, z: TMP_C_ANG.z }, true);
+    // El salto ocurre fuera del step: sin re-sembrar, la interpolación de
+    // `syncMeshes` estira la malla entre los dos lados del portal un frame.
+    // No-op cuando `dst` es un clon (no tiene binding).
+    this.physics.snapBody(dst);
   }
 
   /** Copia el estado de `src` en `dst` sin transformar (colapso del clon). */
@@ -570,6 +581,7 @@ export class PortalTravellerSystem {
     dst.setLinvel({ x: lv.x, y: lv.y, z: lv.z }, true);
     const av = src.angvel();
     dst.setAngvel({ x: av.x, y: av.y, z: av.z }, true);
+    this.physics.snapBody(dst);
   }
 
   private syncCloneMesh(record: CloneRecord): void {
@@ -872,6 +884,7 @@ export class PortalTravellerSystem {
       { x: TMP_ROT_Q.x, y: TMP_ROT_Q.y, z: TMP_ROT_Q.z, w: TMP_ROT_Q.w },
       true,
     );
+    this.physics.snapBody(body);
 
     this.options.onTeleport?.(entityId, TMP_EXIT_POS.clone());
   }

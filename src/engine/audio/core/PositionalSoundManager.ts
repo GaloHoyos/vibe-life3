@@ -1,6 +1,7 @@
 import {
   AudioContext as ThreeAudioContext,
   AudioListener,
+  MathUtils,
   Object3D,
   PositionalAudio,
   Vector3,
@@ -14,8 +15,18 @@ export interface PositionalAudioOptions {
   rolloffFactor?: number;
   volume?: number;
   loop?: boolean;
+  playbackRate?: number;
+  lowpassFrequency?: number;
   /** Bus del mixer al que rutear la salida (respeta volúmenes de usuario). Default `sfx`. */
   bus?: AudioBusName;
+}
+
+export interface ControllablePositionalSound {
+  setVolume(value: number): void;
+  setPlaybackRate(value: number): void;
+  setLowpassFrequency(value: number): void;
+  isReady(): boolean;
+  dispose(): void;
 }
 
 interface AttachedSound {
@@ -104,6 +115,90 @@ export class PositionalSoundManager {
     });
   }
 
+  /**
+   * Loop posicional con parámetros vivos. Motores, rotores y maquinaria
+   * actualizan gain/pitch/filtro sin recrear AudioBufferSourceNodes por frame.
+   */
+  attachControllable(
+    soundId: string,
+    object: Object3D,
+    options: PositionalAudioOptions = {},
+  ): ControllablePositionalSound {
+    let audio: PositionalAudio | null = null;
+    let filter: BiquadFilterNode | null = null;
+    let volume = options.volume ?? 1;
+    let playbackRate = 1;
+    let lowpassFrequency = 20_000;
+    let disposed = false;
+    const generation = this.attachGeneration.get(object) ?? 0;
+
+    void this.spawnAudio(
+      soundId,
+      { ...options, loop: options.loop ?? true },
+      (readyAudio) => {
+        if (
+          disposed ||
+          (this.attachGeneration.get(object) ?? 0) !== generation
+        ) {
+          return false;
+        }
+        audio = readyAudio;
+        readyAudio.setVolume(volume);
+        readyAudio.setPlaybackRate(playbackRate);
+        const context = this.audioSystem.getContext();
+        if (context) {
+          filter = context.createBiquadFilter();
+          filter.type = "lowpass";
+          filter.frequency.value = lowpassFrequency;
+          readyAudio.setFilter(filter);
+        }
+        object.add(readyAudio);
+        if (!this.attached.has(object)) {
+          this.attached.set(object, []);
+        }
+        this.attached.get(object)?.push({ audio: readyAudio, object });
+        return true;
+      },
+    );
+
+    return {
+      setVolume: (value) => {
+        volume = Math.max(0, value);
+        audio?.setVolume(volume);
+      },
+      setPlaybackRate: (value) => {
+        playbackRate = MathUtils.clamp(value, 0.25, 4);
+        audio?.setPlaybackRate(playbackRate);
+      },
+      setLowpassFrequency: (value) => {
+        lowpassFrequency = MathUtils.clamp(value, 120, 20_000);
+        if (filter) {
+          const context = this.audioSystem.getContext();
+          if (context) {
+            filter.frequency.setTargetAtTime(
+              lowpassFrequency,
+              context.currentTime,
+              0.04,
+            );
+          } else {
+            filter.frequency.value = lowpassFrequency;
+          }
+        }
+      },
+      isReady: () => audio !== null,
+      dispose: () => {
+        if (disposed) return;
+        disposed = true;
+        if (!audio) return;
+        if (audio.isPlaying) audio.stop();
+        object.remove(audio);
+        this.removeAttachedAudio(object, audio);
+        audio = null;
+        filter = null;
+      },
+    };
+  }
+
   /** Frena y desacopla todos los sonidos atachados (recarga de nivel in-place). */
   clear(): void {
     this.epoch += 1;
@@ -133,6 +228,17 @@ export class PositionalSoundManager {
     this.attached.delete(object);
   }
 
+  private removeAttachedAudio(object: Object3D, audio: PositionalAudio): void {
+    const entries = this.attached.get(object);
+    if (!entries) return;
+    const remaining = entries.filter((entry) => entry.audio !== audio);
+    if (remaining.length > 0) {
+      this.attached.set(object, remaining);
+    } else {
+      this.attached.delete(object);
+    }
+  }
+
   /** `onReady` decide si el sonido sigue vigente; si devuelve false no suena. */
   private async spawnAudio(
     soundId: string,
@@ -158,6 +264,21 @@ export class PositionalSoundManager {
     audio.setMaxDistance(options.maxDistance ?? 12);
     audio.setRolloffFactor(options.rolloffFactor ?? 1.2);
     audio.setVolume(options.volume ?? 1);
+    audio.setPlaybackRate(
+      MathUtils.clamp(options.playbackRate ?? 1, 0.25, 4),
+    );
+    if (options.lowpassFrequency !== undefined) {
+      const context = this.audioSystem.getContext();
+      if (!context) return;
+      const filter = context.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = MathUtils.clamp(
+        options.lowpassFrequency,
+        120,
+        20_000,
+      );
+      audio.setFilter(filter);
+    }
     this.routeToBus(audio, options.bus ?? "sfx");
     if (!onReady(audio)) {
       return;

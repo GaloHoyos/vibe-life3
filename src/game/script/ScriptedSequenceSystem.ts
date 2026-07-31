@@ -49,16 +49,21 @@ export class ScriptedSequenceSystem {
     const source = { key: def.id, name };
     let hasRun = false;
     let activeOrder: SequenceOrder | null = null;
+    let activeActivator: ActivatorRef | null = null;
 
-    const start = (args: InputArgs): void => {
-      if (activeOrder !== null) return; // ya corriendo
-      if (hasRun && !def.repeatable) return;
+    // Devuelve la orden creada: `restoreState` la necesita para re-emitir el cue
+    // pendiente, y leer `activeOrder` ahí no sirve porque TS lo tiene angostado
+    // a `null` por el guard previo (no ve la reasignación desde este closure).
+    const start = (args: InputArgs, restoring = false): SequenceOrder | null => {
+      if (activeOrder !== null) return null; // ya corriendo
+      if (hasRun && !def.repeatable) return null;
       const npc = this.directory.firstAlive(def.targetNpc);
       if (!npc) {
         console.warn(`[Sequence] '${name}': NPC objetivo '${def.targetNpc}' no encontrado`);
-        return;
+        return null;
       }
       hasRun = true;
+      activeActivator = args.activator;
       const npcId = npc.id;
       // Un NPC sólo puede ejecutar una secuencia a la vez. Cancelar la anterior
       // mantiene consistentes sus outputs y evita handles activos huérfanos.
@@ -68,9 +73,13 @@ export class ScriptedSequenceSystem {
           this.ordersByNpcId.delete(npcId);
         }
         activeOrder = null;
+        activeActivator = null;
       });
       this.ordersByNpcId.set(npcId, activeOrder);
-      this.io.fireOutput(source, 'OnBegin', args.activator);
+      if (!restoring) {
+        this.io.fireOutput(source, 'OnBegin', args.activator);
+      }
+      return activeOrder;
     };
 
     return {
@@ -89,6 +98,41 @@ export class ScriptedSequenceSystem {
             activeOrder?.raiseCue();
             return;
         }
+      },
+      captureState: () => ({
+        hasRun,
+        active: activeOrder !== null,
+        cuePending: activeOrder?.isCuePending() ?? false,
+        activatorKind: activeActivator?.kind ?? 'none',
+        activatorName:
+          activeActivator?.kind === 'entity' ? activeActivator.name : null,
+        activatorKey:
+          activeActivator?.kind === 'entity'
+            ? activeActivator.key ?? null
+            : null,
+      }),
+      restoreState: (state) => {
+        const savedHasRun =
+          typeof state.hasRun === 'boolean' ? state.hasRun : false;
+        hasRun = savedHasRun;
+        if (state.active !== true || activeOrder !== null) return;
+        const activator: ActivatorRef =
+          state.activatorKind === 'player'
+            ? { kind: 'player' }
+            : state.activatorKind === 'entity' &&
+                typeof state.activatorName === 'string'
+              ? {
+                  kind: 'entity',
+                  name: state.activatorName,
+                  ...(typeof state.activatorKey === 'string'
+                    ? { key: state.activatorKey }
+                    : {}),
+                }
+              : { kind: 'none' };
+        hasRun = false;
+        const restored = start({ activator, caller: source.name }, true);
+        hasRun = savedHasRun;
+        if (state.cuePending === true) restored?.raiseCue();
       },
     };
   }

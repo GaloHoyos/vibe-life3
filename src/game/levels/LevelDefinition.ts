@@ -17,6 +17,17 @@ import type { LevelId } from '@game/levels/LevelRegistry';
 import type { PlayerModelId } from '@game/config/playermodel.config';
 import type { IOEntityFields, LogicEntityDefinition } from '@game/script/EntityIOTypes';
 import type { ScriptedSequenceDefinition } from '@game/script/ScriptedSequenceTypes';
+import type { Faction } from '@engine/ai/Faction';
+import type {
+  VehicleCrewRole,
+  VehiclePresetId,
+} from '@game/config/vehicles.config';
+import type {
+  VehicleDriverProfileId,
+  VehicleGunnerProfileId,
+  VehiclePilotProfileId,
+} from '@game/config/vehicleAi.config';
+import type { LandmarkReference } from '@game/levels/LevelTransition';
 
 /** Rotacion Euler XYZ en radianes. Omitida = alineado a los ejes. */
 type RotationTuple = VectorTuple;
@@ -69,6 +80,11 @@ export interface NPCDefinition extends IOEntityFields {
   characterId: CharacterId;
   patrol?: VectorTuple[];
   rotation?: RotationTuple;
+  /**
+   * Identidad estable al cruzar un changelevel. El NPC con la misma clave en el
+   * nivel destino hereda pose y vitales del origen (companion que te sigue).
+   */
+  transitionKey?: string;
 }
 
 export interface WeaponPickupDefinition {
@@ -101,6 +117,197 @@ export interface ChargerDefinition {
   rotationY?: number;
   /** Override de la reserva total. Default según `ChargerTypes[kind]`. */
   capacity?: number;
+}
+
+export interface VehicleCrewAssignment {
+  /** Targetname del actor, o `!player`. */
+  actor: string;
+  role: VehicleCrewRole;
+  /** Si se omite, el runtime elige el primer asiento compatible libre. */
+  seatId?: string;
+}
+
+export type VehicleAiBehavior =
+  | 'hold'
+  | 'patrol'
+  | 'escort'
+  | 'transport'
+  | 'intercept'
+  | 'flank'
+  | 'retreat';
+
+export interface VehicleAiDefinition {
+  enabled: boolean;
+  behavior: VehicleAiBehavior;
+  /** Targetname de marker, actor o vehículo según el comportamiento. */
+  goal?: string;
+  allowRecoverySnap?: boolean;
+  /** Estilo de conducción. Default según el preset. */
+  driverProfile?: VehicleDriverProfileId;
+  /** Disciplina de tiro de la tripulación. Default según el preset. */
+  gunnerProfile?: VehicleGunnerProfileId;
+  /** Oficio del piloto en aparatos aéreos. Default según el comportamiento. */
+  pilotProfile?: VehiclePilotProfileId;
+  /**
+   * Si puede abandonar temporalmente su `behavior` para pelear o huir. Default
+   * según el comportamiento: los ofensivos sí, los de logística no.
+   */
+  allowMissionDeviation?: boolean;
+  /** Vehículos que comparten `convoyId` mantienen separación entre sí. */
+  convoyId?: string;
+}
+
+/**
+ * Oferta de tripulación autónoma. El vehículo declara qué puestos quiere
+ * cubiertos y los NPCs de la facción se reparten los roles solos; los triggers
+ * `EnableCrewing`/`DisableCrewing` encienden y apagan la oferta sin tener que
+ * guionar cada abordaje.
+ */
+export interface VehicleAiCrewDefinition {
+  /**
+   * Estado inicial de la oferta. Default `true`. En `false` el aparato espera
+   * un `EnableCrewing` del guion, que es como se autora una tripulación que
+   * corre hacia su vehículo recién cuando el jugador entra en escena.
+   */
+  enabled?: boolean;
+  /**
+   * Puestos a cubrir, en orden de prioridad. Default: primero los mandos y
+   * después la torreta, porque un aparato sin piloto no sirve de nada.
+   */
+  roles?: VehicleCrewRole[];
+  /** Radio de reclutamiento en metros. Default 30. */
+  radius?: number;
+}
+
+export const VEHICLE_ACCESS_POLICIES = [
+  'player',
+  'resistance',
+  'combine',
+] as const;
+
+export type VehicleAccessPolicy = (typeof VEHICLE_ACCESS_POLICIES)[number];
+
+export function isVehicleAccessPolicy(value: unknown): value is VehicleAccessPolicy {
+  return typeof value === 'string' &&
+    VEHICLE_ACCESS_POLICIES.some((policy) => policy === value);
+}
+
+/** Instancia autorada de un preset vehicular. */
+export interface VehicleDefinition extends IOEntityFields {
+  id: string;
+  presetId: VehiclePresetId;
+  position: VectorTuple;
+  rotation?: RotationTuple;
+  faction?: Faction;
+  /**
+   * Defines which crews may occupy the vehicle.
+   * - `player`: Gordon drives; allies may only ride as companions.
+   * - `resistance`: Gordon, Alyx, and Resistance humanoids may occupy it.
+   * - `combine`: Gordon or Combine may occupy it, without mixing factions.
+   *
+   * Omitting it preserves older maps by deriving the policy from `faction`.
+   */
+  accessPolicy?: VehicleAccessPolicy;
+  crew?: VehicleCrewAssignment[];
+  weaponEnabled?: boolean;
+  startDisabled?: boolean;
+  startLocked?: boolean;
+  engineOn?: boolean;
+  /** Helicopters deny manual dismount by default; scripted/forced exits ignore this flag. */
+  allowPlayerExit?: boolean;
+  /**
+   * Blindaje escenográfico: registra los impactos y dispara `OnDamaged`, pero la
+   * vida no baja, así que sólo la entrada `Crash` lo derriba. Conmutable en
+   * caliente con `EnableDamage` / `DisableDamage`.
+   */
+  invulnerable?: boolean;
+  /** Primer waypoint de la ruta normal; requerido por el helicóptero. */
+  pathStart?: string;
+  /** Primer waypoint de la secuencia de choque. */
+  crashPathStart?: string;
+  /** Default `fatal`; los setpieces pueden declarar un choque sobrevivible. */
+  crashPolicy?: 'survivable' | 'fatal';
+  /** Autoriza que la cadena `next` vuelva a un waypoint ya visitado. */
+  pathLoop?: boolean;
+  ai?: VehicleAiDefinition;
+  /** Tripulación que el vehículo ofrece a los NPCs de su facción. */
+  aiCrew?: VehicleAiCrewDefinition;
+  /** Identidad estable al cruzar un changelevel. */
+  transitionKey?: string;
+  portalTraversal?: 'blocked';
+}
+
+/**
+ * Backward compatibility for maps predating `accessPolicy`: Combine and
+ * Resistance vehicles inherit their faction; every other vehicle is player-only.
+ */
+export function resolveVehicleAccessPolicy(
+  definition: Pick<VehicleDefinition, 'accessPolicy' | 'faction'>,
+): VehicleAccessPolicy {
+  if (definition.accessPolicy) return definition.accessPolicy;
+  if (definition.faction === 'combine') return 'combine';
+  if (definition.faction === 'resistance') return 'resistance';
+  return 'player';
+}
+
+/** Nodo Source-style de una ruta vehicular enlazada por `next`. */
+export interface VehicleWaypointDefinition extends IOEntityFields {
+  id: string;
+  position: VectorTuple;
+  next?: string;
+  speed?: number;
+  wait?: number;
+  /** Inclinación lateral autorada, en radianes. */
+  bank?: number;
+}
+
+export interface WaterVolumeDefinition {
+  id: string;
+  /** Centro del volumen físico. La cara superior es la superficie del agua. */
+  position: VectorTuple;
+  size: VectorTuple;
+  flow?: VectorTuple;
+  surface?: 'canal' | 'river' | 'industrial';
+}
+
+export type VehicleNavSurface = 'ground' | 'water' | 'both';
+
+export interface VehicleNavAreaDefinition {
+  id: string;
+  polygon: VectorTuple[];
+  surface: VehicleNavSurface;
+  cost?: number;
+  speedLimit?: number;
+  tags?: string[];
+  flags?: Array<'noCombat' | 'noReverse' | 'parking' | 'shore'>;
+}
+
+export interface VehicleNavLaneDefinition {
+  id: string;
+  points: VectorTuple[];
+  width: number;
+  direction: 'forward' | 'backward' | 'both';
+  speedLimit?: number;
+  priority?: number;
+  tags?: string[];
+}
+
+export type VehicleNavMarkerKind =
+  | 'parking'
+  | 'boarding'
+  | 'recovery'
+  | 'passingBay'
+  | 'landingZone'
+  | 'dropZone';
+
+export interface VehicleNavMarkerDefinition extends IOEntityFields {
+  id: string;
+  position: VectorTuple;
+  heading?: number;
+  kind: VehicleNavMarkerKind;
+  allowedPresets?: VehiclePresetId[];
+  /** Sólo un marker explícito puede habilitar el último escalón de recovery. */
+  allowRecoverySnap?: boolean;
 }
 
 /** Objetivo inicial de un nivel. El HUD lo muestra al cargar. */
@@ -171,7 +378,7 @@ export interface LevelDefinition {
    * del nivel anterior — así la transición conserva la posición relativa. Si se
    * omite, reaparece en `playerStart`.
    */
-  entryLandmark?: VectorTuple;
+  entryLandmark?: LandmarkReference;
   /** Objetivo que el HUD muestra al cargar el nivel. */
   objective?: ObjectiveDefinition;
   /** Color de fondo de fallback (cuando no hay skybox o el HDRI falla). */
@@ -219,4 +426,16 @@ export interface LevelDefinition {
   explosiveBarrels?: ExplosiveBarrelDefinition[];
   /** Volúmenes de peligro que dañan al jugador mientras está adentro. */
   hazardVolumes?: HazardVolumeDefinition[];
+  /** Vehículos pilotables, tripulados o guionados. */
+  vehicles?: VehicleDefinition[];
+  /** Rutas enlazadas para helicópteros y movimientos guionados. */
+  vehicleWaypoints?: VehicleWaypointDefinition[];
+  /** Agua renderizable y consultable por motores de flotación. */
+  waterVolumes?: WaterVolumeDefinition[];
+  /** Regiones donde el bake de navegación vehicular puede generar espacio libre. */
+  vehicleNavAreas?: VehicleNavAreaDefinition[];
+  /** Carriles autorados del grafo vehicular global. */
+  vehicleNavLanes?: VehicleNavLaneDefinition[];
+  /** Puntos semánticos de parking, boarding, recovery y aterrizaje. */
+  vehicleNavMarkers?: VehicleNavMarkerDefinition[];
 }

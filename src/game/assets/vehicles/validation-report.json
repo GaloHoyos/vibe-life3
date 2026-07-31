@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "validator": "Khronos glTF Validator",
+  "deterministic": true,
+  "vehicles": [
+    {
+      "id": "buggy",
+      "bytes": 1113872,
+      "budgetBytes": 8388608,
+      "lods": [
+        {
+          "triangles": 17268,
+          "draws": 7
+        },
+        {
+          "triangles": 6532,
+          "draws": 7
+        },
+        {
+          "triangles": 1676,
+          "draws": 5
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0,
+        "infos": 1,
+        "hints": 0
+      }
+    },
+    {
+      "id": "airboat",
+      "bytes": 1103004,
+      "budgetBytes": 8388608,
+      "lods": [
+        {
+          "triangles": 13960,
+          "draws": 6
+        },
+        {
+          "triangles": 3724,
+          "draws": 6
+        },
+        {
+          "triangles": 992,
+          "draws": 1
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0,
+        "infos": 1,
+        "hints": 0
+      }
+    },
+    {
+      "id": "helicopter",
+      "bytes": 1359916,
+      "budgetBytes": 14680064,
+      "lods": [
+        {
+          "triangles": 21828,
+          "draws": 8
+        },
+        {
+          "triangles": 5756,
+          "draws": 6
+        },
+        {
+          "triangles": 3932,
+          "draws": 4
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0,
+        "infos": 9,
+        "hints": 0
+      }
+    },
+    {
+      "id": "rebelCrawler",
+      "bytes": 1059336,
+      "budgetBytes": 9437184,
+      "lods": [
+        {
+          "triangles": 11816,
+          "draws": 6
+        },
+        {
+          "triangles": 6192,
+          "draws": 6
+        },
+        {
+          "triangles": 2888,
+          "draws": 5
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0,
+        "infos": 5,
+        "hints": 0
+      }
+    },
+    {
+      "id": "combineGlider",
+      "bytes": 766040,
+      "budgetBytes": 9437184,
+      "lods": [
+        {
+          "triangles": 4552,
+          "draws": 8
+        },
+        {
+          "triangles": 1800,
+          "draws": 8
+        },
+        {
+          "triangles": 1088,
+          "draws": 7
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0,
+        "infos": 29,
+        "hints": 0
+      }
+    }
+  ],
+  "audio": {
+    "bytes": 1841748,
+    "budgetBytes": 12582912,
+    "files": 13
+  }
+}

@@ -34,6 +34,7 @@ const AUDIO_BUSES: VolumeRow[] = [
   { bus: "music", label: "Volumen musica", defaultValue: 65 },
   { bus: "ambience", label: "Volumen ambiente", defaultValue: 75 },
   { bus: "sfx", label: "Volumen efectos", defaultValue: 85 },
+  { bus: "vehicles", label: "Volumen vehículos", defaultValue: 82 },
   { bus: "dialogue", label: "Volumen dialogo", defaultValue: 80 },
 ];
 

@@ -12,18 +12,26 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:ci": "npm run build && npm run test",
+    "vehicles:generate": "tsx tools/vehicle-assets/generate.ts",
+    "vehicles:validate": "tsx tools/vehicle-assets/validate.ts",
     "preview": "vite preview"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
+    "meshoptimizer": "1.2.0",
     "recast-navigation": "0.43.1",
     "three": "^0.164.1"
   },
   "devDependencies": {
+    "@gltf-transform/core": "4.4.2",
+    "@gltf-transform/extensions": "4.4.2",
+    "@gltf-transform/functions": "4.4.2",
     "@types/three": "0.164.1",
     "@vitest/coverage-v8": "^4.1.7",
+    "gltf-validator": "2.0.0-dev.3.10",
     "happy-dom": "^20.10.6",
     "playwright": "1.61.1",
+    "sharp": "0.35.3",
     "tsx": "4.20.6",
     "typescript": "^5.4.5",
     "vite": "^5.2.11",

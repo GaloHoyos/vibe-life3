@@ -63,6 +63,14 @@ export function createRelayHandle(def: RelayDef, io: EntityIOSystem): EntityHand
     update(delta: number): void {
       lockRemaining = Math.max(0, lockRemaining - Math.max(0, delta));
     },
+    captureState: () => ({ enabled, consumed, lockRemaining }),
+    restoreState: (state) => {
+      if (typeof state.enabled === 'boolean') enabled = state.enabled;
+      if (typeof state.consumed === 'boolean') consumed = state.consumed;
+      if (typeof state.lockRemaining === 'number') {
+        lockRemaining = Math.max(0, state.lockRemaining);
+      }
+    },
   };
 }
 
@@ -84,6 +92,10 @@ export function createAutoHandle(def: AutoDef, io: EntityIOSystem): EntityHandle
         key: source.key,
         name: source.name,
       });
+    },
+    captureState: () => ({ fired }),
+    restoreState: (state) => {
+      if (typeof state.fired === 'boolean') fired = state.fired;
     },
   };
 }
@@ -130,6 +142,13 @@ export function createTimerHandle(def: TimerDef, io: EntityIOSystem): EntityHand
         });
       }
     },
+    captureState: () => ({ enabled, elapsed }),
+    restoreState: (state) => {
+      if (typeof state.enabled === 'boolean') enabled = state.enabled;
+      if (typeof state.elapsed === 'number') {
+        elapsed = Math.max(0, Math.min(interval, state.elapsed));
+      }
+    },
   };
 }
 
@@ -167,6 +186,11 @@ export function createCounterHandle(def: CounterDef, io: EntityIOSystem): Entity
         hitMax = true;
         io.fireOutput(source, 'OnHitMax', args.activator);
       }
+    },
+    captureState: () => ({ value, hitMax }),
+    restoreState: (state) => {
+      if (typeof state.value === 'number') value = state.value;
+      if (typeof state.hitMax === 'boolean') hitMax = state.hitMax;
     },
   };
 }

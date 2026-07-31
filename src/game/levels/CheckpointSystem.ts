@@ -35,6 +35,8 @@ export interface CheckpointSnapshot {
   /** Orientación (yaw, rad) a restaurar. Lo usa la transición de niveles para
    *  conservar hacia dónde mirabas. Opcional: los checkpoints no lo capturan. */
   yaw?: number;
+  /** Momentum world-space. Opcional para checkpoints y saves legacy. */
+  velocity?: VectorTuple;
 }
 
 interface RuntimeCheckpoint {
@@ -42,6 +44,14 @@ interface RuntimeCheckpoint {
   bounds: Box3;
   respawn: Vector3;
   active: boolean;
+}
+
+export interface CheckpointSystemSaveSnapshot {
+  readonly version: 1;
+  readonly checkpoints: readonly {
+    readonly id: string;
+    readonly active: boolean;
+  }[];
 }
 
 /**
@@ -80,6 +90,25 @@ export class CheckpointSystem {
         id: checkpoint.definition.id,
         position: checkpoint.respawn.clone(),
       });
+    });
+  }
+
+  captureSaveState(): CheckpointSystemSaveSnapshot {
+    return {
+      version: 1,
+      checkpoints: this.checkpoints.map((checkpoint) => ({
+        id: checkpoint.definition.id,
+        active: checkpoint.active,
+      })),
+    };
+  }
+
+  restoreSaveState(snapshot: CheckpointSystemSaveSnapshot): void {
+    snapshot.checkpoints.forEach((saved) => {
+      const checkpoint = this.checkpoints.find(
+        (candidate) => candidate.definition.id === saved.id,
+      );
+      if (checkpoint) checkpoint.active = saved.active;
     });
   }
 }

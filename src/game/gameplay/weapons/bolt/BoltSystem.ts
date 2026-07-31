@@ -9,9 +9,22 @@ import {
   type Scene,
 } from "three";
 import type RAPIER from "@dimforge/rapier3d-compat";
+import type { Faction } from "@engine/ai/Faction";
 import type { Raycast, RaycastHit } from "@engine/physics/Raycast";
 import type { PortalRaycast } from "@engine/portals/PortalRaycast";
 import type { GameEventBus } from "@game/GameEvents";
+import type { GrenadeOwnerKind } from "@game/gameplay/weapons/grenade/Grenade";
+import {
+  assertFiniteNumber,
+  assertNonNegativeNumber,
+  assertSnapshotVersion,
+  captureQuaternion,
+  captureVector3,
+  restoreQuaternion,
+  restoreVector3,
+  type QuaternionSaveState,
+  type Vector3SaveState,
+} from "@game/gameplay/weapons/ProjectileSaveState";
 import type { Disposable } from "@shared/types/lifecycle";
 
 const BOLT_GRAVITY = 4;
@@ -35,6 +48,8 @@ export interface BoltSpawnOptions {
   impulse: number;
   weaponName: string;
   sourceId?: string;
+  ownerKind?: GrenadeOwnerKind;
+  sourceFaction?: Faction;
   now: number;
 }
 
@@ -45,11 +60,33 @@ interface ActiveBolt {
   impulse: number;
   weaponName: string;
   sourceId?: string;
+  ownerKind: GrenadeOwnerKind;
+  sourceFaction?: Faction;
   hardExpiresAt: number;
   mesh: Object3D;
   /** Una vez clavado deja de moverse; se dispone al vencer `stuckUntil`. */
   stuck: boolean;
   stuckUntil: number;
+}
+
+export interface BoltSaveState {
+  position: Vector3SaveState;
+  rotation: QuaternionSaveState;
+  velocity: Vector3SaveState;
+  damage: number;
+  impulse: number;
+  weaponName: string;
+  sourceId: string | null;
+  ownerKind: GrenadeOwnerKind;
+  sourceFaction: Faction | null;
+  hardExpiresAt: number;
+  stuck: boolean;
+  stuckUntil: number;
+}
+
+export interface BoltSystemSaveState {
+  version: 1;
+  bolts: BoltSaveState[];
 }
 
 /**
@@ -69,24 +106,101 @@ export class BoltSystem implements Disposable {
   ) {}
 
   spawn(options: BoltSpawnOptions): void {
+    this.spawnActive(options);
+  }
+
+  capture(): BoltSystemSaveState {
+    return {
+      version: 1,
+      bolts: this.bolts.map((bolt) => ({
+        position: captureVector3(bolt.position),
+        rotation: captureQuaternion(bolt.mesh.quaternion),
+        velocity: captureVector3(bolt.velocity),
+        damage: bolt.damage,
+        impulse: bolt.impulse,
+        weaponName: bolt.weaponName,
+        sourceId: bolt.sourceId ?? null,
+        ownerKind: bolt.ownerKind,
+        sourceFaction: bolt.sourceFaction ?? null,
+        hardExpiresAt: bolt.hardExpiresAt,
+        stuck: bolt.stuck,
+        stuckUntil: bolt.stuckUntil,
+      })),
+    };
+  }
+
+  restore(state: BoltSystemSaveState): void {
+    assertSnapshotVersion(state.version, 1, "El estado de virotes");
+    for (const [index, bolt] of state.bolts.entries()) {
+      this.validateSaveState(bolt, index);
+      restoreVector3(bolt.position, `bolts[${index}].position`);
+      restoreQuaternion(bolt.rotation, `bolts[${index}].rotation`);
+      restoreVector3(bolt.velocity, `bolts[${index}].velocity`);
+    }
+
+    this.clear();
+    try {
+      for (const [index, saved] of state.bolts.entries()) {
+        const position = restoreVector3(
+          saved.position,
+          `bolts[${index}].position`,
+        );
+        const velocity = restoreVector3(
+          saved.velocity,
+          `bolts[${index}].velocity`,
+        );
+        const speed = velocity.length();
+        const bolt = this.spawnActive({
+          origin: position,
+          direction:
+            speed > 1e-8 ? velocity.clone().divideScalar(speed) : new Vector3(),
+          speed,
+          damage: saved.damage,
+          impulse: saved.impulse,
+          weaponName: saved.weaponName,
+          sourceId: saved.sourceId ?? undefined,
+          ownerKind: saved.ownerKind,
+          sourceFaction: saved.sourceFaction ?? undefined,
+          now: saved.hardExpiresAt - HARD_LIFETIME,
+        });
+        bolt.velocity.copy(velocity);
+        bolt.hardExpiresAt = saved.hardExpiresAt;
+        bolt.stuck = saved.stuck;
+        bolt.stuckUntil = saved.stuckUntil;
+        bolt.mesh.position.copy(position);
+        bolt.mesh.quaternion.copy(
+          restoreQuaternion(saved.rotation, `bolts[${index}].rotation`),
+        );
+      }
+    } catch (error) {
+      this.clear();
+      throw error;
+    }
+  }
+
+  private spawnActive(options: BoltSpawnOptions): ActiveBolt {
     const direction = normalizedOrForward(options.direction);
     const mesh = createBoltMesh();
     mesh.position.copy(options.origin);
     mesh.quaternion.setFromUnitVectors(LOCAL_X, direction);
     this.scene.add(mesh);
 
-    this.bolts.push({
+    const bolt: ActiveBolt = {
       position: options.origin.clone(),
       velocity: direction.multiplyScalar(options.speed),
       damage: options.damage,
       impulse: options.impulse,
       weaponName: options.weaponName,
       sourceId: options.sourceId,
+      ownerKind: options.ownerKind ?? "player",
+      sourceFaction: options.sourceFaction ?? "player",
       hardExpiresAt: options.now + HARD_LIFETIME,
       mesh,
       stuck: false,
       stuckUntil: 0,
-    });
+    };
+    this.bolts.push(bolt);
+    return bolt;
   }
 
   update(delta: number, elapsed: number): void {
@@ -156,6 +270,17 @@ export class BoltSystem implements Disposable {
     this.clear();
   }
 
+  private validateSaveState(state: BoltSaveState, index: number): void {
+    const label = `bolts[${index}]`;
+    assertNonNegativeNumber(state.damage, `${label}.damage`);
+    assertNonNegativeNumber(state.impulse, `${label}.impulse`);
+    assertFiniteNumber(state.hardExpiresAt, `${label}.hardExpiresAt`);
+    assertFiniteNumber(state.stuckUntil, `${label}.stuckUntil`);
+    if (state.weaponName.length === 0) {
+      throw new Error(`${label}.weaponName no puede estar vacío.`);
+    }
+  }
+
   /** Raycast por el segmento recorrido, atravesando pickups de armas. */
   private castImpact(
     bolt: ActiveBolt,
@@ -214,7 +339,7 @@ export class BoltSystem implements Disposable {
       bolt.damage * damageMultiplier,
       direction.clone(),
       hit.metadata?.bodyPart?.name,
-      "player",
+      bolt.sourceId ?? (bolt.ownerKind === "player" ? "player" : undefined),
       hit.point,
     );
 
@@ -225,9 +350,9 @@ export class BoltSystem implements Disposable {
       point: hit.point,
       normal: hit.normal,
       damage: bolt.damage * damageMultiplier,
-      sourceId: "player",
-      sourceKind: "player",
-      sourceFaction: "player",
+      sourceId: bolt.sourceId,
+      sourceKind: bolt.ownerKind,
+      sourceFaction: bolt.sourceFaction,
     });
   }
 

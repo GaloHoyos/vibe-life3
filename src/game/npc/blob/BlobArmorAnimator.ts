@@ -397,7 +397,9 @@ export class BlobArmorAnimator implements NpcAnimator {
       (part) => part.state !== "released" && part.body.isValid(),
     );
 
+    const physics = this.options.physics;
     transformBodyThroughPortal(
+      physics,
       core,
       entry,
       exit,
@@ -406,6 +408,7 @@ export class BlobArmorAnimator implements NpcAnimator {
     );
     for (const part of mainParts) {
       transformBodyThroughPortal(
+        physics,
         part.body,
         entry,
         exit,
@@ -436,10 +439,10 @@ export class BlobArmorAnimator implements NpcAnimator {
     const core = this.options.coreBody;
     if (this.disposed || this.dead || !core.isValid()) return false;
     const offset = position.clone().sub(vectorFromRapier(core.translation()));
-    moveBodyByOffset(core, offset, velocity);
+    moveBodyByOffset(this.options.physics, core, offset, velocity);
     for (const part of this.parts) {
       if (part.state !== "released" && part.body.isValid()) {
-        moveBodyByOffset(part.body, offset, velocity);
+        moveBodyByOffset(this.options.physics, part.body, offset, velocity);
       }
     }
     this.chunkNavigator?.clear();
@@ -5185,6 +5188,7 @@ function stringSeed(value: string): number {
 }
 
 function transformBodyThroughPortal(
+  physics: PhysicsWorld,
   body: RAPIER.RigidBody,
   entry: PortalFrame,
   exit: PortalFrame,
@@ -5221,9 +5225,13 @@ function transformBodyThroughPortal(
   body.setLinvel(velocity, true);
   body.setAngvel(angularVelocity, true);
   body.setRotation(rotation, true);
+  // Salto fuera del step: re-sembrar o `syncMeshes` interpola la esfera entre
+  // los dos lados del portal durante un frame.
+  physics.snapBody(body);
 }
 
 function moveBodyByOffset(
+  physics: PhysicsWorld,
   body: RAPIER.RigidBody,
   offset: Vector3,
   velocity: Vector3,
@@ -5232,6 +5240,7 @@ function moveBodyByOffset(
   body.setTranslation(position, true);
   body.setLinvel(velocity, true);
   body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  physics.snapBody(body);
 }
 
 function partRadius(part: BlobArmorPart): number {

@@ -50,6 +50,27 @@ export function toTypeScript(doc: EditorDocument): string {
       case 'hazardVolume':
         lines.push(`  .hazardVolume(${lit(entity.def)})`);
         break;
+      case 'vehicle':
+        lines.push(`  .vehicle(${lit(entity.def)})`);
+        break;
+      case 'vehicleWaypoint':
+        lines.push(`  .vehicleWaypoint(${lit(entity.def)})`);
+        break;
+      case 'waterVolume':
+        lines.push(`  .waterVolume(${lit(entity.def)})`);
+        break;
+      case 'vehicleNavArea':
+        lines.push(`  .vehicleNavArea(${lit(entity.def)})`);
+        break;
+      case 'vehicleNavLane':
+        lines.push(`  .vehicleNavLane(${lit(entity.def)})`);
+        break;
+      case 'vehicleNavMarker':
+        lines.push(`  .vehicleNavMarker(${lit(entity.def)})`);
+        break;
+      case 'checkpoint':
+        lines.push(`  .checkpoint(${lit(entity.def)})`);
+        break;
       case 'building':
         lines.push(`  .structure(${lit(entity.spec)})`);
         break;

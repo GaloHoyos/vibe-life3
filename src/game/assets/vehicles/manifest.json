@@ -1,0 +1,373 @@
+{
+  "schemaVersion": 1,
+  "generator": "vibe-life3-procedural-vehicles",
+  "coordinateSystem": {
+    "units": "meters",
+    "up": "+Y",
+    "physicalForward": "+Z",
+    "cameraLook": "-Z rotated toward +Z"
+  },
+  "generatedAt": "deterministic",
+  "vehicles": [
+    {
+      "id": "buggy",
+      "glbBytes": 1113872,
+      "lods": [
+        {
+          "triangles": 17268,
+          "draws": 7
+        },
+        {
+          "triangles": 6532,
+          "draws": 7
+        },
+        {
+          "triangles": 1676,
+          "draws": 5
+        }
+      ],
+      "nodeNames": [
+        "buggy_vehicle",
+        "visual_lod0",
+        "buggy_body",
+        "wheel_front_left",
+        "wheel_front_right",
+        "wheel_rear_left",
+        "wheel_rear_right",
+        "turret_yaw",
+        "turret_pitch",
+        "visual_lod1",
+        "buggy_body_lod1",
+        "wheel_front_left_lod1",
+        "wheel_front_right_lod1",
+        "wheel_rear_left_lod1",
+        "wheel_rear_right_lod1",
+        "turret_yaw_lod1",
+        "turret_pitch_lod1",
+        "visual_lod2",
+        "buggy_body_lod2",
+        "wheel_front_left_lod2",
+        "wheel_front_right_lod2",
+        "wheel_rear_left_lod2",
+        "wheel_rear_right_lod2",
+        "seat_driver",
+        "seat_gunner",
+        "camera_driver",
+        "camera_gunner",
+        "exit_left",
+        "exit_right",
+        "muzzle",
+        "audio_engine",
+        "audio_transmission",
+        "damage_engine",
+        "damage_steering",
+        "damage_weapon",
+        "damage_fuel",
+        "wreckage",
+        "wreckage_chassis"
+      ]
+    },
+    {
+      "id": "airboat",
+      "glbBytes": 1103004,
+      "lods": [
+        {
+          "triangles": 13960,
+          "draws": 6
+        },
+        {
+          "triangles": 3724,
+          "draws": 6
+        },
+        {
+          "triangles": 992,
+          "draws": 1
+        }
+      ],
+      "nodeNames": [
+        "airboat_vehicle",
+        "visual_lod0",
+        "airboat_body",
+        "fan_main",
+        "rudder_left",
+        "rudder_right",
+        "turret_yaw",
+        "turret_pitch",
+        "visual_lod1",
+        "airboat_body_lod1",
+        "fan_main_lod1",
+        "rudder_left_lod1",
+        "rudder_right_lod1",
+        "turret_yaw_lod1",
+        "turret_pitch_lod1",
+        "visual_lod2",
+        "airboat_body_lod2",
+        "seat_driver",
+        "camera_driver",
+        "exit_left",
+        "exit_right",
+        "muzzle",
+        "audio_fan",
+        "audio_water",
+        "damage_engine",
+        "damage_hull",
+        "damage_weapon",
+        "damage_fuel",
+        "wreckage",
+        "wreckage_hull"
+      ]
+    },
+    {
+      "id": "helicopter",
+      "glbBytes": 1359916,
+      "lods": [
+        {
+          "triangles": 21828,
+          "draws": 8
+        },
+        {
+          "triangles": 5756,
+          "draws": 6
+        },
+        {
+          "triangles": 3932,
+          "draws": 4
+        }
+      ],
+      "nodeNames": [
+        "helicopter_vehicle",
+        "visual_lod0",
+        "helicopter_fuselage",
+        "helicopter_cabin",
+        "helicopter_cockpit",
+        "helicopter_glazing",
+        "rotor_main",
+        "rotor_tail",
+        "turret_yaw",
+        "turret_pitch",
+        "visual_lod1",
+        "helicopter_fuselage_lod1",
+        "helicopter_glazing_lod1",
+        "rotor_main_lod1",
+        "rotor_tail_lod1",
+        "turret_yaw_lod1",
+        "turret_pitch_lod1",
+        "visual_lod2",
+        "helicopter_fuselage_lod2",
+        "helicopter_glazing_lod2",
+        "rotor_main_lod2",
+        "rotor_tail_lod2",
+        "seat_pilot",
+        "seat_gunner",
+        "seat_passenger_left",
+        "seat_passenger_right",
+        "camera_pilot",
+        "camera_gunner",
+        "seat_commander",
+        "camera_commander",
+        "camera_passenger",
+        "exit_left",
+        "exit_right",
+        "muzzle",
+        "audio_rotor",
+        "audio_cabin",
+        "audio_alarm",
+        "damage_rotor",
+        "damage_engine",
+        "damage_cockpit",
+        "damage_fuel",
+        "damage_weapon",
+        "wreckage",
+        "wreckage_cabin",
+        "wreckage_engine",
+        "wreckage_tail",
+        "wreckage_rotor",
+        "wreckage_debris",
+        "wreckage_glass"
+      ]
+    },
+    {
+      "id": "rebelCrawler",
+      "glbBytes": 1059336,
+      "lods": [
+        {
+          "triangles": 11816,
+          "draws": 6
+        },
+        {
+          "triangles": 6192,
+          "draws": 6
+        },
+        {
+          "triangles": 2888,
+          "draws": 5
+        }
+      ],
+      "nodeNames": [
+        "rebelCrawler_vehicle",
+        "visual_lod0",
+        "rebelCrawler_body",
+        "rebelCrawler_glass",
+        "wheel_front_left",
+        "wheel_front_right",
+        "wheel_rear_left",
+        "wheel_rear_right",
+        "visual_lod1",
+        "rebelCrawler_body_lod1",
+        "rebelCrawler_glass_lod1",
+        "wheel_front_left_lod1",
+        "wheel_front_right_lod1",
+        "wheel_rear_left_lod1",
+        "wheel_rear_right_lod1",
+        "visual_lod2",
+        "rebelCrawler_body_lod2",
+        "wheel_front_left_lod2",
+        "wheel_front_right_lod2",
+        "wheel_rear_left_lod2",
+        "wheel_rear_right_lod2",
+        "seat_driver",
+        "seat_passenger",
+        "camera_driver",
+        "camera_passenger",
+        "exit_left",
+        "exit_right",
+        "audio_engine",
+        "audio_transmission",
+        "damage_engine",
+        "damage_steering",
+        "damage_fuel",
+        "wreckage",
+        "wreckage_crawler_hull"
+      ]
+    },
+    {
+      "id": "combineGlider",
+      "glbBytes": 766040,
+      "lods": [
+        {
+          "triangles": 4552,
+          "draws": 8
+        },
+        {
+          "triangles": 1800,
+          "draws": 8
+        },
+        {
+          "triangles": 1088,
+          "draws": 7
+        }
+      ],
+      "nodeNames": [
+        "combineGlider_vehicle",
+        "visual_lod0",
+        "combineGlider_body",
+        "combineGlider_windscreen",
+        "fan_main",
+        "stabilizer_front",
+        "stabilizer_rear_left",
+        "stabilizer_rear_right",
+        "rudder_left",
+        "rudder_right",
+        "visual_lod1",
+        "combineGlider_body_lod1",
+        "combineGlider_windscreen_lod1",
+        "fan_main_lod1",
+        "stabilizer_front_lod1",
+        "stabilizer_rear_left_lod1",
+        "stabilizer_rear_right_lod1",
+        "rudder_left_lod1",
+        "rudder_right_lod1",
+        "visual_lod2",
+        "combineGlider_body_lod2",
+        "fan_main_lod2",
+        "stabilizer_front_lod2",
+        "stabilizer_rear_left_lod2",
+        "stabilizer_rear_right_lod2",
+        "rudder_left_lod2",
+        "rudder_right_lod2",
+        "seat_driver",
+        "camera_driver",
+        "exit_left",
+        "exit_right",
+        "audio_engine",
+        "audio_hover",
+        "damage_engine",
+        "damage_hull",
+        "damage_steering",
+        "damage_fuel",
+        "wreckage",
+        "wreckage_combine_glider"
+      ]
+    }
+  ],
+  "audio": {
+    "files": [
+      {
+        "path": "audio/buggy-engine-loop.wav",
+        "bytes": 176444,
+        "durationSeconds": 4
+      },
+      {
+        "path": "audio/buggy-transmission-loop.wav",
+        "bytes": 132344,
+        "durationSeconds": 3
+      },
+      {
+        "path": "audio/buggy-skid-loop.wav",
+        "bytes": 88244,
+        "durationSeconds": 2
+      },
+      {
+        "path": "audio/airboat-engine-loop.wav",
+        "bytes": 176444,
+        "durationSeconds": 4
+      },
+      {
+        "path": "audio/airboat-fan-loop.wav",
+        "bytes": 176444,
+        "durationSeconds": 4
+      },
+      {
+        "path": "audio/airboat-water-loop.wav",
+        "bytes": 132344,
+        "durationSeconds": 3
+      },
+      {
+        "path": "audio/helicopter-rotor-loop.wav",
+        "bytes": 176444,
+        "durationSeconds": 4
+      },
+      {
+        "path": "audio/helicopter-cabin-loop.wav",
+        "bytes": 176444,
+        "durationSeconds": 4
+      },
+      {
+        "path": "audio/combine-glider-engine-loop.wav",
+        "bytes": 176444,
+        "durationSeconds": 4
+      },
+      {
+        "path": "audio/combine-glider-hover-loop.wav",
+        "bytes": 132344,
+        "durationSeconds": 3
+      },
+      {
+        "path": "audio/vehicle-alarm-loop.wav",
+        "bytes": 88244,
+        "durationSeconds": 2
+      },
+      {
+        "path": "audio/vehicle-damage-hit.wav",
+        "bytes": 55170,
+        "durationSeconds": 1.25
+      },
+      {
+        "path": "audio/vehicle-crash.wav",
+        "bytes": 154394,
+        "durationSeconds": 3.5
+      }
+    ],
+    "totalBytes": 1841748
+  }
+}

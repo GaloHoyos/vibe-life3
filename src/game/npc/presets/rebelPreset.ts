@@ -22,6 +22,7 @@ import {
   noticeSuspicionSchedule,
   reloadSchedules,
   scriptedSchedules,
+  vehicleApproachSchedule,
 } from './commonSchedules';
 import type { NpcMedicProfile, NpcPreset, NpcPresetOptions } from './NpcPreset';
 
@@ -56,6 +57,7 @@ export function buildRebelPreset(options: RebelPresetOptions = {}): NpcPreset {
     deadSchedule(),
     ...scriptedSchedules(),
     hitSchedule(flinch.duration),
+    vehicleApproachSchedule(),
     ...reloadSchedules(),
     {
       id: 'regroup',
@@ -134,6 +136,7 @@ export function buildRebelPreset(options: RebelPresetOptions = {}): NpcPreset {
     id: options.medic ? 'rebelMedic' : 'rebel',
     attackSlot: true,
     playerSquad: true,
+    vehicle: { canDrive: true },
     flinch,
     ...(options.medic ? { medic: MEDIC_PROFILE } : {}),
     perception: {

@@ -1,6 +1,10 @@
 ﻿import type { Input } from "@engine/input/Input";
 import { KeyBindings } from "@engine/input/KeyBindings";
-import { DefaultBindings, type GameAction } from "@game/config/controls.config";
+import {
+  ActionContexts,
+  DefaultBindings,
+  type GameAction,
+} from "@game/config/controls.config";
 
 const STORAGE_KEY = "vibe-life3:controls";
 
@@ -12,7 +16,7 @@ const STORAGE_KEY = "vibe-life3:controls";
  */
 export class Controls extends KeyBindings<GameAction> {
   constructor(input: Input) {
-    super(input, DefaultBindings);
+    super(input, DefaultBindings, ActionContexts);
     this.hydrateFromStorage();
     this.onChange(() => this.saveToStorage());
   }

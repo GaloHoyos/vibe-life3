@@ -104,6 +104,13 @@ export interface NpcPreset {
    * con `anchor`. `displayName` es el nombre visible en el prompt/diálogos.
    */
   companion?: { displayName: string };
+  /**
+   * Cognitive ability to ride in vehicles. Each vehicle policy then determines
+   * whether this NPC may drive it or only ride along.
+   */
+  vehicle?: {
+    canDrive: boolean;
+  };
   /** Movimiento. */
   movement: NpcMovementProfile;
   /** Schedules priorizados. El Brain los ordena desc por priority. */

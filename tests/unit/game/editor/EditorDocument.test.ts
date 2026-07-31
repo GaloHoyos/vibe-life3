@@ -22,6 +22,7 @@ describe("EditorDocument", () => {
   it("creates a blank document with editable defaults", () => {
     const doc = blankDocument();
 
+    expect(doc.schemaVersion).toBe(1);
     expect(doc.meta.id).toBe("nuevo-nivel");
     expect(doc.meta.playerStart).toEqual([0, 1.6, 6]);
     expect(doc.entities).toHaveLength(1);

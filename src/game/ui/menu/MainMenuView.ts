@@ -16,6 +16,8 @@ import type { UiSoundCue } from "@game/config/audio.config";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { WorkshopService } from "@game/workshop/WorkshopService";
 import type { DifficultyLevel } from "@game/config/difficulty.config";
+import type { SaveEnvelopeV1 } from "@game/save";
+import { SaveGameMenu } from "./SaveGameMenu";
 
 export interface MainMenuViewCallbacks {
   onStartChapter: (chapterId: string) => void;
@@ -26,6 +28,12 @@ export interface MainMenuViewCallbacks {
   onOpenState: (state: GameMenuState) => void;
   onBack: () => void;
   onResume: () => void;
+  onContinue: () => void | Promise<void>;
+  listSaves: () => Promise<readonly SaveEnvelopeV1[]>;
+  onLoadSave: (id: string) => void | Promise<void>;
+  onCreateManualSave: () => void | Promise<void>;
+  onOverwriteSave: (id: string) => void | Promise<void>;
+  onDeleteSave: (id: string) => void | Promise<void>;
   onExitToMain: () => void;
   onOpenEditor: () => void;
   onSound: (cue: UiSoundCue) => void;
@@ -56,7 +64,8 @@ export class MainMenuView {
   private readonly optionsMenu: OptionsMenu;
   private readonly newGameMenu: NewGameMenu;
   private readonly creditsMenu: CreditsMenu;
-  private readonly loadPanel = document.createElement("section");
+  private readonly saveGameMenu: SaveGameMenu;
+  private readonly continueButton: HTMLButtonElement;
   private readonly callbacks: MainMenuViewCallbacks;
   private readonly atmosphere: MenuAtmosphere;
   private visible = false;
@@ -100,6 +109,10 @@ export class MainMenuView {
     this.mainNav.className = "hl2-panel hl2-panel--nav";
     this.mainNav.innerHTML = `
       <nav class="hl2-nav">
+        <button class="hl2-button hl2-button--primary" data-action="continueGame" type="button">
+          <span class="hl2-button__marker"></span>
+          <span class="hl2-button__label">CONTINUAR</span>
+        </button>
         <button class="hl2-button" data-state="newGameMenu" type="button">
           <span class="hl2-button__marker"></span>
           <span class="hl2-button__label">NUEVA PARTIDA</span>
@@ -142,6 +155,14 @@ export class MainMenuView {
         <button class="hl2-button hl2-button--primary" data-action="resume" type="button">
           <span class="hl2-button__marker"></span>
           <span class="hl2-button__label">CONTINUAR</span>
+        </button>
+        <button class="hl2-button" data-state="saveGame" type="button">
+          <span class="hl2-button__marker"></span>
+          <span class="hl2-button__label">GUARDAR PARTIDA</span>
+        </button>
+        <button class="hl2-button" data-state="loadGame" type="button">
+          <span class="hl2-button__marker"></span>
+          <span class="hl2-button__label">CARGAR PARTIDA</span>
         </button>
         <button class="hl2-button" data-state="options" type="button">
           <span class="hl2-button__marker"></span>
@@ -194,23 +215,15 @@ export class MainMenuView {
       controls: callbacks.controls,
     });
     this.creditsMenu = new CreditsMenu(callbacks.onBack);
-
-    this.loadPanel.className = "hl2-panel hl2-panel--content";
-    this.loadPanel.innerHTML = `
-      <div class="hl2-panel__header">
-        <h2>CARGAR PARTIDA</h2>
-        <p>Sistema de guardado todavia no implementado.</p>
-      </div>
-      <div class="hl2-actions">
-        <button class="hl2-button" type="button" data-action="back">
-          <span class="hl2-button__marker"></span>
-          <span class="hl2-button__label">VOLVER</span>
-        </button>
-      </div>
-    `;
-    (
-      this.loadPanel.querySelector('[data-action="back"]') as HTMLButtonElement
-    ).addEventListener("click", callbacks.onBack);
+    this.saveGameMenu = new SaveGameMenu({
+      listSaves: callbacks.listSaves,
+      onLoadSave: callbacks.onLoadSave,
+      onCreateManualSave: callbacks.onCreateManualSave,
+      onOverwriteSave: callbacks.onOverwriteSave,
+      onDeleteSave: callbacks.onDeleteSave,
+      onBack: callbacks.onBack,
+      onSavesChanged: (saves) => this.updateContinueAvailability(saves),
+    });
 
     this.element
       .querySelectorAll<HTMLButtonElement>("[data-state]")
@@ -235,6 +248,15 @@ export class MainMenuView {
     ) as HTMLButtonElement;
     editorButton.addEventListener("click", callbacks.onOpenEditor);
 
+    this.continueButton = this.mainNav.querySelector(
+      '[data-action="continueGame"]',
+    ) as HTMLButtonElement;
+    this.continueButton.disabled = true;
+    this.continueButton.title = "Buscando el guardado más reciente...";
+    this.continueButton.addEventListener("click", () => {
+      void this.runContinue();
+    });
+
     const resumeButton = this.pauseNav.querySelector(
       '[data-action="resume"]',
     ) as HTMLButtonElement;
@@ -250,6 +272,7 @@ export class MainMenuView {
     ) as HTMLCanvasElement;
     this.atmosphere = new MenuAtmosphere(this.element, canvas);
     this.wireMenuSounds();
+    void this.refreshSaves();
   }
 
   setState(state: GameMenuState, pauseFlow: boolean): void {
@@ -261,7 +284,8 @@ export class MainMenuView {
       state === "workshop" ||
       state === "options" ||
       state === "credits" ||
-      state === "loadGame";
+      state === "loadGame" ||
+      state === "saveGame";
 
     this.paused = pauseFlow && !isLoading;
     this.element.classList.toggle("is-pause", this.paused);
@@ -284,8 +308,17 @@ export class MainMenuView {
     } else if (state === "credits") {
       this.contentPanel.append(this.creditsMenu.element);
     } else if (state === "loadGame") {
-      this.contentPanel.append(this.loadPanel);
+      this.saveGameMenu.show("load");
+      this.contentPanel.append(this.saveGameMenu.element);
+    } else if (state === "saveGame") {
+      this.saveGameMenu.show("save");
+      this.contentPanel.append(this.saveGameMenu.element);
     }
+  }
+
+  async refreshSaves(): Promise<void> {
+    const saves = await this.saveGameMenu.refresh();
+    this.updateContinueAvailability(saves);
   }
 
   private buildFooter(): HTMLDivElement {
@@ -344,6 +377,7 @@ export class MainMenuView {
   dispose(): void {
     this.atmosphere.dispose();
     this.optionsMenu.dispose();
+    this.saveGameMenu.dispose();
   }
 
   setVisible(visible: boolean): void {
@@ -362,6 +396,32 @@ export class MainMenuView {
 
   setDebugEnabled(enabled: boolean): void {
     this.optionsMenu.setDebugEnabled(enabled);
+  }
+
+  private updateContinueAvailability(
+    saves: readonly SaveEnvelopeV1[],
+  ): void {
+    const hasSaves = saves.length > 0;
+    this.continueButton.disabled = !hasSaves;
+    this.continueButton.title = hasSaves
+      ? "Carga el guardado compatible más reciente."
+      : "Todavía no hay una partida guardada.";
+  }
+
+  private async runContinue(): Promise<void> {
+    if (this.continueButton.disabled) return;
+    this.continueButton.disabled = true;
+    this.setStatus("Cargando el guardado más reciente...");
+    try {
+      await this.callbacks.onContinue();
+    } catch (error) {
+      this.setStatus(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "No se pudo continuar la partida.",
+      );
+      await this.refreshSaves();
+    }
   }
 
   private wireMenuSounds(): void {

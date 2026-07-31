@@ -1270,3 +1270,196 @@ body {
 .is-hidden {
   display: none;
 }
+/* ============================================================
+ * Vehículo (abajo al centro) — mismo lenguaje que los vitales
+ * ============================================================ */
+
+.hl-vehicle {
+  position: absolute;
+  left: 50%;
+  bottom: 35px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 300px;
+  transition: opacity 200ms ease;
+}
+
+/* La regla global `.is-hidden` pone `display: none`, que cortaría el fundido
+   al subir y bajar del vehículo. Los medidores internos sí la aprovechan. */
+.hl-vehicle.is-hidden {
+  display: flex;
+  opacity: 0;
+}
+
+.hl-vehicle__name {
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: var(--hl-amber-dim);
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.hl-vehicle__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.hl-vehicle__icon {
+  width: 34px;
+  height: 34px;
+  color: var(--hl-amber);
+  filter: drop-shadow(var(--hl-glow-soft));
+}
+
+.hl-vehicle__icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.hl-vehicle__dial {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 232px;
+}
+
+.hl-vehicle__readout {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.hl-vehicle__speed {
+  font-size: 50px;
+  font-weight: 300;
+  line-height: 0.82;
+  color: var(--hl-amber);
+  text-shadow: var(--hl-glow);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.hl-vehicle__unit {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--hl-amber-dim);
+}
+
+/* Indicador de marcha, alineado al final del velocímetro. Ancho fijo para que
+   pasar de "D" a "FRENO" no corra el resto de la fila. */
+.hl-vehicle__gear {
+  margin-left: auto;
+  min-width: 5ch;
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-align: right;
+  color: var(--hl-amber);
+}
+
+.hl-vehicle.is-braking .hl-vehicle__gear,
+.hl-vehicle.is-stalled .hl-vehicle__gear {
+  color: var(--hl-red);
+  animation: hl-critical 0.55s ease-in-out infinite alternate;
+}
+
+.hl-vehicle__bar {
+  display: flex;
+  gap: 3px;
+}
+
+.hl-vehicle__seg {
+  background: rgba(220, 185, 0, 0.07);
+  border: 1px solid var(--hl-amber-faint);
+  transition: background-color 80ms linear, box-shadow 80ms linear;
+}
+
+.hl-vehicle__seg.is-on {
+  background: var(--hl-amber-strong);
+  box-shadow: 0 0 5px rgba(220, 185, 0, 0.55);
+}
+
+.hl-vehicle__speedbar .hl-vehicle__seg {
+  flex: 1;
+  height: 9px;
+}
+
+.hl-vehicle__meterbar .hl-vehicle__seg {
+  width: 8px;
+  height: 7px;
+}
+
+.hl-vehicle__meters {
+  display: flex;
+  gap: 26px;
+}
+
+.hl-vehicle__meter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hl-vehicle__meter-label {
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  color: var(--hl-amber-dim);
+  line-height: 1;
+}
+
+.hl-vehicle__meter-value {
+  font-size: 11px;
+  color: var(--hl-amber-dim);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.hl-vehicle__meter.is-low .hl-vehicle__meter-label,
+.hl-vehicle__meter.is-low .hl-vehicle__seg.is-on {
+  animation: hl-critical 1.2s ease-in-out infinite alternate;
+}
+
+.hl-vehicle__meter--weapon.is-overheated .hl-vehicle__meter-label {
+  color: var(--hl-red);
+}
+
+.hl-vehicle.is-critical .hl-vehicle__meter--integrity .hl-vehicle__seg.is-on {
+  background: var(--hl-red);
+  box-shadow: 0 0 6px rgb(255 62 39 / 0.6);
+}
+
+.hl-vehicle.is-critical .hl-vehicle__icon {
+  color: var(--hl-red);
+  animation: hl-critical 0.8s ease-in-out infinite alternate;
+}
+
+.hl-vehicle__warnings,
+.hl-vehicle__crew {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 16px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--hl-amber-dim);
+}
+
+.hl-vehicle__warnings .is-damaged {
+  color: var(--hl-amber-strong);
+}
+
+.hl-vehicle__warnings .is-disabled {
+  color: var(--hl-red);
+}
+
+.hl-vehicle__crew span::before {
+  content: "◆";
+  margin-right: 7px;
+  font-size: 8px;
+  color: var(--hl-amber-faint);
+}
+

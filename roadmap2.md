@@ -22,9 +22,9 @@ La base actual sí permite hacer inmediatamente un vertical slice o greybox con:
 
 Eso alcanza para prototipar partes de los capítulos 1 y 3–8. No alcanza para el
 viaje en helicóptero, actuaciones de personajes, clima de supervivencia ni para
-los capítulos 9–14 dentro del Borealis. Los bloqueos mayores son vehículos,
-cinemáticas, personajes narrativos, pipeline de arte, guardado persistente y el
-sistema de realidades/tiempo.
+los capítulos 9–14 dentro del Borealis. Los bloqueos mayores son las mecánicas
+vehiculares especiales, cinemáticas, personajes narrativos, pipeline de arte,
+guardado persistente y el sistema de realidades/tiempo.
 
 No se debe empezar la producción final de los 65 mapas antes de superar los
 vertical slices definidos en este documento. De lo contrario, la introducción
@@ -49,6 +49,7 @@ rehacer gran parte de los mapas.
 | Puzzles | Parcial | Física, cajas, Gravity/Portal/Ice Gun, puertas, botones, timers y counters | Sin movers genéricos, ascensores, motores, cables, constraints o props animados |
 | Ártico | Parcial | Terreno/material/pasos de nieve, viento y mapas `snow-field`/`snow-factory` | Sin fog, nevada, whiteout, frío, refugio, agua o hielo quebradizo |
 | Campaña multi-mapa | Parcial | `nextLevel`, landmarks y continuidad de vida/loadout | Sin manifiesto de campaña, múltiples destinos, saves durables o estado global |
+| Vehículos | Parcial alto | Buggy, hidrodeslizador, helicóptero on-rails, transporte oruga rebelde y deslizador Combine; conducción, hover sólido/agua, asientos, cámara, daño, HUD, audio, IA y persistencia entre mapas | Faltan cabrestante, carga, clima/refugio móvil, hielo quebradizo, reparaciones de oruga, haz tractor y los vehículos especiales del Borealis |
 | Editor | Parcial | Paleta, inspector, I/O tipado, builders, undo/redo, export y playtest | Sin proyectos multi-mapa, props GLB, luces, FX, cámaras, layers o checkpoints editables |
 | Realidades/tiempo | Bloqueado | Teleport y portales dentro de la misma escena | Sin world layers, snapshots, loops, doble física/nav o render de otra realidad |
 | Presentación narrativa | Bloqueado | Subtítulos y cuatro gestos procedurales | Sin voces por línea, facial/lip-sync, clips corporales o Cinematic Director |
@@ -316,7 +317,109 @@ combate y salida sin añadir casos especiales a `Game.ts`.
 Un vehículo aéreo completamente libre queda fuera de alcance hasta que el
 on-rails esté probado y la campaña realmente lo necesite.
 
-### P1.2 — Arctic Environment
+### P1.2 — Flota ártica y vehículos adicionales
+
+Los vehículos nuevos amplían el parque existente: no reemplazan el buggy, el
+hidrodeslizador ni el helicóptero. La campaña necesita variedad visual y de
+ritmo, pero cada vehículo conducible debe justificar un verbo de juego propio.
+
+| Vehículo | Equivalente en HL2 | Función | Alcance |
+| --- | --- | --- | --- |
+| Transporte oruga rebelde | Buggy | Exploración, supervivencia, transporte y físicas | Vehículo principal durante Whiteout y los capítulos siguientes |
+| Deslizador Combine de reconocimiento | Airboat | Velocidad, derrape, persecución y combate | Uno o dos capítulos después de perder el transporte rebelde |
+| Remolcador de carga de Aperture | Vehículo secundario | Puzzles temporales y movimiento de carga dentro del Borealis | Setpiece de 15–25 minutos |
+| Helicóptero rebelde | Secuencia introductoria | Viaje inicial, arma de puerta y accidente | On-rails; no sustituye a los vehículos terrestres |
+
+#### Transporte oruga rebelde
+
+Mezcla de snowcat, transporte militar y maquinaria industrial recuperada por
+la Resistencia. Tiene orugas anchas, cabina parcialmente cerrada para Gordon y
+Alyx, motor expuesto, cabrestante frontal y una pequeña plataforma de carga.
+Aparece abandonado junto al refugio de `snow-field`, inmediatamente después del
+accidente del helicóptero, y también queda disponible en `vehicle-sandbox`.
+
+**Base conducible implementada**
+
+- Modelo procedural original con tres LOD, materiales PBR, orugas, rodillos,
+  cabina, dos plazas, motor, carga y cabrestante visual.
+- Preset propio con chasis pesado, suspensión, tracción terrestre, cámara,
+  luces, daño por componentes, HUD, audio y persistencia.
+- Puestos de conductor y pasajero; Alyx puede ocupar la segunda plaza mediante
+  el sistema de tripulación existente.
+- Sin arma montada en esta etapa. Se conduce, frena, retrocede y puede recorrer
+  pendientes con el mismo contrato de input que el resto del parque.
+
+**Mecánicas posteriores**
+
+- Atravesar nieve profunda y pendientes que Gordon no cruza a pie.
+- Romper barricadas, paredes débiles y acumulaciones de hielo.
+- Cabrestante para arrastrar objetos, abrir puertas, recuperar vehículos o
+  improvisar un puente.
+- Plataforma funcional para baterías, explosivos y equipamiento.
+- Refugio móvil durante tormentas y coordinación con Alyx desde el asiento de
+  pasajero.
+- Daño y reparación de oruga, combustible/batería y defensa del vehículo
+  mientras Alyx lo repara.
+- Cruces de hielo quebradizo y mejora tardía opcional con torreta improvisada o
+  cañón Combine recuperado.
+
+Debe sostener entre 60 y 90 minutos acumulados durante dos o tres capítulos. Se
+pierde o destruye cerca de las coordenadas del Borealis para que no acompañe al
+jugador durante toda la campaña.
+
+#### Deslizador Combine de reconocimiento
+
+Vehículo antigravitatorio robado durante *Dead Coordinates* o *Vanishing
+Point*: combina un hunter pequeño, una moto de nieve, una cápsula Combine
+abierta y el motor de un APC. Cruza nieve, hielo, agua y terreno irregular.
+
+**Base conducible implementada**
+
+- Modelo procedural original con tres LOD, materiales PBR, cápsula abierta,
+  núcleo Combine y tres estabilizadores antigravitatorios.
+- Motor hover híbrido que mantiene altura sobre colisión sólida y agua, con
+  empuje, reversa, frenado, guiñada y derrape.
+- Cabina para Gordon, cámara, luces, daño por componentes, HUD, audio propio y
+  persistencia. Disponible desarmado en `vehicle-sandbox`.
+
+**Mecánicas posteriores**
+
+- Alta velocidad, derrapes controlados, saltos, impulso breve y recarga al
+  pasar por nodos de energía Combine.
+- Inicialmente desarmado; luego admite un cañón de pulsos recuperado.
+- Haz tractor corto para mover placas de hielo, minas y obstáculos, activar
+  mecanismos, lanzar objetos o remolcar un módulo.
+- Persecución sobre un lago congelado con hunters, dropships, minas y sectores
+  de la instalación que aparecen durante la materialización del Borealis.
+
+Su tramo ideal dura 40–60 minutos y termina al abordar el Borealis.
+
+#### Remolcador de carga de Aperture Science
+
+Máquina eléctrica de interior que combina montacargas, tractor de aeropuerto y
+robot de mantenimiento. Lleva brazo hidráulico, plataforma, imán y anclaje al
+suelo, con el acabado blanco y negro de Aperture degradado por décadas.
+
+Su ancla temporal estabiliza durante unos segundos una versión de los objetos
+que alternan entre presente, pasado y futuro. Permite transportar un reactor
+entre épocas, sujetar contenedores que aparecen y desaparecen, crear cobertura,
+embestir en pasillos o impedir que una sección se desmaterialice. Aparece sólo
+en una parte de *Bootstrap* o *Seven Hours* y una anomalía lo destruye.
+
+#### Vehículos ambientales no conducibles
+
+- Transportes blindados y snowcats destruidos de la Resistencia.
+- Dropships adaptados al clima y APC Combine de orugas o antigravedad.
+- Drones meteorológicos.
+- Grúas y plataformas móviles del Borealis.
+- Botes salvavidas de Aperture atrapados entre épocas.
+
+Una moto de nieve convencional queda reservada, como máximo, para una
+persecución corta: ofrece menos posibilidades para Alyx, las físicas y los
+puzzles. El helicóptero libre sigue fuera de alcance porque exigiría niveles y
+combate aéreo de una escala distinta.
+
+### P1.3 — Arctic Environment
 
 - Weather volumes con nevada, ventisca, fog y control de visibilidad.
 - Viento visual, sonoro y opcionalmente físico.
@@ -327,7 +430,7 @@ on-rails esté probado y la campaña realmente lo necesite.
 - Footprints/trails como mejora de orientación y storytelling.
 - Skyboxes/HDRI árticos, amanecer, tormenta y noche.
 
-### P1.3 — Contenido del Acto I
+### P1.4 — Contenido del Acto I
 
 - Eli —incluido cuerpo para el funeral—, Kleiner y Magnusson.
 - Pilotos, técnicos y líderes de Resistencia diferenciados.

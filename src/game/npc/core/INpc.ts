@@ -1,4 +1,4 @@
-﻿import type { Group, Vector3 } from "three";
+﻿import type { Group, Quaternion, Vector3 } from "three";
 import type { Faction } from "@engine/ai/Faction";
 import type { Damageable } from "@shared/types/lifecycle";
 import type { Health } from "@game/gameplay/Health";
@@ -9,6 +9,11 @@ import type { NpcScriptOrder } from "@game/script/NpcScriptOrder";
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { PortalFrame } from "@engine/portals/PortalFrame";
 import type { OrganicMatterHandle } from "@game/gameplay/organic/OrganicMatter";
+import type { BrainSnapshot } from "@engine/ai/brain/Brain";
+import type {
+  RigidBodySnapshot,
+  SerializedVector3,
+} from "@engine/physics/RigidBodySnapshot";
 
 /**
  * Snapshot ligero de un actor del mundo (player u otro NPC) que cualquier
@@ -265,6 +270,69 @@ export interface NpcFreezeHandle {
   shatter?(): void;
 }
 
+export interface NpcSaveSnapshot {
+  version: 1;
+  id: string;
+  body: RigidBodySnapshot;
+  health: number;
+  alive: boolean;
+  mounted: boolean;
+  removed: boolean;
+  logical: {
+    state: string;
+    brain: BrainSnapshot;
+    lastScheduleId: string | null;
+    threatId: string | null;
+    threatLastKnown: SerializedVector3 | null;
+    aggroAttackerId: string | null;
+    aggroTimer: number;
+    grenadeReadyAt: number;
+    healReadyAt: number;
+    flinchCooldownTimer: number;
+    lastCalloutAt: number | null;
+  };
+}
+
+/**
+ * Pose que el runtime vehicular le impone al ocupante de un asiento. `seated`
+ * es el peso de la pose sentada, así la subida y la bajada pueden mezclarse
+ * desde/hacia la pose de pie sin que el NPC recupere su motor.
+ */
+export interface NpcSeatPose {
+  readonly position: Vector3;
+  readonly rotation: Quaternion;
+  /** 0 = de pie (en plena transición), 1 = sentado completo. */
+  readonly seated: number;
+  /** Conductores y pilotos llevan las manos a los controles. */
+  readonly handsOnControls: boolean;
+  /**
+   * Hacia dónde mira, en espacio LOCAL del asiento. Sin esto el ocupante va
+   * sentado de frente aunque su torreta esté siguiendo a alguien.
+   */
+  readonly lookDirection?: Vector3;
+}
+
+export interface NpcVehicleCapability {
+  /** May occupy driver or pilot seats when allowed by the vehicle policy. */
+  readonly canDrive: boolean;
+}
+
+export interface NpcVehicleApproachOrder {
+  readonly vehicleId: string;
+  readonly seatId: string;
+  /** Walkable point beside the selected entrance. */
+  readonly target: Vector3;
+  /** Vehicle center used to face it during the approach. */
+  readonly facing: Vector3;
+  readonly arriveRadius: number;
+}
+
+export type NpcVehicleApproachStatus =
+  | "none"
+  | "moving"
+  | "arrived"
+  | "blocked";
+
 /** Interfaz uniforme que consume `Game`/`LevelLoader`. La implementa `Npc`. */
 export interface INpc {
   readonly id: string;
@@ -278,6 +346,24 @@ export interface INpc {
   readonly playerSquadEligible: boolean;
   /** Nombre visible si es compañera (preset con `companion`), o null. */
   readonly companionName: string | null;
+  /** Absent on creatures that cannot understand or use vehicles. */
+  readonly vehicleCapability?: NpcVehicleCapability | null;
+
+  /**
+   * Suspensión reversible para asientos. El runtime vehicular sincroniza la
+   * pose visual; el NPC conserva vida, inventario y brain para retomarlos.
+   */
+  setVehicleMounted?(
+    mounted: boolean,
+    exitPosition?: Vector3,
+    exitVelocity?: Vector3,
+  ): void;
+  isVehicleMounted?(): boolean;
+  /** Pose visual del ocupante mientras el motor está suspendido. */
+  setSeatPose?(pose: NpcSeatPose): void;
+  /** Transient order to walk toward a reserved entrance. */
+  setVehicleApproach?(order: NpcVehicleApproachOrder | null): void;
+  getVehicleApproachStatus?(): NpcVehicleApproachStatus;
 
   update(ctx: AiFrameContext): void;
   syncFromPhysics(): void;
@@ -297,6 +383,9 @@ export interface INpc {
   isAlive(): boolean;
   getState(): string;
   getAiDebugSnapshot(): NpcAiDebugSnapshot;
+  /** Estado plano para guardado. Opcional para adapters de NPC externos/tests. */
+  captureSaveState?(): NpcSaveSnapshot;
+  restoreSaveState?(snapshot: Readonly<NpcSaveSnapshot>): void;
   /**
    * Libera listeners del bus, releases de cover/squad y desactiva motor/animator.
    * Debe ser idempotente â€” `die()` y el teardown de nivel lo invocan ambos.

@@ -374,6 +374,8 @@ export class PlayerModelSystem {
       posture: {
         crouch: state.crouch,
         lean: 0,
+        seated: 0,
+        seatedControls: 0,
       },
       aim: {
         active: aiming,
