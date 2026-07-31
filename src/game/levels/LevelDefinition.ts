@@ -25,6 +25,7 @@ import type {
 import type {
   VehicleDriverProfileId,
   VehicleGunnerProfileId,
+  VehiclePilotProfileId,
 } from '@game/config/vehicleAi.config';
 import type { LandmarkReference } from '@game/levels/LevelTransition';
 
@@ -145,6 +146,8 @@ export interface VehicleAiDefinition {
   driverProfile?: VehicleDriverProfileId;
   /** Disciplina de tiro de la tripulación. Default según el preset. */
   gunnerProfile?: VehicleGunnerProfileId;
+  /** Oficio del piloto en aparatos aéreos. Default según el comportamiento. */
+  pilotProfile?: VehiclePilotProfileId;
   /**
    * Si puede abandonar temporalmente su `behavior` para pelear o huir. Default
    * según el comportamiento: los ofensivos sí, los de logística no.
@@ -152,6 +155,24 @@ export interface VehicleAiDefinition {
   allowMissionDeviation?: boolean;
   /** Vehículos que comparten `convoyId` mantienen separación entre sí. */
   convoyId?: string;
+}
+
+/**
+ * Oferta de tripulación autónoma. El vehículo declara qué puestos quiere
+ * cubiertos y los NPCs de la facción se reparten los roles solos; los triggers
+ * `EnableCrewing`/`DisableCrewing` encienden y apagan la oferta sin tener que
+ * guionar cada abordaje.
+ */
+export interface VehicleAiCrewDefinition {
+  /** Apaga la oferta sin borrarla del mapa. Default `true`. */
+  enabled?: boolean;
+  /**
+   * Puestos a cubrir, en orden de prioridad. Default: primero los mandos y
+   * después la torreta, porque un aparato sin piloto no sirve de nada.
+   */
+  roles?: VehicleCrewRole[];
+  /** Radio de reclutamiento en metros. Default 30. */
+  radius?: number;
 }
 
 export const VEHICLE_ACCESS_POLICIES = [
@@ -190,6 +211,12 @@ export interface VehicleDefinition extends IOEntityFields {
   engineOn?: boolean;
   /** Helicopters deny manual dismount by default; scripted/forced exits ignore this flag. */
   allowPlayerExit?: boolean;
+  /**
+   * Blindaje escenográfico: registra los impactos y dispara `OnDamaged`, pero la
+   * vida no baja, así que sólo la entrada `Crash` lo derriba. Conmutable en
+   * caliente con `EnableDamage` / `DisableDamage`.
+   */
+  invulnerable?: boolean;
   /** Primer waypoint de la ruta normal; requerido por el helicóptero. */
   pathStart?: string;
   /** Primer waypoint de la secuencia de choque. */
@@ -199,6 +226,8 @@ export interface VehicleDefinition extends IOEntityFields {
   /** Autoriza que la cadena `next` vuelva a un waypoint ya visitado. */
   pathLoop?: boolean;
   ai?: VehicleAiDefinition;
+  /** Tripulación que el vehículo ofrece a los NPCs de su facción. */
+  aiCrew?: VehicleAiCrewDefinition;
   /** Identidad estable al cruzar un changelevel. */
   transitionKey?: string;
   portalTraversal?: 'blocked';

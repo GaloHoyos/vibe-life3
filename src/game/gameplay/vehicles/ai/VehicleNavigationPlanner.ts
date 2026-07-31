@@ -13,6 +13,7 @@ import type {
   VehicleNavPoint,
   VehiclePose2D,
 } from './VehicleAiTypes';
+import { profileHasNavGrid } from './VehicleAiTypes';
 import { HybridAStarPlanner, type HybridAStarOptions } from './HybridAStarPlanner';
 import { VehicleLaneGraph } from './VehicleLaneGraph';
 import type { VehicleNavigationCache } from './VehicleNavigationCache';
@@ -51,7 +52,7 @@ export class VehicleNavigationPlanner {
     for (const grid of navigation.grids) {
       const profileId = grid.profileId;
       const profile = this.profiles.get(profileId);
-      if (profile && profile.surface !== 'rail') {
+      if (profile && profileHasNavGrid(profile)) {
         localPlanners.set(profileId, new HybridAStarPlanner(grid, profile));
       }
     }
@@ -141,7 +142,7 @@ export class VehicleNavigationPlanner {
     options: VehicleNavigationPlannerOptions = {},
   ): VehiclePlannedRoute | null {
     const profile = this.profiles.get(profileId);
-    if (!profile || profile.surface === 'rail') return null;
+    if (!profile || !profileHasNavGrid(profile)) return null;
     const laneRoute = this.planGlobal(start.position, goal.position);
     const snapDistance =
       options.laneSnapDistance ??

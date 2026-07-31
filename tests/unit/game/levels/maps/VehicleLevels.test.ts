@@ -61,15 +61,43 @@ describe('niveles vehiculares', () => {
     expect(Demo3WhiteoutFlight.nextLevel).toBe('snow-field');
   });
 
-  it('ofrece seis vehículos con IA y nueve estacionados en el sandbox', () => {
+  it('ofrece siete vehículos con IA y diez estacionados en el sandbox', () => {
     const vehicles = VehicleSandboxLevel.vehicles ?? [];
-    expect(vehicles).toHaveLength(15);
-    expect(vehicles.filter((vehicle) => vehicle.ai?.enabled)).toHaveLength(6);
-    expect(vehicles.filter((vehicle) => !vehicle.ai?.enabled)).toHaveLength(9);
+    expect(vehicles).toHaveLength(17);
+    expect(vehicles.filter((vehicle) => vehicle.ai?.enabled)).toHaveLength(7);
+    expect(vehicles.filter((vehicle) => !vehicle.ai?.enabled)).toHaveLength(10);
     expect(new Set(vehicles.map((vehicle) => vehicle.presetId))).toEqual(
-      new Set(['buggy', 'airboat', 'helicopter', 'rebelCrawler', 'combineGlider']),
+      new Set([
+        'buggy',
+        'airboat',
+        'helicopter',
+        'helicopterFree',
+        'rebelCrawler',
+        'combineGlider',
+      ]),
     );
     expect(vehicles.every((vehicle) => vehicle.portalTraversal === 'blocked')).toBe(true);
+  });
+
+  it('trae el helicóptero pilotable sin ruta autorada', () => {
+    const free = (VehicleSandboxLevel.vehicles ?? []).find(
+      (vehicle) => vehicle.id === 'vs-free-helicopter',
+    );
+    // Un aparato de vuelo libre con pathStart sería una contradicción: no tiene
+    // motor de riel que lo siga.
+    expect(free?.presetId).toBe('helicopterFree');
+    expect(free?.pathStart).toBeUndefined();
+    expect(free?.accessPolicy).toBe('player');
+  });
+
+  it('el helicóptero de la IA ofrece tripulación sin autorarla', () => {
+    const ai = (VehicleSandboxLevel.vehicles ?? []).find(
+      (vehicle) => vehicle.id === 'vs-ai-combine-helicopter',
+    );
+    // Sin `crew`: los NPCs de la facción tienen que repartirse los puestos.
+    expect(ai?.crew).toBeUndefined();
+    expect(ai?.aiCrew?.roles).toEqual(['pilot', 'gunner']);
+    expect(ai?.ai?.enabled).toBe(true);
   });
 
   it('declara las tres políticas de acceso en el sandbox', () => {
@@ -80,9 +108,9 @@ describe('niveles vehiculares', () => {
       counts[policy] = (counts[policy] ?? 0) + 1;
       return counts;
     }, {})).toEqual({
-      player: 3,
+      player: 4,
       resistance: 7,
-      combine: 5,
+      combine: 6,
     });
     expect(vehicles.find((vehicle) => vehicle.id === 'vs-player-buggy')).toMatchObject({
       faction: 'resistance',

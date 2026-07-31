@@ -10,6 +10,7 @@ import type { Faction } from "@engine/ai/Faction";
 import {
   PHYSICS_FIXED_TIMESTEP,
   PHYSICS_MAX_SUBSTEPS,
+  WORLD_GRAVITY,
   type PhysicsContactForce,
   type PhysicsWorld,
 } from "@engine/physics/PhysicsWorld";
@@ -18,6 +19,7 @@ import {
   HoverVehicleMotor,
   OnRailsVehicleMotor,
   RaycastVehicleMotor,
+  RotorcraftVehicleMotor,
   captureRigidBodyState,
   type OnRailsVehicleMotorConfig,
   type RailWaypoint,
@@ -98,6 +100,20 @@ const NEUTRAL_CONTROL: VehicleControlInput = {
   brake: 1,
   handbrake: 0,
   boost: false,
+};
+/**
+ * Un helicóptero sin motor no queda suspendido: el colectivo neutro sostiene
+ * casi todo el peso, así que hay que bajarlo del todo para que el rotor pierda
+ * empuje y el aparato se venga abajo.
+ */
+const NEUTRAL_ROTORCRAFT_CONTROL: VehicleControlInput = {
+  throttle: 0,
+  steering: 0,
+  brake: 0,
+  handbrake: 0,
+  boost: false,
+  collective: -1,
+  yaw: 0,
 };
 const TMP_POSITION = new Vector3();
 const TMP_QUATERNION = new Quaternion();
@@ -228,6 +244,7 @@ export class VehicleEntity {
           this.callbacks.onDestroyed(this);
         },
       },
+      definition.invulnerable ?? false,
     );
 
     const rotation = rotationFromDefinition(definition);
@@ -293,13 +310,21 @@ export class VehicleEntity {
       this.damage.getState() === "disabled"
     ) {
       this.handbrakeApplied = false;
-      this.motor.setControl(NEUTRAL_CONTROL);
+      this.motor.setControl(
+        this.preset.motor.kind === "rotorcraft"
+          ? NEUTRAL_ROTORCRAFT_CONTROL
+          : NEUTRAL_CONTROL,
+      );
       return;
     }
-    const engine = this.damage.getZoneFraction("engine");
-    const steering = this.damage.getZoneFraction("steering");
+    const engine = this.damage.zoneAuthority("engine");
+    const steering = this.damage.zoneAuthority("steering");
     const canBoost = input.boost && this.boost > 0.04;
     this.handbrakeApplied = input.handbrake > 0.5;
+    if (this.preset.motor.kind === "rotorcraft") {
+      this.motor.setControl(this.rotorcraftControl(input, engine));
+      return;
+    }
     this.motor.setControl({
       throttle: input.throttle * MathUtils.lerp(0.28, 1, engine),
       steering: input.steering * MathUtils.lerp(0.3, 1, steering),
@@ -307,6 +332,29 @@ export class VehicleEntity {
       handbrake: input.handbrake,
       boost: canBoost,
     });
+  }
+
+  /**
+   * En un helicóptero el cíclico pide actitud, no potencia: lo que se pierde al
+   * romperse el motor o el rotor es la capacidad de TREPAR. Descender siempre
+   * está disponible, de eso ya se encarga la gravedad.
+   */
+  private rotorcraftControl(
+    input: Readonly<VehicleControlInput>,
+    engine: number,
+  ): VehicleControlInput {
+    const rotor = this.damage.zoneAuthority("rotor");
+    const liftAuthority = MathUtils.lerp(0.25, 1, Math.min(engine, rotor));
+    const collective = input.collective ?? 0;
+    return {
+      throttle: input.throttle,
+      steering: input.steering * MathUtils.lerp(0.45, 1, rotor),
+      brake: input.brake,
+      handbrake: input.handbrake,
+      boost: false,
+      collective: collective > 0 ? collective * liftAuthority : collective,
+      yaw: (input.yaw ?? 0) * MathUtils.lerp(0.4, 1, rotor),
+    };
   }
 
   update(
@@ -542,6 +590,14 @@ export class VehicleEntity {
 
   toggleLights(): void {
     this.setLights(!this.lightsOn);
+  }
+
+  setInvulnerable(invulnerable: boolean): void {
+    this.damage.setInvulnerable(invulnerable);
+  }
+
+  isInvulnerable(): boolean {
+    return this.damage.isInvulnerable();
   }
 
   setWeaponEnabled(enabled: boolean): void {
@@ -1147,6 +1203,32 @@ export class VehicleEntity {
           [2, 3],
         ],
         filterPredicate: (collider) => !this.colliderHandles.has(collider.handle),
+      });
+    }
+    if (config.kind === "rotorcraft") {
+      return new RotorcraftVehicleMotor(this.body, {
+        mass: this.preset.body.mass,
+        gravity: WORLD_GRAVITY,
+        hoverLift: config.hoverLift,
+        maxLift: config.maxLift,
+        minLift: config.minLift,
+        liftResponse: config.liftResponse,
+        maxPitch: config.maxPitch,
+        maxRoll: config.maxRoll,
+        attitudeResponse: config.attitudeResponse,
+        attitudeStiffness: config.attitudeStiffness,
+        attitudeDamping: config.attitudeDamping,
+        yawRate: config.yawRate,
+        turnCoordination: config.turnCoordination,
+        linearDrag: config.linearDrag,
+        verticalDrag: config.verticalDrag,
+        groundDrag: config.groundDrag,
+        hullBottom: config.hullBottom,
+        surfaceProvider: createAntigravitySurfaceProvider(
+          this.physics,
+          this.body,
+          water,
+        ),
       });
     }
     if (config.kind === "hover") {

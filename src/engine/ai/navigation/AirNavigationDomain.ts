@@ -1,5 +1,5 @@
 import { Vector3 } from "three";
-import type { Raycast } from "@engine/physics/Raycast";
+import type { RaycastSource } from "@engine/physics/Raycast";
 import type { NavAgentProfile, NavigationPath } from "./NavigationTypes";
 
 const DIRECTIONS: ReadonlyArray<readonly [number, number, number]> = (() => {
@@ -34,7 +34,12 @@ const tmpOffset = new Vector3();
  * del agente, de modo que no confunde LOS puntual con clearance volumétrico.
  */
 export class AirNavigationDomain {
-  constructor(private readonly raycast: Raycast) {}
+  /**
+   * Toma el contrato estructural y no la clase concreta para que un agente
+   * pueda inyectar un raycast que excluya su propio casco: si no, un cuerpo
+   * grande se bloquea a sí mismo el primer tramo del camino.
+   */
+  constructor(private readonly raycast: RaycastSource) {}
 
   findPath(from: Vector3, to: Vector3, profile: NavAgentProfile): NavigationPath | null {
     if (this.segmentClear(from, to, profile.radius)) {

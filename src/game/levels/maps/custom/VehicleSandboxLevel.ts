@@ -66,6 +66,21 @@ const ACTIVE_VEHICLES = [
     portalTraversal: 'blocked',
   },
   {
+    // Sin `crew` autorada a propósito: los dos Combine de al lado tienen que
+    // repartirse los puestos solos. Es el banco de pruebas de la coordinación.
+    id: 'vs-ai-combine-helicopter',
+    presetId: 'helicopterFree',
+    position: [128, 1, -40],
+    rotation: [0, Math.PI, 0],
+    faction: 'combine',
+    accessPolicy: 'combine',
+    weaponEnabled: true,
+    engineOn: true,
+    ai: { enabled: true, behavior: 'intercept', goal: 'vs-ai-res-buggy-lead' },
+    aiCrew: { roles: ['pilot', 'gunner'], radius: 25 },
+    portalTraversal: 'blocked',
+  },
+  {
     id: 'vs-ai-res-airboat',
     presetId: 'airboat',
     position: [60, 0.6, 66],
@@ -156,6 +171,20 @@ const PARKED_VEHICLES = [
       { output: 'OnStopped', target: 'vs-msg-heli-stop', input: 'Show' },
       { output: 'OnCrashed', target: 'vs-msg-heli-crash', input: 'Show' },
     ],
+  },
+  {
+    // Arranca un metro sobre la plataforma: con el rotor al ralentí sostiene el
+    // 94 % del peso, así que se posa solo en vez de golpear el hormigón.
+    id: 'vs-free-helicopter',
+    presetId: 'helicopterFree',
+    position: [120, 1, 78],
+    rotation: [0, Math.PI, 0],
+    faction: 'resistance',
+    accessPolicy: 'player',
+    weaponEnabled: true,
+    engineOn: true,
+    transitionKey: 'sandbox-free-helicopter',
+    portalTraversal: 'blocked',
   },
   {
     id: 'vs-parked-res-buggy',
@@ -342,6 +371,7 @@ const NAV_MARKERS = [
   { id: 'vs-marker-player-rebel-crawler', position: [-64, 0, 91], heading: Math.PI, kind: 'boarding', allowedPresets: ['rebelCrawler'] },
   { id: 'vs-marker-player-combine-glider', position: [96, 0, 86], heading: Math.PI, kind: 'boarding', allowedPresets: ['combineGlider'] },
   { id: 'vs-marker-heli-pad', position: [111, 0, 78], heading: Math.PI, kind: 'landingZone', allowedPresets: ['helicopter'] },
+  { id: 'vs-marker-heli-free-pad', position: [128, 0, -40], heading: Math.PI, kind: 'landingZone', allowedPresets: ['helicopterFree'] },
   { id: 'vs-marker-convoy-goal', position: [-24, 0, -64], heading: Math.PI / 2, kind: 'dropZone', allowedPresets: ['buggy'] },
   { id: 'vs-marker-water-north', position: [60, 0.7, -88], heading: 0, kind: 'dropZone', allowedPresets: ['airboat'] },
   { id: 'vs-marker-water-south', position: [60, 0.7, 88], heading: Math.PI, kind: 'dropZone', allowedPresets: ['airboat'] },
@@ -509,6 +539,10 @@ map
   .npc({ id: 'vs-driver-res-airboat', characterId: 'rebelF1', position: [60, 1, 66] })
   .npc({ id: 'vs-driver-combine-airboat', characterId: 'combine', position: [60, 1, -64] })
   .npc({ id: 'vs-heli-pilot', characterId: 'rebelM3', position: [111, 1.2, 78] })
+  // Tripulación aérea sin asignar: se reparten piloto y torreta por su cuenta.
+  // Uno a cada lado del aparato, como una tripulación que camina a su puerta.
+  .npc({ id: 'vs-heli-crew-combine-a', characterId: 'combine', position: [124, 1.2, -40] })
+  .npc({ id: 'vs-heli-crew-combine-b', characterId: 'combineElite', position: [132, 1.2, -40] })
   .npc({ id: 'vs-parked-driver', characterId: 'rebelM3', position: [-109, 1.2, 91] })
   .npc({ id: 'vs-parked-gunner', characterId: 'rebelF3', position: [-108, 1.2, 91] })
   .npc({ id: 'vs-alyx-companion', characterId: 'alyx', position: [-123, 1.2, 92] })

@@ -4,6 +4,7 @@ import { Scene, Vector3 } from "three";
 import { EventBus } from "@engine/core/EventBus";
 import { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { RaycastSource } from "@engine/physics/Raycast";
+import type { VehicleControlInput } from "@engine/physics/vehicle";
 import type { GameEventMap } from "@game/GameEvents";
 import type { EntityIOSystem } from "@game/script/EntityIOSystem";
 import type {
@@ -620,6 +621,109 @@ describe("estabilidad física de los vehículos", () => {
   });
 });
 
+/**
+ * El helicóptero pilotable no tiene equivalente en Source, así que lo que se
+ * verifica es el contrato del modelo híbrido: se posa solo, no se vuelca nunca,
+ * la altitud la manda el colectivo y el ladeo vira sin tocar los pedales.
+ */
+describe("helicóptero de vuelo libre", () => {
+  it("se posa solo desde el aire y queda quieto en el suelo", async () => {
+    const rig = await spawn({ presetId: "helicopterFree", position: [0, 4, 0] });
+    fly(rig, {});
+
+    simulate(rig, 6);
+    const settled = simulate(rig, 3);
+
+    expect(rig.vehicle.getTelemetry().grounded).toBe(true);
+    expect(rig.vehicle.getTelemetry().altitude).toBeLessThan(0.2);
+    expect(settled.maxSpeed).toBeLessThan(0.6);
+    expect(settled.maxTiltDegrees).toBeLessThan(6);
+    expect(rig.vehicle.isWreckage()).toBe(false);
+  });
+
+  it("sin motor el rotor pierde empuje y el aparato cae", async () => {
+    const dead = await spawn({
+      presetId: "helicopterFree",
+      position: [0, 40, 0],
+      engineOn: false,
+    });
+    const live = await spawn({ presetId: "helicopterFree", position: [0, 40, 0] });
+    fly(dead, { collective: 1 });
+    fly(live, { collective: 1 });
+
+    simulate(dead, 2);
+    simulate(live, 2);
+
+    // Mismo colectivo a fondo: el vivo trepa, el muerto se viene abajo. El rotor
+    // sin potencia sigue frenando algo la caída, que es lo que hace un rotor
+    // real en autorrotación, así que no cae como una piedra.
+    expect(live.vehicle.getWorldPosition().y).toBeGreaterThan(45);
+    expect(dead.vehicle.getWorldPosition().y).toBeLessThan(30);
+  });
+
+  it("el colectivo manda la altitud en ambos sentidos", async () => {
+    const rig = await spawn({ presetId: "helicopterFree", position: [0, 20, 0] });
+    fly(rig, { collective: 1 });
+    simulate(rig, 3);
+    const climbed = rig.vehicle.getWorldPosition().y;
+    expect(climbed).toBeGreaterThan(25);
+
+    // Bajar arranca contra la inercia de la trepada: el primer segundo se va
+    // sólo en detener la subida.
+    fly(rig, { collective: -1 });
+    simulate(rig, 4);
+    expect(rig.vehicle.getWorldPosition().y).toBeLessThan(climbed - 15);
+  });
+
+  it("el cíclico traslada sin volcar el aparato", async () => {
+    const rig = await spawn({ presetId: "helicopterFree", position: [0, 25, 0] });
+    fly(rig, { throttle: 1 });
+
+    const start = rig.vehicle.getWorldPosition().z;
+    const trace = simulate(rig, 5);
+    const travelled = rig.vehicle.getWorldPosition().z - start;
+
+    expect(travelled).toBeGreaterThan(20);
+    // Inclinarse cuesta sustentación, pero el motor la compensa: nada de
+    // desplomarse cada vez que el piloto quiere avanzar.
+    expect(rig.vehicle.getWorldPosition().y).toBeGreaterThan(18);
+    // El techo del cíclico es `maxPitch` = 0.42 rad; con margen para el PD.
+    expect(trace.maxTiltDegrees).toBeLessThan(32);
+  });
+
+  it("los pedales guiñan hacia el lado correcto", async () => {
+    const rig = await spawn({ presetId: "helicopterFree", position: [0, 25, 0] });
+    fly(rig, { yaw: 1 });
+
+    const trace = simulate(rig, 3);
+
+    // La derecha del proyecto es `forward × up` = -X, o sea que virar a la
+    // derecha BAJA `atan2(forward.x, forward.z)`.
+    expect(trace.yaw).toBeLessThan(-0.9);
+  });
+
+  it("el ladeo vira solo, sin tocar los pedales", async () => {
+    const rig = await spawn({ presetId: "helicopterFree", position: [0, 25, 0] });
+    fly(rig, { throttle: 0.6, steering: 1 });
+
+    const trace = simulate(rig, 4);
+
+    expect(trace.yaw).toBeLessThan(-0.5);
+    expect(trace.maxTiltDegrees).toBeLessThan(45);
+  });
+
+  it("no se puede volcar ni con todos los mandos a fondo", async () => {
+    const rig = await spawn({ presetId: "helicopterFree", position: [0, 45, 0] });
+    fly(rig, { throttle: 1, steering: 1, yaw: 1, collective: 1 });
+    const first = simulate(rig, 5);
+    fly(rig, { throttle: -1, steering: -1, yaw: -1, collective: -1 });
+    const second = simulate(rig, 5);
+
+    expect(Math.max(first.maxTiltDegrees, second.maxTiltDegrees)).toBeLessThan(50);
+    expect(rig.vehicle.isWreckage()).toBe(false);
+  });
+});
+
 interface Rig {
   readonly physics: PhysicsWorld;
   readonly vehicle: VehicleEntity;
@@ -690,6 +794,20 @@ function wrapToPi(angle: number): number {
   while (wrapped > Math.PI) wrapped -= Math.PI * 2;
   while (wrapped < -Math.PI) wrapped += Math.PI * 2;
   return wrapped;
+}
+
+/** Mandos de vuelo; lo que no se pasa queda en neutro. */
+function fly(rig: Rig, control: Partial<VehicleControlInput>): void {
+  rig.vehicle.setControl({
+    throttle: 0,
+    steering: 0,
+    brake: 0,
+    handbrake: 0,
+    boost: false,
+    collective: 0,
+    yaw: 0,
+    ...control,
+  });
 }
 
 function accelerate(rig: Rig, seconds: number): void {
@@ -800,7 +918,8 @@ async function spawn(
       | "buggy"
       | "airboat"
       | "rebelCrawler"
-      | "combineGlider";
+      | "combineGlider"
+      | "helicopterFree";
   },
   options: { readonly water?: boolean } = {},
 ): Promise<Rig> {

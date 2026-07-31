@@ -25,7 +25,7 @@ import {
   type InputParamKind,
 } from '@game/script/EntityCatalog';
 import type { GestureId } from '@engine/animation/AnimationInput';
-import { VEHICLE_ARCHETYPE_IDS } from '@game/config/vehicles.config';
+import { VEHICLE_PRESET_IDS } from '@game/config/vehicles.config';
 import type { EditorDocument, EditorEntity, PropEntitySpec } from '../EditorDocument';
 import { entityIoName, entityKindLabel, entityLevelId } from '../EditorDocument';
 import {
@@ -376,7 +376,7 @@ export class InspectorView implements Disposable {
         }));
         return;
       case 'vehicle':
-        this.append(selectField('Preset', entity.def.presetId, VEHICLE_ARCHETYPE_IDS, (v) => {
+        this.append(selectField('Preset', entity.def.presetId, VEHICLE_PRESET_IDS, (v) => {
           entity.def.presetId = v as typeof entity.def.presetId;
           if (entity.def.presetId !== 'helicopter') {
             entity.def.allowPlayerExit = undefined;
@@ -415,6 +415,10 @@ export class InspectorView implements Disposable {
             this.commit();
           }));
         }
+        this.append(checkboxField('Invulnerable (sólo cae por trigger)', entity.def.invulnerable ?? false, (v) => {
+          entity.def.invulnerable = v || undefined;
+          this.commit();
+        }));
         this.append(textField('Inicio de ruta', entity.def.pathStart ?? '', (v) => {
           entity.def.pathStart = v || undefined;
           this.commit();

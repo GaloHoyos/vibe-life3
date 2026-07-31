@@ -7,7 +7,14 @@ import type { Faction } from '@engine/ai/Faction';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import { createBoxCollider } from './Colliders';
 
-const GRAVITY = { x: 0, y: -20.5, z: 0 } as const;
+/**
+ * Magnitud de la gravedad del mundo. Es la de Half-Life, no la terrestre: todo
+ * lo que dimensione empuje o sustentación tiene que leerla de acá en vez de
+ * asumir 9.81, o la cuenta sale a menos de la mitad.
+ */
+export const WORLD_GRAVITY = 20.5;
+
+const GRAVITY = { x: 0, y: -WORLD_GRAVITY, z: 0 } as const;
 
 export const PHYSICS_FIXED_TIMESTEP = 1 / 60;
 export const PHYSICS_MAX_FRAME_DELTA = 0.1;

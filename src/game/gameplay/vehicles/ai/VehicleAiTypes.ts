@@ -1,3 +1,4 @@
+import { WORLD_GRAVITY } from '@engine/physics/PhysicsWorld';
 import {
   vehicleTopSpeed,
   type VehiclePresetDefinition,
@@ -15,7 +16,8 @@ export type VehicleNavPoint = readonly [number, number, number];
 
 export interface VehicleNavigationProfile {
   id: VehiclePresetId | (string & {});
-  surface: 'ground' | 'water' | 'rail';
+  /** `rail` y `air` nunca llegan al bake: no tienen grilla que recorrer. */
+  surface: 'ground' | 'water' | 'rail' | 'air';
   halfWidth: number;
   halfLength: number;
   clearanceHeight: number;
@@ -292,6 +294,17 @@ export interface VehicleBrainDecision {
   signals: VehicleAiSignals;
 }
 
+/**
+ * Si el perfil se planifica sobre una grilla. Los guionados siguen su trazado y
+ * los aéreos no pisan celdas; el predicado de tipo deja que quien lo consulte
+ * asuma después una superficie con grilla sin volver a comprobarlo.
+ */
+export function profileHasNavGrid(
+  profile: VehicleNavigationProfile,
+): profile is VehicleNavigationProfile & { surface: 'ground' | 'water' } {
+  return profile.surface === 'ground' || profile.surface === 'water';
+}
+
 export function navigationProfileFromPreset(
   preset: VehiclePresetDefinition,
 ): VehicleNavigationProfile {
@@ -314,6 +327,13 @@ export function navigationProfileFromPreset(
     case 'onRails':
       maxAcceleration = preset.motor.acceleration;
       maxBraking = preset.motor.braking;
+      maxSteeringAngle = 0;
+      break;
+    case 'rotorcraft':
+      // Un helicóptero acelera inclinándose: la componente horizontal del
+      // empuje a inclinación máxima es todo lo que tiene.
+      maxAcceleration = WORLD_GRAVITY * Math.tan(preset.motor.maxPitch);
+      maxBraking = maxAcceleration;
       maxSteeringAngle = 0;
       break;
   }

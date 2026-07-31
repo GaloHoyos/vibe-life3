@@ -9,11 +9,17 @@ import type { Raycast, RaycastSource } from "@engine/physics/Raycast";
 import type { CameraSystem } from "@engine/render/CameraSystem";
 import type { VfxSystem } from "@engine/render/effects/VfxSystem";
 import {
+  aircraftControlFromIntent,
   VehicleDriverInputModel,
   type VehicleControlInput,
 } from "@engine/physics/vehicle";
 import { VehicleAssetRegistry } from "@game/assets/vehicles/VehicleAssetRegistry";
-import { isAtTheControls, vehicleTopSpeed } from "@game/config/vehicles.config";
+import {
+  isAtTheControls,
+  usesGroundNavigation,
+  vehicleTopSpeed,
+  type VehicleCrewRole,
+} from "@game/config/vehicles.config";
 import type { GameEventBus } from "@game/GameEvents";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { Player } from "@game/gameplay/player/Player";
@@ -56,6 +62,7 @@ import {
 } from "./VehicleEntity";
 import { WaterVolumeSystem } from "./water/WaterVolumeSystem";
 import {
+  AirVehicleAiSystem,
   VehicleAiPerception,
   VehicleAiSystem,
   VehicleConvoyCoordinator,
@@ -63,6 +70,8 @@ import {
   VehicleReservationManager,
   vehicleNavigationInputFromLevel,
   vehiclePerceptionConfig,
+  type AirBrainContext,
+  type AirVehicleAiReport,
   type VehicleAiSnapshot,
   type VehicleAiTarget,
   type VehicleBrainContext,
@@ -155,6 +164,7 @@ const PARKED_CONTROL: VehicleControlInput = {
 };
 const DOWN = new Vector3(0, -1, 0);
 const WORLD_UP = new Vector3(0, 1, 0);
+const TMP_AIR_FORWARD = new Vector3();
 const IDENTITY_ROTATION = new Quaternion();
 const EXIT_RADIAL_ANGLES = [
   0,
@@ -170,6 +180,13 @@ const NPC_DRIVE_MODE_ORDER: readonly Exclude<
   VehicleNpcDriveMode,
   "destination"
 >[] = ["hold", "automatic", "patrol"];
+/** Radio en el que un vehículo puede reclutar tripulación de su facción. */
+const DEFAULT_CREW_RECRUIT_RADIUS = 30;
+const DEFAULT_CREW_SUPPORT_ROLES: readonly VehicleCrewRole[] = [
+  "gunner",
+  "commander",
+  "passenger",
+];
 /** Tope de obstáculos que la IA sigue por tick; los más cercanos alcanzan. */
 const MAX_TRACKED_OBSTACLES = 12;
 /** Radio en el que un peatón puede llegar a importarle a un vehículo. */
@@ -193,6 +210,9 @@ export class VehicleSystem {
   private readonly crewVisuals = new VehicleCrewVisuals();
   private readonly npcCrew: VehicleNpcCrewCoordinator;
   private readonly ai = new VehicleAiSystem();
+  private readonly airAi: AirVehicleAiSystem;
+  /** Vehículos con la oferta de tripulación IA apagada por guion. */
+  private readonly crewingDisabled = new Set<string>();
   private readonly trafficReservations = new VehicleReservationManager();
   private readonly trafficReservationKeys = new Map<string, string>();
   private readonly convoys = new VehicleConvoyCoordinator();
@@ -251,6 +271,7 @@ export class VehicleSystem {
   ) {
     this.water = new WaterVolumeSystem(scene);
     this.audio = new VehicleAudioSystem(sounds, positionalSounds);
+    this.airAi = new AirVehicleAiSystem(solidRaycast);
     this.npcCrew = new VehicleNpcCrewCoordinator({
       selectExit: ({ npc, vehicle, candidates, emergency }) =>
         this.selectNpcExit(npc, vehicle, candidates, emergency),
@@ -305,11 +326,21 @@ export class VehicleSystem {
                 behavior: "hold",
                 allowRecoverySnap: false,
               };
-        this.ai.registerVehicle({
-          vehicleId: vehicle.id,
-          preset: vehicle.preset,
-          ai: aiDefinition,
-        });
+        // Cada dominio tiene su planificador: la grilla bakeada no dice nada
+        // del aire y el A* aéreo no sabe de carriles.
+        if (usesGroundNavigation(vehicle.preset)) {
+          this.ai.registerVehicle({
+            vehicleId: vehicle.id,
+            preset: vehicle.preset,
+            ai: aiDefinition,
+          });
+        } else if (vehicle.preset.motor.kind === "rotorcraft") {
+          this.airAi.registerVehicle({
+            vehicleId: vehicle.id,
+            preset: vehicle.preset,
+            ai: aiDefinition,
+          });
+        }
         this.registerVehicleSenses(vehicle, aiDefinition);
         this.npcDriveModes.set(
           vehicle.id,
@@ -317,6 +348,7 @@ export class VehicleSystem {
         );
       }
     }
+    this.airAi.setLandingZones(level.vehicleNavMarkers ?? []);
 
     await Promise.all(
       [...this.vehicles.values()].map(async (vehicle) => {
@@ -362,9 +394,7 @@ export class VehicleSystem {
     for (const vehicle of this.vehicles.values()) {
       if (vehicle !== this.mountedVehicle || !this.mountedOccupant) {
         if (!vehicle.isOnRails()) {
-          vehicle.setControl(
-            this.updateAiVehicle(vehicle, delta) ?? PARKED_CONTROL,
-          );
+          vehicle.setControl(this.autonomousControl(vehicle, delta));
         }
         continue;
       }
@@ -375,9 +405,9 @@ export class VehicleSystem {
       if (acceptPlayerInput && atTheControls) {
         vehicle.setControl(this.readPlayerControl(vehicle, delta));
       } else if (!vehicle.isOnRails()) {
-        vehicle.setControl(
-          this.updateAiVehicle(vehicle, delta) ?? PARKED_CONTROL,
-        );
+        // El jugador va de acompañante: manda la IA, así que un artillero
+        // humano puede disparar mientras un NPC vuela.
+        vehicle.setControl(this.autonomousControl(vehicle, delta));
       }
     }
 
@@ -591,6 +621,16 @@ export class VehicleSystem {
     };
   }
 
+  /** Estado del piloto IA de un aparato aéreo, para la consola de debug. */
+  getAirReport(vehicleId: string): AirVehicleAiReport | null {
+    return this.airAi.getReport(vehicleId);
+  }
+
+  /** Ángulo de la torreta IA, común a los dos dominios. */
+  getTurretYaw(vehicleId: string): number | null {
+    return this.gunners.get(vehicleId)?.getYaw() ?? null;
+  }
+
   /** Identidad estable entre niveles: la usa el carry-over de `changelevel`. */
   getVehicleByTransitionKey(key: string): VehicleEntity | null {
     return (
@@ -727,6 +767,8 @@ export class VehicleSystem {
     this.gunners.clear();
     this.aiTickDelta.clear();
     this.turretAtLimit.clear();
+    this.airAi.clear();
+    this.crewingDisabled.clear();
     this.water.clear();
     this.currentLevel = null;
     this.player = null;
@@ -750,6 +792,120 @@ export class VehicleSystem {
    * a 10 Hz eso es 1 de cada ~6-14 frames. El resto del tiempo sólo se suaviza
    * la última decisión, que es lo que hace que el volante no dé escalones.
    */
+  /** Mandos de la IA, elegido el dominio por el motor del preset. */
+  private autonomousControl(
+    vehicle: VehicleEntity,
+    delta: number,
+  ): VehicleControlInput {
+    const control =
+      vehicle.preset.motor.kind === "rotorcraft"
+        ? this.updateAirVehicle(vehicle, delta)
+        : this.updateAiVehicle(vehicle, delta);
+    return control ?? PARKED_CONTROL;
+  }
+
+  /**
+   * Mandos de un aparato de ala rotatoria. El cerebro decide a ritmo propio,
+   * pero el seguidor corre TODOS los frames: un helicóptero pilotado a 5 Hz se
+   * bambolea, porque cada decisión tardía es un ladeo que ya no corresponde.
+   */
+  private updateAirVehicle(
+    vehicle: VehicleEntity,
+    delta: number,
+  ): VehicleControlInput | null {
+    if (!this.airAi.hasVehicle(vehicle.id) || !this.currentLevel) return null;
+    const context = this.buildAirContext(vehicle, delta);
+    if (this.airAi.advance(vehicle.id, delta)) {
+      const distance = this.player
+        ? this.player.getPosition().distanceTo(vehicle.getWorldPosition())
+        : Number.POSITIVE_INFINITY;
+      const decision = this.airAi.update(vehicle.id, context, distance);
+      if (decision?.crewAction === "requestDisembark") {
+        this.disembarkAirPassengers(vehicle);
+      }
+    }
+    const command = this.airAi.control(vehicle.id, context, delta);
+    if (!command) return PARKED_CONTROL;
+    return {
+      throttle: command.throttle,
+      steering: command.steering,
+      brake: 0,
+      handbrake: 0,
+      boost: false,
+      collective: command.collective,
+      yaw: command.yaw,
+    };
+  }
+
+  private buildAirContext(
+    vehicle: VehicleEntity,
+    delta: number,
+  ): AirBrainContext {
+    const position = vehicle.getWorldPosition();
+    const velocity = vehicle.getLinearVelocity();
+    const telemetry = vehicle.getTelemetry();
+    const forward = TMP_AIR_FORWARD
+      .set(0, 0, 1)
+      .applyQuaternion(vehicle.getWorldRotation());
+    const threat = this.updatePerception(vehicle, delta, position, forward);
+    const occupants = vehicle.getOccupants();
+    const pilot = occupants.find((occupant) => isAtTheControls(occupant.role));
+    const gunner = occupants.find((occupant) =>
+      vehicle.canSeatUseWeapon(occupant.seatId),
+    );
+    return {
+      position: tuple(position),
+      heading: Math.atan2(forward.x, forward.z),
+      velocity: tuple(velocity),
+      altitude: telemetry.altitude,
+      grounded: telemetry.grounded,
+      healthFraction: vehicle.damage.getZoneFraction("hull"),
+      pilotAvailable: Boolean(
+        pilot &&
+          (pilot.actor === PLAYER_ACTOR ||
+            this.actors.get(pilot.actor)?.isAlive()),
+      ),
+      gunnerAvailable: Boolean(gunner),
+      passengersOnboard: occupants.some(
+        (occupant) =>
+          !isAtTheControls(occupant.role) && occupant.actor !== PLAYER_ACTOR,
+      ),
+      hasPlayerOccupant: vehicle.getPlayerOccupant() !== null,
+      crewPending: this.airCrewPending(vehicle),
+      authoredGoal: this.resolveTarget(vehicle.definition.ai?.goal)?.position,
+      patrolPoints: this.patrolPoints(vehicle),
+      threat: threat ?? undefined,
+      weaponRange: vehicle.preset.weapon?.range,
+      turretAtTraverseLimit: this.turretAtLimit.has(vehicle.id),
+    };
+  }
+
+  /**
+   * Si al aparato le falta algún puesto de los que pidió. Se mide contra los
+   * ocupantes reales y no contra la fase del abordaje: las fases van y vuelven
+   * mientras el NPC replanifica, y un aparato no debería despegar sólo porque
+   * su artillero pasó medio segundo sin asignación.
+   */
+  private airCrewPending(vehicle: VehicleEntity): boolean {
+    const requested = vehicle.definition.aiCrew?.roles;
+    if (!requested || requested.length === 0) return false;
+    const filled = new Set(
+      vehicle.getOccupants().map((occupant) => occupant.role),
+    );
+    return requested.some((role) => !filled.has(role));
+  }
+
+  /** Baja a todo el que no vaya a los mandos, con el aparato ya posado. */
+  private disembarkAirPassengers(vehicle: VehicleEntity): void {
+    if (!vehicle.getTelemetry().grounded) return;
+    for (const occupant of [...vehicle.getOccupants()]) {
+      if (isAtTheControls(occupant.role)) continue;
+      if (occupant.actor === PLAYER_ACTOR) continue;
+      this.requestNpcExit(occupant.actor, false);
+    }
+    this.processNpcCrewActions();
+  }
+
   private updateAiVehicle(
     vehicle: VehicleEntity,
     delta: number,
@@ -1612,6 +1768,18 @@ export class VehicleSystem {
     vehicle: VehicleEntity,
     delta: number,
   ): VehicleControlInput {
+    if (vehicle.preset.motor.kind === "rotorcraft") {
+      return aircraftControlFromIntent({
+        forward: this.controls.isDown("moveForward"),
+        back: this.controls.isDown("moveBack"),
+        left: this.controls.isDown("moveLeft"),
+        right: this.controls.isDown("moveRight"),
+        yawLeft: this.controls.isDown("aircraftYawLeft"),
+        yawRight: this.controls.isDown("aircraftYawRight"),
+        ascend: this.controls.isDown("aircraftAscend"),
+        descend: this.controls.isDown("aircraftDescend"),
+      });
+    }
     return this.driverInput.update(
       {
         forward: this.controls.isDown("moveForward"),
@@ -1795,6 +1963,15 @@ export class VehicleSystem {
     if (!force) {
       if (!isManualPlayerExitAllowed(vehicle.definition)) {
         this.showMessage("Este helicóptero no permite bajar.");
+        return false;
+      }
+      // El pedal derecho comparte tecla con "usar": sin esta puerta, guiñar a
+      // la derecha en pleno vuelo tiraría al piloto por la puerta.
+      if (
+        vehicle.preset.motor.kind === "rotorcraft" &&
+        !vehicle.getTelemetry().grounded
+      ) {
+        this.showMessage("Hay que posarse antes de bajar.");
         return false;
       }
     }
@@ -2256,14 +2433,17 @@ export class VehicleSystem {
       const playerNeedsFactionCrew =
         vehicle.getPlayerOccupant() !== null &&
         resolveVehicleAccessPolicy(vehicle.definition) !== "player";
+      const crew = vehicle.definition.aiCrew;
       if (
         vehicle.isOnRails() ||
         (!vehicle.definition.ai?.enabled && !playerNeedsFactionCrew) ||
+        crew?.enabled === false ||
+        this.crewingDisabled.has(vehicle.id) ||
         this.evacuationVehicles.has(vehicle.id)
       ) {
         continue;
       }
-      if (this.ai.getBehavior(vehicle.id) === "transport") {
+      if (this.behaviorOf(vehicle) === "transport") {
         const dropoff = this.resolveTarget(vehicle.definition.ai?.goal);
         const position = vehicle.getWorldPosition();
         if (
@@ -2285,7 +2465,8 @@ export class VehicleSystem {
             !this.npcCrew.getAssignment(npc.id) &&
             !followers.has(npc.id) &&
             npc.companionName === null &&
-            npc.position.distanceTo(vehicle.getWorldPosition()) <= 30,
+            npc.position.distanceTo(vehicle.getWorldPosition()) <=
+              (crew?.radius ?? DEFAULT_CREW_RECRUIT_RADIUS),
         )
         .sort(
           (first, second) =>
@@ -2313,12 +2494,24 @@ export class VehicleSystem {
           if (index >= 0) nearby.splice(index, 1);
         }
       }
+      // Los mandos ya se cubrieron arriba: lo que queda son los puestos de
+      // acompañante, en el orden que pidió el nivel.
+      const supportRoles = (crew?.roles ?? DEFAULT_CREW_SUPPORT_ROLES).filter(
+        (role) => !isAtTheControls(role),
+      );
+      if (supportRoles.length === 0) continue;
       for (const npc of nearby) {
-        this.npcCrew.requestBoarding(npc, vehicle, {
-          roles: ["gunner", "commander", "passenger"],
-        });
+        this.npcCrew.requestBoarding(npc, vehicle, { roles: supportRoles });
       }
     }
+  }
+
+  /** Comportamiento vigente, venga del dominio terrestre o del aéreo. */
+  private behaviorOf(vehicle: VehicleEntity): VehicleAiBehavior | null {
+    if (this.airAi.hasVehicle(vehicle.id)) {
+      return this.airAi.getReport(vehicle.id)?.behavior ?? null;
+    }
+    return this.ai.getBehavior(vehicle.id);
   }
 
   private processNpcCrewActions(): void {
@@ -2511,6 +2704,24 @@ export class VehicleSystem {
         return;
       case "DisableGun":
         vehicle.setWeaponEnabled(false);
+        return;
+      case "EnableDamage":
+        vehicle.setInvulnerable(false);
+        return;
+      case "DisableDamage":
+        vehicle.setInvulnerable(true);
+        return;
+      case "EnableCrewing":
+        this.crewingDisabled.delete(vehicle.id);
+        return;
+      case "DisableCrewing":
+        this.crewingDisabled.add(vehicle.id);
+        // Los que iban en camino se dan media vuelta; los ya sentados siguen.
+        for (const assignment of this.npcCrew.getAssignments(vehicle.id)) {
+          if (assignment.phase === "approach" || assignment.phase === "boarding") {
+            this.npcCrew.cancel(assignment.actorId);
+          }
+        }
         return;
       case "Attach": {
         const actor = actorParam(args);

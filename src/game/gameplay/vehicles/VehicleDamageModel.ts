@@ -16,6 +16,8 @@ export interface VehicleDamageSnapshot {
   readonly state: VehicleDamageState;
   readonly zones: Readonly<Record<string, number>>;
   readonly burning: boolean;
+  /** Ausente en partidas anteriores al blindaje escenográfico. */
+  readonly invulnerable?: boolean;
 }
 
 export interface VehicleDamageCallbacks {
@@ -57,6 +59,7 @@ export class VehicleDamageModel implements Damageable {
     private readonly archetype: VehicleArchetypeId,
     presets: readonly VehicleDamageZonePreset[],
     private readonly callbacks: VehicleDamageCallbacks,
+    private invulnerable = false,
   ) {
     presets.forEach((preset) => {
       this.zones.set(preset.id, { preset, health: preset.health });
@@ -64,6 +67,19 @@ export class VehicleDamageModel implements Damageable {
     if (!this.zones.has("hull")) {
       throw new Error("Todo vehículo requiere una zona de daño 'hull'.");
     }
+  }
+
+  /**
+   * Blindaje escenográfico, el `DAMAGE_EVENTS_ONLY` de Source: los impactos se
+   * siguen registrando, con sus outputs y sus chispas, pero la vida no baja.
+   * Un vehículo así sólo cae por `requestCrash`, o sea por guion.
+   */
+  setInvulnerable(invulnerable: boolean): void {
+    this.invulnerable = invulnerable;
+  }
+
+  isInvulnerable(): boolean {
+    return this.invulnerable;
   }
 
   applyDamage(
@@ -82,8 +98,13 @@ export class VehicleDamageModel implements Damageable {
       amount *
       zone.preset.damageMultiplier *
       damageTypeScale[damageType];
-    zone.health = Math.max(0, zone.health - effective);
 
+    if (this.invulnerable) {
+      this.callbacks.onDamaged(effective, zone.preset.id, attackerId, hitPoint);
+      return;
+    }
+
+    zone.health = Math.max(0, zone.health - effective);
     if (zone.preset.id !== "hull") {
       const hull = this.zones.get("hull");
       if (hull) {
@@ -128,6 +149,15 @@ export class VehicleDamageModel implements Damageable {
     return this.burning;
   }
 
+  /**
+   * Salud de la zona, o 1 si el vehículo no la modela. Es la lectura correcta
+   * para escalar autoridad de mando: `getZoneFraction` devuelve 0 ante una zona
+   * inexistente, que para un control significaría "roto de fábrica".
+   */
+  zoneAuthority(id: string): number {
+    return this.zones.has(id) ? this.getZoneFraction(id) : 1;
+  }
+
   getZoneFraction(id: string): number {
     const zone = this.zones.get(id);
     if (!zone || zone.preset.health <= 0) return 0;
@@ -156,7 +186,12 @@ export class VehicleDamageModel implements Damageable {
     this.zones.forEach((zone, id) => {
       zones[id] = zone.health;
     });
-    return { state: this.state, zones, burning: this.burning };
+    return {
+      state: this.state,
+      zones,
+      burning: this.burning,
+      invulnerable: this.invulnerable,
+    };
   }
 
   restore(snapshot: VehicleDamageSnapshot): void {
@@ -168,6 +203,7 @@ export class VehicleDamageModel implements Damageable {
     });
     this.state = snapshot.state;
     this.burning = snapshot.burning;
+    this.invulnerable = snapshot.invulnerable ?? this.invulnerable;
     this.destroyed = snapshot.state === "destroyed";
   }
 

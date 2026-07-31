@@ -1,4 +1,5 @@
 import {
+  usesGroundNavigation,
   VehiclePresets,
   type VehiclePresetDefinition,
 } from '@game/config/vehicles.config';
@@ -59,7 +60,7 @@ function navigationPresetsFromLevel(
   const presets = new Map<string, VehiclePresetDefinition>();
   for (const vehicle of level.vehicles ?? []) {
     const preset = VehiclePresets[vehicle.presetId];
-    if (preset.navigation.surface === 'rail') continue;
+    if (!usesGroundNavigation(preset)) continue;
     presets.set(preset.id, preset);
   }
   return [...presets.values()];

@@ -13,6 +13,7 @@ import type {
 } from './VehicleAiTypes';
 import {
   navigationProfileFromPreset,
+  profileHasNavGrid,
 } from './VehicleAiTypes';
 import { headingBetween, planarDistance } from './VehicleAiMath';
 import {
@@ -133,7 +134,7 @@ export class VehicleAiSystem {
     this.unregisterVehicle(registration.vehicleId);
     if (!registration.ai.enabled) return false;
     const profile = navigationProfileFromPreset(registration.preset);
-    if (profile.surface === 'rail') return false;
+    if (!profileHasNavGrid(profile)) return false;
     const tuning = vehicleAiTuning(
       registration.vehicleId,
       registration.preset,

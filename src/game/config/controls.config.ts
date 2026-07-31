@@ -20,6 +20,10 @@ export type GameAction =
   | "vehicleHorn"
   | "vehicleLights"
   | "vehicleCommandMode"
+  | "aircraftAscend"
+  | "aircraftDescend"
+  | "aircraftYawLeft"
+  | "aircraftYawRight"
   | "quickSave"
   | "quickLoad"
   | "toggleDebug"
@@ -47,6 +51,10 @@ export const DefaultBindings: BindingMap<GameAction> = {
   vehicleHorn: ["KeyH"],
   vehicleLights: ["KeyL"],
   vehicleCommandMode: ["KeyV"],
+  aircraftAscend: ["Space"],
+  aircraftDescend: ["ControlLeft", "ControlRight"],
+  aircraftYawLeft: ["KeyQ"],
+  aircraftYawRight: ["KeyE"],
   quickSave: ["F6"],
   quickLoad: ["F8"],
   toggleDebug: ["F3"],
@@ -75,6 +83,10 @@ export const ActionLabels: Record<GameAction, string> = {
   vehicleHorn: "Bocina",
   vehicleLights: "Luces del vehículo",
   vehicleCommandMode: "Modo de conducción IA",
+  aircraftAscend: "Colectivo (subir)",
+  aircraftDescend: "Colectivo (bajar)",
+  aircraftYawLeft: "Pedal izquierdo",
+  aircraftYawRight: "Pedal derecho",
   quickSave: "Guardado rápido",
   quickLoad: "Carga rápida",
   toggleDebug: "Menu debug",
@@ -103,6 +115,10 @@ export const ActionOrder: readonly GameAction[] = [
   "vehicleHorn",
   "vehicleLights",
   "vehicleCommandMode",
+  "aircraftAscend",
+  "aircraftDescend",
+  "aircraftYawLeft",
+  "aircraftYawRight",
   "quickSave",
   "quickLoad",
   "toggleDebug",
@@ -115,12 +131,20 @@ export const ActionOrder: readonly GameAction[] = [
  * El freno de mano comparte Espacio con saltar a propósito, igual que en
  * Half-Life 2. Declararlo en otro contexto evita que rebindear uno deje al
  * otro sin tecla: nunca se está a pie y conduciendo al mismo tiempo.
+ *
+ * Los mandos de vuelo van en su propio contexto por lo mismo: un helicóptero no
+ * tiene freno de mano y un buggy no tiene colectivo, así que el Espacio puede
+ * ser las dos cosas sin que rebindear una le robe la tecla a la otra.
  */
 export const ActionContexts: BindingContextMap<GameAction> = {
   vehicleHandbrake: "vehicle",
   vehicleHorn: "vehicle",
   vehicleLights: "vehicle",
   vehicleCommandMode: "vehicle",
+  aircraftAscend: "aircraft",
+  aircraftDescend: "aircraft",
+  aircraftYawLeft: "aircraft",
+  aircraftYawRight: "aircraft",
 };
 
 /**

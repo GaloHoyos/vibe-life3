@@ -24,6 +24,31 @@ declare global {
       eject: (vehicleId: string, actor?: string) => string;
       /** Aplica daño a una zona (default `hull`): humo, fuego y destrucción. */
       damage: (vehicleId: string, amount: number, zone?: string) => string;
+      /** Derriba por guion, como la entrada `Crash` del I/O. */
+      crash: (vehicleId: string) => string;
+      /** Conmuta el blindaje escenográfico, como `DisableDamage`/`EnableDamage`. */
+      invulnerable: (vehicleId: string, enabled: boolean) => string;
+      /** Telemetría de vuelo de los aparatos pilotables. */
+      flight: () => Array<{
+        id: string;
+        altitude: number;
+        grounded: boolean;
+        speed: number;
+        forwardSpeed: number;
+        verticalSpeed: number;
+        roll: number;
+        engineOn: boolean;
+        /** Estado del piloto IA; `null` si lo vuela el jugador. */
+        state: string | null;
+        behavior: string | null;
+        targetAltitude: number | null;
+        targetSpeed: number | null;
+        landingSpot: string | null;
+        routeLength: number;
+        /** Ángulo de la torreta; delata si el artillero IA está siguiendo. */
+        turretYaw: number | null;
+        crew: string[];
+      }>;
       /** Estado de la IA: decisión, blanco percibido y torreta. */
       ai: () => Array<{
         id: string;
@@ -103,6 +128,47 @@ export function installVehicleConsole(
       );
       const hull = vehicle.damage.getHull();
       return `${vehicle.id} casco ${Math.round(hull.current)}/${hull.max}`;
+    },
+    crash: (vehicleId) => {
+      const vehicle = getVehicles()?.getVehicle(vehicleId);
+      if (!vehicle) return "vehiculo no encontrado";
+      vehicle.beginCrash();
+      return `${vehicle.id} derribado`;
+    },
+    invulnerable: (vehicleId, enabled) => {
+      const vehicle = getVehicles()?.getVehicle(vehicleId);
+      if (!vehicle) return "vehiculo no encontrado";
+      vehicle.setInvulnerable(enabled);
+      return `${vehicle.id} invulnerable=${vehicle.isInvulnerable()}`;
+    },
+    flight: () => {
+      const system = getVehicles();
+      return (system?.getVehicles() ?? [])
+        .filter((vehicle) => vehicle.preset.motor.kind === "rotorcraft")
+        .map((vehicle) => {
+          const telemetry = vehicle.getTelemetry();
+          const report = system?.getAirReport(vehicle.id) ?? null;
+          return {
+            id: vehicle.id,
+            altitude: telemetry.altitude,
+            grounded: telemetry.grounded,
+            speed: telemetry.speed,
+            forwardSpeed: telemetry.forwardSpeed,
+            verticalSpeed: vehicle.getLinearVelocity().y,
+            roll: telemetry.steering,
+            engineOn: vehicle.isEngineOn(),
+            state: report?.state ?? null,
+            behavior: report?.behavior ?? null,
+            targetAltitude: report?.targetAltitude ?? null,
+            targetSpeed: report?.targetSpeed ?? null,
+            landingSpot: report?.landingSpot?.source ?? null,
+            routeLength: report?.routeLength ?? 0,
+            turretYaw: system?.getTurretYaw(vehicle.id) ?? null,
+            crew: vehicle
+              .getOccupants()
+              .map((occupant) => `${occupant.role}:${occupant.actor}`),
+          };
+        });
     },
     ai: () => {
       const system = getVehicles();

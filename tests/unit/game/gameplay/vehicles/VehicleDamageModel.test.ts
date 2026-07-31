@@ -116,6 +116,48 @@ describe("VehicleDamageModel", () => {
     expect(model.getState()).toBe("destroyed");
   });
 
+  it("invulnerable reporta el impacto pero no pierde vida", () => {
+    const events = callbacks();
+    const model = new VehicleDamageModel("helicopter", zones, events, true);
+
+    model.applyDamage(9999, undefined, "rotor", "combine-01");
+
+    // Es el `DAMAGE_EVENTS_ONLY` de Source: el guion se entera del disparo y
+    // saltan las chispas, pero el aparato no se cae.
+    expect(events.onDamaged).toHaveBeenCalledWith(
+      9999,
+      "rotor",
+      "combine-01",
+      undefined,
+    );
+    expect(model.getZoneFraction("rotor")).toBe(1);
+    expect(model.getHull().current).toBe(model.getHull().max);
+    expect(model.getState()).toBe("operational");
+    expect(events.onCrashRequested).not.toHaveBeenCalled();
+  });
+
+  it("un invulnerable sigue cayendo por guion y vuelve a ser vulnerable", () => {
+    const events = callbacks();
+    const model = new VehicleDamageModel("helicopter", zones, events, true);
+
+    model.requestCrash();
+    expect(events.onCrashRequested).toHaveBeenCalledTimes(1);
+
+    model.setInvulnerable(false);
+    model.applyDamage(9999, undefined, "hull");
+    expect(model.getHull().current).toBe(0);
+  });
+
+  it("el snapshot conserva el blindaje escenográfico", () => {
+    const model = new VehicleDamageModel("helicopter", zones, callbacks());
+    model.setInvulnerable(true);
+
+    const restored = new VehicleDamageModel("helicopter", zones, callbacks());
+    restored.restore(model.capture());
+
+    expect(restored.isInvulnerable()).toBe(true);
+  });
+
   it("el snapshot restaura estado, zonas e incendio", () => {
     const model = new VehicleDamageModel("buggy", zones, callbacks());
     model.applyDamage(120, undefined, "hull");

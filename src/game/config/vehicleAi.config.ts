@@ -217,6 +217,77 @@ export const VEHICLE_DEVIATION_BUDGET_SECONDS = 12;
 /** Memoria del último-visto. Es el `NPC_APCDRIVER_REMEMBER_TIME` de HL2. */
 export const VEHICLE_THREAT_MEMORY_SECONDS = 4;
 
+export const VEHICLE_PILOT_PROFILE_IDS = ['transport', 'gunship'] as const;
+export type VehiclePilotProfileId = (typeof VEHICLE_PILOT_PROFILE_IDS)[number];
+
+export interface VehiclePilotProfile {
+  id: VehiclePilotProfileId;
+  /** Altura de crucero sobre el terreno, en metros. */
+  cruiseAltitude: number;
+  /** Altura a la que orbita mientras pelea. */
+  combatAltitude: number;
+  cruiseSpeed: number;
+  /** Radio de la órbita de combate como múltiplo del alcance del arma. */
+  standoffRangeFactor: number;
+  /** Velocidad angular de la órbita, en rad/s. */
+  orbitSpeed: number;
+  /** Fracción de casco a la que rompe contacto. */
+  fleeThreshold: number;
+  /** Fracción de casco a la que busca posarse donde sea. */
+  emergencyLandingThreshold: number;
+}
+
+const pilotProfiles: Readonly<Record<VehiclePilotProfileId, VehiclePilotProfile>> = {
+  /** Vuela alto y lejos del fuego: su carga son los pasajeros. */
+  transport: {
+    id: 'transport',
+    cruiseAltitude: 34,
+    combatAltitude: 30,
+    cruiseSpeed: 22,
+    standoffRangeFactor: 0.75,
+    orbitSpeed: 0.16,
+    fleeThreshold: 0.55,
+    emergencyLandingThreshold: 0.3,
+  },
+  /** Orbita cerca y bajo para que la torreta de puerta tenga ángulo. */
+  gunship: {
+    id: 'gunship',
+    cruiseAltitude: 26,
+    combatAltitude: 20,
+    cruiseSpeed: 26,
+    standoffRangeFactor: 0.5,
+    orbitSpeed: 0.3,
+    fleeThreshold: 0.22,
+    emergencyLandingThreshold: 0.12,
+  },
+};
+
+export function pilotProfile(id: VehiclePilotProfileId | undefined): VehiclePilotProfile {
+  return pilotProfiles[id ?? 'gunship'];
+}
+
+export function isVehiclePilotProfileId(value: unknown): value is VehiclePilotProfileId {
+  return typeof value === 'string' &&
+    VEHICLE_PILOT_PROFILE_IDS.some((entry) => entry === value);
+}
+
+/**
+ * El comportamiento autorado decide el oficio del piloto: quien transporta
+ * tropa no se pone a orbitar un blanco a 20 m del suelo.
+ */
+export function defaultPilotProfileId(
+  behavior: VehicleAiBehavior,
+): VehiclePilotProfileId {
+  return behavior === 'transport' || behavior === 'escort'
+    ? 'transport'
+    : 'gunship';
+}
+
+/** Altura sobre el terreno a partir de la cual el aparato cuenta como volando. */
+export const AIR_TAKEOFF_CLEAR_ALTITUDE = 6;
+/** Radio dentro del cual una zona de aterrizaje se considera alcanzada. */
+export const AIR_LANDING_ARRIVAL_RADIUS = 4;
+
 export const VEHICLE_PERCEPTION = {
   /** Apertura total del cono de la tripulación: mira mucho más que un peatón. */
   visionConeRadians: 2.6,

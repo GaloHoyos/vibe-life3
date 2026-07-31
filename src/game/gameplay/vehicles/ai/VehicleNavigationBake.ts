@@ -7,6 +7,7 @@ import type {
   VehicleNavPoint,
   VehicleSurfaceSample,
 } from './VehicleAiTypes';
+import { profileHasNavGrid } from './VehicleAiTypes';
 import { finiteOr, planarDistance, pointInPolygonXZ } from './VehicleAiMath';
 import { buildVehicleLaneGraph } from './VehicleLaneGraph';
 import { vehicleNavigationHash } from './VehicleNavigationHash';
@@ -39,7 +40,7 @@ function bakeProfileGrid(
   profile: VehicleNavigationProfile,
 ): VehicleNavGrid {
   const cellSize = Math.max(0.25, input.options?.cellSize ?? profile.cellSize);
-  if (profile.surface === 'rail') {
+  if (!profileHasNavGrid(profile)) {
     return { profileId: profile.id, cellSize, origin: [0, 0], cells: [] };
   }
   const eligibleAreas = input.areas.filter((area) =>

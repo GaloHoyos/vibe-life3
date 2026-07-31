@@ -291,6 +291,7 @@ function validateVehicleShape(def: Record<string, unknown>, label: string): Vali
     "startLocked",
     "engineOn",
     "allowPlayerExit",
+    "invulnerable",
     "pathLoop",
   ] as const) {
     const check = optionalBoolean(def[field], `${label}: ${field}`);
@@ -342,6 +343,29 @@ function validateVehicleShape(def: Record<string, unknown>, label: string): Vali
     if (!goal.ok) return goal;
     const recovery = optionalBoolean(def.ai.allowRecoverySnap, `${label}: ai.allowRecoverySnap`);
     if (!recovery.ok) return recovery;
+  }
+  if (def.aiCrew !== undefined) {
+    if (!isRecord(def.aiCrew)) return invalid(`${label}: aiCrew debe ser un objeto.`);
+    const enabled = optionalBoolean(def.aiCrew.enabled, `${label}: aiCrew.enabled`);
+    if (!enabled.ok) return enabled;
+    if (
+      def.aiCrew.radius !== undefined &&
+      (typeof def.aiCrew.radius !== "number" ||
+        !Number.isFinite(def.aiCrew.radius) ||
+        def.aiCrew.radius <= 0)
+    ) {
+      return invalid(`${label}: aiCrew.radius debe ser un número positivo.`);
+    }
+    if (def.aiCrew.roles !== undefined) {
+      if (!Array.isArray(def.aiCrew.roles)) {
+        return invalid(`${label}: aiCrew.roles debe ser una lista.`);
+      }
+      for (const role of def.aiCrew.roles) {
+        if (typeof role !== "string" || !VEHICLE_CREW_ROLES.has(role)) {
+          return invalid(`${label}: aiCrew.roles tiene un rol desconocido.`);
+        }
+      }
+    }
   }
   return { ok: true };
 }

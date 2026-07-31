@@ -25,6 +25,17 @@ export interface VehicleControlInput {
   handbrake: number;
   /** Requests the boosted force variant defined by the preset. */
   boost: boolean;
+  /**
+   * Vertical axis, -1 = descend, 1 = climb. Only aircraft read it: a wheeled or
+   * hovering motor has no authority over its own altitude.
+   */
+  collective?: number;
+  /**
+   * Yaw rate request independent of the direction of travel, -1 = left. Ground
+   * vehicles steer by turning their wheels, so only aircraft read it; the sign
+   * follows `steering`, so positive is the project's right (`forward × up`).
+   */
+  yaw?: number;
 }
 
 export const NEUTRAL_VEHICLE_CONTROL: Readonly<VehicleControlInput> = Object.freeze({
@@ -33,6 +44,8 @@ export const NEUTRAL_VEHICLE_CONTROL: Readonly<VehicleControlInput> = Object.fre
   brake: 0,
   handbrake: 0,
   boost: false,
+  collective: 0,
+  yaw: 0,
 });
 
 export interface RigidBodyState {
@@ -88,6 +101,11 @@ export interface VehicleTelemetry {
   contactCount: number;
   grounded: boolean;
   submergedRatio: number;
+  /**
+   * Metres above the surface underneath, or `Infinity` when nothing answers the
+   * probe. Only aircraft maintain it; the rest never leave the ground.
+   */
+  altitude: number;
   wheels: readonly VehicleWheelTelemetry[];
 }
 
@@ -152,6 +170,7 @@ export function createVehicleTelemetry(body: RAPIER.RigidBody): VehicleTelemetry
     contactCount: 0,
     grounded: false,
     submergedRatio: 0,
+    altitude: Number.POSITIVE_INFINITY,
     wheels: [],
   };
 }

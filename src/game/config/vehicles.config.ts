@@ -1,4 +1,5 @@
 import type { Faction } from '@engine/ai/Faction';
+import { WORLD_GRAVITY } from '@engine/physics/PhysicsWorld';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 
 export const VEHICLE_ARCHETYPE_IDS = [
@@ -9,7 +10,18 @@ export const VEHICLE_ARCHETYPE_IDS = [
   'combineGlider',
 ] as const;
 export type VehicleArchetypeId = (typeof VEHICLE_ARCHETYPE_IDS)[number];
-export type VehiclePresetId = VehicleArchetypeId;
+
+/**
+ * El arquetipo decide el modelo, las cajas de daño y las capas de audio; el
+ * preset decide el motor, los asientos y las reglas. Casi siempre coinciden,
+ * pero el helicóptero existe en dos sabores sobre el mismo arquetipo: guionado
+ * sobre un trazado o pilotable en vuelo libre.
+ */
+export const VEHICLE_PRESET_IDS = [
+  ...VEHICLE_ARCHETYPE_IDS,
+  'helicopterFree',
+] as const;
+export type VehiclePresetId = (typeof VEHICLE_PRESET_IDS)[number];
 
 export const VEHICLE_CREW_ROLES = [
   'commander',
@@ -113,6 +125,32 @@ export type VehicleMotorPreset =
       /** Cuánto puede apartarse el piloto del trazado, en metros. */
       lateralRange: number;
       lateralResponse: number;
+    }
+  | {
+      kind: 'rotorcraft';
+      /** Fracción del peso que sostiene el rotor con el colectivo en neutro. */
+      hoverLift: number;
+      maxLift: number;
+      minLift: number;
+      liftResponse: number;
+      /** Inclinación máxima que pide el cíclico, en radianes. */
+      maxPitch: number;
+      maxRoll: number;
+      /** Rapidez con que el aparato adopta la actitud pedida, en 1/s. */
+      attitudeResponse: number;
+      /** Par de actitud y su amortiguación, relativos a la masa. */
+      attitudeStiffness: number;
+      attitudeDamping: number;
+      /** Guiñada a pedal lleno, en rad/s. */
+      yawRate: number;
+      /** Guiñada que induce el alabeo a fondo, en rad/s. */
+      turnCoordination: number;
+      /** Arrastres como tasa por segundo, relativos a la masa. */
+      linearDrag: number;
+      verticalDrag: number;
+      groundDrag: number;
+      /** Altura del punto más bajo del casco sobre el origen del cuerpo. */
+      hullBottom: number;
     };
 
 export interface VehicleSeatPreset {
@@ -190,7 +228,7 @@ export interface VehiclePresetDefinition {
   damageZones: readonly VehicleDamageZonePreset[];
   weapon?: VehicleMountedWeaponPreset;
   navigation: {
-    surface: 'ground' | 'water' | 'rail';
+    surface: 'ground' | 'water' | 'rail' | 'air';
     halfWidth: number;
     halfLength: number;
     clearanceHeight: number;
@@ -478,6 +516,116 @@ export const VehiclePresets = {
       reverseAllowed: false,
     },
   },
+  helicopterFree: {
+    id: 'helicopterFree',
+    archetype: 'helicopter',
+    displayName: 'Helicóptero utilitario (pilotable)',
+    defaultFaction: 'resistance',
+    motor: {
+      kind: 'rotorcraft',
+      // Por debajo de 1 el aparato pierde altura al soltar el colectivo, que es
+      // lo que separa "pilotar" de "flotar".
+      hoverLift: 0.94,
+      maxLift: 1.55,
+      minLift: 0.35,
+      liftResponse: 2.6,
+      maxPitch: 0.42,
+      maxRoll: 0.5,
+      attitudeResponse: 2.4,
+      attitudeStiffness: 70,
+      attitudeDamping: 46,
+      yawRate: 1.1,
+      turnCoordination: 0.75,
+      // Velocidad punta = g·tan(maxPitch)/linearDrag ≈ 30 m/s con g = 20.5.
+      linearDrag: 0.3,
+      // Trepada ≈ 12.5 m/s a colectivo lleno; hundimiento ≈ 1.4 m/s soltando.
+      verticalDrag: 0.9,
+      groundDrag: 1.6,
+      // colliderCenter.y - size.y * 0.38, o sea el fondo del casco de colisión.
+      hullBottom: 0.19,
+    },
+    body: {
+      size: [3.4, 2.8, 9.2],
+      colliderCenter: [0, 1.25, 0.1],
+      centerOfMass: [0, -0.25, 0.15],
+      mass: 2850,
+      hullFriction: 0.85,
+    },
+    camera: {
+      enterBlendSeconds: 0.5,
+      exitBlendSeconds: 0.35,
+      maxYaw: 1.9,
+      minPitch: -1.1,
+      maxPitch: 0.75,
+      speedFovGain: 7,
+      positionDamping: 8,
+      rotationDamping: 7,
+    },
+    // Cada puesto tiene un abanico de anclas SOBRE SU PROPIO LADO. Con una
+    // sola, el que la tiene enfrentada camina contra el casco: la navegación a
+    // pie no conoce el aparato estacionado y traza la recta que lo atraviesa.
+    seats: [
+      {
+        id: 'pilot',
+        role: 'pilot',
+        position: [-0.58, 1.35, 2.45],
+        cameraPosition: [-0.58, 1.82, 2.42],
+        exits: [[-1.75, 0.2, 1.25], [-2.4, 0.2, 2.6], [-2.4, 0.2, 0.2]],
+      },
+      {
+        id: 'commander',
+        role: 'commander',
+        position: [0.58, 1.35, 2.45],
+        cameraPosition: [0.58, 1.82, 2.42],
+        exits: [[1.75, 0.2, 1.25], [2.4, 0.2, 2.6], [2.4, 0.2, 0.2]],
+      },
+      {
+        id: 'door-gunner',
+        role: 'gunner',
+        position: [-1.05, 1.15, -0.25],
+        cameraPosition: [-1.22, 1.65, -0.25],
+        exits: [[-1.85, 0.15, -0.25], [-2.6, 0.15, -1.8], [-2.6, 0.15, 1.0]],
+        canUseWeapon: true,
+      },
+      {
+        id: 'passenger',
+        role: 'passenger',
+        position: [0.62, 1.05, -0.75],
+        cameraPosition: [0.62, 1.55, -0.75],
+        exits: [[1.85, 0.15, -0.75], [2.6, 0.15, -2.2], [2.6, 0.15, 0.6]],
+      },
+    ],
+    damageZones: [
+      { id: 'hull', health: 750, damageMultiplier: 0.75 },
+      { id: 'engine', health: 180, damageMultiplier: 1.3, disableAtZero: true },
+      { id: 'rotor', health: 160, damageMultiplier: 1.35, disableAtZero: true },
+      { id: 'weapon', health: 120, damageMultiplier: 1.15, disableAtZero: true },
+      { id: 'fuel', health: 120, damageMultiplier: 1.5 },
+    ],
+    weapon: {
+      kind: 'doorGun',
+      damage: 12,
+      fireRate: 13,
+      range: 110,
+      heatPerShot: 0.035,
+      coolingPerSecond: 0.25,
+      yawLimit: 1.4,
+      pitchMin: -0.75,
+      pitchMax: 0.55,
+      traverseSpeed: 2.2,
+      firingConeRadians: 0.06,
+      burstSize: 10,
+      burstPauseSeconds: 2,
+    },
+    navigation: {
+      surface: 'air',
+      halfWidth: 2,
+      halfLength: 4.7,
+      clearanceHeight: 3.2,
+      minTurnRadius: 12,
+      reverseAllowed: false,
+    },
+  },
   rebelCrawler: {
     id: 'rebelCrawler',
     archetype: 'rebelCrawler',
@@ -648,5 +796,23 @@ export function vehicleTopSpeed(preset: VehiclePresetDefinition): number {
       return Math.max(18, preset.motor.planingSpeed * 2.25);
     case 'onRails':
       return preset.motor.cruiseSpeed * preset.motor.throttleBoostFactor;
+    case 'rotorcraft':
+      // La punta sale del equilibrio entre el empuje horizontal a inclinación
+      // máxima y el arrastre lineal, no de un tope autorado.
+      return (
+        (WORLD_GRAVITY * Math.tan(preset.motor.maxPitch)) /
+        preset.motor.linearDrag
+      );
   }
+}
+
+/**
+ * Si el vehículo se planifica sobre la grilla de navegación vehicular. Los
+ * guionados siguen su trazado y los aéreos no tienen grilla que pisar.
+ */
+export function usesGroundNavigation(preset: VehiclePresetDefinition): boolean {
+  return (
+    preset.navigation.surface === 'ground' ||
+    preset.navigation.surface === 'water'
+  );
 }
