@@ -62,6 +62,13 @@ export interface NpcMotor {
   setCrouched?(crouched: boolean): void;
   isCrouched?(): boolean;
   /**
+   * Re-ancla el objetivo cinemático pendiente a la pose real del cuerpo. Lo debe
+   * llamar todo hard-set de posición que no pase por el propio motor (restore de
+   * un save, desmontar de un vehículo); si no, el barrido del próximo frame
+   * arrastra al actor de vuelta a la pose anterior.
+   */
+  resyncPendingFromBody?(): void;
+  /**
    * Fuera del control de la IA: aturdido por un impacto fisico o sostenido por
    * la gravity gun. El `Npc` suspende combate/brain mientras dura.
    */

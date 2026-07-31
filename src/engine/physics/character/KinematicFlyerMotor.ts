@@ -2,13 +2,21 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { Euler, Quaternion, Vector3 } from "three";
 import { createCapsuleCollider } from "@engine/physics/Colliders";
 import { ACTOR_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
-import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
+import {
+  PHYSICS_FIXED_TIMESTEP,
+  type PhysicsMetadata,
+  type PhysicsWorld,
+} from "@engine/physics/PhysicsWorld";
 import type { CharacterMotorSnapshot, NpcMotor, SliceHit } from "./NpcMotor";
 import {
   applyCharacterContactDamping,
   isPassThroughCharacterContact,
   sampleCharacterMedium,
 } from "./CharacterContactMedium";
+import { PendingKinematicTarget } from "./PendingKinematicTarget";
+
+/** Margen del clamp anti-desync del objetivo pendiente. */
+const PENDING_SAFETY_MARGIN = 0.5;
 
 export interface KinematicFlyerConfig {
   id: string;
@@ -43,6 +51,8 @@ export class KinematicFlyerMotor implements NpcMotor {
   private readonly tmpDirection = new Vector3();
   private readonly tmpFacing = new Vector3();
   private readonly tmpRotation = new Quaternion();
+  private readonly tmpNext = new Vector3();
+  private readonly pending: PendingKinematicTarget;
 
   private enabled = true;
   private alive = true;
@@ -77,6 +87,7 @@ export class KinematicFlyerMotor implements NpcMotor {
     this.controller = physics.createCharacterController(0.04);
     this.controller.setApplyImpulsesToDynamicBodies(true);
     this.controller.setCharacterMass(config.mass);
+    this.pending = new PendingKinematicTarget(config.position);
   }
 
   update(
@@ -126,7 +137,15 @@ export class KinematicFlyerMotor implements NpcMotor {
     const blend = 1 - Math.exp(-this.config.acceleration * delta);
     this.velocity.lerp(this.desiredVelocity, blend);
 
-    const desiredMove = this.velocity.clone().multiplyScalar(delta);
+    const current = this.body.translation();
+    // Objetivo pendiente: la física corre a paso fijo y el commit del cuerpo
+    // sólo ocurre dentro de `world.step()` (ver PendingKinematicTarget).
+    const desiredMove = this.pending.computeDesired(
+      current,
+      this.velocity,
+      delta,
+      this.velocity.length() * PHYSICS_FIXED_TIMESTEP + PENDING_SAFETY_MARGIN,
+    );
     // filterGroups explícito: sin esto la query ignora los collision groups
     // del collider movido (ver KinematicCharacterBase.stepMovement).
     this.controller.computeColliderMovement(
@@ -136,13 +155,11 @@ export class KinematicFlyerMotor implements NpcMotor {
       this.collider.collisionGroups(),
       (collider) => this.shouldCollideWith(collider),
     );
-    const corrected = this.controller.computedMovement();
-    const current = this.body.translation();
-    const next = {
-      x: current.x + corrected.x,
-      y: current.y + corrected.y,
-      z: current.z + corrected.z,
-    };
+    const frameDisplacement = this.pending.commit(
+      current,
+      this.controller.computedMovement(),
+    );
+    const next = this.pending.read(this.tmpNext);
     this.body.setNextKinematicTranslation(next);
     const medium = sampleCharacterMedium({
       physics: this.physics,
@@ -158,12 +175,25 @@ export class KinematicFlyerMotor implements NpcMotor {
     this.body.setNextKinematicRotation(this.tmpRotation.setFromAxisAngle(Y_AXIS, this.yaw));
 
     const invDelta = delta > 0 ? 1 / delta : 0;
-    this.actualVelocity.set(corrected.x * invDelta, corrected.y * invDelta, corrected.z * invDelta);
+    this.actualVelocity.set(
+      frameDisplacement.x * invDelta,
+      frameDisplacement.y * invDelta,
+      frameDisplacement.z * invDelta,
+    );
   }
 
   getPosition(): Vector3 {
-    const p = this.body.translation();
-    return new Vector3(p.x, p.y, p.z);
+    // Al morir el cuerpo pasa a dinámico y el objetivo pendiente deja de tener
+    // sentido: la pose la manda el solver.
+    if (!this.body.isKinematic()) {
+      const p = this.body.translation();
+      return new Vector3(p.x, p.y, p.z);
+    }
+    return this.pending.read(new Vector3());
+  }
+
+  resyncPendingFromBody(): void {
+    this.pending.reset(this.body.translation());
   }
 
   getYaw(): number {

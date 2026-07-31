@@ -37,8 +37,14 @@ export class WeaponViewModel {
     this.root.name = "weapon-viewmodel";
     this.modelRoot.rotation.y = -Math.PI / 2;
     this.root.add(this.modelRoot);
-    this.root.add(this.muzzleFlash.mesh, this.muzzleFlash.light);
+    this.root.add(this.muzzleFlash.mesh);
     this.scene.add(this.root);
+    // La luz del fogonazo va SUELTA en la escena, no bajo `root`. Three cuenta
+    // las luces con `traverseVisible`, así que esconder el viewmodel (subir a un
+    // vehículo, quedarse sin arma, los passes de portal) cambiaba
+    // `NUM_POINT_LIGHTS` y recompilaba todos los materiales de la escena: un
+    // freeze de varios segundos al montar. Su pose la sigue el mesh.
+    this.scene.add(this.muzzleFlash.light);
   }
 
   /** Raíz del modelo en primera persona; los passes de portal la ocultan. */
@@ -114,6 +120,7 @@ export class WeaponViewModel {
     this.modelRoot.rotation.x = modelPitch;
 
     this.muzzleFlash.update(delta);
+    this.muzzleFlash.syncLightToMuzzle();
   }
 
   fire(): void {
@@ -147,6 +154,7 @@ export class WeaponViewModel {
 
   dispose(): void {
     this.root.removeFromParent();
+    this.muzzleFlash.light.removeFromParent();
   }
 
   private setModel(model: Object3D): void {

@@ -23,6 +23,16 @@ const BLOOD_CAPACITY = 2200;
 // de un frame (peor en cadenas de barriles, que suben el conteo simultáneo). Es
 // el mismo patrón que usa el `MuzzleFlash`. Por eso el pool es chico (costo fijo).
 const FLASH_LIGHT_POOL = 4;
+/**
+ * Las luces de los emisores continuos (fuego de un vehículo, fugas de gas)
+ * salen de un pool por el mismo motivo que las de destello, y es peor acá:
+ * crear la luz al prender el emisor y sacarla al apagarlo cambiaba
+ * `NUM_POINT_LIGHTS` DOS veces por incendio, así que cada vehículo que explotaba
+ * recompilaba todos los materiales iluminados de la escena — segundos de freeze,
+ * y encima acumulando programas nuevos por cada conteo distinto de luces.
+ * Cuando el pool se agota el emisor corre sin luz: se pierde el halo, no el frame.
+ */
+const EMITTER_LIGHT_POOL = 6;
 const SHOCKWAVE_POOL = 5;
 const MAX_EMITTER_SPAWNS_PER_FRAME = 12;
 const GRAVITY = -20.5;
@@ -106,12 +116,17 @@ interface Shockwave {
   toScale: number;
 }
 
+interface EmitterLight {
+  light: PointLight;
+  taken: boolean;
+}
+
 interface RuntimeEmitter {
   config: VfxEmitterConfig;
   field: ParticleField;
   accumulator: number;
   active: boolean;
-  light: PointLight | null;
+  light: EmitterLight | null;
   flickerPhase: number;
   disposed: boolean;
 }
@@ -133,6 +148,7 @@ export class VfxSystem implements Disposable {
   private readonly sprite = buildSoftSprite();
 
   private readonly flashLights: FlashLight[] = [];
+  private readonly emitterLights: EmitterLight[] = [];
   private readonly shockwaves: Shockwave[] = [];
   private readonly emitters: RuntimeEmitter[] = [];
 
@@ -164,6 +180,12 @@ export class VfxSystem implements Disposable {
       const light = new PointLight(0xffd29a, 0, 12, 2);
       scene.add(light);
       this.flashLights.push({ light, remaining: 0, duration: 0, peak: 0 });
+    }
+
+    for (let i = 0; i < EMITTER_LIGHT_POOL; i += 1) {
+      const light = new PointLight(0xffffff, 0, 8, 2);
+      scene.add(light);
+      this.emitterLights.push({ light, taken: false });
     }
 
     const shellGeometry = new SphereGeometry(1, 18, 12);
@@ -335,17 +357,7 @@ export class VfxSystem implements Disposable {
 
   createEmitter(config: VfxEmitterConfig): VfxEmitterHandle {
     const field = config.blend === "additive" ? this.additive : this.smoke;
-    let light: PointLight | null = null;
-    if (config.light) {
-      light = new PointLight(
-        config.light.color.getHex(),
-        config.light.intensity,
-        config.light.range,
-        2,
-      );
-      light.position.copy(config.position);
-      this.scene.add(light);
-    }
+    const light = config.light ? this.acquireEmitterLight(config) : null;
     const emitter: RuntimeEmitter = {
       config,
       field,
@@ -378,6 +390,7 @@ export class VfxSystem implements Disposable {
       this.smoke.object,
       this.blood.object,
       ...this.flashLights.map((f) => f.light),
+      ...this.emitterLights.map((e) => e.light),
       ...this.shockwaves.map((w) => w.mesh),
     ];
   }
@@ -399,6 +412,7 @@ export class VfxSystem implements Disposable {
     for (const emitter of [...this.emitters]) {
       this.disposeEmitter(emitter);
     }
+    for (const slot of this.emitterLights) this.releaseEmitterLight(slot);
   }
 
   dispose(): void {
@@ -407,6 +421,7 @@ export class VfxSystem implements Disposable {
     this.smoke.dispose();
     this.blood.dispose();
     for (const flash of this.flashLights) flash.light.removeFromParent();
+    for (const slot of this.emitterLights) slot.light.removeFromParent();
     for (const wave of this.shockwaves) {
       wave.mesh.removeFromParent();
       wave.material.dispose();
@@ -416,6 +431,26 @@ export class VfxSystem implements Disposable {
   }
 
   // ---------------------------------------------------------------------------
+
+  /** Toma una luz del pool y la configura. Null si no quedan libres. */
+  private acquireEmitterLight(config: VfxEmitterConfig): EmitterLight | null {
+    const cfg = config.light;
+    if (!cfg) return null;
+    const slot = this.emitterLights.find((candidate) => !candidate.taken);
+    if (!slot) return null;
+    slot.taken = true;
+    // Color, distancia e intensidad son uniforms: cambiarlos no recompila nada.
+    slot.light.color.set(cfg.color.getHex());
+    slot.light.distance = cfg.range;
+    slot.light.intensity = 0;
+    slot.light.position.copy(config.position);
+    return slot;
+  }
+
+  private releaseEmitterLight(slot: EmitterLight): void {
+    slot.light.intensity = 0;
+    slot.taken = false;
+  }
 
   private spawnFlashLight(point: Vector3, scale: number): void {
     const flash = this.flashLights.find((f) => f.remaining <= 0) ?? this.flashLights[0];
@@ -553,16 +588,18 @@ export class VfxSystem implements Disposable {
   }
 
   private tickEmitterLight(emitter: RuntimeEmitter, delta: number): void {
-    const light = emitter.light;
+    const slot = emitter.light;
     const cfg = emitter.config.light;
-    if (!light || !cfg) return;
+    if (!slot || !cfg) return;
     if (!emitter.active) {
-      light.intensity = 0;
+      slot.light.intensity = 0;
       return;
     }
+    // La posición del emisor la mueve el dueño (el vehículo que arde se desplaza).
+    slot.light.position.copy(emitter.config.position);
     emitter.flickerPhase += delta * 18;
     const flicker = 1 - cfg.flicker * (0.5 + 0.5 * Math.sin(emitter.flickerPhase) * Math.random());
-    light.intensity = cfg.intensity * Math.max(0.2, flicker);
+    slot.light.intensity = cfg.intensity * Math.max(0.2, flicker);
   }
 
   private spawnFromEmitter(emitter: RuntimeEmitter): void {
@@ -607,7 +644,8 @@ export class VfxSystem implements Disposable {
     emitter.disposed = true;
     emitter.active = false;
     if (emitter.light) {
-      emitter.light.removeFromParent();
+      // La luz vuelve al pool, NO se saca de la escena: el conteo queda fijo.
+      this.releaseEmitterLight(emitter.light);
       emitter.light = null;
     }
     const index = this.emitters.indexOf(emitter);

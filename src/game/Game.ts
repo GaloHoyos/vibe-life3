@@ -1,4 +1,5 @@
 ﻿import { Color, Vector3 } from "three";
+import type RAPIER from "@dimforge/rapier3d-compat";
 import { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
 import { FootstepSoundSystem } from "@engine/audio/systems/FootstepSoundSystem";
 import { MusicManager } from "@engine/audio/core/MusicManager";
@@ -23,10 +24,12 @@ import type { GameEventBus, GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
 import { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
 import { installIceConsole } from "@game/debug/IceConsole";
+import { installEntityIOConsole } from "@game/debug/EntityIOConsole";
 import { installNpcConsole } from "@game/debug/NpcConsole";
 import { installPlayerConsole } from "@game/debug/PlayerConsole";
 import { installPortalConsole } from "@game/debug/PortalConsole";
 import { installPlayerModelConsole } from "@game/debug/PlayerModelConsole";
+import { installVehicleConsole } from "@game/debug/VehicleConsole";
 import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
 import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
 import { NpcsModule } from "@game/ui/overlay/debug/modules/NpcsModule";
@@ -36,6 +39,7 @@ import { StatsModule } from "@game/ui/overlay/debug/modules/StatsModule";
 import { WeaponsModule } from "@game/ui/overlay/debug/modules/WeaponsModule";
 import { Controls } from "@game/gameplay/player/Controls";
 import { DifficultyService } from "@game/gameplay/difficulty/DifficultyService";
+import { isDifficultyLevel } from "@game/config/difficulty.config";
 import { Player } from "@game/gameplay/player/Player";
 import { PlayerModelSystem } from "@game/gameplay/player/PlayerModelSystem";
 import { resolvePlayerModel } from "@game/config/playermodel.config";
@@ -44,15 +48,38 @@ import { DeathScreen } from "@game/ui/overlay/DeathScreen";
 import { TransitionOverlay } from "@game/ui/overlay/TransitionOverlay";
 import { WeaponEffects } from "@game/gameplay/weapons/effects/WeaponEffects";
 import { NpcBloodEffects } from "@game/gameplay/effects/NpcBloodEffects";
-import { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
-import { RocketSystem } from "@game/gameplay/weapons/rocket/RocketSystem";
-import { BoltSystem } from "@game/gameplay/weapons/bolt/BoltSystem";
-import { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyBallSystem";
+import {
+  GrenadeSystem,
+  type GrenadeSystemSaveState,
+} from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import {
+  RocketSystem,
+  type RocketSystemSaveState,
+} from "@game/gameplay/weapons/rocket/RocketSystem";
+import {
+  BoltSystem,
+  type BoltSystemSaveState,
+} from "@game/gameplay/weapons/bolt/BoltSystem";
+import {
+  EnergyBallSystem,
+  type EnergyBallSystemSaveState,
+} from "@game/gameplay/weapons/energyball/EnergyBallSystem";
 import { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
-import { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
+import {
+  PortalGunSystem,
+  type PortalGunSystemSaveState,
+} from "@game/gameplay/weapons/portal/PortalGunSystem";
 import { computePortalNavigationLinks } from "@game/gameplay/weapons/portal/PortalNavLinks";
 import { PortalConfig } from "@game/config/portal.config";
-import { GrabSystem, InteractSystem, type Charger, type SlidingDoor } from "@game/gameplay/interactions";
+import {
+  GrabSystem,
+  InteractSystem,
+  type Charger,
+  type ChargerSaveSnapshot,
+  type GrabSystemSaveSnapshot,
+  type SlidingDoor,
+  type SlidingDoorSaveSnapshot,
+} from "@game/gameplay/interactions";
 import { PlayerSquadService } from "@game/gameplay/squad/PlayerSquadService";
 import type { TacticalMap } from "@game/npc/ai/TacticalMap";
 import type { BuildingRegistry } from "@game/levels/buildings/BuildingRegistry";
@@ -66,7 +93,10 @@ import type {
 } from "@game/levels/LevelDefinition";
 import { LevelLoader, type NpcPortalServices } from "@game/levels/LevelLoader";
 import { getLevel, LevelRegistry, type LevelId } from "@game/levels/LevelRegistry";
-import { TriggerSystem } from "@game/levels/TriggerSystem";
+import {
+  TriggerSystem,
+  type TriggerSystemSaveSnapshot,
+} from "@game/levels/TriggerSystem";
 import { EntityIOSystem } from "@game/script/EntityIOSystem";
 import type { ActivatorRef } from "@game/script/ActivatorRef";
 import { EntityEventBridge } from "@game/script/EntityEventBridge";
@@ -76,17 +106,34 @@ import { NpcDirectory } from "@game/script/NpcDirectory";
 import { ScriptedSequenceSystem } from "@game/script/ScriptedSequenceSystem";
 import { bindNpcEntity } from "@game/script/NpcEntityBinder";
 import { CompanionSystem } from "@game/script/CompanionSystem";
-import { CheckpointSystem, type CheckpointSnapshot } from "@game/levels/CheckpointSystem";
+import {
+  CheckpointSystem,
+  type CheckpointSnapshot,
+  type CheckpointSystemSaveSnapshot,
+} from "@game/levels/CheckpointSystem";
 import { HazardVolumeSystem } from "@game/levels/HazardVolumeSystem";
-import { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
+import {
+  ExplosiveBarrelSystem,
+  type ExplosiveBarrelSystemSaveSnapshot,
+} from "@game/gameplay/hazards/ExplosiveBarrelSystem";
 import { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
-import type { ActorSnapshot, AiFrameContext, INpc, NpcFreezeHandle, NpcPortalHandle } from "@game/npc/core/INpc";
+import { VehicleSystem } from "@game/gameplay/vehicles/VehicleSystem";
+import type { VehicleEntitySnapshot } from "@game/gameplay/vehicles/VehicleEntity";
+import type {
+  ActorSnapshot,
+  AiFrameContext,
+  INpc,
+  NpcFreezeHandle,
+  NpcPortalHandle,
+  NpcSaveSnapshot,
+} from "@game/npc/core/INpc";
 import { ActorSpatialIndex } from "@game/npc/core/ActorSpatialIndex";
 import { DialogueSystem } from "@game/narrative/DialogueSystem";
 import { LevelEvents } from "@game/narrative/LevelEvents";
 import { WeaponPickup } from "@game/gameplay/weapons/pickup/WeaponPickup";
 import { ItemPickup } from "@game/gameplay/items/ItemPickup";
 import { AmmoPickup } from "@game/gameplay/items/AmmoPickup";
+import type { PhysicalPickupSaveSnapshot } from "@game/gameplay/items/PhysicalPickupSaveState";
 import type { WeaponId } from "@game/gameplay/weapons/core/WeaponDefinition";
 import { WEAPON_ORDER, WeaponDefinitions } from "@game/config/weapons.config";
 import { AMMO_ORDER } from "@game/config/ammo.config";
@@ -117,12 +164,51 @@ import {
 } from "@game/editor/mapLibrary";
 import type { EditorDocument } from "@game/editor/EditorDocument";
 import type { PublishMeta } from "@game/workshop/WorkshopTypes";
+import { sanitizeDocument } from "@game/workshop/sanitizeDocument";
+import { getWorkshopSubscription } from "@game/workshop/workshopIndex";
 import { WorkshopService } from "@game/workshop/WorkshopService";
 import { WorkshopStore } from "@game/workshop/WorkshopStore";
 import { CloudflareWorkshopBackend } from "@game/workshop/CloudflareWorkshopBackend";
 import { createBoxMesh } from "@engine/render/PrimitiveFactory";
 import { tupleToVector3, type VectorTuple } from "@shared/math/VectorTuple";
 import type { SurfaceType } from "@shared/types/Surface";
+import {
+  computeTransitionKinematics,
+  createLandmarkTransform,
+  transformRigidBodyKinematics,
+  type LandmarkReference,
+  type TransitionKinematicState,
+} from "@game/levels/LevelTransition";
+import {
+  captureRigidBodySnapshot,
+  restoreRigidBodySnapshot,
+  type RigidBodySnapshot,
+} from "@engine/physics/RigidBodySnapshot";
+import {
+  IndexedDbSaveStorage,
+  SaveCoordinator,
+  SaveEntityRegistry,
+  SaveOperationBarrier,
+  SaveRepository,
+  hashSaveDocument,
+  isJsonObject,
+  readCheckpointSnapshot,
+  readEntityIOSnapshot,
+  readPlayerRuntimeSaveState,
+  readVehicleSystemSnapshot,
+  toJsonObject,
+  toJsonValue,
+  type JsonValue,
+  type JsonObject,
+  type LevelSourceRef,
+  type SaveEnvelopeV1,
+  type SaveRestoreContext,
+  type SaveRestorePhase,
+  type SaveSlotKind,
+  type SaveThumbnail,
+  type SavedEntityState,
+  type WorldSaveBaseState,
+} from "@game/save";
 
 /**
  * Bootstrap del contenido del juego.
@@ -142,6 +228,55 @@ export interface GameOptions {
 
 /** Dirección reutilizable para el raycast de superficie bajo el jugador. */
 const DOWN_DIRECTION = new Vector3(0, -1, 0);
+const GAME_BUILD = "0.1.0-vehicles";
+/** Vecinos de un NPC que no corre IA este frame (sentado en un vehiculo). */
+const NO_NEIGHBORS: ActorSnapshot[] = [];
+const SHADER_PREWARM_TIMEOUT_MS = 8000;
+
+type ActiveCustomSource =
+  | {
+      readonly kind: "library";
+      readonly id: string;
+      readonly document: EditorDocument;
+    }
+  | {
+      readonly kind: "workshop";
+      readonly id: string;
+      readonly revision: number;
+      readonly document: EditorDocument;
+    };
+
+/** Estado no-jugador que sobrevive un `changelevel`, ya rotado al landmark destino. */
+interface TransitionCarry {
+  readonly npcs: readonly (TransitionKinematicState & { health: number })[];
+  readonly vehicles: readonly {
+    readonly transitionKey: string;
+    readonly snapshot: VehicleEntitySnapshot;
+  }[];
+}
+
+interface RestoreRollback {
+  readonly level: LevelDefinition;
+  readonly source: ActiveCustomSource | null;
+  readonly checkpoint: CheckpointSnapshot | null;
+  readonly playTimeSeconds: number;
+  readonly difficulty: ReturnType<DifficultyService["getLevel"]>;
+  readonly objective: ObjectiveSaveState;
+  readonly state: GameMenuState;
+  readonly entities: Readonly<Record<string, SavedEntityState>>;
+}
+
+interface DynamicBodySaveSnapshot {
+  readonly version: 1;
+  readonly id: string;
+  readonly body: RigidBodySnapshot;
+}
+
+interface ObjectiveSaveState {
+  readonly text: string;
+  readonly completed: boolean | null;
+  readonly marker: [number, number, number] | null;
+}
 
 export class Game {
   private readonly root: HTMLElement;
@@ -152,21 +287,38 @@ export class Game {
   private player: Player | null = null;
   private playerModel: PlayerModelSystem | null = null;
   private uninstallNpcConsole: (() => void) | null = null;
+  private uninstallEntityIOConsole: (() => void) | null = null;
   private uninstallPlayerConsole: (() => void) | null = null;
   private uninstallIceConsole: (() => void) | null = null;
   private uninstallPlayerModelConsole: (() => void) | null = null;
   private uninstallPortalConsole: (() => void) | null = null;
+  private uninstallVehicleConsole: (() => void) | null = null;
   private npcs: INpc[] = [];
   private doors: SlidingDoor[] = [];
   private weaponPickups: WeaponPickup[] = [];
   private itemPickups: ItemPickup[] = [];
   private ammoPickups: AmmoPickup[] = [];
   private chargers: Charger[] = [];
+  private dynamicBodies: readonly {
+    readonly id: string;
+    readonly body: RAPIER.RigidBody;
+  }[] = [];
   private tacticalMap: TacticalMap | null = null;
   private squadDirector: SquadDirector | null = null;
   private buildingRegistry: BuildingRegistry | null = null;
   private navigation: NavigationService | null = null;
   private navigationRequests: NavigationRequestQueue | null = null;
+  private activeCustomSource: ActiveCustomSource | null = null;
+  private playTimeSeconds = 0;
+  private currentObjective: ObjectiveSaveState = {
+    text: "",
+    completed: null,
+    marker: null,
+  };
+  private saveOperationActive = false;
+  private restoringSave = false;
+  private resumeSaveEvents: (() => void) | null = null;
+  private restoreRollback: RestoreRollback | null = null;
   private pendingExitTimeoutId: number | null = null;
   private playtestMode = false;
   /** Cargando el siguiente nivel encadenado: congela `tickPlaying` mientras dura. */
@@ -204,6 +356,7 @@ export class Game {
     this.registerWorkshop();
     this.registerAudio();
     this.registerGameplay();
+    this.registerSaves();
     this.registerUi();
 
     this.engine.services
@@ -228,6 +381,7 @@ export class Game {
     lighting.attach(sceneManager.scene);
     footsteps.configure(FootstepsConfig);
     footsteps.setSurfacePools(SurfaceFootsteps);
+    void services.resolve(GameTokens.MainMenu).refreshSaves();
 
     // El modo del editor es de un solo uso: se consume y se borra en el boot,
     // asi un reload/reinicio posterior vuelve al menu (no al ultimo mapa).
@@ -288,6 +442,8 @@ export class Game {
     this.collapsingStriders.clear();
     this.uninstallNpcConsole?.();
     this.uninstallNpcConsole = null;
+    this.uninstallEntityIOConsole?.();
+    this.uninstallEntityIOConsole = null;
     this.uninstallPlayerConsole?.();
     this.uninstallPlayerConsole = null;
     this.uninstallIceConsole?.();
@@ -296,6 +452,8 @@ export class Game {
     this.uninstallPlayerModelConsole = null;
     this.uninstallPortalConsole?.();
     this.uninstallPortalConsole = null;
+    this.uninstallVehicleConsole?.();
+    this.uninstallVehicleConsole = null;
 
     const s = this.engine.services;
     s.resolve(GameTokens.Dialogue).dispose();
@@ -307,6 +465,7 @@ export class Game {
     s.resolve(GameTokens.EnergyBalls).dispose();
     s.resolve(GameTokens.IceGun).dispose();
     s.resolve(GameTokens.Portals).dispose();
+    s.resolve(GameTokens.Vehicles).dispose();
     this.player?.dispose();
     this.deathScreen?.dispose();
     this.transitionOverlay?.dispose();
@@ -328,6 +487,10 @@ export class Game {
     this.companionSystem = null;
     this.npcDirectory.clear();
     this.markerTable.clear();
+    s.resolve(GameTokens.SaveEntities).clear();
+    s.resolve(GameTokens.SaveStorage).dispose();
+    this.resumeSaveEvents?.();
+    this.resumeSaveEvents = null;
     s.resolve(GameTokens.EventBus).clear();
 
     this.engine.dispose();
@@ -379,7 +542,7 @@ export class Game {
     const positionalSounds = s.resolve(EngineTokens.PositionalSound);
     const input = s.resolve(EngineTokens.Input);
 
-    s.register(GameTokens.Controls, new Controls(input));
+    const controls = s.register(GameTokens.Controls, new Controls(input));
     const difficulty = s.register(
       GameTokens.Difficulty,
       new DifficultyService(eventBus),
@@ -461,16 +624,37 @@ export class Game {
       GameTokens.PropImpacts,
       new PropImpactSystem(physics, raycast, eventBus),
     );
-    s.register(GameTokens.InteractSystem, new InteractSystem(eventBus));
+    const interactSystem = s.register(
+      GameTokens.InteractSystem,
+      new InteractSystem(eventBus),
+    );
     s.register(
       GameTokens.GrabSystem,
       new GrabSystem(eventBus, physics, raycast, portals.pair, propImpacts),
     );
     s.register(GameTokens.TriggerSystem, new TriggerSystem(eventBus));
-    s.register(GameTokens.EntityIO, new EntityIOSystem());
+    const entityIO = s.register(GameTokens.EntityIO, new EntityIOSystem());
     s.register(GameTokens.CheckpointSystem, new CheckpointSystem(eventBus));
     s.register(GameTokens.HazardVolumes, new HazardVolumeSystem(eventBus, vfx));
     s.register(GameTokens.PlayerSquad, new PlayerSquadService(eventBus));
+    s.register(
+      GameTokens.Vehicles,
+      new VehicleSystem(
+        scene.scene,
+        physics,
+        raycast,
+        portals.throughRaycast,
+        input,
+        controls,
+        s.resolve(EngineTokens.Camera),
+        eventBus,
+        entityIO,
+        interactSystem,
+        vfx,
+        s.resolve(EngineTokens.Sound),
+        positionalSounds,
+      ),
+    );
 
     eventBus.on("npc.weapon.dropped", (payload) => {
       void this.handleWeaponDrop(payload.npcId, payload.weaponId, payload.position);
@@ -564,6 +748,7 @@ export class Game {
       return;
     }
     const camera = this.engine.services.resolve(EngineTokens.Camera);
+    this.engine.services.resolve(GameTokens.Vehicles).forceDismountPlayer();
     this.dying = true;
     this.deathSequence.start(camera.camera, camera.getYaw(), camera.getPitch());
     this.deathScreen?.begin();
@@ -588,6 +773,9 @@ export class Game {
     this.engine.services
       .resolve(GameTokens.EventBus)
       .emit("subtitle.show", Dialogue.checkpointReached);
+    if (!this.restoringSave && !this.playtestMode) {
+      void this.captureAutosaveQuietly();
+    }
   }
 
   /**
@@ -634,6 +822,7 @@ export class Game {
         position,
       });
       this.weaponPickups.push(pickup);
+      this.refreshSaveEntityRegistry();
     } catch (error) {
       console.warn(`[Game] No se pudo crear pickup del weapon dropeado`, error);
     }
@@ -694,6 +883,11 @@ export class Game {
         void this.handleLevelAction(action, this.playerActionOrigin());
       },
       updateObjective: (text, completed, marker) => {
+        this.currentObjective = {
+          text,
+          completed: completed ?? null,
+          marker: marker ? [...marker] : null,
+        };
         eventBus.emit("objective.updated", {
           text,
           completed,
@@ -831,7 +1025,7 @@ export class Game {
    * resoluble → fin de campaña (menú, vía reload). En playtest no navega.
    */
   private async goToNextLevel(
-    landmark: VectorTuple | undefined,
+    landmark: LandmarkReference | undefined,
     triggerPos: Vector3,
   ): Promise<void> {
     if (this.transitioning || !this.currentLevel || !this.player) {
@@ -851,15 +1045,19 @@ export class Game {
     }
 
     this.transitioning = true;
+    await this.captureAutosaveQuietly();
     const next = getLevel(nextId);
     const spawn = this.computeTransitionSpawn(landmark, triggerPos, next);
+    const carry = this.captureTransitionCarry(landmark, triggerPos, next);
     this.transitionOverlay?.show(next.title);
     // Dejar que el overlay pinte sobre el frame congelado antes del trabajo síncrono.
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
     try {
-      await this.loadLevelDefinition(next, spawn ?? undefined);
+      await this.loadLevelDefinition(next, spawn ?? undefined, carry);
+      this.activeCustomSource = null;
       this.activateLevelSoundscape(next);
+      await this.captureAutosaveQuietly();
       this.transitionOverlay?.hide();
       this.transitioning = false;
     } catch (error) {
@@ -878,7 +1076,7 @@ export class Game {
    * destino. Sin `entryLandmark`, cae al `playerStart`. El yaw también cruza.
    */
   private computeTransitionSpawn(
-    landmark: VectorTuple | undefined,
+    landmark: LandmarkReference | undefined,
     triggerPos: Vector3,
     next: LevelDefinition,
   ): CheckpointSnapshot | null {
@@ -888,25 +1086,146 @@ export class Game {
     const camera = this.engine.services.resolve(EngineTokens.Camera);
     const loadout = this.player.weapons.captureLoadout();
 
-    let position: VectorTuple;
-    if (next.entryLandmark) {
-      const ref = landmark ? tupleToVector3(landmark) : triggerPos;
-      const offset = this.player.getPosition().clone().sub(ref);
-      const dest = tupleToVector3(next.entryLandmark).add(offset);
-      position = [dest.x, dest.y, dest.z];
-    } else {
-      position = [next.playerStart[0], next.playerStart[1], next.playerStart[2]];
-    }
+    const playerPosition = this.player.getPosition();
+    const playerVelocity = this.player.controller.getVelocity();
+    const transformed = computeTransitionKinematics(
+      {
+        position: [playerPosition.x, playerPosition.y, playerPosition.z],
+        yaw: camera.getYaw(),
+        linearVelocity: [
+          playerVelocity.x,
+          playerVelocity.y,
+          playerVelocity.z,
+        ],
+      },
+      landmark,
+      [triggerPos.x, triggerPos.y, triggerPos.z],
+      next.entryLandmark,
+      next.playerStart,
+    );
 
     return {
-      position,
-      yaw: camera.getYaw(),
+      position: transformed.position,
+      yaw: transformed.yaw,
+      velocity: transformed.linearVelocity,
       health: this.player.health.current,
       armor: this.player.health.armor,
       weapons: loadout.entries,
       ammo: loadout.ammo,
       activeWeaponId: loadout.activeId,
     };
+  }
+
+  /**
+   * Estado que cruza el `changelevel` además del jugador: NPCs y vehículos con
+   * `transitionKey` se reubican relativo al landmark, igual que el jugador, y el
+   * destino los hereda sobre su propia entidad con la misma clave.
+   *
+   * Sin `entryLandmark` en el destino no hay base común (el jugador cae en el
+   * `playerStart`), así que no se arrastra nada.
+   */
+  private captureTransitionCarry(
+    landmark: LandmarkReference | undefined,
+    triggerPos: Vector3,
+    next: LevelDefinition,
+  ): TransitionCarry | null {
+    if (!next.entryLandmark || !this.currentLevel) return null;
+    const transform = createLandmarkTransform(
+      landmark ?? { position: [triggerPos.x, triggerPos.y, triggerPos.z] },
+      next.entryLandmark,
+    );
+
+    const npcKeyById = new Map<string, string>();
+    this.currentLevel.npcs.forEach((definition) => {
+      if (definition.transitionKey) {
+        npcKeyById.set(definition.id, definition.transitionKey);
+      }
+    });
+    const npcs = this.npcs.flatMap((npc) => {
+      const transitionKey = npcKeyById.get(npc.id);
+      if (!transitionKey || !npc.isAlive()) return [];
+      const position = npc.position;
+      return [
+        {
+          ...transform.transformKinematics({
+            id: npc.id,
+            transitionKey,
+            position: [position.x, position.y, position.z] as VectorTuple,
+            yaw: npc.mesh.rotation.y,
+          }),
+          health: npc.health.current,
+        },
+      ];
+    });
+
+    const vehicles = this.engine.services
+      .resolve(GameTokens.Vehicles)
+      .getVehicles()
+      .flatMap((vehicle) => {
+        const transitionKey = vehicle.definition.transitionKey;
+        if (!transitionKey) return [];
+        const snapshot = vehicle.capture();
+        return [
+          {
+            transitionKey,
+            snapshot: {
+              ...snapshot,
+              motor: transformRigidBodyKinematics(snapshot.motor, transform),
+            },
+          },
+        ];
+      });
+    if (npcs.length === 0 && vehicles.length === 0) return null;
+    return { npcs, vehicles };
+  }
+
+  /**
+   * Vuelca el carry-over sobre las entidades del nivel recién construido. Los
+   * ocupantes que no existan de este lado se descartan: el destino declara su
+   * propia tripulación y un actor fantasma dejaría el asiento bloqueado.
+   */
+  private applyTransitionCarry(
+    level: LevelDefinition,
+    carry: TransitionCarry,
+  ): void {
+    const npcIdByKey = new Map<string, string>();
+    level.npcs.forEach((definition) => {
+      if (definition.transitionKey) {
+        npcIdByKey.set(definition.transitionKey, definition.id);
+      }
+    });
+    carry.npcs.forEach((carried) => {
+      const targetId = carried.transitionKey
+        ? npcIdByKey.get(carried.transitionKey)
+        : undefined;
+      const npc = this.npcs.find((candidate) => candidate.id === targetId);
+      const handle = npc?.getPortalTraversalHandle();
+      if (!npc || !handle) return;
+      handle.teleport(
+        new Vector3(...carried.position),
+        new Vector3(),
+        carried.yaw ?? 0,
+      );
+      npc.health.set(carried.health);
+    });
+
+    const vehicles = this.engine.services.resolve(GameTokens.Vehicles);
+    const knownActors = new Set<string>(["!player"]);
+    this.npcs.forEach((npc) => knownActors.add(npc.id));
+    level.npcs.forEach((definition) => {
+      if (definition.name) knownActors.add(definition.name);
+    });
+    carry.vehicles.forEach((carried) => {
+      const vehicle = vehicles.getVehicleByTransitionKey(carried.transitionKey);
+      if (!vehicle) return;
+      vehicle.restore({
+        ...carried.snapshot,
+        id: vehicle.id,
+        occupants: carried.snapshot.occupants.filter((occupant) =>
+          knownActors.has(occupant.actor),
+        ),
+      });
+    });
   }
 
   private setDoorOpen(
@@ -982,6 +1301,7 @@ export class Game {
       this.bindNpcForScript(definition, npc);
       this.npcs.push(npc);
     }
+    this.refreshSaveEntityRegistry();
   }
 
   /**
@@ -1050,7 +1370,7 @@ export class Game {
         receiveShadow: true,
       });
       scene.scene.add(mesh);
-      physics.createDynamicBox(
+      const body = physics.createDynamicBox(
         {
           id,
           position: tupleToVector3(definition.position),
@@ -1059,7 +1379,9 @@ export class Game {
         },
         mesh,
       );
+      this.dynamicBodies = [...this.dynamicBodies, { id, body }];
     });
+    this.refreshSaveEntityRegistry();
   }
 
   /**
@@ -1131,6 +1453,7 @@ export class Game {
       scene.scene.add(npc.mesh);
       services.resolve(GameTokens.EnemySounds).registerActor(npc.id, npc.mesh, "combine");
       this.npcs.push(npc);
+      this.refreshSaveEntityRegistry();
       eventBus.emit("subtitle.show", {
         text: "Combine spawneado.",
         duration: 1.2,
@@ -1174,6 +1497,7 @@ export class Game {
       });
       this.ammoPickups.push(pickup);
     }
+    this.refreshSaveEntityRegistry();
   }
 
   private registerWorkshop(): void {
@@ -1183,6 +1507,856 @@ export class Game {
       GameTokens.Workshop,
       new WorkshopService(new CloudflareWorkshopBackend(), new WorkshopStore(), eventBus),
     );
+  }
+
+  private registerSaves(): void {
+    const services = this.engine.services;
+    const storage = services.register(
+      GameTokens.SaveStorage,
+      new IndexedDbSaveStorage(),
+    );
+    const repository = services.register(
+      GameTokens.SaveRepository,
+      new SaveRepository(storage),
+    );
+    const entities = services.register(
+      GameTokens.SaveEntities,
+      new SaveEntityRegistry(),
+    );
+    const eventBus = services.resolve(GameTokens.EventBus);
+    const barrier = new SaveOperationBarrier({
+      enter: (operation) => {
+        this.saveOperationActive = true;
+        if (operation === "restore" && !this.resumeSaveEvents) {
+          this.resumeSaveEvents = eventBus.suspend();
+        }
+      },
+      leave: (operation, error) => {
+        if (operation === "restore") {
+          this.resumeSaveEvents?.();
+          this.resumeSaveEvents = null;
+          this.refreshRestoredPresentation(error === null);
+        }
+        this.saveOperationActive = false;
+      },
+    });
+    services.register(
+      GameTokens.Saves,
+      new SaveCoordinator(
+        repository,
+        entities,
+        {
+          captureWorldBase: () => this.captureSaveWorldBase(),
+          validateRestore: (context) => this.validateSaveRestore(context),
+          prepareRestore: (context) => this.prepareSaveRestore(context),
+          restorePhase: (phase, context) => {
+            this.restoreSaveWorldPhase(phase, context);
+          },
+          completeRestore: (context) => {
+            this.completeSaveRestore(context);
+          },
+          abortRestore: (error, context) =>
+            this.abortSaveRestore(error, context),
+        },
+        barrier,
+      ),
+    );
+  }
+
+  private captureSaveWorldBase(): WorldSaveBaseState {
+    if (!this.currentLevel) {
+      throw new Error("No hay un nivel activo para guardar.");
+    }
+    const difficulty = this.engine.services
+      .resolve(GameTokens.Difficulty)
+      .getLevel();
+    return {
+      levelId: this.currentLevel.id,
+      simulationTimeSeconds: this.playTimeSeconds,
+      globals: toJsonObject({
+        difficulty,
+        playTimeSeconds: this.playTimeSeconds,
+        checkpoint: this.lastCheckpoint,
+        objective: this.currentObjective,
+      }),
+      systems: toJsonObject({
+        campaign: {
+          levelId: this.currentLevel.id,
+          nextLevel: this.currentLevel.nextLevel ?? null,
+        },
+      }),
+      extensions: {},
+    };
+  }
+
+  private async validateSaveRestore(
+    context: SaveRestoreContext,
+  ): Promise<void> {
+    const { source } = context.envelope;
+    // La compatibilidad real la deciden `schemaVersion` y la versión de cada
+    // entidad; `gameBuild` es diagnóstico. Rechazar por build invalidaría todos
+    // los guardados en cada deploy.
+    if (context.envelope.gameBuild !== GAME_BUILD) {
+      console.warn(
+        `[Game] El guardado viene del build "${context.envelope.gameBuild}" y este es "${GAME_BUILD}".`,
+      );
+    }
+    if (source.kind === "built-in") {
+      if (!(source.levelId in LevelRegistry)) {
+        throw new Error(
+          `El nivel "${source.levelId}" ya no está disponible en esta versión.`,
+        );
+      }
+    } else {
+      const sanitized = sanitizeDocument(context.sourceDocument);
+      if (!sanitized.ok) {
+        throw new Error(`El mapa guardado no es compatible: ${sanitized.reason}`);
+      }
+      const level = toLevelDefinition(sanitized.document);
+      if (level.id !== source.levelId) {
+        throw new Error("El mapa offline no coincide con el guardado.");
+      }
+    }
+
+    if (this.currentLevel && this.player) {
+      this.restoreRollback = {
+        level: this.currentLevel,
+        source: this.activeCustomSource,
+        checkpoint: this.lastCheckpoint,
+        playTimeSeconds: this.playTimeSeconds,
+        difficulty: this.engine.services
+          .resolve(GameTokens.Difficulty)
+          .getLevel(),
+        objective: {
+          ...this.currentObjective,
+          marker: this.currentObjective.marker
+            ? [...this.currentObjective.marker]
+            : null,
+        },
+        state: this.gameState,
+        entities: await this.engine.services
+          .resolve(GameTokens.SaveEntities)
+          .captureAll(),
+      };
+    } else {
+      this.restoreRollback = null;
+    }
+  }
+
+  private async prepareSaveRestore(
+    context: SaveRestoreContext,
+  ): Promise<void> {
+    this.restoringSave = true;
+    this.playtestMode = false;
+    this.dying = false;
+    this.deathScreen?.hide();
+    this.transitionOverlay?.show(context.envelope.metadata.levelTitle);
+
+    const resolved = this.resolveRestoreLevel(context);
+    this.activeCustomSource = resolved.source;
+    await this.loadLevelDefinition(resolved.level);
+    this.activateLevelSoundscape(resolved.level);
+  }
+
+  private restoreSaveWorldPhase(
+    phase: SaveRestorePhase,
+    context: SaveRestoreContext,
+  ): void {
+    if (phase !== "logic") return;
+    const globals = context.envelope.world.globals;
+    const difficulty = globals.difficulty;
+    if (!isDifficultyLevel(difficulty)) {
+      throw new Error("La dificultad del guardado no es válida.");
+    }
+    this.engine.services
+      .resolve(GameTokens.Difficulty)
+      .setLevel(difficulty);
+    const playTime = globals.playTimeSeconds;
+    if (
+      typeof playTime !== "number" ||
+      !Number.isFinite(playTime) ||
+      playTime < 0
+    ) {
+      throw new Error("El tiempo jugado del guardado no es válido.");
+    }
+    this.playTimeSeconds = playTime;
+
+    const checkpoint = globals.checkpoint;
+    if (checkpoint === null || checkpoint === undefined) {
+      this.lastCheckpoint = null;
+    } else if (isJsonObject(checkpoint)) {
+      this.lastCheckpoint = readCheckpointSnapshot(checkpoint);
+    } else {
+      throw new Error("El checkpoint del guardado no es válido.");
+    }
+    this.currentObjective = readObjectiveSaveState(
+      globals.objective,
+      this.currentObjective,
+    );
+  }
+
+  private completeSaveRestore(context: SaveRestoreContext): void {
+    this.playTimeSeconds = context.envelope.world.simulationTimeSeconds;
+    // El restore reposiciona decenas de cuerpos fuera del step: sin re-sembrar,
+    // la interpolación los estira desde donde estaban antes de cargar.
+    this.engine.services.resolve(EngineTokens.Physics).snapAllBodies();
+    this.restoringSave = false;
+    this.restoreRollback = null;
+    this.transitioning = false;
+    this.transitionOverlay?.hide();
+    this.setGameState("playing");
+  }
+
+  private async abortSaveRestore(
+    error: unknown,
+    context: SaveRestoreContext,
+  ): Promise<void> {
+    console.error("[Game] Se rechazó el guardado sin conservar estado parcial:", error);
+    const rollback = this.restoreRollback;
+    this.restoreRollback = null;
+    try {
+      if (!rollback) {
+        this.currentLevel = null;
+        this.setGameState("mainMenu");
+        return;
+      }
+
+      this.activeCustomSource = rollback.source;
+      await this.loadLevelDefinition(rollback.level);
+      this.activateLevelSoundscape(rollback.level);
+      this.playTimeSeconds = rollback.playTimeSeconds;
+      this.lastCheckpoint = rollback.checkpoint;
+      this.currentObjective = rollback.objective;
+      this.engine.services
+        .resolve(GameTokens.Difficulty)
+        .setLevel(rollback.difficulty);
+      const registry = this.engine.services.resolve(GameTokens.SaveEntities);
+      const prepared = registry.prepareRestore(rollback.entities);
+      for (const phase of [
+        "physics",
+        "actors",
+        "relationships",
+        "logic",
+        "presentation",
+      ] as const) {
+        await registry.restorePhase(
+          prepared,
+          phase,
+          context.envelope,
+          null,
+        );
+      }
+      this.setGameState(
+        rollback.state === "paused" ? "paused" : "playing",
+      );
+    } finally {
+      this.restoringSave = false;
+      this.transitioning = false;
+      this.transitionOverlay?.hide();
+    }
+  }
+
+  private resolveRestoreLevel(context: SaveRestoreContext): {
+    readonly level: LevelDefinition;
+    readonly source: ActiveCustomSource | null;
+  } {
+    const { source } = context.envelope;
+    if (source.kind === "built-in") {
+      return { level: getLevel(source.levelId), source: null };
+    }
+    const sanitized = sanitizeDocument(context.sourceDocument);
+    if (!sanitized.ok) {
+      throw new Error(`El mapa guardado no es compatible: ${sanitized.reason}`);
+    }
+    const level = toLevelDefinition(sanitized.document);
+    const activeSource: ActiveCustomSource =
+      source.kind === "library"
+        ? {
+            kind: "library",
+            id: source.mapId,
+            document: sanitized.document,
+          }
+        : {
+            kind: "workshop",
+            id: source.workshopId,
+            revision: source.revision,
+            document: sanitized.document,
+          };
+    return { level, source: activeSource };
+  }
+
+  private registerSaveEntities(): void {
+    const registry = this.engine.services.resolve(GameTokens.SaveEntities);
+    const player = this.player;
+    if (!player) return;
+    registry.clear();
+
+    registry.register({
+      id: "player",
+      entityType: "player",
+      version: 1,
+      requireStateOnRestore: true,
+      phases: ["physics", "actors", "presentation"],
+      capture: () => this.capturePlayerSaveState(),
+      restore: (data, context) => {
+        const snapshot = readPlayerRuntimeSaveState(data);
+        const runtimePlayer = this.player;
+        if (!runtimePlayer) {
+          throw new Error("El jugador no fue construido durante la carga.");
+        }
+        if (context.phase === "physics") {
+          runtimePlayer.controller.teleport(
+            new Vector3(...snapshot.position),
+            new Vector3(...(snapshot.velocity ?? [0, 0, 0])),
+          );
+        } else if (context.phase === "actors") {
+          runtimePlayer.health.restore(snapshot.health, snapshot.armor);
+          runtimePlayer.stamina.restore(snapshot.stamina);
+          runtimePlayer.weapons.restoreLoadout(
+            snapshot.weapons,
+            snapshot.activeWeaponId,
+            snapshot.ammo,
+          );
+        } else if (context.phase === "presentation") {
+          const camera = this.engine.services.resolve(EngineTokens.Camera);
+          camera.setLook(snapshot.yaw ?? 0, snapshot.pitch);
+          camera.syncToPosition(runtimePlayer.getEyePosition());
+        }
+      },
+    });
+
+    const vehicles = this.engine.services.resolve(GameTokens.Vehicles);
+    registry.register({
+      id: "system:vehicles",
+      entityType: "vehicle-system",
+      version: 1,
+      phases: ["relationships"],
+      capture: () => toJsonObject(vehicles.capture()),
+      restore: (data) => vehicles.restore(readVehicleSystemSnapshot(data)),
+    });
+
+    const io = this.engine.services.resolve(GameTokens.EntityIO);
+    registry.register({
+      id: "system:entity-io",
+      entityType: "entity-io",
+      version: 1,
+      phases: ["logic"],
+      capture: () => toJsonObject(io.capture()),
+      restore: (data) => io.restore(readEntityIOSnapshot(data)),
+    });
+
+    const triggers = this.engine.services.resolve(GameTokens.TriggerSystem);
+    registry.register({
+      id: "system:triggers",
+      entityType: "trigger-system",
+      version: 1,
+      phases: ["logic"],
+      capture: () => toJsonObject(triggers.captureSaveState()),
+      restore: (data) =>
+        triggers.restoreSaveState(
+          readVersionedSaveState<TriggerSystemSaveSnapshot>(
+            data,
+            "triggers",
+          ),
+        ),
+    });
+
+    const checkpoints = this.engine.services.resolve(
+      GameTokens.CheckpointSystem,
+    );
+    registry.register({
+      id: "system:checkpoints",
+      entityType: "checkpoint-system",
+      version: 1,
+      phases: ["logic"],
+      capture: () => toJsonObject(checkpoints.captureSaveState()),
+      restore: (data) =>
+        checkpoints.restoreSaveState(
+          readVersionedSaveState<CheckpointSystemSaveSnapshot>(
+            data,
+            "checkpoints",
+          ),
+        ),
+    });
+
+    const barrels = this.engine.services.resolve(GameTokens.ExplosiveBarrels);
+    registry.register({
+      id: "system:explosive-barrels",
+      entityType: "explosive-barrel-system",
+      version: 1,
+      phases: ["physics"],
+      capture: () => toJsonObject(barrels.captureSaveState()),
+      restore: (data) =>
+        barrels.restoreSaveState(
+          readVersionedSaveState<ExplosiveBarrelSystemSaveSnapshot>(
+            data,
+            "barriles explosivos",
+          ),
+        ),
+    });
+
+    this.doors.forEach((door) => {
+      registry.register({
+        id: `door:${door.id}`,
+        entityType: "sliding-door",
+        version: 1,
+        phases: ["physics"],
+        capture: () => toJsonObject(door.captureSaveState()),
+        restore: (data) =>
+          door.restoreSaveState(
+            readVersionedSaveState<SlidingDoorSaveSnapshot>(
+              data,
+              `puerta ${door.id}`,
+            ),
+          ),
+      });
+    });
+
+    this.npcs.forEach((npc) => {
+      registry.register({
+        id: `npc:${npc.id}`,
+        entityType: "npc",
+        version: 1,
+        required: false,
+        phases: ["actors"],
+        capture: () => {
+          const snapshot = npc.captureSaveState?.();
+          return snapshot ? toJsonObject(snapshot) : null;
+        },
+        restore: (data) => {
+          const restore = npc.restoreSaveState;
+          if (!restore) return;
+          restore.call(
+            npc,
+            readVersionedSaveState<NpcSaveSnapshot>(
+              data,
+              `NPC ${npc.id}`,
+            ),
+          );
+        },
+      });
+    });
+
+    this.dynamicBodies.forEach(({ id, body }) => {
+      registry.register({
+        id: `dynamic-body:${id}`,
+        entityType: "dynamic-body",
+        version: 1,
+        required: false,
+        phases: ["physics"],
+        capture: () =>
+          toJsonObject({
+            version: 1,
+            id,
+            body: captureRigidBodySnapshot(body),
+          }),
+        restore: (data) => {
+          const snapshot = readVersionedSaveState<DynamicBodySaveSnapshot>(
+            data,
+            `cuerpo ${id}`,
+          );
+          if (snapshot.id !== id) {
+            throw new Error(`El cuerpo ${snapshot.id} no coincide con ${id}.`);
+          }
+          restoreRigidBodySnapshot(body, snapshot.body);
+        },
+      });
+    });
+
+    this.weaponPickups.forEach((pickup) => {
+      registry.register({
+        id: `weapon-pickup:${pickup.id}`,
+        entityType: "weapon-pickup",
+        version: 1,
+        required: false,
+        phases: ["physics"],
+        capture: () => toJsonObject(pickup.captureSaveState()),
+        restore: (data) =>
+          pickup.restoreSaveState(
+            readVersionedSaveState<PhysicalPickupSaveSnapshot>(
+              data,
+              `arma ${pickup.id}`,
+            ),
+          ),
+      });
+    });
+    this.itemPickups.forEach((pickup) => {
+      registry.register({
+        id: `item-pickup:${pickup.id}`,
+        entityType: "item-pickup",
+        version: 1,
+        required: false,
+        phases: ["physics"],
+        capture: () => toJsonObject(pickup.captureSaveState()),
+        restore: (data) =>
+          pickup.restoreSaveState(
+            readVersionedSaveState<PhysicalPickupSaveSnapshot>(
+              data,
+              `objeto ${pickup.id}`,
+            ),
+          ),
+      });
+    });
+    this.ammoPickups.forEach((pickup) => {
+      registry.register({
+        id: `ammo-pickup:${pickup.id}`,
+        entityType: "ammo-pickup",
+        version: 1,
+        required: false,
+        phases: ["physics"],
+        capture: () => toJsonObject(pickup.captureSaveState()),
+        restore: (data) =>
+          pickup.restoreSaveState(
+            readVersionedSaveState<PhysicalPickupSaveSnapshot>(
+              data,
+              `munición ${pickup.id}`,
+            ),
+          ),
+      });
+    });
+    this.chargers.forEach((charger) => {
+      registry.register({
+        id: `charger:${charger.id}`,
+        entityType: "charger",
+        version: 1,
+        phases: ["actors"],
+        capture: () => toJsonObject(charger.captureSaveState()),
+        restore: (data) =>
+          charger.restoreSaveState(
+            readVersionedSaveState<ChargerSaveSnapshot>(
+              data,
+              `cargador ${charger.id}`,
+            ),
+          ),
+      });
+    });
+
+    const grab = this.engine.services.resolve(GameTokens.GrabSystem);
+    registry.register({
+      id: "system:grab",
+      entityType: "grab-system",
+      version: 1,
+      phases: ["relationships"],
+      capture: () => toJsonObject(grab.captureSaveState()),
+      restore: (data) =>
+        grab.restoreSaveState(
+          readVersionedSaveState<GrabSystemSaveSnapshot>(
+            data,
+            "objeto agarrado",
+          ),
+          this.engine.services.resolve(EngineTokens.Camera).camera.quaternion,
+        ),
+    });
+
+    this.registerProjectileSaveEntities(registry);
+  }
+
+  /**
+   * Proyectiles en vuelo y portales colocados. Van en la fase `physics` porque
+   * reconstruyen cuerpos y mallas; los portales además reabren sus recortes en
+   * la geometría, así que deben existir antes de que los actores se reposicionen.
+   */
+  private registerProjectileSaveEntities(registry: SaveEntityRegistry): void {
+    const s = this.engine.services;
+    const rockets = s.resolve(GameTokens.Rockets);
+    registry.register({
+      id: "system:rockets",
+      entityType: "rocket-system",
+      version: 1,
+      phases: ["physics"],
+      capture: () => toJsonObject(rockets.capture()),
+      restore: (data) =>
+        rockets.restore(
+          readVersionedSaveState<RocketSystemSaveState>(data, "cohetes"),
+        ),
+    });
+
+    const grenades = s.resolve(GameTokens.Grenades);
+    registry.register({
+      id: "system:grenades",
+      entityType: "grenade-system",
+      version: 1,
+      phases: ["physics"],
+      capture: () => toJsonObject(grenades.capture()),
+      restore: (data) =>
+        grenades.restore(
+          readVersionedSaveState<GrenadeSystemSaveState>(data, "granadas"),
+        ),
+    });
+
+    const bolts = s.resolve(GameTokens.Bolts);
+    registry.register({
+      id: "system:bolts",
+      entityType: "bolt-system",
+      version: 1,
+      phases: ["physics"],
+      capture: () => toJsonObject(bolts.capture()),
+      restore: (data) =>
+        bolts.restore(
+          readVersionedSaveState<BoltSystemSaveState>(data, "virotes"),
+        ),
+    });
+
+    const energyBalls = s.resolve(GameTokens.EnergyBalls);
+    registry.register({
+      id: "system:energy-balls",
+      entityType: "energy-ball-system",
+      version: 1,
+      phases: ["physics"],
+      capture: () => toJsonObject(energyBalls.capture()),
+      restore: (data) =>
+        energyBalls.restore(
+          readVersionedSaveState<EnergyBallSystemSaveState>(
+            data,
+            "bolas de energía",
+          ),
+        ),
+    });
+
+    const portals = s.resolve(GameTokens.Portals);
+    registry.register({
+      id: "system:portals",
+      entityType: "portal-gun-system",
+      version: 1,
+      phases: ["physics"],
+      capture: () => toJsonObject(portals.capture()),
+      restore: (data) =>
+        portals.restore(
+          readVersionedSaveState<PortalGunSystemSaveState>(data, "portales"),
+        ),
+    });
+  }
+
+  private refreshSaveEntityRegistry(): void {
+    if (
+      !this.player ||
+      !this.currentLevel ||
+      this.restoringSave ||
+      this.saveOperationActive
+    ) {
+      return;
+    }
+    this.registerSaveEntities();
+  }
+
+  private capturePlayerSaveState(): JsonObject {
+    const player = this.player;
+    if (!player) {
+      throw new Error("No hay jugador activo para guardar.");
+    }
+    const camera = this.engine.services.resolve(EngineTokens.Camera);
+    const position = player.getPosition();
+    const velocity = player.controller.getVelocity();
+    const loadout = player.weapons.captureLoadout();
+    return toJsonObject({
+      position: [position.x, position.y, position.z],
+      velocity: [velocity.x, velocity.y, velocity.z],
+      yaw: camera.getYaw(),
+      pitch: camera.getPitch(),
+      health: player.health.current,
+      armor: player.health.armor,
+      weapons: loadout.entries,
+      ammo: loadout.ammo,
+      activeWeaponId: loadout.activeId,
+      stamina: player.stamina.capture(),
+    });
+  }
+
+  private async captureSave(
+    kind: SaveSlotKind,
+    overwriteId?: string,
+  ): Promise<void> {
+    if (
+      !this.currentLevel ||
+      !this.player ||
+      !this.player.isAlive() ||
+      this.dying ||
+      this.playtestMode ||
+      this.restoringSave
+    ) {
+      throw new Error("No se puede guardar en este momento.");
+    }
+    const resolved = await this.resolveCaptureSource();
+    const thumbnail = this.captureSaveThumbnail();
+    const label =
+      kind === "quick"
+        ? "Guardado rápido"
+        : kind === "auto"
+          ? "Autoguardado"
+          : "Partida manual";
+    await this.engine.services.resolve(GameTokens.Saves).capture({
+      kind,
+      gameBuild: GAME_BUILD,
+      source: resolved.source,
+      metadata: {
+        title: `${label} — ${this.currentLevel.title}`,
+        levelTitle: this.currentLevel.title,
+        playTimeSeconds: this.playTimeSeconds,
+        difficulty: this.engine.services
+          .resolve(GameTokens.Difficulty)
+          .getLevel(),
+        ...(thumbnail ? { thumbnail } : {}),
+      },
+      ...(overwriteId ? { overwriteId } : {}),
+      ...(resolved.document ? { sourceDocument: resolved.document } : {}),
+    });
+    await this.engine.services.resolve(GameTokens.MainMenu).refreshSaves();
+    if (kind !== "auto") {
+      this.engine.services.resolve(GameTokens.EventBus).emit("subtitle.show", {
+        text: kind === "quick" ? "Guardado rápido completado." : "Partida guardada.",
+        duration: 2,
+      });
+    }
+  }
+
+  private async resolveCaptureSource(): Promise<{
+    readonly source: LevelSourceRef;
+    readonly document?: JsonValue;
+  }> {
+    if (!this.currentLevel) {
+      throw new Error("No hay un nivel activo.");
+    }
+    const custom = this.activeCustomSource;
+    if (!custom) {
+      return {
+        source: {
+          kind: "built-in",
+          levelId: this.currentLevel.id,
+        },
+      };
+    }
+    const sanitized = sanitizeDocument(custom.document);
+    if (!sanitized.ok) {
+      throw new Error(`El mapa no se puede guardar: ${sanitized.reason}`);
+    }
+    const document = toJsonValue(sanitized.document);
+    const documentHash = await hashSaveDocument(document);
+    const source: LevelSourceRef =
+      custom.kind === "library"
+        ? {
+            kind: "library",
+            levelId: this.currentLevel.id,
+            mapId: custom.id,
+            documentHash,
+          }
+        : {
+            kind: "workshop",
+            levelId: this.currentLevel.id,
+            workshopId: custom.id,
+            revision: custom.revision,
+            documentHash,
+          };
+    return { source, document };
+  }
+
+  private captureSaveThumbnail(): SaveThumbnail | undefined {
+    try {
+      const source = this.engine.services.resolve(EngineTokens.Renderer).canvas;
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 180;
+      const context = canvas.getContext("2d");
+      if (!context) return undefined;
+      context.drawImage(source, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/webp", 0.78);
+      if (!dataUrl.startsWith("data:image/webp;base64,")) return undefined;
+      return {
+        mimeType: "image/webp",
+        dataUrl,
+        width: 320,
+        height: 180,
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async restoreSave(id: string): Promise<void> {
+    const menu = this.engine.services.resolve(GameTokens.MainMenu);
+    menu.showLoading("RESTAURANDO PARTIDA...");
+    this.engine.services.resolve(EngineTokens.Audio).unlock();
+    try {
+      await this.engine.services.resolve(GameTokens.Saves).restore(id);
+    } catch (error) {
+      menu.setStatus(spanishSaveError(error));
+      throw error;
+    }
+  }
+
+  private async restoreMostRecentSave(): Promise<void> {
+    const menu = this.engine.services.resolve(GameTokens.MainMenu);
+    menu.showLoading("RESTAURANDO ÚLTIMA PARTIDA...");
+    this.engine.services.resolve(EngineTokens.Audio).unlock();
+    try {
+      await this.engine.services.resolve(GameTokens.Saves).restoreMostRecent();
+    } catch (error) {
+      menu.showMain();
+      menu.setStatus(spanishSaveError(error));
+    }
+  }
+
+  private async restoreQuickSave(): Promise<void> {
+    const quick = await this.engine.services
+      .resolve(GameTokens.SaveRepository)
+      .get("quick:0");
+    if (!quick) {
+      this.engine.services.resolve(GameTokens.EventBus).emit("subtitle.show", {
+        text: "No hay un guardado rápido.",
+        duration: 2,
+      });
+      return;
+    }
+    await this.restoreSave(quick.id);
+  }
+
+  private async captureAutosaveQuietly(): Promise<void> {
+    try {
+      await this.captureSave("auto");
+    } catch (error) {
+      console.warn("[Game] No se pudo crear el autoguardado:", error);
+    }
+  }
+
+  private async captureQuickSaveQuietly(): Promise<void> {
+    try {
+      await this.captureSave("quick");
+    } catch (error) {
+      this.engine.services.resolve(GameTokens.EventBus).emit("subtitle.show", {
+        text: spanishSaveError(error),
+        duration: 2.5,
+      });
+    }
+  }
+
+  private refreshRestoredPresentation(success: boolean): void {
+    const player = this.player;
+    if (!player) return;
+    player.health.restore(player.health.current, player.health.armor);
+    player.stamina.restore(player.stamina.capture());
+    const loadout = player.weapons.captureLoadout();
+    player.weapons.restoreLoadout(
+      loadout.entries,
+      loadout.activeId,
+      loadout.ammo,
+    );
+    this.engine.services.resolve(GameTokens.HUD).setDeathMode(false);
+    this.engine.services.resolve(GameTokens.EventBus).emit(
+      "objective.updated",
+      {
+        text: this.currentObjective.text,
+        completed: this.currentObjective.completed ?? undefined,
+        marker: this.currentObjective.marker
+          ? tupleToVector3(this.currentObjective.marker)
+          : null,
+      },
+    );
+    if (success) {
+      this.engine.services.resolve(GameTokens.EventBus).emit("subtitle.show", {
+        text: "Partida restaurada.",
+        duration: 2.5,
+      });
+    }
+    void this.engine.services.resolve(GameTokens.MainMenu).refreshSaves();
   }
 
   private registerUi(): void {
@@ -1219,6 +2393,9 @@ export class Game {
     );
 
     this.uninstallNpcConsole = installNpcConsole(() => this.npcs);
+    this.uninstallEntityIOConsole = installEntityIOConsole(() =>
+      s.resolve(GameTokens.EntityIO),
+    );
     this.uninstallPlayerConsole = installPlayerConsole(
       () => this.player,
       () => s.resolve(EngineTokens.Camera),
@@ -1231,6 +2408,9 @@ export class Game {
     );
     this.uninstallPortalConsole = installPortalConsole(() =>
       s.resolve(GameTokens.Portals),
+    );
+    this.uninstallVehicleConsole = installVehicleConsole(() =>
+      s.resolve(GameTokens.Vehicles),
     );
 
     const debugMenu = new DebugMenu(this.root, input, controls, eventBus);
@@ -1260,6 +2440,15 @@ export class Game {
           void this.importCustomMap();
         },
         onResume: () => this.setGameState("playing"),
+        onContinue: () => this.restoreMostRecentSave(),
+        listSaves: () => s.resolve(GameTokens.SaveRepository).list(),
+        onLoadSave: (id) => this.restoreSave(id),
+        onCreateManualSave: () => this.captureSave("manual"),
+        onOverwriteSave: (id) => this.captureSave("manual", id),
+        onDeleteSave: async (id) => {
+          await s.resolve(GameTokens.SaveRepository).delete(id);
+          await s.resolve(GameTokens.MainMenu).refreshSaves();
+        },
         onExitToMain: () => this.exitToMainMenu(),
         onOpenEditor: () => this.enterEditor(),
         onSound: (cue) => {
@@ -1293,7 +2482,25 @@ export class Game {
     const controls = s.resolve(GameTokens.Controls);
     const debugMenu = s.resolve(GameTokens.DebugMenu);
 
+    if (this.saveOperationActive) {
+      this.engine.renderFrame();
+      input.endFrame();
+      return;
+    }
+
     this.tickDebug(time, debugMenu);
+
+    if (
+      (this.gameState === "playing" || this.gameState === "paused") &&
+      this.player
+    ) {
+      if (controls.wasPressed("quickSave")) {
+        void this.captureQuickSaveQuietly();
+      }
+      if (controls.wasPressed("quickLoad")) {
+        void this.restoreQuickSave();
+      }
+    }
 
     if (input.wasKeyPressed("F2") && this.player) {
       const enabled = this.player.health.toggleGodMode();
@@ -1370,6 +2577,7 @@ export class Game {
   /** Tick completo cuando el juego estÃ¡ activo (no en menÃº/pausa). */
   private tickPlaying(time: Time): void {
     const player = this.player!;
+    this.playTimeSeconds += Math.max(0, time.delta);
     const s = this.engine.services;
     const input = s.resolve(EngineTokens.Input);
     const controls = s.resolve(GameTokens.Controls);
@@ -1395,42 +2603,56 @@ export class Game {
     const portals = s.resolve(GameTokens.Portals);
     const explosiveBarrels = s.resolve(GameTokens.ExplosiveBarrels);
     const vfx = s.resolve(EngineTokens.Vfx);
+    const vehicles = s.resolve(GameTokens.Vehicles);
 
     const grabSystem = s.resolve(GameTokens.GrabSystem);
     if (this.dying) {
       grabSystem.clear();
       this.updateDeath(time.delta);
     } else if (input.isPointerLocked()) {
-      camera.updateLook(input);
-      camera.updateReorient(time.delta);
-      // Antes de player.update: el carry decide si este frame LMB empuja el
-      // prop en vez de disparar el arma equipada.
-      grabSystem.update(
-        time.delta,
-        time.elapsed,
-        camera.camera.position,
-        camera.getForwardDirection(),
-        camera.camera.quaternion,
-        player.getPosition(),
-        controls,
-        input,
-        player.weapons,
-        interactSystem.getFocused() !== null,
-      );
-      player.update(time.delta, input, controls, camera, time.elapsed);
+      if (vehicles.isPlayerMounted()) {
+        grabSystem.clear();
+      } else {
+        camera.updateLook(input);
+        camera.updateReorient(time.delta);
+        // Antes de player.update: el carry decide si este frame LMB empuja el
+        // prop en vez de disparar el arma equipada.
+        grabSystem.update(
+          time.delta,
+          time.elapsed,
+          camera.camera.position,
+          camera.getForwardDirection(),
+          camera.camera.quaternion,
+          player.getPosition(),
+          controls,
+          input,
+          player.weapons,
+          interactSystem.getFocused() !== null,
+        );
+        player.update(time.delta, input, controls, camera, time.elapsed);
+      }
     }
-    this.playerModel?.update(time.delta, time.elapsed, player, camera);
+    vehicles.prePhysics(
+      time.delta,
+      time.elapsed,
+      input.isPointerLocked() && !this.dying,
+    );
+    if (!vehicles.isPlayerMounted()) {
+      this.playerModel?.update(time.delta, time.elapsed, player, camera);
+    }
 
     if (controls.wasPressed("spawnDebugCombine")) {
       void this.spawnDebugCombineAtAim();
     }
     if (controls.wasPressed("squadCommand")) {
-      this.handleSquadCommand(time.elapsed);
+      if (!vehicles.commandMountedVehicleAtAim()) {
+        this.handleSquadCommand(time.elapsed);
+      }
     }
 
     const stepped = footsteps.update(
       time.delta,
-      player.getMoveIntensity(),
+      vehicles.isPlayerMounted() ? 0 : player.getMoveIntensity(),
       () => this.resolvePlayerSurface(raycast, player),
     );
     // Ruido de sigilo: cada paso audible avisa a los NPCs cercanos. Agacharse
@@ -1447,15 +2669,17 @@ export class Game {
     }
 
     let playerPosition = player.getPosition();
-    this.weaponPickups.forEach((pickup) =>
-      pickup.update(time.delta, playerPosition, player.weapons),
-    );
-    this.itemPickups.forEach((pickup) =>
-      pickup.update(time.delta, playerPosition, player.health),
-    );
-    this.ammoPickups.forEach((pickup) =>
-      pickup.update(time.delta, playerPosition, player.weapons),
-    );
+    if (!vehicles.isPlayerMounted()) {
+      this.weaponPickups.forEach((pickup) =>
+        pickup.update(time.delta, playerPosition, player.weapons),
+      );
+      this.itemPickups.forEach((pickup) =>
+        pickup.update(time.delta, playerPosition, player.health),
+      );
+      this.ammoPickups.forEach((pickup) =>
+        pickup.update(time.delta, playerPosition, player.weapons),
+      );
+    }
     if (this.tacticalMap && this.navigation && this.squadDirector) {
       const playerSnapshot: ActorSnapshot = {
         id: "player",
@@ -1534,6 +2758,7 @@ export class Game {
       this.navigationRequests?.process();
       this.navigation?.update(time.delta);
       this.npcs.forEach((npc) => {
+        const mounted = npc.isVehicleMounted?.() ?? false;
         ctx.aiLod = this.computeNpcAiLod(npc.position, playerPosition);
         let viewerDistance = npc.position.distanceTo(playerPosition);
         for (const ghost of portalGhosts) {
@@ -1542,13 +2767,18 @@ export class Game {
           }
         }
         ctx.viewerDistance = viewerDistance;
-        ctx.npcs = npcIndex.query(npc.position, this.npcContextRadius, npc.id);
+        // Sentado en un vehiculo no corre IA ni necesita vecinos, pero igual
+        // tickea para que el animador mantenga viva la pose del asiento.
+        ctx.npcs = mounted
+          ? NO_NEIGHBORS
+          : npcIndex.query(npc.position, this.npcContextRadius, npc.id);
         npc.update(ctx);
       });
       this.squadDirector.tickAssignments(time.elapsed, null);
     }
     this.doors.forEach((door) => door.update(time.delta));
     physics.step(time.delta);
+    vehicles.postPhysics(time.delta, time.elapsed);
     this.npcs.forEach((npc) => npc.syncFromPhysics());
     s.resolve(GameTokens.PropImpacts).update(time.delta, time.elapsed);
     this.updateGunshipCrashes(time.elapsed, raycast, grenades);
@@ -1564,7 +2794,12 @@ export class Game {
         .map((npc) => npc.getFreezeHandle())
         .filter((handle): handle is NpcFreezeHandle => handle !== null),
     );
-    portals.update(time.delta, time.elapsed, this.dying ? undefined : player, camera);
+    portals.update(
+      time.delta,
+      time.elapsed,
+      this.dying || vehicles.isPlayerMounted() ? undefined : player,
+      camera,
+    );
     if (PortalConfig.npcTraversal.enabled) {
       portals.updateNpcTraversal(
         time.elapsed,
@@ -1577,13 +2812,13 @@ export class Game {
 
     playerPosition = player.getPosition();
     // Mientras la cámara cae (muerte) no la re-anclamos a los ojos del jugador.
-    if (!this.dying) {
+    if (!this.dying && !vehicles.isPlayerMounted()) {
       camera.syncToPosition(player.getEyePosition());
     }
     lighting.focusAt(camera.camera.position);
     // Update the viewmodel after the camera follows the resolved physics pose.
     player.tickRender(time.delta, camera);
-    if (!this.dying) {
+    if (!this.dying && !vehicles.isPlayerMounted()) {
       interactSystem.update(
         time.delta,
         camera.camera.position,
@@ -1869,13 +3104,13 @@ export class Game {
   }
 
   private async startNewGame(levelId: LevelId): Promise<void> {
-    await this.startLevel(getLevel(levelId));
+    await this.startLevel(getLevel(levelId), undefined, null);
   }
 
   /** Lanza un mapa custom (carpeta `maps/custom/` o biblioteca local). */
   private async startCustomMap(entry: CustomMapEntry): Promise<void> {
     if (entry.source === "folder") {
-      await this.startLevel(getLevel(entry.id));
+      await this.startLevel(getLevel(entry.id), undefined, null);
       return;
     }
     const doc =
@@ -1893,13 +3128,31 @@ export class Game {
       console.warn(`[Game] Mapa custom "${entry.id}" invalido:`, error);
       return;
     }
-    await this.startLevel(level);
+    const subscription =
+      entry.source === "workshop"
+        ? getWorkshopSubscription(entry.id)
+        : null;
+    const source: ActiveCustomSource =
+      entry.source === "workshop"
+        ? {
+            kind: "workshop",
+            id: entry.id,
+            revision: parseWorkshopRevision(subscription?.revision),
+            document: doc,
+          }
+        : {
+            kind: "library",
+            id: entry.id,
+            document: doc,
+          };
+    await this.startLevel(level, undefined, source);
   }
 
   /** Arranca cualquier `LevelDefinition` como partida normal (campaña o custom). */
   private async startLevel(
     level: LevelDefinition,
     spawn?: CheckpointSnapshot,
+    source: ActiveCustomSource | null = null,
   ): Promise<void> {
     const s = this.engine.services;
     const mainMenu = s.resolve(GameTokens.MainMenu);
@@ -1913,6 +3166,8 @@ export class Game {
       requestAnimationFrame(() => resolve()),
     );
 
+    this.activeCustomSource = source;
+    this.playTimeSeconds = 0;
     await this.loadLevelDefinition(level, spawn);
 
     if (this.currentLevel) {
@@ -1920,6 +3175,9 @@ export class Game {
     }
 
     this.setGameState("playing");
+    if (!this.restoringSave && !this.playtestMode) {
+      void this.captureAutosaveQuietly();
+    }
   }
 
   /** Carga y juega una definicion arbitraria (el draft del editor) para probarla. */
@@ -1932,6 +3190,8 @@ export class Game {
     mainMenu.showLoading(MenuStrings.loadingLevel(level.title));
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
+    this.activeCustomSource = null;
+    this.playTimeSeconds = 0;
     await this.loadLevelDefinition(level);
 
     if (this.currentLevel) {
@@ -1961,6 +3221,7 @@ export class Game {
   private async loadLevelDefinition(
     level: LevelDefinition,
     spawn?: CheckpointSnapshot,
+    carry?: TransitionCarry | null,
   ): Promise<void> {
     this.levelGeneration += 1;
     const services = this.engine.services;
@@ -1980,6 +3241,7 @@ export class Game {
     const checkpointSystem = services.resolve(GameTokens.CheckpointSystem);
     const hazardVolumes = services.resolve(GameTokens.HazardVolumes);
     const explosiveBarrels = services.resolve(GameTokens.ExplosiveBarrels);
+    const vehicles = services.resolve(GameTokens.Vehicles);
     const characters = services.resolve(GameTokens.Characters);
     const footsteps = services.resolve(GameTokens.Footsteps);
 
@@ -1989,6 +3251,7 @@ export class Game {
     this.entityBridge?.dispose();
     this.entityBridge = null;
     entityIO.clear();
+    services.resolve(GameTokens.SaveEntities).clear();
 
     this.currentLevel = level;
 
@@ -2024,6 +3287,8 @@ export class Game {
     this.weaponPickups.forEach((pickup) => pickup.dispose());
     this.itemPickups.forEach((pickup) => pickup.dispose());
     this.ammoPickups.forEach((pickup) => pickup.dispose());
+    this.dynamicBodies = [];
+    vehicles.clear();
     this.player?.dispose();
     this.player = null;
     this.playerModel?.dispose();
@@ -2073,6 +3338,7 @@ export class Game {
     this.itemPickups = loaded.itemPickups;
     this.ammoPickups = loaded.ammoPickups;
     this.chargers = loaded.chargers;
+    this.dynamicBodies = loaded.dynamicBodies;
     this.tacticalMap = loaded.tacticalMap;
     this.squadDirector = loaded.squadDirector;
     this.buildingRegistry = loaded.buildingRegistry;
@@ -2104,9 +3370,27 @@ export class Game {
         spawn.activeWeaponId,
         spawn.ammo,
       );
+      if (spawn.velocity) {
+        this.player.controller.teleport(
+          new Vector3(...spawn.position),
+          new Vector3(...spawn.velocity),
+        );
+      }
     }
     this.playerModel = new PlayerModelSystem(sceneManager.scene, assets, physics);
     await this.playerModel.load(resolvePlayerModel(level.playerModel));
+    await vehicles.load(level, this.player, this.npcs, {
+      followerIds: () => [
+        ...services.resolve(GameTokens.PlayerSquad).memberIds(),
+        ...(this.companionSystem?.followingIds() ?? []),
+      ],
+      onFollowerExited: (actorId, position) => {
+        this.companionSystem?.syncWaitAnchor(actorId, position);
+      },
+    });
+    if (carry) {
+      this.applyTransitionCarry(level, carry);
+    }
     this.chargers.forEach((charger) => charger.bind(this.player!.health));
 
     // Reaparecer en este checkpoint si el jugador muere antes de cruzar otro.
@@ -2120,13 +3404,53 @@ export class Game {
     if (spawn?.yaw !== undefined) {
       camera.setYaw(spawn.yaw);
     }
+    this.registerSaveEntities();
+    await this.prewarmShaders();
     levelEvents.announceLevel(level.title);
 
     // Objetivo inicial del nivel (vacío lo oculta y limpia la brújula).
-    eventBus.emit("objective.updated", {
+    this.currentObjective = {
       text: level.objective?.text ?? "",
-      marker: level.objective?.marker ? tupleToVector3(level.objective.marker) : null,
+      completed: null,
+      marker: level.objective?.marker
+        ? [...level.objective.marker]
+        : null,
+    };
+    eventBus.emit("objective.updated", {
+      text: this.currentObjective.text,
+      marker: this.currentObjective.marker
+        ? tupleToVector3(this.currentObjective.marker)
+        : null,
     });
+  }
+
+  /**
+   * Precompila los shaders del nivel mientras la pantalla de carga sigue arriba.
+   *
+   * Three compila cada material la PRIMERA vez que se dibuja, así que el costo
+   * caía en pleno juego: subir a un vehículo (aparece su interior, que nunca
+   * se había renderizado) o la primera explosión congelaban el frame cientos de
+   * ms. Requiere que el conteo de luces de la escena ya sea el definitivo — si
+   * algo agrega o saca una luz después, Three vuelve a compilar todo.
+   *
+   * El timeout es un seguro: si un driver no reporta los programas como listos,
+   * es preferible entrar al nivel con un hitch que colgarse en la carga.
+   */
+  private async prewarmShaders(): Promise<void> {
+    const services = this.engine.services;
+    const renderer = services.resolve(EngineTokens.Renderer).renderer;
+    const camera = services.resolve(EngineTokens.Camera).camera;
+    const scene = services.resolve(EngineTokens.Scene).scene;
+    try {
+      await Promise.race([
+        renderer.compileAsync(scene, camera),
+        new Promise<void>((resolve) =>
+          window.setTimeout(resolve, SHADER_PREWARM_TIMEOUT_MS),
+        ),
+      ]);
+    } catch (error) {
+      console.warn("[Game] No se pudieron precompilar los shaders.", error);
+    }
   }
 
   /**
@@ -2161,4 +3485,65 @@ export class Game {
       window.location.reload();
     }, 250);
   }
+}
+
+function parseWorkshopRevision(value: string | undefined): number {
+  if (!value) return 0;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function spanishSaveError(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+  return "No se pudo completar la operación de guardado.";
+}
+
+function readVersionedSaveState<T>(
+  data: JsonObject,
+  label: string,
+): T {
+  if (data.version !== 1) {
+    throw new Error(`El estado de ${label} tiene una versión incompatible.`);
+  }
+  return data as unknown as T;
+}
+
+function readObjectiveSaveState(
+  value: JsonValue | undefined,
+  fallback: ObjectiveSaveState,
+): ObjectiveSaveState {
+  if (value === undefined) return fallback;
+  if (!isJsonObject(value) || typeof value.text !== "string") {
+    throw new Error("El objetivo del guardado no es válido.");
+  }
+  const completed = value.completed;
+  if (
+    completed !== null &&
+    completed !== undefined &&
+    typeof completed !== "boolean"
+  ) {
+    throw new Error("El estado del objetivo no es válido.");
+  }
+  const marker = value.marker;
+  if (marker !== null && marker !== undefined) {
+    if (
+      !Array.isArray(marker) ||
+      marker.length !== 3 ||
+      !marker.every(
+        (entry) => typeof entry === "number" && Number.isFinite(entry),
+      )
+    ) {
+      throw new Error("El marcador del objetivo no es válido.");
+    }
+  }
+  return {
+    text: value.text,
+    completed: completed ?? null,
+    marker:
+      marker === null || marker === undefined
+        ? null
+        : [marker[0] as number, marker[1] as number, marker[2] as number],
+  };
 }

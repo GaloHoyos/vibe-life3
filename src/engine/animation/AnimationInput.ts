@@ -33,6 +33,13 @@ export interface AnimationPosture {
   crouch: number;
   /** -1 = lean izquierda, 0 = recto, 1 = lean derecha. */
   lean: number;
+  /** 0 = parado, 1 = sentado (muslos al frente, rodillas en L). */
+  seated: number;
+  /**
+   * Dentro de `seated`: 0 = brazos apoyados, 1 = manos a los controles
+   * (volante, cíclico). El aim pisa los brazos si está activo.
+   */
+  seatedControls: number;
 }
 
 export interface AnimationAim {

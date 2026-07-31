@@ -10,6 +10,10 @@ import type { ChargerKind } from "@game/config/items.config";
 import type { DifficultyLevel } from "@game/config/difficulty.config";
 import type { DamageType } from "@shared/types/lifecycle";
 import type { ActivatorRef } from "@game/script/ActivatorRef";
+import type {
+  VehicleArchetypeId,
+  VehicleCrewRole,
+} from "@game/config/vehicles.config";
 
 export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
 export type CombatEventSourceKind = "player" | "npc" | "system";
@@ -367,6 +371,62 @@ export interface GameEventMap {
     label: string;
   };
   "interaction.blur": Record<string, never>;
+  "vehicle.player.entered": {
+    id: string;
+    name: string;
+    archetype: VehicleArchetypeId;
+    seatId: string;
+    role: VehicleCrewRole;
+  };
+  "vehicle.player.exited": {
+    id: string;
+    seatId: string;
+  };
+  "vehicle.telemetry": {
+    id: string;
+    name: string;
+    archetype: VehicleArchetypeId;
+    speed: number;
+    forwardSpeed: number;
+    /** Velocidad punta del preset, para escalar el velocímetro. */
+    topSpeed: number;
+    handbrake: boolean;
+    hull: number;
+    hullMax: number;
+    components: Readonly<Record<string, number>>;
+    boost: number;
+    engineOn: boolean;
+    weaponEnabled: boolean;
+    weaponHeat: number;
+    weaponAmmo: number;
+    occupants: readonly {
+      actor: string;
+      seatId: string;
+      role: VehicleCrewRole;
+    }[];
+  };
+  "vehicle.damaged": {
+    id: string;
+    amount: number;
+    zone: string;
+    attackerId?: string;
+  };
+  "vehicle.disabled": {
+    id: string;
+  };
+  "vehicle.destroyed": {
+    id: string;
+  };
+  "vehicle.crashed": {
+    id: string;
+  };
+  "vehicle.waypoint": {
+    id: string;
+    waypointId: string;
+  };
+  "vehicle.stuck": {
+    id: string;
+  };
   /** El jugador levantó un prop con E (+USE). */
   "carry.grabbed": {
     id?: string;

@@ -45,6 +45,14 @@ describe("migrateDocument", () => {
     const endConn = conns.find((c) => c.target === "mig-tr-5");
     expect(endConn?.input).toBe("Trigger");
     expect(endConn?.delay).toBe(1.2);
+    const changelevel = logic.find(
+      (entity) => entity.def.kind === "changelevel",
+    );
+    expect(
+      changelevel?.kind === "logic" && changelevel.def.kind === "changelevel"
+        ? changelevel.def.landmark
+        : null,
+    ).toEqual({ position: [0, 1, -6], yaw: 0 });
     // La forma vieja se elimina.
     expect((trigger?.kind === "trigger" ? trigger.def : {}) as Record<string, unknown>).not.toHaveProperty("actions");
   });
@@ -96,6 +104,55 @@ describe("migrateDocument", () => {
     expect(once).toBe(doc); // sin cambios → misma referencia
     const twice = migrateDocument(once);
     expect(twice.entities.filter((e) => e.kind === "logic")).toHaveLength(0);
+  });
+
+  it("agrega schemaVersion 1 a documentos legacy sin mutarlos", () => {
+    const current = testEditorDocument();
+    const legacy = structuredClone(current) as Omit<EditorDocument, "schemaVersion"> & {
+      schemaVersion?: number;
+    };
+    delete legacy.schemaVersion;
+
+    const migrated = migrateDocument(legacy as EditorDocument);
+
+    expect(migrated.schemaVersion).toBe(1);
+    expect(legacy.schemaVersion).toBeUndefined();
+  });
+
+  it("migra landmarks tuple de metadata y changelevel al formato orientado", () => {
+    const doc = testEditorDocument({
+      meta: {
+        ...testEditorDocument().meta,
+        entryLandmark: [4, 1, 8],
+      },
+      entities: [
+        {
+          eid: "change",
+          kind: "logic",
+          position: [0, 1, 0],
+          def: {
+            kind: "changelevel",
+            id: "change",
+            name: "change",
+            landmark: [10, 2, 12],
+          },
+        },
+      ] as never,
+    });
+
+    const migrated = migrateDocument(doc);
+    const changelevel = migrated.entities[0];
+
+    expect(migrated.meta.entryLandmark).toEqual({
+      position: [4, 1, 8],
+      yaw: 0,
+    });
+    expect(
+      changelevel?.kind === "logic" && changelevel.def.kind === "changelevel"
+        ? changelevel.def.landmark
+        : null,
+    ).toEqual({ position: [10, 2, 12], yaw: 0 });
+    expect(doc.meta.entryLandmark).toEqual([4, 1, 8]);
   });
 
   it("evita colisiones con ids o targetnames existentes", () => {

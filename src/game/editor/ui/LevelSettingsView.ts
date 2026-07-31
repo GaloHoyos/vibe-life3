@@ -6,6 +6,7 @@ import type { EditorDocument } from '../EditorDocument';
 import { LEVEL_IDS, MATERIAL_KEYS, PLAYER_MODEL_IDS, SKYBOX_IDS, SOUNDSCAPE_IDS } from '../editorOptions';
 import { DefaultPlayerModelId, type PlayerModelId } from '@game/config/playermodel.config';
 import { iconSpan } from './editorIcons';
+import { normalizeLandmark } from '@game/levels/LevelTransition';
 import {
   checkboxField,
   colorField,
@@ -104,17 +105,24 @@ export class LevelSettingsView implements Disposable {
 
     this.body.append(
       checkboxField('Landmark de entrada', meta.entryLandmark !== undefined, (on) => {
-        meta.entryLandmark = on ? (meta.entryLandmark ?? [...meta.playerStart]) : undefined;
+        meta.entryLandmark = on
+          ? normalizeLandmark(meta.entryLandmark ?? meta.playerStart)
+          : undefined;
         changed();
         this.refresh();
       }).element,
     );
     if (meta.entryLandmark) {
+      const landmark = normalizeLandmark(meta.entryLandmark);
       this.body.append(
-        vec3Field('Landmark (transicion relativa)', meta.entryLandmark, (v) => {
-          meta.entryLandmark = v;
+        vec3Field('Landmark (transicion relativa)', landmark.position, (v) => {
+          meta.entryLandmark = { ...landmark, position: v };
           changed();
         }).element,
+        numberField('Landmark: yaw (rad)', landmark.yaw ?? 0, (v) => {
+          meta.entryLandmark = { ...landmark, yaw: v };
+          changed();
+        }, 0.05).element,
       );
     }
 

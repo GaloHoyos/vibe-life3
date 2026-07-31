@@ -33,7 +33,8 @@ const map = createMap({
   id: 'demo-02-ravenholm',
   title: 'Demo 2 — La última campana',
   description: 'Capítulo de horror completo: un pueblo plegado, una historia autocontenida, combate por capas, portal gun, puzzle vertical y defensa final.',
-  entryLandmark: [-92, 1.2, 140],
+  nextLevel: 'demo-03-whiteout-flight',
+  entryLandmark: { position: [-92, 1.2, 140], yaw: 0 },
   objective: { text: 'Encontrá al hombre de la linterna en el cementerio', marker: [-84, 1.6, 136] },
   background: 0x05070a,
   sun: { direction: [-0.28, 0.62, -0.42], color: 0x526176, intensity: 0.48 },
@@ -672,7 +673,12 @@ map
       { output: 'OnTrigger', target: 'd2-trigger-exit', input: 'Enable', delay: 1.5 },
     ],
   })
-  .logic({ kind: 'changelevel', id: 'd2-changelevel', name: 'd2-changelevel', landmark: [-84, 1.2, -127] });
+  .logic({
+    kind: 'changelevel',
+    id: 'd2-changelevel',
+    name: 'd2-changelevel',
+    landmark: { position: [-84, 1.2, -127], yaw: 0 },
+  });
 
 // ── Triggers locales: umbrales visibles, no líneas invisibles de 80 metros ────
 map

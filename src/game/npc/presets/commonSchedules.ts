@@ -16,6 +16,7 @@ import {
   createSearchSweepTask,
 } from '@game/npc/brain/tasks/TacticalTasks';
 import { createScriptMoveTask, createScriptStepsTask } from '@game/npc/brain/tasks/ScriptTasks';
+import { createApproachVehicleTask } from '@game/npc/brain/tasks/VehicleTasks';
 
 type NpcSchedule = ScheduleDefinition<NpcBrainContext>;
 
@@ -71,6 +72,17 @@ export function deadSchedule(): NpcSchedule {
     blockedBy: NO_CONDITIONS,
     interrupts: NO_CONDITIONS,
     tasks: [PlayDeathTask],
+  };
+}
+
+export function vehicleApproachSchedule(): NpcSchedule {
+  return {
+    id: "vehicleApproach",
+    priority: 875,
+    required: condMask("VehicleApproach"),
+    blockedBy: condMask("IsDead", "ScriptActive"),
+    interrupts: condMask("IsDead", "ScriptActive"),
+    tasks: [createApproachVehicleTask()],
   };
 }
 

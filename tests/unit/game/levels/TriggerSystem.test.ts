@@ -203,4 +203,25 @@ describe("TriggerSystem", () => {
     system.update(new Vector3(0, 0, 1.5), 0.016);
     expect(entered).toHaveLength(1);
   });
+
+  it("restaura consumo, touch y cooldown sin repetir outputs", () => {
+    const source = setup();
+    source.system.addTrigger(trigger({ wait: 2 }));
+    source.system.update(new Vector3(0, 0, 0), 0.25);
+    const snapshot = source.system.captureSaveState();
+
+    const restored = setup();
+    restored.system.addTrigger(trigger({ wait: 2 }));
+    restored.system.restoreSaveState(snapshot);
+    restored.system.update(new Vector3(0, 0, 0), 0.5);
+
+    expect(restored.entered).toHaveLength(0);
+    expect(restored.exited).toHaveLength(0);
+    expect(restored.system.captureTriggerSaveState("t1")).toMatchObject({
+      enabled: true,
+      inside: true,
+      touching: true,
+      cooldownRemaining: 1.5,
+    });
+  });
 });

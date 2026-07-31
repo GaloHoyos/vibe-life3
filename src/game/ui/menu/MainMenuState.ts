@@ -10,6 +10,7 @@ export type GameMenuState =
   | "newGameMenu"
   | "customMaps"
   | "loadGame"
+  | "saveGame"
   | "options"
   | "credits"
   | "playing"

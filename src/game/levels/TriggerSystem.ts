@@ -25,6 +25,20 @@ interface RuntimeTrigger {
   cooldownRemaining: number;
 }
 
+export interface TriggerSaveSnapshot {
+  id: string;
+  enabled: boolean;
+  inside: boolean;
+  consumed: boolean;
+  touching: boolean;
+  cooldownRemaining: number;
+}
+
+export interface TriggerSystemSaveSnapshot {
+  version: 1;
+  triggers: TriggerSaveSnapshot[];
+}
+
 const tmpLocalPoint = new Vector3();
 
 /**
@@ -83,6 +97,41 @@ export class TriggerSystem {
     return this.triggers.find((t) => t.definition.id === triggerId)?.active ?? false;
   }
 
+  captureTriggerSaveState(triggerId: string): TriggerSaveSnapshot | null {
+    const trigger = this.triggers.find(
+      (candidate) => candidate.definition.id === triggerId,
+    );
+    return trigger ? snapshotTrigger(trigger) : null;
+  }
+
+  restoreTriggerSaveState(snapshot: Readonly<TriggerSaveSnapshot>): boolean {
+    const trigger = this.triggers.find(
+      (candidate) => candidate.definition.id === snapshot.id,
+    );
+    if (!trigger) {
+      return false;
+    }
+    trigger.consumed = snapshot.consumed;
+    trigger.active = snapshot.consumed ? false : snapshot.enabled;
+    trigger.inside = snapshot.inside;
+    trigger.touching = snapshot.touching;
+    trigger.cooldownRemaining = finiteNonNegative(snapshot.cooldownRemaining);
+    return true;
+  }
+
+  captureSaveState(): TriggerSystemSaveSnapshot {
+    return {
+      version: 1,
+      triggers: this.triggers.map(snapshotTrigger),
+    };
+  }
+
+  restoreSaveState(snapshot: Readonly<TriggerSystemSaveSnapshot>): void {
+    for (const trigger of snapshot.triggers) {
+      this.restoreTriggerSaveState(trigger);
+    }
+  }
+
   update(playerPosition: Vector3, delta: number): void {
     this.triggers.forEach((trigger) => {
       trigger.cooldownRemaining = Math.max(0, trigger.cooldownRemaining - Math.max(0, delta));
@@ -116,6 +165,21 @@ export class TriggerSystem {
     trigger.touching = false;
     this.eventBus.emit('trigger.exited', { id: trigger.definition.id });
   }
+}
+
+function snapshotTrigger(trigger: RuntimeTrigger): TriggerSaveSnapshot {
+  return {
+    id: trigger.definition.id,
+    enabled: trigger.active,
+    inside: trigger.inside,
+    consumed: trigger.consumed,
+    touching: trigger.touching,
+    cooldownRemaining: finiteNonNegative(trigger.cooldownRemaining),
+  };
+}
+
+function finiteNonNegative(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
 function containsPoint(trigger: RuntimeTrigger, point: Vector3): boolean {

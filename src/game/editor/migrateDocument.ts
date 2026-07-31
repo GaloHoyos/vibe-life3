@@ -4,7 +4,12 @@ import type { LevelActionKind } from '@game/GameEvents';
 import type { SoundscapeId } from '@game/config/audio.config';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import {
+  normalizeLandmark,
+  type LandmarkReference,
+} from '@game/levels/LevelTransition';
+import {
   cloneDocument,
+  CURRENT_EDITOR_SCHEMA_VERSION,
   entityIoName,
   entityLevelId,
   newEid,
@@ -24,7 +29,7 @@ type LegacyAction =
   | { kind: 'levelAction'; action: LevelActionKind; delay?: number }
   | { kind: 'soundscape'; soundscape: SoundscapeId; delay?: number }
   | { kind: 'objective'; text: string; completed?: boolean; marker?: VectorTuple; delay?: number }
-  | { kind: 'endLevel'; landmark?: VectorTuple; delay?: number };
+  | { kind: 'endLevel'; landmark?: LandmarkReference; delay?: number };
 
 interface LegacyTriggerDef {
   id: string;
@@ -40,12 +45,35 @@ interface LegacyTriggerDef {
  * documento ya migrado (o nativo del modelo nuevo) se devuelve sin cambios.
  */
 export function migrateDocument(input: EditorDocument): EditorDocument {
+  const needsSchemaMigration =
+    (input as { schemaVersion?: unknown }).schemaVersion !== CURRENT_EDITOR_SCHEMA_VERSION;
   const hasLegacy = input.entities.some(
-    (e) => e.kind === 'trigger' && isLegacyTrigger(e.def as unknown as LegacyTriggerDef),
+    (e) => e?.kind === 'trigger' && isLegacyTrigger(e.def as unknown as LegacyTriggerDef),
   );
-  if (!hasLegacy) return input;
+  const hasLegacyLandmark =
+    Array.isArray(input.meta.entryLandmark) ||
+    input.entities.some(
+      (entity) =>
+        entity?.kind === 'logic' &&
+        entity.def.kind === 'changelevel' &&
+        Array.isArray(entity.def.landmark),
+    );
+  if (!hasLegacy && !needsSchemaMigration && !hasLegacyLandmark) return input;
 
   const doc = cloneDocument(input);
+  doc.schemaVersion = CURRENT_EDITOR_SCHEMA_VERSION;
+  if (doc.meta.entryLandmark) {
+    doc.meta.entryLandmark = normalizeLandmark(doc.meta.entryLandmark);
+  }
+  for (const entity of doc.entities) {
+    if (
+      entity.kind === 'logic' &&
+      entity.def.kind === 'changelevel' &&
+      entity.def.landmark
+    ) {
+      entity.def.landmark = normalizeLandmark(entity.def.landmark);
+    }
+  }
   const generated: EditorEntity[] = [];
   const occupied = new Set<string>();
   for (const entity of doc.entities) {
@@ -119,7 +147,14 @@ function migrateAction(action: LegacyAction, name: string): MigratedAction {
       };
     case 'endLevel':
       return {
-        logic: { kind: 'changelevel', id: name, name, landmark: action.landmark },
+        logic: {
+          kind: 'changelevel',
+          id: name,
+          name,
+          landmark: action.landmark
+            ? normalizeLandmark(action.landmark)
+            : undefined,
+        },
         connection: { output: 'OnStartTouch', target: name, input: 'Trigger' },
       };
     case 'door':

@@ -97,6 +97,22 @@ export class CompanionSystem {
     return state?.mode === 'escort' ? ESCORT_ARRIVE_RADIUS : null;
   }
 
+  /** Only companions actively following the player share their vehicle. */
+  followingIds(): readonly string[] {
+    return [...this.companions]
+      .filter(([, state]) => state.mode === 'follow' && state.npc.isAlive())
+      .map(([npcId]) => npcId);
+  }
+
+  isFollowing(npcId: string): boolean {
+    return this.companions.get(npcId)?.mode === 'follow';
+  }
+
+  syncWaitAnchor(npcId: string, position: Vector3): void {
+    const state = this.companions.get(npcId);
+    if (state?.mode === 'wait') state.frozen.copy(position);
+  }
+
   update(_elapsed: number): void {
     for (const [npcId, state] of this.companions) {
       // Defensa local: Game normalmente desregistra en npc.killed, pero nunca

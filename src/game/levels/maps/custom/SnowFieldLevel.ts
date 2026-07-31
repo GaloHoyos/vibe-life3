@@ -50,6 +50,7 @@ export const SnowFieldLevel: LevelDefinition = {
     color: 0xe8edf2,
     intensity: 1.8,
   },
+  entryLandmark: { position: [0, 10, 0], yaw: 0 },
   playerStart: [0, 10, 0],
   audio: {
     ambiences: ['background.wind', 'background.hl2.wind.wasteland'],
@@ -106,6 +107,19 @@ export const SnowFieldLevel: LevelDefinition = {
     { id: 'combine-sf-01', position: [-18, 5, 14], characterId: 'combine' },
     { id: 'combine-sf-02', position: [-22, 5, 18], characterId: 'combine' },
     { id: 'combine-sf-03', position: [22, 5, 18], characterId: 'combine' },
+  ],
+  vehicles: [
+    {
+      id: 'whiteout-rebel-crawler',
+      presetId: 'rebelCrawler',
+      position: [18, 3.9, -6.5],
+      rotation: [0, Math.PI, 0],
+      faction: 'resistance',
+      weaponEnabled: false,
+      engineOn: false,
+      transitionKey: 'campaign-rebel-crawler',
+      portalTraversal: 'blocked',
+    },
   ],
   weaponPickups: [
     { id: 'pickup-pistol-sf', weaponId: 'pistol', position: [-5, 6, -2] },

@@ -48,6 +48,7 @@ export class Player implements Damageable {
   readonly weapons: WeaponController;
   private readonly organicMatter: OrganicMatterController;
   private organicRestraintCoverage = 0;
+  private mountedVehicleId: string | null = null;
 
   constructor(
     startPosition: Vector3,
@@ -95,6 +96,7 @@ export class Player implements Damageable {
     physics.registerCollider(this.controller.collider, {
       id: "player",
       kind: "player",
+      faction: "player",
       damageable: this,
     });
     this.weapons = new WeaponController(
@@ -140,7 +142,7 @@ export class Player implements Damageable {
     cameraSystem: CameraSystem,
     elapsed: number,
   ): void {
-    if (this.health.isDead) {
+    if (this.health.isDead || this.mountedVehicleId !== null) {
       return;
     }
 
@@ -172,7 +174,51 @@ export class Player implements Damageable {
    * para que los tweaks del debug panel se vean en vivo.
    */
   tickRender(delta: number, cameraSystem: CameraSystem): void {
+    if (this.mountedVehicleId !== null) {
+      return;
+    }
     this.weapons.tickRender(delta, cameraSystem, this.controller.getMoveIntensity());
+  }
+
+  mountVehicle(vehicleId: string): void {
+    if (this.mountedVehicleId === vehicleId) {
+      return;
+    }
+    this.mountedVehicleId = vehicleId;
+    this.controller.setSimulationEnabled(false);
+    this.weapons.getViewModelRoot().visible = false;
+  }
+
+  /**
+   * Reactiva al jugador en una salida validada por el sistema vehicular. La
+   * velocidad conservada evita un frenado artificial al bajar en movimiento.
+   */
+  dismountVehicle(position: Vector3, velocity = new Vector3()): void {
+    if (this.mountedVehicleId === null) {
+      return;
+    }
+    this.controller.setSimulationEnabled(true);
+    this.controller.teleport(position, velocity);
+    this.weapons.getViewModelRoot().visible = true;
+    this.mountedVehicleId = null;
+  }
+
+  /**
+   * Mantiene la pose lógica del jugador sobre el asiento aun con la cápsula
+   * suspendida; guardados, triggers e IA conservan una posición coherente.
+   */
+  syncMountedPose(position: Vector3): void {
+    if (this.mountedVehicleId !== null) {
+      this.controller.setPosition(position);
+    }
+  }
+
+  getMountedVehicleId(): string | null {
+    return this.mountedVehicleId;
+  }
+
+  isMounted(): boolean {
+    return this.mountedVehicleId !== null;
   }
 
   getPosition(): Vector3 {

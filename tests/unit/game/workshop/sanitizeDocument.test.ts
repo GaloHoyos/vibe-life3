@@ -61,6 +61,32 @@ describe("sanitizeDocument", () => {
     });
   });
 
+  it("acepta el transitionKey de un NPC y rechaza el vacío", () => {
+    const npc = (transitionKey: unknown) => ({
+      eid: "npc-alyx",
+      kind: "npc" as const,
+      def: {
+        id: "npc-alyx",
+        name: "alyx",
+        characterId: "alyx",
+        position: [0, 1, 0],
+        transitionKey,
+      },
+    });
+
+    expect(
+      sanitizeDocument(
+        testEditorDocument({ entities: [npc("alyx-companion")] as never }),
+      ).ok,
+    ).toBe(true);
+    expect(
+      sanitizeDocument(testEditorDocument({ entities: [npc("")] as never })),
+    ).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("transitionKey"),
+    });
+  });
+
   it("rechaza documentos no serializables", () => {
     const doc = testEditorDocument() as unknown as Record<string, unknown>;
     doc.self = doc;
@@ -253,6 +279,215 @@ describe("sanitizeDocument", () => {
     });
 
     expect(sanitizeDocument(doc)).toMatchObject({ ok: true });
+  });
+
+  it("acepta landmarks orientados, migra tuples y rechaza yaw inválido", () => {
+    const legacy = testEditorDocument({
+      meta: {
+        ...testEditorDocument().meta,
+        entryLandmark: [1, 2, 3],
+      },
+      entities: [
+        {
+          eid: "change",
+          kind: "logic",
+          position: [0, 1, 0],
+          def: {
+            kind: "changelevel",
+            id: "change",
+            name: "change",
+            landmark: [4, 5, 6],
+          },
+        },
+      ] as never,
+    });
+    const migrated = sanitizeDocument(legacy);
+
+    expect(migrated).toMatchObject({
+      ok: true,
+      document: {
+        meta: { entryLandmark: { position: [1, 2, 3], yaw: 0 } },
+      },
+    });
+
+    const oriented = structuredClone(legacy);
+    oriented.meta.entryLandmark = {
+      position: [1, 2, 3],
+      yaw: Math.PI / 2,
+    };
+    expect(sanitizeDocument(oriented)).toMatchObject({ ok: true });
+
+    (oriented.meta.entryLandmark as { yaw?: unknown }).yaw = "norte";
+    expect(sanitizeDocument(oriented)).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("yaw"),
+    });
+  });
+
+  it("acepta autoría vehicular válida y conexiones I/O del vehículo", () => {
+    const doc = testEditorDocument({
+      entities: [
+        {
+          eid: "vehicle",
+          kind: "vehicle",
+          def: {
+            id: "heli",
+            name: "heli",
+            presetId: "helicopter",
+            position: [0, 4, 0],
+            pathStart: "wp-a",
+            crashPolicy: "survivable",
+            accessPolicy: "player",
+            allowPlayerExit: true,
+            crew: [{ actor: "!player", role: "gunner", seatId: "door-gunner" }],
+            portalTraversal: "blocked",
+            connections: [{ output: "OnWaypoint", target: "!self", input: "Stop" }],
+          },
+        },
+        {
+          eid: "waypoint-a",
+          kind: "vehicleWaypoint",
+          def: { id: "wp-a", name: "wp-a", position: [0, 4, 0], next: "wp-b", speed: 18 },
+        },
+        {
+          eid: "waypoint-b",
+          kind: "vehicleWaypoint",
+          def: { id: "wp-b", name: "wp-b", position: [0, 6, -12], wait: 0.5 },
+        },
+        {
+          eid: "water",
+          kind: "waterVolume",
+          def: { id: "canal", position: [10, -1, 0], size: [12, 2, 30], surface: "canal" },
+        },
+        {
+          eid: "area",
+          kind: "vehicleNavArea",
+          def: {
+            id: "drive-area",
+            polygon: [[-8, 0, -8], [8, 0, -8], [8, 0, 8], [-8, 0, 8]],
+            surface: "ground",
+          },
+        },
+        {
+          eid: "lane",
+          kind: "vehicleNavLane",
+          def: { id: "lane", points: [[0, 0, -8], [0, 0, 8]], width: 3, direction: "both" },
+        },
+        {
+          eid: "marker",
+          kind: "vehicleNavMarker",
+          def: { id: "parking", name: "parking", position: [0, 0, 8], kind: "parking" },
+        },
+        {
+          eid: "checkpoint",
+          kind: "checkpoint",
+          def: { id: "save", position: [0, 1, 3], size: [3, 2, 3], respawn: [0, 0, 2] },
+        },
+      ] as never,
+    });
+
+    expect(sanitizeDocument(doc)).toMatchObject({
+      ok: true,
+      document: { schemaVersion: 1 },
+    });
+  });
+
+  it.each([
+    [
+      "preset desconocido",
+      [
+        {
+          eid: "vehicle",
+          kind: "vehicle",
+          def: { id: "bad", presetId: "missing", position: [0, 0, 0] },
+        },
+      ],
+      "presetId",
+    ],
+    [
+      "helicóptero sin ruta",
+      [
+        {
+          eid: "vehicle",
+          kind: "vehicle",
+          def: { id: "bad", presetId: "helicopter", position: [0, 0, 0] },
+        },
+      ],
+      "pathStart",
+    ],
+    [
+      "área con pocos puntos",
+      [
+        {
+          eid: "area",
+          kind: "vehicleNavArea",
+          def: { id: "bad-area", polygon: [[0, 0, 0], [1, 0, 0]], surface: "ground" },
+        },
+      ],
+      "al menos 3",
+    ],
+    [
+      "política de acceso desconocida",
+      [
+        {
+          eid: "vehicle",
+          kind: "vehicle",
+          def: { id: "bad", presetId: "buggy", position: [0, 0, 0], accessPolicy: "zombies" },
+        },
+      ],
+      "accessPolicy",
+    ],
+    [
+      "política de crash desconocida",
+      [
+        {
+          eid: "vehicle",
+          kind: "vehicle",
+          def: { id: "bad", presetId: "buggy", position: [0, 0, 0], crashPolicy: "safe" },
+        },
+      ],
+      "crashPolicy",
+    ],
+    [
+      "allowPlayerExit inválido",
+      [
+        {
+          eid: "vehicle",
+          kind: "vehicle",
+          def: {
+            id: "bad",
+            presetId: "buggy",
+            position: [0, 0, 0],
+            allowPlayerExit: "sí",
+          },
+        },
+      ],
+      "allowPlayerExit",
+    ],
+  ])("rechaza %s", (_case, entities, reason) => {
+    expect(sanitizeDocument(testEditorDocument({ entities: entities as never }))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining(reason),
+    });
+  });
+
+  it("rechaza ciclos de waypoints sin autorización explícita", () => {
+    const doc = testEditorDocument({
+      entities: [
+        {
+          eid: "vehicle",
+          kind: "vehicle",
+          def: { id: "heli", presetId: "helicopter", position: [0, 4, 0], pathStart: "a" },
+        },
+        { eid: "a", kind: "vehicleWaypoint", def: { id: "a", position: [0, 4, 0], next: "b" } },
+        { eid: "b", kind: "vehicleWaypoint", def: { id: "b", position: [0, 4, -8], next: "a" } },
+      ] as never,
+    });
+
+    expect(sanitizeDocument(doc)).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("pathLoop"),
+    });
   });
 
 });

@@ -130,6 +130,20 @@ describe("PropImpactSystem", () => {
     expect(applyDamage).not.toHaveBeenCalled();
   });
 
+  it("omite cuerpos cuyo dueño ya resuelve su propio daño de impacto", async () => {
+    const { physics, system, prop, applyDamage, impacts } = await setup();
+    physics.registerCollider(prop.collider(0), {
+      id: "vehicle-1",
+      kind: "dynamic",
+      propImpactExcluded: true,
+    });
+
+    system.update(1 / 60, 1);
+
+    expect(applyDamage).not.toHaveBeenCalled();
+    expect(impacts).toHaveLength(0);
+  });
+
   it("un fragmento no daña al NPC del que se desprendió", async () => {
     const { physics, system, prop, npcCollider, applyDamage, impacts } =
       await setup();

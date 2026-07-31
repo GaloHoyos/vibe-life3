@@ -108,6 +108,43 @@ describe("EditorEntityOps", () => {
     const rotation = getRotation(box);
     expect(rotation[1]).toBeCloseTo(Math.PI / 2);
   });
+
+  it("mueve polígonos, carriles y respawn de checkpoint como una unidad", () => {
+    const area: EditorEntity = {
+      eid: "area",
+      kind: "vehicleNavArea",
+      def: {
+        id: "area",
+        polygon: [[-2, 0, -2], [2, 0, -2], [2, 0, 2], [-2, 0, 2]],
+        surface: "ground",
+      },
+    };
+    const lane: EditorEntity = {
+      eid: "lane",
+      kind: "vehicleNavLane",
+      def: {
+        id: "lane",
+        points: [[0, 0, -4], [0, 0, 4]],
+        width: 3,
+        direction: "both",
+      },
+    };
+    const checkpoint: EditorEntity = {
+      eid: "checkpoint",
+      kind: "checkpoint",
+      def: { id: "checkpoint", position: [0, 1, 0], size: [2, 2, 2], respawn: [0, 0, 1] },
+    };
+
+    translateEntity(area, 10, 2, 20);
+    translateEntity(lane, 10, 2, 20);
+    translateEntity(checkpoint, 10, 2, 20);
+
+    expect(getPosition(area)).toEqual([10, 2, 20]);
+    expect(area.kind === "vehicleNavArea" && area.def.polygon[0]).toEqual([8, 2, 18]);
+    expect(getPosition(lane)).toEqual([10, 2, 20]);
+    expect(lane.kind === "vehicleNavLane" && lane.def.points[1]).toEqual([10, 2, 24]);
+    expect(checkpoint.kind === "checkpoint" && checkpoint.def.respawn).toEqual([10, 2, 21]);
+  });
 });
 
 function staticBox(): EditorEntity {

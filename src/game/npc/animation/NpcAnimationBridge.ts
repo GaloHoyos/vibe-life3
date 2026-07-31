@@ -52,6 +52,11 @@ export class NpcAnimationBridge implements NpcAnimator {
   private gestureCrouchTimer = 0;
   private targetLeanSide = 0;
   private currentLeanSide = 0;
+  private targetSeated = 0;
+  private currentSeated = 0;
+  private seatedControls = 0;
+  /** Mirada impuesta desde afuera (asiento de vehículo), en espacio local. */
+  private lookOverride: Vector3 | null = null;
   private activity: AnimationActivity = "none";
   private aimActive = false;
   private weaponPose: WeaponHandedness = "none";
@@ -160,6 +165,28 @@ export class NpcAnimationBridge implements NpcAnimator {
   }
 
   /**
+   * Pose de asiento. El peso lo maneja quien sienta al personaje (transición de
+   * subida/bajada), así que acá se toma sin lerpeo propio: el blend ya viene
+   * resuelto y un segundo suavizado retrasaría la pose respecto del cuerpo.
+   */
+  setSeated(amount: number, handsOnControls: boolean): void {
+    if (this.disposed) return;
+    this.targetSeated = Math.max(0, Math.min(1, amount));
+    this.currentSeated = this.targetSeated;
+    this.seatedControls = handsOnControls ? 1 : 0;
+  }
+
+  setLookDirection(direction: Vector3 | null): void {
+    if (this.disposed) return;
+    if (!direction) {
+      this.lookOverride = null;
+      return;
+    }
+    this.lookOverride ??= new Vector3();
+    this.lookOverride.copy(direction);
+  }
+
+  /**
    * Indica al AimLayer que el NPC estÃ¡ apuntando a un punto world-space.
    * `pose` define quÃ© manos van al arma. `target=null` desactiva el aim.
    */
@@ -262,6 +289,8 @@ export class NpcAnimationBridge implements NpcAnimator {
       posture: {
         crouch: this.currentCrouch,
         lean: this.currentLeanSide,
+        seated: this.currentSeated,
+        seatedControls: this.seatedControls,
       },
       aim: {
         active: aimOverride || this.aimActive,
@@ -283,7 +312,9 @@ export class NpcAnimationBridge implements NpcAnimator {
 
   /**
    * Mantiene al animator activo cuando no hay snapshot del motor disponible
-   * (NPC muerto en ragdoll pasivo, o cualquier estado que detenga el motor).
+   * (NPC muerto en ragdoll pasivo, sentado en un vehículo, o cualquier estado
+   * que detenga el motor). Conserva la pose de asiento para que el ocupante no
+   * pierda la flexión al no haber velocity que alimente las capas.
    */
   updateStandalone(delta: number, opts: { dead?: boolean } = {}): void {
     if (this.disposed) return;
@@ -295,7 +326,12 @@ export class NpcAnimationBridge implements NpcAnimator {
         localVelocity: new Vector3(),
         isGrounded: true,
       },
-      posture: { crouch: 0, lean: 0 },
+      posture: {
+        crouch: 0,
+        lean: 0,
+        seated: this.currentSeated,
+        seatedControls: this.seatedControls,
+      },
       aim: {
         active: false,
         weight: 0,
@@ -304,6 +340,7 @@ export class NpcAnimationBridge implements NpcAnimator {
       },
       activity: "none",
       events: { shotJustFired: false },
+      ...(this.lookOverride ? { lookDirection: this.lookOverride } : {}),
       isDead: !!opts.dead || this.isDead,
       desiredDirection: new Vector3(),
     };

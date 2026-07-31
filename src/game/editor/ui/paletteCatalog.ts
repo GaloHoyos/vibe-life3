@@ -66,6 +66,19 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
     ],
   },
   {
+    title: 'Vehículos',
+    icon: 'gear',
+    items: [
+      { label: 'Vehículo', icon: 'gear', kind: 'vehicle' },
+      { label: 'Waypoint vehicular', icon: 'target', kind: 'vehicleWaypoint' },
+      { label: 'Volumen de agua', icon: 'grid', kind: 'waterVolume' },
+      { label: 'Área navegable', icon: 'grid', kind: 'vehicleNavArea' },
+      { label: 'Carril vehicular', icon: 'stairs', kind: 'vehicleNavLane' },
+      { label: 'Marker vehicular', icon: 'target', kind: 'vehicleNavMarker' },
+      { label: 'Checkpoint', icon: 'save', kind: 'checkpoint' },
+    ],
+  },
+  {
     title: 'Logica (I/O)',
     icon: 'bolt',
     items: [

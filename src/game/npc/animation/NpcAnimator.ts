@@ -37,6 +37,10 @@ export interface NpcAnimator {
   setAiming(target: Vector3 | null, pose?: WeaponHandedness): void;
   setActivity(activity: AnimationActivity): void;
   setCrouch?(amount: number): void;
+  /** Peso 0..1 de la pose sentada; `handsOnControls` la pasa al volante. */
+  setSeated?(amount: number, handsOnControls: boolean): void;
+  /** Mirada explícita en espacio local; `null` vuelve al comportamiento normal. */
+  setLookDirection?(direction: Vector3 | null): void;
   notifyShot(): void;
   notifyReload(duration: number): void;
   notifyAttack(): void;

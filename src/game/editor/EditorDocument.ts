@@ -11,6 +11,12 @@ import type {
   StaticBoxDefinition,
   TerrainDefinition,
   TriggerDefinition,
+  VehicleDefinition,
+  VehicleNavAreaDefinition,
+  VehicleNavLaneDefinition,
+  VehicleNavMarkerDefinition,
+  VehicleWaypointDefinition,
+  WaterVolumeDefinition,
   WeaponPickupDefinition,
 } from '@game/levels/LevelDefinition';
 import type { HazardVolumeDefinition } from '@game/levels/HazardVolumeSystem';
@@ -31,6 +37,10 @@ import type {
   WatchtowerSpec,
 } from '@game/levels/builders/PropBuilder';
 import type { BuildingArtifact } from '@game/levels/buildings/BuildingArtifact';
+import type { CheckpointDefinition } from '@game/levels/CheckpointSystem';
+
+export const CURRENT_EDITOR_SCHEMA_VERSION = 1 as const;
+export type EditorSchemaVersion = typeof CURRENT_EDITOR_SCHEMA_VERSION;
 
 /**
  * Spec etiquetado de un prop del `PropBuilder`. Retiene los parametros para
@@ -74,6 +84,13 @@ export type EditorEntity = EditorEntityBase &
     | { kind: 'trigger'; def: TriggerDefinition }
     | { kind: 'explosiveBarrel'; def: ExplosiveBarrelDefinition }
     | { kind: 'hazardVolume'; def: HazardVolumeDefinition }
+    | { kind: 'vehicle'; def: VehicleDefinition }
+    | { kind: 'vehicleWaypoint'; def: VehicleWaypointDefinition }
+    | { kind: 'waterVolume'; def: WaterVolumeDefinition }
+    | { kind: 'vehicleNavArea'; def: VehicleNavAreaDefinition }
+    | { kind: 'vehicleNavLane'; def: VehicleNavLaneDefinition }
+    | { kind: 'vehicleNavMarker'; def: VehicleNavMarkerDefinition }
+    | { kind: 'checkpoint'; def: CheckpointDefinition }
     /**
      * Entidad lógica del entity I/O. `position` es placement del editor (para el
      * outliner/escena); para `marker` se sincroniza con `def.position`, para el
@@ -91,6 +108,7 @@ export type EditorEntity = EditorEntityBase &
 export type EditorEntityKind = EditorEntity['kind'];
 
 export interface EditorDocument {
+  schemaVersion: EditorSchemaVersion;
   meta: MapMeta;
   terrain?: TerrainDefinition;
   entities: EditorEntity[];
@@ -112,6 +130,7 @@ export function cloneDocument(doc: EditorDocument): EditorDocument {
 /** Documento vacio listo para empezar a editar. */
 export function blankDocument(): EditorDocument {
   return {
+    schemaVersion: CURRENT_EDITOR_SCHEMA_VERSION,
     meta: {
       id: 'nuevo-nivel',
       title: 'Nuevo Nivel',
@@ -151,6 +170,9 @@ export function entityIoName(entity: EditorEntity): string | null {
     case 'trigger':
     case 'door':
     case 'npc':
+    case 'vehicle':
+    case 'vehicleWaypoint':
+    case 'vehicleNavMarker':
       return entity.def.name ?? entity.def.id;
     case 'logic':
     case 'sequence':
@@ -173,6 +195,13 @@ const KIND_LABELS: Record<EditorEntityKind, string> = {
   trigger: 'Trigger',
   explosiveBarrel: 'Barril explosivo',
   hazardVolume: 'Kill-volume',
+  vehicle: 'Vehículo',
+  vehicleWaypoint: 'Waypoint vehicular',
+  waterVolume: 'Volumen de agua',
+  vehicleNavArea: 'Área de navegación vehicular',
+  vehicleNavLane: 'Carril vehicular',
+  vehicleNavMarker: 'Marker vehicular',
+  checkpoint: 'Checkpoint',
   building: 'Edificio',
   house: 'Casa',
   ramp: 'Rampa',

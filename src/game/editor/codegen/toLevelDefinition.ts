@@ -50,6 +50,27 @@ export function toLevelDefinition(doc: EditorDocument): LevelDefinition {
       case 'hazardVolume':
         map.hazardVolume(entity.def);
         break;
+      case 'vehicle':
+        map.vehicle(entity.def);
+        break;
+      case 'vehicleWaypoint':
+        map.vehicleWaypoint(entity.def);
+        break;
+      case 'waterVolume':
+        map.waterVolume(entity.def);
+        break;
+      case 'vehicleNavArea':
+        map.vehicleNavArea(entity.def);
+        break;
+      case 'vehicleNavLane':
+        map.vehicleNavLane(entity.def);
+        break;
+      case 'vehicleNavMarker':
+        map.vehicleNavMarker(entity.def);
+        break;
+      case 'checkpoint':
+        map.checkpoint(entity.def);
+        break;
       case 'building':
         map.structure(entity.spec);
         break;

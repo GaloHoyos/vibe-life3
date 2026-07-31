@@ -18,6 +18,17 @@ import type { VfxSystem } from "@engine/render/effects/VfxSystem";
 import type { Damageable, Disposable } from "@shared/types/lifecycle";
 import type { GameEventBus } from "@game/GameEvents";
 import type { ActiveGrenade, ExplosionParams, GrenadeSpawnOptions } from "./Grenade";
+import {
+  assertFiniteNumber,
+  assertNonNegativeNumber,
+  assertSnapshotVersion,
+  captureQuaternion,
+  captureVector3,
+  restoreQuaternion,
+  restoreVector3,
+  type QuaternionSaveState,
+  type Vector3SaveState,
+} from "@game/gameplay/weapons/ProjectileSaveState";
 import { GrenadeRenderTuning } from "./GrenadeRenderTuning";
 
 const DEFAULT_FUSE_SECONDS = 3.5;
@@ -64,6 +75,34 @@ interface ExplosionDamageTarget {
 
 type ExplosionTargetKey = Damageable | string;
 
+export interface GrenadeSaveState {
+  id: string;
+  mode: GrenadeSpawnOptions["mode"];
+  position: Vector3SaveState;
+  rotation: QuaternionSaveState;
+  linearVelocity: Vector3SaveState;
+  angularVelocity: Vector3SaveState;
+  sleeping: boolean;
+  damage: number;
+  radius: number;
+  impulse: number;
+  spawnedAt: number;
+  fuseEndsAt: number | null;
+  hardExpiresAt: number;
+  nextBeepAt: number;
+  beepCount: number;
+  ownerKind: GrenadeSpawnOptions["ownerKind"];
+  sourceId: string | null;
+  sourceFaction: NonNullable<GrenadeSpawnOptions["sourceFaction"]> | null;
+  weaponName: string;
+}
+
+export interface GrenadeSystemSaveState {
+  version: 1;
+  nextId: number;
+  grenades: GrenadeSaveState[];
+}
+
 /**
  * Owner de las granadas activas en el mundo (fuse + impact). Cada `update`
  * tickea fuse + beeps, chequea contacto para `impact`, y dispara la
@@ -92,7 +131,148 @@ export class GrenadeSystem implements Disposable {
   }
 
   spawn(options: GrenadeSpawnOptions): void {
-    const body = this.createBody(options);
+    const id = `grenade-${this.nextId++}`;
+    this.spawnWithId(options, id);
+  }
+
+  capture(): GrenadeSystemSaveState {
+    return {
+      version: 1,
+      nextId: this.nextId,
+      grenades: this.grenades
+        .filter((grenade) => !grenade.exploded)
+        .map((grenade) => {
+          const position = grenade.body.translation();
+          const rotation = grenade.body.rotation();
+          const linearVelocity = grenade.body.linvel();
+          const angularVelocity = grenade.body.angvel();
+          return {
+            id: grenade.id,
+            mode: grenade.mode,
+            position: captureVector3(
+              new Vector3(position.x, position.y, position.z),
+            ),
+            rotation: captureQuaternion(
+              new Quaternion(rotation.x, rotation.y, rotation.z, rotation.w),
+            ),
+            linearVelocity: captureVector3(
+              new Vector3(
+                linearVelocity.x,
+                linearVelocity.y,
+                linearVelocity.z,
+              ),
+            ),
+            angularVelocity: captureVector3(
+              new Vector3(
+                angularVelocity.x,
+                angularVelocity.y,
+                angularVelocity.z,
+              ),
+            ),
+            sleeping: grenade.body.isSleeping(),
+            damage: grenade.damage,
+            radius: grenade.radius,
+            impulse: grenade.impulse,
+            spawnedAt: grenade.spawnedAt,
+            fuseEndsAt:
+              grenade.mode === "fuse" ? grenade.fuseEndsAt : null,
+            hardExpiresAt: grenade.hardExpiresAt,
+            nextBeepAt: grenade.nextBeepAt,
+            beepCount: grenade.beepCount,
+            ownerKind: grenade.ownerKind,
+            sourceId: grenade.sourceId ?? null,
+            sourceFaction: grenade.sourceFaction ?? null,
+            weaponName: grenade.weaponName,
+          };
+        }),
+    };
+  }
+
+  restore(state: GrenadeSystemSaveState): void {
+    assertSnapshotVersion(state.version, 1, "El estado de granadas");
+    assertNonNegativeInteger(state.nextId, "grenades.nextId");
+    const ids = new Set<string>();
+    const restored: ActiveGrenade[] = [];
+
+    for (const saved of state.grenades) {
+      this.validateSaveState(saved);
+      restoreVector3(saved.position, `${saved.id}.position`);
+      restoreQuaternion(saved.rotation, `${saved.id}.rotation`);
+      restoreVector3(saved.linearVelocity, `${saved.id}.linearVelocity`);
+      restoreVector3(saved.angularVelocity, `${saved.id}.angularVelocity`);
+      if (ids.has(saved.id)) {
+        throw new Error(`El estado de granadas repite el id "${saved.id}".`);
+      }
+      ids.add(saved.id);
+    }
+
+    this.clear();
+    try {
+      for (const saved of state.grenades) {
+        const position = restoreVector3(saved.position, `${saved.id}.position`);
+        const linearVelocity = restoreVector3(
+          saved.linearVelocity,
+          `${saved.id}.linearVelocity`,
+        );
+        const fuseSeconds =
+          saved.mode === "fuse" && saved.fuseEndsAt !== null
+            ? Math.max(0, saved.fuseEndsAt - saved.spawnedAt)
+            : undefined;
+        const grenade = this.spawnWithId(
+          {
+            mode: saved.mode,
+            origin: position,
+            velocity: linearVelocity,
+            damage: saved.damage,
+            radius: saved.radius,
+            impulse: saved.impulse,
+            fuseSeconds,
+            ownerKind: saved.ownerKind,
+            sourceId: saved.sourceId ?? undefined,
+            sourceFaction: saved.sourceFaction ?? undefined,
+            weaponName: saved.weaponName,
+            now: saved.spawnedAt,
+          },
+          saved.id,
+        );
+        grenade.spawnedAt = saved.spawnedAt;
+        grenade.fuseEndsAt =
+          saved.fuseEndsAt ?? Number.POSITIVE_INFINITY;
+        grenade.hardExpiresAt = saved.hardExpiresAt;
+        grenade.nextBeepAt = saved.nextBeepAt;
+        grenade.beepCount = saved.beepCount;
+        const rotation = restoreQuaternion(
+          saved.rotation,
+          `${saved.id}.rotation`,
+        );
+        const angularVelocity = restoreVector3(
+          saved.angularVelocity,
+          `${saved.id}.angularVelocity`,
+        );
+        grenade.body.setRotation(rotation, false);
+        grenade.body.setLinvel(linearVelocity, false);
+        grenade.body.setAngvel(angularVelocity, false);
+        if (saved.sleeping) {
+          grenade.body.sleep();
+        }
+        this.syncMeshToBody(grenade);
+        restored.push(grenade);
+      }
+      this.nextId = state.nextId;
+    } catch (error) {
+      for (const grenade of restored) {
+        grenade.exploded = true;
+      }
+      this.clear();
+      throw error;
+    }
+  }
+
+  private spawnWithId(
+    options: GrenadeSpawnOptions,
+    id: string,
+  ): ActiveGrenade {
+    const body = this.createBody(options, id);
     const meshHandle = this.createMesh();
     meshHandle.root.position.set(
       options.origin.x,
@@ -105,7 +285,6 @@ export class GrenadeSystem implements Disposable {
     // que la granada asome por los dos lados mientras cruza, como todo prop.
     this.physics.setBodyVisual(body, meshHandle.root);
 
-    const id = `grenade-${this.nextId++}`;
     const fuseSeconds =
       options.mode === "fuse"
         ? options.fuseSeconds ?? DEFAULT_FUSE_SECONDS
@@ -139,6 +318,7 @@ export class GrenadeSystem implements Disposable {
     if (meshHandle.fallback) {
       void this.swapToLoadedMesh(grenade);
     }
+    return grenade;
   }
 
   update(delta: number, elapsed: number): void {
@@ -174,8 +354,30 @@ export class GrenadeSystem implements Disposable {
    * `PhysicsWorld.reset()`: `removeQuietly` toca el mundo de física actual.
    */
   clear(): void {
-    this.grenades.forEach((grenade) => this.removeQuietly(grenade));
+    this.grenades.forEach((grenade) => {
+      grenade.exploded = true;
+      this.removeQuietly(grenade);
+    });
     this.grenades.length = 0;
+  }
+
+  private validateSaveState(state: GrenadeSaveState): void {
+    if (state.id.length === 0) {
+      throw new Error("Una granada restaurada no tiene id.");
+    }
+    assertNonNegativeNumber(state.damage, `${state.id}.damage`);
+    assertNonNegativeNumber(state.radius, `${state.id}.radius`);
+    assertNonNegativeNumber(state.impulse, `${state.id}.impulse`);
+    assertFiniteNumber(state.spawnedAt, `${state.id}.spawnedAt`);
+    if (state.mode === "fuse") {
+      if (state.fuseEndsAt === null) {
+        throw new Error(`${state.id}.fuseEndsAt no puede ser null en modo fuse.`);
+      }
+      assertFiniteNumber(state.fuseEndsAt, `${state.id}.fuseEndsAt`);
+    }
+    assertFiniteNumber(state.hardExpiresAt, `${state.id}.hardExpiresAt`);
+    assertFiniteNumber(state.nextBeepAt, `${state.id}.nextBeepAt`);
+    assertNonNegativeInteger(state.beepCount, `${state.id}.beepCount`);
   }
 
   private tickFuse(grenade: ActiveGrenade, elapsed: number): void {
@@ -504,7 +706,10 @@ export class GrenadeSystem implements Disposable {
     this.physics.removeDynamicBody(grenade.body);
   }
 
-  private createBody(options: GrenadeSpawnOptions): RAPIER.RigidBody {
+  private createBody(
+    options: GrenadeSpawnOptions,
+    id: string,
+  ): RAPIER.RigidBody {
     const desc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(options.origin.x, options.origin.y, options.origin.z)
       .setLinvel(options.velocity.x, options.velocity.y, options.velocity.z)
@@ -518,7 +723,7 @@ export class GrenadeSystem implements Disposable {
       .setFriction(GRENADE_FRICTION);
     const collider = this.physics.world.createCollider(colliderDesc, body);
     this.physics.registerCollider(collider, {
-      id: `grenade-${this.nextId}`,
+      id,
       kind: "dynamic",
       // HL2 no calcula el golpe de la frag por masa: manda apenas 0.1 de
       // DMG_CRUSH para que el personaje reaccione al "bonk".
@@ -569,5 +774,12 @@ export class GrenadeSystem implements Disposable {
     grenade.mesh.quaternion.set(rot.x, rot.y, rot.z, rot.w);
     // Re-aplica scale por frame para que el debug tuner pueda tunear en vivo.
     grenade.mesh.scale.setScalar(GrenadeRenderTuning.thrownScale);
+  }
+}
+
+function assertNonNegativeInteger(value: number, label: string): void {
+  assertNonNegativeNumber(value, label);
+  if (!Number.isInteger(value)) {
+    throw new Error(`${label} debe ser un entero.`);
   }
 }

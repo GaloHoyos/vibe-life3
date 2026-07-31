@@ -7,6 +7,7 @@ import type { DoorDefinition, NPCDefinition, TriggerDefinition } from '@game/lev
 import type { ActivatorRef, EntityHandle, EntityIOSystem, InputArgs } from './EntityIOSystem';
 import type { LogicEntityDefinition } from './EntityIOTypes';
 import { effectiveName } from './EntityIOTypes';
+import type { LandmarkReference } from '@game/levels/LevelTransition';
 import {
   createAutoHandle,
   createCounterHandle,
@@ -27,7 +28,7 @@ export interface WorldEntityHooks {
   runLevelAction(action: LevelActionKind): void;
   updateObjective(text: string, completed: boolean | undefined, marker: VectorTuple | undefined): void;
   activateSoundscape(id: SoundscapeId): void;
-  endLevel(landmark: VectorTuple | undefined): void;
+  endLevel(landmark: LandmarkReference | undefined): void;
   setTriggerEnabled(triggerId: string, enabled: boolean): void;
   toggleTrigger(triggerId: string): void;
   killPlayer(): void;

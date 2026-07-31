@@ -25,6 +25,15 @@ export class MuzzleFlash {
     this.remaining = definition.duration;
   }
 
+  /**
+   * La luz no cuelga del viewmodel (esconderlo cambiaría el conteo de luces de
+   * la escena y recompilaría todos los materiales), así que hereda la pose del
+   * mesh del fogonazo, que sí va adentro.
+   */
+  syncLightToMuzzle(): void {
+    this.mesh.getWorldPosition(this.light.position);
+  }
+
   update(delta: number): void {
     if (this.remaining <= 0) {
       return;

@@ -1,4 +1,5 @@
 ﻿import { Box3, Group, Mesh, MeshStandardMaterial, BoxGeometry, Vector3, type Scene } from 'three';
+import type RAPIER from '@dimforge/rapier3d-compat';
 import type { AssetManager } from '@engine/assets/AssetManager';
 import type { CharacterFactory } from '@game/characters/CharacterFactory';
 import { CharacterPresets, isFlyingCharacter } from '@game/characters/CharacterPresets';
@@ -52,6 +53,10 @@ export interface LoadedLevel {
   itemPickups: ItemPickup[];
   ammoPickups: AmmoPickup[];
   chargers: Charger[];
+  dynamicBodies: readonly {
+    readonly id: string;
+    readonly body: RAPIER.RigidBody;
+  }[];
   tacticalMap: TacticalMap;
   squadDirector: SquadDirector;
   buildingRegistry: BuildingRegistry;
@@ -86,6 +91,7 @@ export class LevelLoader {
     const itemPickups: ItemPickup[] = [];
     const ammoPickups: AmmoPickup[] = [];
     const chargers: Charger[] = [];
+    const dynamicBodies: { id: string; body: RAPIER.RigidBody }[] = [];
     const sharedRaycast = new Raycast(this.physics);
     let navigationTerrain: Parameters<typeof buildNavigationGeometry>[1];
 
@@ -144,7 +150,7 @@ export class LevelLoader {
     level.dynamicBoxes.forEach((definition) => {
       const mesh = createLevelBox(definition.id, definition.position, definition.size, definition.material, definition.rotation);
       this.scene.add(mesh);
-      this.physics.createDynamicBox(
+      const body = this.physics.createDynamicBox(
         {
           id: definition.id,
           position: tupleToVector3(definition.position),
@@ -157,6 +163,7 @@ export class LevelLoader {
         },
         mesh,
       );
+      dynamicBodies.push({ id: definition.id, body });
     });
 
     level.doors.forEach((definition) => {
@@ -407,6 +414,7 @@ export class LevelLoader {
       itemPickups,
       ammoPickups,
       chargers,
+      dynamicBodies,
       tacticalMap,
       squadDirector,
       buildingRegistry,

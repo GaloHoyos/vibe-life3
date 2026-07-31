@@ -2,7 +2,11 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { Euler, MathUtils, Quaternion, Vector3 } from "three";
 import { createBoxCollider, createCapsuleCollider } from "@engine/physics/Colliders";
 import { ACTOR_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
-import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
+import {
+  PHYSICS_FIXED_TIMESTEP,
+  type PhysicsMetadata,
+  type PhysicsWorld,
+} from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { CharacterMotorSnapshot, NpcMotor, SliceHit } from "./NpcMotor";
 import {
@@ -10,6 +14,10 @@ import {
   isPassThroughCharacterContact,
   sampleCharacterMedium,
 } from "./CharacterContactMedium";
+import { PendingKinematicTarget } from "./PendingKinematicTarget";
+
+/** Margen del clamp anti-desync del objetivo pendiente. */
+const PENDING_SAFETY_MARGIN = 0.5;
 
 export type StriderLegName = "left" | "right" | "rear";
 export type StriderLegPhase = "planted" | "swinging";
@@ -117,6 +125,7 @@ export class StriderWalkerMotor implements NpcMotor {
   private distanceToTarget = Number.POSITIVE_INFINITY;
   private grounded = false;
   private readonly standHeight: number;
+  private readonly pending: PendingKinematicTarget;
 
   constructor(
     private readonly physics: PhysicsWorld,
@@ -147,6 +156,7 @@ export class StriderWalkerMotor implements NpcMotor {
     this.controller = physics.createCharacterController(0.05);
     this.controller.setApplyImpulsesToDynamicBodies(true);
     this.controller.setCharacterMass(config.mass);
+    this.pending = new PendingKinematicTarget(config.position);
 
     this.legs = createLegs(config.position, this.yaw, this.standHeight, (point) =>
       this.groundPointAt(point, config.position.y - this.standHeight),
@@ -215,18 +225,28 @@ export class StriderWalkerMotor implements NpcMotor {
       this.velocity.z * delta,
     );
 
+    // Objetivo pendiente: la física corre a paso fijo y el commit del cuerpo
+    // sólo ocurre dentro de `world.step()` (ver PendingKinematicTarget). `tmpMove`
+    // ya es relativo a la pose pendiente porque sale de `getPosition()`.
+    const current = this.body.translation();
+    const desiredMove = this.pending.computeDesiredFromMove(
+      current,
+      tmpMove,
+      this.velocity.length() * PHYSICS_FIXED_TIMESTEP + PENDING_SAFETY_MARGIN,
+    );
     // filterGroups explícito: sin esto la query ignora los collision groups
     // del collider movido (ver KinematicCharacterBase.stepMovement).
     this.controller.computeColliderMovement(
       this.collider,
-      tmpMove,
+      desiredMove,
       RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
       this.collider.collisionGroups(),
       (collider) => this.shouldCollideWith(collider),
     );
-    const corrected = this.controller.computedMovement();
-    tmpCorrected.set(corrected.x, corrected.y, corrected.z);
-    const nextPosition = position.clone().add(tmpCorrected);
+    tmpCorrected.copy(
+      this.pending.commit(current, this.controller.computedMovement()),
+    );
+    const nextPosition = this.pending.read(new Vector3());
     this.body.setNextKinematicTranslation(nextPosition);
     const medium = sampleCharacterMedium({
       physics: this.physics,
@@ -249,8 +269,16 @@ export class StriderWalkerMotor implements NpcMotor {
   }
 
   getPosition(): Vector3 {
-    const p = this.body.translation();
-    return new Vector3(p.x, p.y, p.z);
+    // Al morir el cuerpo pasa a dinámico y la pose la manda el solver.
+    if (!this.body.isKinematic()) {
+      const p = this.body.translation();
+      return new Vector3(p.x, p.y, p.z);
+    }
+    return this.pending.read(new Vector3());
+  }
+
+  resyncPendingFromBody(): void {
+    this.pending.reset(this.body.translation());
   }
 
   getYaw(): number {

@@ -10,6 +10,7 @@ import type { NoiseSnapshot } from '@game/npc/brain/NpcNoiseSensor';
 import type { NpcTacticalHandle } from '@game/npc/brain/NpcCoverSensor';
 import type { SquadRole } from '@game/npc/ai/SquadDirector';
 import type { NpcScriptOrder } from '@game/script/NpcScriptOrder';
+import type { NpcVehicleApproachStatus } from '@game/npc/core/INpc';
 
 export interface NpcSelfSnapshot {
   id: string;
@@ -127,6 +128,14 @@ export interface NpcCombatHandle {
   dispose?(): void;
 }
 
+export interface NpcVehicleApproachHandle {
+  readonly vehicleId: string;
+  readonly target: Vector3;
+  readonly facing: Vector3;
+  readonly arriveRadius: number;
+  setStatus(status: Exclude<NpcVehicleApproachStatus, "none">): void;
+}
+
 /**
  * Punto del threat para MOVERSE (goal de pathfinding). Los ghosts de portal
  * proyectan `position` detrás del disco — correcto para apuntar/encarar, pero
@@ -183,6 +192,8 @@ export interface NpcBrainContext {
   medic: { target: ActorSnapshot; heal(elapsed: number): boolean } | null;
   /** Orden de secuencia guionada activa para este NPC, o null. */
   script: NpcScriptOrder | null;
+  /** Vehicle-entry reservation; present only before mounting. */
+  vehicleApproach?: NpcVehicleApproachHandle | null;
   /** Dispara un gesto procedural nombrado (pasos `gesture` de una secuencia). */
   gesture(id: GestureId, duration: number): void;
   conditions: ConditionMask;

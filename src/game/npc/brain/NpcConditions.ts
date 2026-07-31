@@ -72,6 +72,9 @@ export const Cond = {
   ScriptActive: conditionBit(30),
   /** La orden guionada es ininterrumpible (override AI): pisa incluso el combate. */
   ScriptUninterruptible: conditionBit(31),
+
+  /** Holds a live reservation and must walk to a vehicle entrance. */
+  VehicleApproach: conditionBit(32),
 } as const;
 
 export type CondKey = keyof typeof Cond;

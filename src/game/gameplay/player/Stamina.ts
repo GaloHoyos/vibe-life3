@@ -62,6 +62,30 @@ export class Stamina {
     return Config.max;
   }
 
+  capture(): {
+    readonly current: number;
+    readonly depleted: boolean;
+    readonly timeSinceDrain: number;
+  } {
+    return {
+      current: this.current,
+      depleted: this.depleted,
+      timeSinceDrain: this.timeSinceDrain,
+    };
+  }
+
+  restore(snapshot: {
+    readonly current: number;
+    readonly depleted: boolean;
+    readonly timeSinceDrain: number;
+  }): void {
+    this.current = Math.max(0, Math.min(Config.max, snapshot.current));
+    this.depleted =
+      snapshot.depleted && this.current < Config.rechargeUnlockPercent;
+    this.timeSinceDrain = Math.max(0, snapshot.timeSinceDrain);
+    this.emit();
+  }
+
   private emit(): void {
     this.lastEmitted = this.current;
     this.lastEmittedDepleted = this.depleted;

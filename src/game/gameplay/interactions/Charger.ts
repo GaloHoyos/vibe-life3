@@ -4,6 +4,12 @@ import type { ChargerKind, ChargerTypeDefinition } from '@game/config/items.conf
 import type { GameEventBus } from '@game/GameEvents';
 import type { Interactable } from './Interactable';
 
+export interface ChargerSaveSnapshot {
+  readonly version: 1;
+  readonly id: string;
+  readonly reserve: number;
+}
+
 /**
  * Cargador de pared estilo Half-Life 2. Se mantiene USE para drenar su
  * reserva finita hacia el vital del jugador (vida o traje HEV) a `rate`
@@ -94,6 +100,25 @@ export class Charger implements Interactable {
       kind: this.kind,
       depleted: this.reserve <= 0,
     });
+    this.active = false;
+    this.deniedLatched = false;
+  }
+
+  captureSaveState(): ChargerSaveSnapshot {
+    return {
+      version: 1,
+      id: this.id,
+      reserve: Math.max(0, this.reserve),
+    };
+  }
+
+  restoreSaveState(snapshot: ChargerSaveSnapshot): void {
+    if (snapshot.id !== this.id) {
+      throw new Error(`Snapshot de cargador ${snapshot.id} aplicado a ${this.id}`);
+    }
+    this.reserve = Number.isFinite(snapshot.reserve)
+      ? Math.max(0, snapshot.reserve)
+      : 0;
     this.active = false;
     this.deniedLatched = false;
   }

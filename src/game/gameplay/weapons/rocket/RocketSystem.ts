@@ -20,6 +20,14 @@ import type { VfxSystem } from "@engine/render/effects/VfxSystem";
 import type { Disposable } from "@shared/types/lifecycle";
 import type { GrenadeOwnerKind } from "@game/gameplay/weapons/grenade/Grenade";
 import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
+import {
+  assertFiniteNumber,
+  assertNonNegativeNumber,
+  assertSnapshotVersion,
+  captureVector3,
+  restoreVector3,
+  type Vector3SaveState,
+} from "@game/gameplay/weapons/ProjectileSaveState";
 
 const ROCKET_SPEED = 38.1;
 const HOMING_BLEND = 0.125;
@@ -52,6 +60,36 @@ export interface RocketSpawnOptions {
 export interface RocketSnapshot {
   position: Vector3;
   direction: Vector3;
+}
+
+export interface ActiveRocketSaveState {
+  id: string;
+  position: Vector3SaveState;
+  direction: Vector3SaveState;
+  damage: number;
+  radius: number;
+  impulse: number;
+  ownerKind: GrenadeOwnerKind;
+  sourceId: string | null;
+  sourceFaction: Faction | null;
+  weaponName: string;
+  spawnedAt: number;
+  graceEndsAt: number;
+  hardExpiresAt: number;
+  portalJumps: number;
+}
+
+export interface RocketLaserSaveState {
+  sourceId: string;
+  waypoints: Vector3SaveState[];
+  visible: boolean;
+}
+
+export interface RocketSystemSaveState {
+  version: 1;
+  nextId: number;
+  rockets: ActiveRocketSaveState[];
+  lasers: RocketLaserSaveState[];
 }
 
 interface ActiveRocket {
@@ -105,6 +143,124 @@ export class RocketSystem implements Disposable {
   }
 
   spawn(options: RocketSpawnOptions): string {
+    const id = `rocket-${this.nextId++}`;
+    this.spawnWithId(options, id);
+    return id;
+  }
+
+  capture(): RocketSystemSaveState {
+    return {
+      version: 1,
+      nextId: this.nextId,
+      rockets: this.rockets
+        .filter((rocket) => !rocket.exploded)
+        .map((rocket) => ({
+          id: rocket.id,
+          position: captureVector3(rocket.position),
+          direction: captureVector3(rocket.direction),
+          damage: rocket.damage,
+          radius: rocket.radius,
+          impulse: rocket.impulse,
+          ownerKind: rocket.ownerKind,
+          sourceId: rocket.sourceId ?? null,
+          sourceFaction: rocket.sourceFaction ?? null,
+          weaponName: rocket.weaponName,
+          spawnedAt: rocket.spawnedAt,
+          graceEndsAt: rocket.graceEndsAt,
+          hardExpiresAt: rocket.hardExpiresAt,
+          portalJumps: rocket.portalJumps,
+        })),
+      lasers: [...this.lasers.values()].map((laser) => ({
+        sourceId: laser.sourceId,
+        waypoints: laser.waypoints.map(captureVector3),
+        visible: laser.visible,
+      })),
+    };
+  }
+
+  restore(state: RocketSystemSaveState): void {
+    assertSnapshotVersion(state.version, 1, "El estado de cohetes");
+    assertNonNegativeInteger(state.nextId, "rockets.nextId");
+    const rocketIds = new Set<string>();
+    const laserIds = new Set<string>();
+
+    for (const rocket of state.rockets) {
+      this.validateRocketSaveState(rocket);
+      restoreVector3(rocket.position, `${rocket.id}.position`);
+      const direction = restoreVector3(
+        rocket.direction,
+        `${rocket.id}.direction`,
+      );
+      if (direction.lengthSq() < 1e-8) {
+        throw new Error(`${rocket.id}.direction no puede ser nula.`);
+      }
+      if (rocketIds.has(rocket.id)) {
+        throw new Error(`El estado de cohetes repite el id "${rocket.id}".`);
+      }
+      rocketIds.add(rocket.id);
+    }
+    for (const laser of state.lasers) {
+      if (laser.sourceId.length === 0 || laserIds.has(laser.sourceId)) {
+        throw new Error("El estado de láseres RPG contiene un sourceId inválido.");
+      }
+      laserIds.add(laser.sourceId);
+      laser.waypoints.forEach((waypoint, index) => {
+        restoreVector3(waypoint, `${laser.sourceId}.waypoints[${index}]`);
+      });
+      if (laser.visible && laser.waypoints.length === 0) {
+        throw new Error(
+          `El láser RPG "${laser.sourceId}" está visible pero no tiene recorrido.`,
+        );
+      }
+    }
+
+    this.clear();
+    try {
+      for (const saved of state.rockets) {
+        const rocket = this.spawnWithId(
+          {
+            origin: restoreVector3(saved.position, `${saved.id}.position`),
+            direction: restoreVector3(saved.direction, `${saved.id}.direction`),
+            damage: saved.damage,
+            radius: saved.radius,
+            impulse: saved.impulse,
+            ownerKind: saved.ownerKind,
+            sourceId: saved.sourceId ?? undefined,
+            sourceFaction: saved.sourceFaction ?? undefined,
+            weaponName: saved.weaponName,
+            now: saved.spawnedAt,
+          },
+          saved.id,
+        );
+        rocket.spawnedAt = saved.spawnedAt;
+        rocket.graceEndsAt = saved.graceEndsAt;
+        rocket.hardExpiresAt = saved.hardExpiresAt;
+        rocket.portalJumps = saved.portalJumps;
+        this.syncMesh(rocket);
+      }
+      for (const saved of state.lasers) {
+        const laser = this.getOrCreateLaser(saved.sourceId);
+        laser.waypoints = saved.waypoints.map((waypoint, index) =>
+          restoreVector3(waypoint, `${saved.sourceId}.waypoints[${index}]`),
+        );
+        laser.visible = saved.visible;
+        laser.dot.visible = saved.visible;
+        const endpoint = laser.waypoints[laser.waypoints.length - 1];
+        if (endpoint) {
+          laser.dot.position.copy(endpoint);
+        }
+      }
+      this.nextId = state.nextId;
+    } catch (error) {
+      this.clear();
+      throw error;
+    }
+  }
+
+  private spawnWithId(
+    options: RocketSpawnOptions,
+    id: string,
+  ): ActiveRocket {
     const direction = normalizedOrForward(options.direction);
     const mesh = createFallbackRocket();
     mesh.position.copy(options.origin);
@@ -112,7 +268,7 @@ export class RocketSystem implements Disposable {
     this.scene.add(mesh);
 
     const rocket: ActiveRocket = {
-      id: `rocket-${this.nextId++}`,
+      id,
       position: options.origin.clone(),
       direction,
       damage: options.damage,
@@ -133,7 +289,7 @@ export class RocketSystem implements Disposable {
     this.syncMesh(rocket);
     this.attachRocketLoop(rocket);
     void this.swapToLoadedMesh(rocket);
-    return rocket.id;
+    return rocket;
   }
 
   updateLaser(sourceId: string, origin: Vector3, direction: Vector3): void {
@@ -219,6 +375,7 @@ export class RocketSystem implements Disposable {
     while (this.rockets.length > 0) {
       const rocket = this.rockets.pop();
       if (rocket) {
+        rocket.exploded = true;
         this.disposeRocketMesh(rocket.mesh);
       }
     }
@@ -230,6 +387,19 @@ export class RocketSystem implements Disposable {
 
   dispose(): void {
     this.clear();
+  }
+
+  private validateRocketSaveState(state: ActiveRocketSaveState): void {
+    if (state.id.length === 0) {
+      throw new Error("Un cohete restaurado no tiene id.");
+    }
+    assertNonNegativeNumber(state.damage, `${state.id}.damage`);
+    assertNonNegativeNumber(state.radius, `${state.id}.radius`);
+    assertNonNegativeNumber(state.impulse, `${state.id}.impulse`);
+    assertFiniteNumber(state.spawnedAt, `${state.id}.spawnedAt`);
+    assertFiniteNumber(state.graceEndsAt, `${state.id}.graceEndsAt`);
+    assertFiniteNumber(state.hardExpiresAt, `${state.id}.hardExpiresAt`);
+    assertNonNegativeInteger(state.portalJumps, `${state.id}.portalJumps`);
   }
 
   private applyHoming(rocket: ActiveRocket): void {
@@ -497,5 +667,12 @@ function disposeMaterial(material: Mesh["material"]): void {
     material.forEach((entry) => entry.dispose());
   } else {
     material.dispose();
+  }
+}
+
+function assertNonNegativeInteger(value: number, label: string): void {
+  assertNonNegativeNumber(value, label);
+  if (!Number.isInteger(value)) {
+    throw new Error(`${label} debe ser un entero.`);
   }
 }

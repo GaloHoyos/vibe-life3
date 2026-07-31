@@ -4,6 +4,7 @@ export type AudioCategory =
   | "background"
   | "music"
   | "weapons"
+  | "vehicles"
   | "enemies"
   | "footsteps"
   | "dialogue"

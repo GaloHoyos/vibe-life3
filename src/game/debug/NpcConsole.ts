@@ -11,6 +11,8 @@ declare global {
         health: number;
         state: string;
         position: [number, number, number];
+        mounted: boolean;
+        meshVisible: boolean;
         speed: number;
         crouched: boolean;
         target: [number, number, number] | null;
@@ -33,6 +35,8 @@ export function installNpcConsole(getNpcs: () => readonly INpc[]): () => void {
           health: npc.health.current,
           state: npc.getState(),
           position: [npc.position.x, npc.position.y, npc.position.z],
+          mounted: npc.isVehicleMounted?.() ?? false,
+          meshVisible: npc.mesh.visible,
           speed: debug.locomotion?.speed ?? 0,
           crouched: debug.locomotion?.crouched ?? false,
           target: debug.target

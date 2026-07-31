@@ -24,7 +24,16 @@ export function getPosition(entity: EditorEntity): VectorTuple {
     case 'trigger':
     case 'explosiveBarrel':
     case 'hazardVolume':
+    case 'vehicle':
+    case 'vehicleWaypoint':
+    case 'waterVolume':
+    case 'vehicleNavMarker':
+    case 'checkpoint':
       return [...entity.def.position];
+    case 'vehicleNavArea':
+      return averagePoint(entity.def.polygon);
+    case 'vehicleNavLane':
+      return averagePoint(entity.def.points);
     case 'building':
       return [entity.spec.center[0], entity.spec.groundY, entity.spec.center[1]];
     case 'house':
@@ -72,6 +81,22 @@ export function translateEntity(entity: EditorEntity, dx: number, dy: number, dz
     case 'explosiveBarrel':
     case 'hazardVolume':
       entity.def.position = add3(entity.def.position, dx, dy, dz);
+      return;
+    case 'vehicle':
+    case 'vehicleWaypoint':
+    case 'waterVolume':
+    case 'vehicleNavMarker':
+      entity.def.position = add3(entity.def.position, dx, dy, dz);
+      return;
+    case 'checkpoint':
+      entity.def.position = add3(entity.def.position, dx, dy, dz);
+      if (entity.def.respawn) entity.def.respawn = add3(entity.def.respawn, dx, dy, dz);
+      return;
+    case 'vehicleNavArea':
+      entity.def.polygon = entity.def.polygon.map((point) => add3(point, dx, dy, dz));
+      return;
+    case 'vehicleNavLane':
+      entity.def.points = entity.def.points.map((point) => add3(point, dx, dy, dz));
       return;
     case 'building':
       entity.spec.center = [entity.spec.center[0] + dx, entity.spec.center[1] + dz];
@@ -125,6 +150,8 @@ export function getSize(entity: EditorEntity): VectorTuple | null {
     case 'actionButton':
     case 'trigger':
     case 'hazardVolume':
+    case 'waterVolume':
+    case 'checkpoint':
       return [...entity.def.size];
     default:
       return null;
@@ -139,6 +166,8 @@ export function setSize(entity: EditorEntity, size: VectorTuple): void {
     case 'actionButton':
     case 'trigger':
     case 'hazardVolume':
+    case 'waterVolume':
+    case 'checkpoint':
       entity.def.size = [...size];
       return;
     default:
@@ -167,7 +196,10 @@ export function getRotation(entity: EditorEntity): VectorTuple {
     case 'itemPickup':
     case 'ammoPickup':
     case 'explosiveBarrel':
+    case 'vehicle':
       return entity.def.rotation ? [...entity.def.rotation] : [0, 0, 0];
+    case 'vehicleNavMarker':
+      return [0, entity.def.heading ?? 0, 0];
     case 'charger':
       return [0, entity.def.rotationY ?? 0, 0];
     case 'building':
@@ -176,6 +208,11 @@ export function getRotation(entity: EditorEntity): VectorTuple {
       return entity.spec.rotation ? [...entity.spec.rotation] : [0, 0, 0];
     case 'prop':
       return entity.prop.spec.rotation ? [...entity.prop.spec.rotation] : [0, 0, 0];
+    case 'waterVolume':
+    case 'vehicleWaypoint':
+    case 'vehicleNavArea':
+    case 'vehicleNavLane':
+    case 'checkpoint':
     case 'hazardVolume':
       // Kill-volume es un AABB (sin rotación de colisión).
       return [0, 0, 0];
@@ -203,7 +240,11 @@ export function setRotation(entity: EditorEntity, euler: VectorTuple): void {
     case 'itemPickup':
     case 'ammoPickup':
     case 'explosiveBarrel':
+    case 'vehicle':
       entity.def.rotation = value;
+      return;
+    case 'vehicleNavMarker':
+      entity.def.heading = euler[1] || undefined;
       return;
     case 'charger':
       entity.def.rotationY = euler[1] || undefined;
@@ -216,6 +257,11 @@ export function setRotation(entity: EditorEntity, euler: VectorTuple): void {
     case 'prop':
       entity.prop.spec.rotation = value;
       return;
+    case 'waterVolume':
+    case 'vehicleWaypoint':
+    case 'vehicleNavArea':
+    case 'vehicleNavLane':
+    case 'checkpoint':
     case 'hazardVolume':
       return; // AABB sin rotación
     case 'prebuiltBuilding':
@@ -336,4 +382,13 @@ function translateProp(prop: PropEntitySpec, dx: number, dy: number, dz: number)
 
 function add3(v: VectorTuple, dx: number, dy: number, dz: number): VectorTuple {
   return [v[0] + dx, v[1] + dy, v[2] + dz];
+}
+
+function averagePoint(points: readonly VectorTuple[]): VectorTuple {
+  if (points.length === 0) return [0, 0, 0];
+  const total = points.reduce<VectorTuple>(
+    (sum, point) => [sum[0] + point[0], sum[1] + point[1], sum[2] + point[2]],
+    [0, 0, 0],
+  );
+  return [total[0] / points.length, total[1] / points.length, total[2] / points.length];
 }
