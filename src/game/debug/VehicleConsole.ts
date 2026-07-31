@@ -47,6 +47,9 @@ declare global {
         routeLength: number;
         /** Ángulo de la torreta; delata si el artillero IA está siguiendo. */
         turretYaw: number | null;
+        /** Cayendo sin control, todavía entero. */
+        crashing: boolean;
+        wreckage: boolean;
         crew: string[];
       }>;
       /** Estado de la IA: decisión, blanco percibido y torreta. */
@@ -164,6 +167,8 @@ export function installVehicleConsole(
             landingSpot: report?.landingSpot?.source ?? null,
             routeLength: report?.routeLength ?? 0,
             turretYaw: system?.getTurretYaw(vehicle.id) ?? null,
+            crashing: vehicle.isCrashing(),
+            wreckage: vehicle.isWreckage(),
             crew: vehicle
               .getOccupants()
               .map((occupant) => `${occupant.role}:${occupant.actor}`),

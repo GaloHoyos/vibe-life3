@@ -72,6 +72,17 @@ const PROBE_LIFT = 0.5;
 const MIN_TILT_COMPENSATION = 0.35;
 const IDLE_RPM = 2_600;
 const MAX_RPM = 6_500;
+/** Cuánto tarda la pérdida de control en desarrollarse del todo, en segundos. */
+const CONTROL_LOSS_RAMP = 1.3;
+/** Guiñada del aparato descontrolado, en rad/s: el par del rotor sin nadie que lo contrarreste. */
+const CONTROL_LOSS_SPIN = 2.7;
+/** Actitud hacia la que deriva, como múltiplo del tope del cíclico. */
+const CONTROL_LOSS_PITCH = 1.5;
+const CONTROL_LOSS_ROLL = 1.3;
+/** Autoridad que le queda al PD de actitud: la justa para bambolearse. */
+const CONTROL_LOSS_AUTHORITY = 0.3;
+/** Con qué rapidez se viene abajo el empuje del rotor, en 1/s. */
+const CONTROL_LOSS_LIFT_DECAY = 0.85;
 
 /**
  * Vuelo libre híbrido: el cíclico pide una actitud y un PD la sostiene, así que
@@ -94,6 +105,9 @@ export class RotorcraftVehicleMotor implements VehicleMotor {
   private lift: number;
   private grounded = false;
   private altitude = Number.POSITIVE_INFINITY;
+  private outOfControl = false;
+  private controlLossSeconds = 0;
+  private spinDirection = 1;
   private control: VehicleControlInput = {
     throttle: 0,
     steering: 0,
@@ -192,6 +206,8 @@ export class RotorcraftVehicleMotor implements VehicleMotor {
     this.pitch = 0;
     this.roll = 0;
     this.lift = this.config.hoverLift;
+    this.outOfControl = false;
+    this.controlLossSeconds = 0;
     this.refreshTelemetry();
   }
 
@@ -203,6 +219,27 @@ export class RotorcraftVehicleMotor implements VehicleMotor {
       this.body.resetForces(false);
       this.body.resetTorques(false);
     }
+  }
+
+  /**
+   * Pérdida de control: sin nadie a los mandos el aparato deja de sostener su
+   * actitud, se va de guiñada por el par del rotor y pierde empuje hasta caer.
+   * El PD conserva una autoridad mínima para que se bambolee en vez de volcar de
+   * golpe, que es lo que hace legible la caída.
+   */
+  setOutOfControl(active: boolean): void {
+    if (this.outOfControl === active) return;
+    this.outOfControl = active;
+    this.controlLossSeconds = 0;
+    if (!active) return;
+    // El rumbo se descuenta (ver `updateAttitude`), así que continuar la
+    // guiñada que ya traía exige el signo cambiado de su velocidad angular.
+    const spin = this.body.isValid() ? this.body.angvel().y : 0;
+    this.spinDirection = Math.abs(spin) > 0.05 ? -Math.sign(spin) : 1;
+  }
+
+  isOutOfControl(): boolean {
+    return this.outOfControl;
   }
 
   /** Altura sobre el terreno, o `Infinity` sin nada debajo. */
@@ -259,6 +296,10 @@ export class RotorcraftVehicleMotor implements VehicleMotor {
 
   private updateAttitude(delta: number): void {
     const config = this.config;
+    if (this.outOfControl) {
+      this.updateControlLossAttitude(delta);
+      return;
+    }
     // El cíclico manda una actitud, no un par: por eso no se puede volcar.
     const targetPitch = this.control.throttle * config.maxPitch;
     const targetRoll = this.control.steering * config.maxRoll;
@@ -274,6 +315,31 @@ export class RotorcraftVehicleMotor implements VehicleMotor {
       (this.control.yaw ?? 0) * config.yawRate +
       rollFraction * config.turnCoordination;
     this.heading = wrapAngle(this.heading - yawRate * delta);
+  }
+
+  /**
+   * La actitud deriva sola hacia un morro abajo alabeado mientras el rumbo gira
+   * cada vez más rápido. La rampa evita el corte seco: el aparato tarda un par
+   * de segundos en irse del todo, que es el margen para saltar.
+   */
+  private updateControlLossAttitude(delta: number): void {
+    const config = this.config;
+    this.controlLossSeconds += delta;
+    const ramp = 1 - Math.exp(-this.controlLossSeconds / CONTROL_LOSS_RAMP);
+    const blend = 1 - Math.exp(-config.attitudeResponse * delta);
+    this.pitch = MathUtils.lerp(
+      this.pitch,
+      config.maxPitch * CONTROL_LOSS_PITCH * ramp,
+      blend,
+    );
+    this.roll = MathUtils.lerp(
+      this.roll,
+      config.maxRoll * CONTROL_LOSS_ROLL * ramp * this.spinDirection,
+      blend,
+    );
+    this.heading = wrapAngle(
+      this.heading - this.spinDirection * CONTROL_LOSS_SPIN * ramp * delta,
+    );
   }
 
   private applyAttitudeTorque(): void {
@@ -309,31 +375,42 @@ export class RotorcraftVehicleMotor implements VehicleMotor {
     }
 
     const mass = this.config.mass;
+    const authority = this.outOfControl ? CONTROL_LOSS_AUTHORITY : 1;
     this.torque
       .copy(this.axis)
-      .multiplyScalar(angle * this.config.attitudeStiffness * mass)
-      .addScaledVector(this.angularVelocity, -this.config.attitudeDamping * mass);
+      .multiplyScalar(angle * this.config.attitudeStiffness * mass * authority)
+      .addScaledVector(
+        this.angularVelocity,
+        -this.config.attitudeDamping * mass * authority,
+      );
     this.body.addTorque(this.torque, true);
   }
 
   private applyLift(delta: number): void {
     const config = this.config;
     const collective = this.control.collective ?? 0;
-    const target =
-      collective >= 0
+    const target = this.outOfControl
+      ? config.minLift
+      : collective >= 0
         ? MathUtils.lerp(config.hoverLift, config.maxLift, collective)
         : MathUtils.lerp(config.hoverLift, config.minLift, -collective);
     this.lift = MathUtils.lerp(
       this.lift,
       target,
-      1 - Math.exp(-config.liftResponse * delta),
+      1 -
+        Math.exp(
+          -(this.outOfControl ? CONTROL_LOSS_LIFT_DECAY : config.liftResponse) *
+            delta,
+        ),
     );
 
     // El empuje sale del eje vertical LOCAL, así que ladearse cuesta altura.
     // Compensarlo es lo que hace el piloto con el colectivo: sin esto cada
-    // viraje sería un descenso y volar exigiría dos manos coordinadas.
-    const compensation =
-      1 / Math.max(MIN_TILT_COMPENSATION, this.up.dot(WORLD_UP));
+    // viraje sería un descenso y volar exigiría dos manos coordinadas. Sin
+    // piloto no hay quien compense, y esa es justamente la caída.
+    const compensation = this.outOfControl
+      ? 1
+      : 1 / Math.max(MIN_TILT_COMPENSATION, this.up.dot(WORLD_UP));
     let thrust = this.lift * config.mass * config.gravity * compensation;
     // Apoyado y sin pedir subir, el rotor no puede levantar más que el peso: de
     // lo contrario el aparato flotaría un palmo sobre la pista para siempre.

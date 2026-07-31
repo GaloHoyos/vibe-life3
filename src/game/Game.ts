@@ -24,6 +24,7 @@ import type { GameEventBus, GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
 import { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
 import { installIceConsole } from "@game/debug/IceConsole";
+import { installEntityIOConsole } from "@game/debug/EntityIOConsole";
 import { installNpcConsole } from "@game/debug/NpcConsole";
 import { installPlayerConsole } from "@game/debug/PlayerConsole";
 import { installPortalConsole } from "@game/debug/PortalConsole";
@@ -286,6 +287,7 @@ export class Game {
   private player: Player | null = null;
   private playerModel: PlayerModelSystem | null = null;
   private uninstallNpcConsole: (() => void) | null = null;
+  private uninstallEntityIOConsole: (() => void) | null = null;
   private uninstallPlayerConsole: (() => void) | null = null;
   private uninstallIceConsole: (() => void) | null = null;
   private uninstallPlayerModelConsole: (() => void) | null = null;
@@ -440,6 +442,8 @@ export class Game {
     this.collapsingStriders.clear();
     this.uninstallNpcConsole?.();
     this.uninstallNpcConsole = null;
+    this.uninstallEntityIOConsole?.();
+    this.uninstallEntityIOConsole = null;
     this.uninstallPlayerConsole?.();
     this.uninstallPlayerConsole = null;
     this.uninstallIceConsole?.();
@@ -2389,6 +2393,9 @@ export class Game {
     );
 
     this.uninstallNpcConsole = installNpcConsole(() => this.npcs);
+    this.uninstallEntityIOConsole = installEntityIOConsole(() =>
+      s.resolve(GameTokens.EntityIO),
+    );
     this.uninstallPlayerConsole = installPlayerConsole(
       () => this.player,
       () => s.resolve(EngineTokens.Camera),

@@ -155,6 +155,7 @@ export class VehicleEntity {
 
   private readonly motor: VehicleMotor;
   private readonly railMotor: OnRailsVehicleMotor | null;
+  private readonly rotorMotor: RotorcraftVehicleMotor | null;
   private readonly colliderHandles = new Set<number>();
   private readonly occupantsBySeat = new Map<string, VehicleOccupant>();
   private readonly disposePreHook: () => void;
@@ -258,6 +259,8 @@ export class VehicleEntity {
     this.motor = motor;
     this.railMotor =
       motor instanceof OnRailsVehicleMotor ? motor : null;
+    this.rotorMotor =
+      motor instanceof RotorcraftVehicleMotor ? motor : null;
     this.motor.setEnabled(this.enabled);
     this.weapon = this.preset.weapon
       ? new MountedVehicleWeapon(
@@ -371,6 +374,10 @@ export class VehicleEntity {
     }
     this.weapon?.update(delta);
     const telemetry = this.motor.getTelemetry();
+    if (this.rotorMotor?.isOutOfControl() && telemetry.grounded) {
+      this.finishCrash();
+      return;
+    }
     const boosting =
       telemetry.engineRpm > 4_500 &&
       telemetry.forwardSpeed > 1 &&
@@ -481,6 +488,12 @@ export class VehicleEntity {
     if (actorContact) return;
 
     if (event.totalForceMagnitude < this.impactForceThreshold) return;
+    // Cayendo sin control, el primer golpe fuerte es el final: puede ser el
+    // suelo, pero también la ladera o el edificio contra el que va a dar.
+    if (this.rotorMotor?.isOutOfControl()) {
+      this.finishCrash();
+      return;
+    }
     if (this.impactElapsed - this.lastChassisImpactAt < IMPACT_COOLDOWN) return;
     this.lastChassisImpactAt = this.impactElapsed;
     const damage = MathUtils.clamp(
@@ -645,8 +658,17 @@ export class VehicleEntity {
   beginCrash(): void {
     if (this.crashing || this.wreckage) return;
     this.crashing = true;
+    // Re-entra en `beginCrash`, que ya está protegido por la bandera de arriba.
+    this.damage.requestCrash();
     this.eventBus.emit("vehicle.crashed", { id: this.id });
     this.callbacks.onCrashStarted(this);
+
+    // Un aparato de ala rotatoria en vuelo se cae girando hasta reventar contra
+    // algo: el estallido llega al tocar, no al perder el control.
+    if (this.rotorMotor && !this.motor.getTelemetry().grounded) {
+      this.rotorMotor.setOutOfControl(true);
+      return;
+    }
 
     if (this.railMotor && this.definition.crashPathStart) {
       const path = resolveRoute(
@@ -958,6 +980,9 @@ export class VehicleEntity {
     }
     this.crashing = snapshot.crashing;
     this.wreckage = snapshot.wreckage;
+    if (this.crashing && !this.wreckage) {
+      this.rotorMotor?.setOutOfControl(true);
+    }
     this.visual.setWreckage(this.wreckage);
     this.snapPose();
     this.syncVisual(1);

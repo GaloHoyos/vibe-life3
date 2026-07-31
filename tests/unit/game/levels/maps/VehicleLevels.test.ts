@@ -4,6 +4,7 @@ import { resolveVehicleAccessPolicy } from '@game/levels/LevelDefinition';
 import type { EntityConnection } from '@game/script/EntityIOTypes';
 import { Demo2Ravenholm } from '@game/levels/maps/campaign/Demo2Ravenholm';
 import { Demo3WhiteoutFlight } from '@game/levels/maps/campaign/Demo3WhiteoutFlight';
+import { D3_ROAD } from '@game/levels/maps/campaign/Demo3WhiteoutPassGeometry';
 import { VehicleSandboxLevel } from '@game/levels/maps/custom/VehicleSandboxLevel';
 import { SnowFieldLevel } from '@game/levels/maps/custom/SnowFieldLevel';
 import { getLevel } from '@game/levels/LevelRegistry';
@@ -287,36 +288,38 @@ describe('niveles vehiculares', () => {
     expect(inputs.has('Crash')).toBe(true);
   });
 
-  it('monta a Gordon y Alyx, degrada el vuelo y termina en un choque sobrevivible', () => {
-    const helicopter = Demo3WhiteoutFlight.vehicles?.[0];
-    expect(helicopter).toMatchObject({
-      id: 'd3-resistance-helicopter',
-      presetId: 'helicopter',
-      crashPolicy: 'survivable',
-      weaponEnabled: true,
-    });
-    expect(helicopter?.crew).toEqual(expect.arrayContaining([
-      expect.objectContaining({ actor: '!player', role: 'gunner', seatId: 'door-gunner' }),
-      expect.objectContaining({ actor: 'd3-alyx', role: 'passenger', seatId: 'passenger' }),
-      expect.objectContaining({ actor: 'd3-pilot', role: 'pilot', seatId: 'pilot' }),
-    ]));
+  it('reparte los tres roles vehiculares de Demo 3 sin ninguna ruta autorada', () => {
+    const vehicles = Demo3WhiteoutFlight.vehicles ?? [];
+    expect(new Set(vehicles.map((vehicle) => vehicle.presetId))).toEqual(
+      new Set(['buggy', 'helicopterFree', 'combineGlider']),
+    );
+    // El capítulo se rehizo sobre vuelo libre e IA: ya no queda nada sobre
+    // rieles, así que ningún vehículo debería declarar trazado.
+    expect(vehicles.every((vehicle) => vehicle.pathStart === undefined)).toBe(true);
+    expect(Demo3WhiteoutFlight.vehicleWaypoints).toBeUndefined();
 
-    const connections = allConnections(Demo3WhiteoutFlight);
-    expect(connections.some((connection) => connection.input === 'SetSpeed' && connection.param === 14)).toBe(true);
-    expect(connections.some((connection) => connection.input === 'SetSpeed' && connection.param === 8)).toBe(true);
-    expect(connections.some((connection) => connection.input === 'Crash' && connection.delay === 4)).toBe(true);
-    expect(Demo3WhiteoutFlight.checkpoints).toHaveLength(3);
+    expect(
+      vehicles.filter((vehicle) => resolveVehicleAccessPolicy(vehicle) === 'player'),
+    ).toHaveLength(2);
+    expect(vehicles.filter((vehicle) => vehicle.ai?.enabled)).toHaveLength(4);
+    expect(vehicles.every((vehicle) => vehicle.portalTraversal === 'blocked')).toBe(true);
   });
 
-  it('mantiene separadas y completas las rutas normal y de choque de Demo 3', () => {
-    const helicopter = Demo3WhiteoutFlight.vehicles?.[0];
-    const waypoints = Demo3WhiteoutFlight.vehicleWaypoints ?? [];
-    const flight = routeIds(waypoints, helicopter?.pathStart ?? '', false);
-    const crash = routeIds(waypoints, helicopter?.crashPathStart ?? '', false);
+  it('deriva el carril del paso del mismo trazado que dibuja la calzada', () => {
+    const lane = Demo3WhiteoutFlight.vehicleNavLanes?.find(
+      (candidate) => candidate.id === 'd3-lane-pass',
+    );
+    expect(lane?.points).toEqual(D3_ROAD.map(([x, z]) => [x, 0, z]));
+    expect(lane?.direction).toBe('both');
 
-    expect(flight).toHaveLength(6);
-    expect(crash).toHaveLength(4);
-    expect(flight.some((id) => crash.includes(id))).toBe(false);
-    expect(crash[crash.length - 1]).toBe('d3-crash-04');
+    const areas = Demo3WhiteoutFlight.vehicleNavAreas ?? [];
+    expect(areas.some((area) => area.surface === 'ground')).toBe(true);
+    expect(areas.some((area) => area.flags?.includes('parking'))).toBe(true);
+    // Tres zonas de aterrizaje: el pad Combine, el patio del relé y la salida.
+    expect(
+      (Demo3WhiteoutFlight.vehicleNavMarkers ?? []).filter(
+        (marker) => marker.kind === 'landingZone',
+      ),
+    ).toHaveLength(3);
   });
 });

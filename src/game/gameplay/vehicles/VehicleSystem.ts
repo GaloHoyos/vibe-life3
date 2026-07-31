@@ -162,6 +162,18 @@ const PARKED_CONTROL: VehicleControlInput = {
   handbrake: 0.35,
   boost: false,
 };
+/**
+ * Cuánto hay que sostener "usar" para saltar de un helicóptero en vuelo. El
+ * pedal derecho comparte tecla, así que un toque tiene que seguir siendo una
+ * guiñada y no una caída de treinta metros.
+ */
+const AIR_BAILOUT_HOLD_SECONDS = 0.6;
+/**
+ * Debajo de esta altura quedarse sin piloto no descontrola nada: el aparato
+ * está prácticamente posado y lo sensato es que se apoye, no que reviente
+ * porque alguien se bajó a un palmo del suelo.
+ */
+const AIR_CONTROL_LOSS_MIN_ALTITUDE = 2.5;
 const DOWN = new Vector3(0, -1, 0);
 const WORLD_UP = new Vector3(0, 1, 0);
 const TMP_AIR_FORWARD = new Vector3();
@@ -251,7 +263,9 @@ export class VehicleSystem {
   private readonly npcExitRequests = new Map<string, boolean>();
   private pendingPlayerSeatHandoff: PendingPlayerSeatHandoff | null = null;
   private elapsed = 0;
+  private readonly rotorcraftPiloted = new Set<string>();
   private lastDismountAt = -Infinity;
+  private bailoutHoldSeconds = 0;
   private disposed = false;
 
   constructor(
@@ -346,6 +360,12 @@ export class VehicleSystem {
           vehicle.id,
           definition.ai?.enabled ? "automatic" : "hold",
         );
+        // `aiCrew.enabled` es el estado INICIAL de la oferta, no un veto: si
+        // fuera un veto, `EnableCrewing` no podría encender una tripulación
+        // que el mapa dejó apagada a propósito hasta que el guion la pida.
+        if (definition.aiCrew?.enabled === false) {
+          this.crewingDisabled.add(vehicle.id);
+        }
       }
     }
     this.airAi.setLandingZones(level.vehicleNavMarkers ?? []);
@@ -392,8 +412,9 @@ export class VehicleSystem {
     this.trafficReservations.update(elapsed);
     this.updateNpcCrew(delta);
     for (const vehicle of this.vehicles.values()) {
+      this.updateRotorcraftPilot(vehicle);
       if (vehicle !== this.mountedVehicle || !this.mountedOccupant) {
-        if (!vehicle.isOnRails()) {
+        if (!vehicle.isOnRails() && !vehicle.isCrashing()) {
           vehicle.setControl(this.autonomousControl(vehicle, delta));
         }
         continue;
@@ -418,10 +439,7 @@ export class VehicleSystem {
     ) {
       return;
     }
-    if (this.controls.wasPressed("interact")) {
-      this.tryDismountPlayer(false);
-      return;
-    }
+    if (this.updatePlayerExitIntent(this.mountedVehicle, delta)) return;
     if (this.controls.wasPressed("reload")) {
       this.movePlayerToNextSeat();
     }
@@ -679,6 +697,7 @@ export class VehicleSystem {
     this.npcCrew.dispose();
     this.followerCrewActors.clear();
     this.npcExitRequests.clear();
+    this.rotorcraftPiloted.clear();
     snapshot.vehicles.forEach((vehicleSnapshot) => {
       this.vehicles.get(vehicleSnapshot.id)?.restore(vehicleSnapshot);
     });
@@ -755,6 +774,7 @@ export class VehicleSystem {
     this.evacuationVehicles.clear();
     this.followerCrewActors.clear();
     this.npcExitRequests.clear();
+    this.rotorcraftPiloted.clear();
     this.pendingPlayerSeatHandoff = null;
     this.ai.dispose();
     this.trafficReservations.clear();
@@ -878,6 +898,36 @@ export class VehicleSystem {
       weaponRange: vehicle.preset.weapon?.range,
       turretAtTraverseLimit: this.turretAtLimit.has(vehicle.id),
     };
+  }
+
+  /**
+   * Un helicóptero en vuelo que se queda sin piloto —lo matan, o el jugador
+   * salta— no planea hasta el suelo: se descontrola y se estrella. Hace falta
+   * recordar que ALGUNA vez tuvo piloto, porque uno que todavía no lo tuvo
+   * puede estar esperando tripulación y de eso ya se ocupa el cerebro.
+   */
+  private updateRotorcraftPilot(vehicle: VehicleEntity): void {
+    if (vehicle.preset.motor.kind !== "rotorcraft") return;
+    if (vehicle.isCrashing() || vehicle.isWreckage()) {
+      this.rotorcraftPiloted.delete(vehicle.id);
+      return;
+    }
+    if (this.hasLivingPilot(vehicle)) {
+      this.rotorcraftPiloted.add(vehicle.id);
+      return;
+    }
+    if (!this.rotorcraftPiloted.delete(vehicle.id)) return;
+    if (vehicle.getTelemetry().altitude <= AIR_CONTROL_LOSS_MIN_ALTITUDE) return;
+    vehicle.beginCrash();
+  }
+
+  private hasLivingPilot(vehicle: VehicleEntity): boolean {
+    const pilot = vehicle
+      .getOccupants()
+      .find((occupant) => isAtTheControls(occupant.role));
+    if (!pilot) return false;
+    if (pilot.actor === PLAYER_ACTOR) return this.player?.isAlive() ?? false;
+    return this.actors.get(pilot.actor)?.isAlive() ?? false;
   }
 
   /**
@@ -1954,26 +2004,45 @@ export class VehicleSystem {
     return true;
   }
 
+  /**
+   * Puerta de bajada del jugador. En vuelo hay que sostener la tecla: es el
+   * seguro que separa el salto al vacío de la guiñada a derecha, que comparte
+   * tecla con "usar". Devuelve si consumió el input.
+   */
+  private updatePlayerExitIntent(
+    vehicle: VehicleEntity,
+    delta: number,
+  ): boolean {
+    const airborne =
+      vehicle.preset.motor.kind === "rotorcraft" &&
+      !vehicle.getTelemetry().grounded;
+    if (!airborne) {
+      this.bailoutHoldSeconds = 0;
+      if (!this.controls.wasPressed("interact")) return false;
+      return this.tryDismountPlayer(false);
+    }
+    if (!this.controls.isDown("interact")) {
+      this.bailoutHoldSeconds = 0;
+      return false;
+    }
+    if (this.controls.wasPressed("interact")) {
+      this.showMessage("Mantené USE para saltar.");
+    }
+    this.bailoutHoldSeconds += delta;
+    if (this.bailoutHoldSeconds < AIR_BAILOUT_HOLD_SECONDS) return false;
+    this.bailoutHoldSeconds = 0;
+    return this.tryDismountPlayer(false);
+  }
+
   private tryDismountPlayer(force: boolean): boolean {
     const vehicle = this.mountedVehicle;
     const occupant = this.mountedOccupant;
     const player = this.player;
     if (!vehicle || !occupant || !player) return false;
 
-    if (!force) {
-      if (!isManualPlayerExitAllowed(vehicle.definition)) {
-        this.showMessage("Este helicóptero no permite bajar.");
-        return false;
-      }
-      // El pedal derecho comparte tecla con "usar": sin esta puerta, guiñar a
-      // la derecha en pleno vuelo tiraría al piloto por la puerta.
-      if (
-        vehicle.preset.motor.kind === "rotorcraft" &&
-        !vehicle.getTelemetry().grounded
-      ) {
-        this.showMessage("Hay que posarse antes de bajar.");
-        return false;
-      }
+    if (!force && !isManualPlayerExitAllowed(vehicle.definition)) {
+      this.showMessage("Este helicóptero no permite bajar.");
+      return false;
     }
 
     const resolvedExit = this.resolvePlayerExit(vehicle, occupant);
@@ -2437,7 +2506,6 @@ export class VehicleSystem {
       if (
         vehicle.isOnRails() ||
         (!vehicle.definition.ai?.enabled && !playerNeedsFactionCrew) ||
-        crew?.enabled === false ||
         this.crewingDisabled.has(vehicle.id) ||
         this.evacuationVehicles.has(vehicle.id)
       ) {

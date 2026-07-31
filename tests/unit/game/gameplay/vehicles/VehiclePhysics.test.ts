@@ -712,6 +712,39 @@ describe("helicóptero de vuelo libre", () => {
     expect(trace.maxTiltDegrees).toBeLessThan(45);
   });
 
+  it("sin nadie a los mandos se va de guiñada y se viene abajo", async () => {
+    const rig = await spawn({ presetId: "helicopterFree", position: [0, 80, 0] });
+    fly(rig, {});
+    fall(rig, 2);
+    const cruise = rig.vehicle.getWorldPosition().y;
+
+    rig.vehicle.beginCrash();
+    // Perder el control no es reventar: el aparato baja entero, y ese es el
+    // margen que tiene quien va a bordo para saltar.
+    expect(rig.vehicle.isWreckage()).toBe(false);
+
+    const falling = fall(rig, 4);
+
+    expect(rig.vehicle.getWorldPosition().y).toBeLessThan(cruise - 20);
+    // El par del rotor sin nadie que lo contrarreste: se va girando.
+    expect(Math.abs(falling.yaw)).toBeGreaterThan(2);
+    // Y ladeado, porque ya nadie compensa la inclinación con el colectivo.
+    expect(falling.maxTiltDegrees).toBeGreaterThan(30);
+  });
+
+  it("el estallido llega al tocar, no al perder el control", async () => {
+    const rig = await spawn({ presetId: "helicopterFree", position: [0, 40, 0] });
+    fly(rig, { collective: 0 });
+    fall(rig, 1);
+
+    rig.vehicle.beginCrash();
+    fall(rig, 1);
+    expect(rig.vehicle.isWreckage()).toBe(false);
+
+    fall(rig, 10);
+    expect(rig.vehicle.isWreckage()).toBe(true);
+  });
+
   it("no se puede volcar ni con todos los mandos a fondo", async () => {
     const rig = await spawn({ presetId: "helicopterFree", position: [0, 45, 0] });
     fly(rig, { throttle: 1, steering: 1, yaw: 1, collective: 1 });
@@ -743,7 +776,7 @@ interface Trace {
 
 const WORLD_UP = new Vector3(0, 1, 0);
 
-function simulate(rig: Rig, seconds: number): Trace {
+function simulate(rig: Rig, seconds: number, tickEntity = false): Trace {
   let maxSpeed = 0;
   let maxHeight = -Infinity;
   let maxTilt = 0;
@@ -753,6 +786,7 @@ function simulate(rig: Rig, seconds: number): Trace {
   let previousHeading = heading(rig);
   for (let frame = 0; frame < Math.round(seconds / DT); frame += 1) {
     rig.physics.step(DT);
+    if (tickEntity) rig.vehicle.update(DT, frame * DT, false, null);
     const position = rig.vehicle.getWorldPosition();
     const rotation = rig.vehicle.getWorldRotation();
     const localUp = new Vector3(0, 1, 0).applyQuaternion(rotation).normalize();
@@ -780,6 +814,14 @@ function simulate(rig: Rig, seconds: number): Trace {
     maxSpin,
     maxSlipDegrees: (maxSlip * 180) / Math.PI,
   };
+}
+
+/**
+ * Como `simulate`, pero tickeando también la entidad: el golpe que convierte la
+ * caída en chatarra se decide en `VehicleEntity.update`, no en el step.
+ */
+function fall(rig: Rig, seconds: number): Trace {
+  return simulate(rig, seconds, true);
 }
 
 function heading(rig: Rig): number {

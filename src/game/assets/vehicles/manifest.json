@@ -69,7 +69,7 @@
     },
     {
       "id": "airboat",
-      "glbBytes": 1103028,
+      "glbBytes": 1103004,
       "lods": [
         {
           "triangles": 13960,
@@ -119,14 +119,14 @@
     },
     {
       "id": "helicopter",
-      "glbBytes": 1232612,
+      "glbBytes": 1359916,
       "lods": [
         {
-          "triangles": 20272,
-          "draws": 7
+          "triangles": 21828,
+          "draws": 8
         },
         {
-          "triangles": 6372,
+          "triangles": 5756,
           "draws": 6
         },
         {
@@ -139,6 +139,7 @@
         "visual_lod0",
         "helicopter_fuselage",
         "helicopter_cabin",
+        "helicopter_cockpit",
         "helicopter_glazing",
         "rotor_main",
         "rotor_tail",
@@ -178,8 +179,11 @@
         "damage_weapon",
         "wreckage",
         "wreckage_cabin",
+        "wreckage_engine",
         "wreckage_tail",
-        "wreckage_rotor"
+        "wreckage_rotor",
+        "wreckage_debris",
+        "wreckage_glass"
       ]
     },
     {

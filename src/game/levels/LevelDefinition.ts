@@ -164,7 +164,11 @@ export interface VehicleAiDefinition {
  * guionar cada abordaje.
  */
 export interface VehicleAiCrewDefinition {
-  /** Apaga la oferta sin borrarla del mapa. Default `true`. */
+  /**
+   * Estado inicial de la oferta. Default `true`. En `false` el aparato espera
+   * un `EnableCrewing` del guion, que es como se autora una tripulación que
+   * corre hacia su vehículo recién cuando el jugador entra en escena.
+   */
   enabled?: boolean;
   /**
    * Puestos a cubrir, en orden de prioridad. Default: primero los mandos y

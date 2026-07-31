@@ -30,7 +30,7 @@
     },
     {
       "id": "airboat",
-      "bytes": 1103028,
+      "bytes": 1103004,
       "budgetBytes": 8388608,
       "lods": [
         {
@@ -55,15 +55,15 @@
     },
     {
       "id": "helicopter",
-      "bytes": 1232612,
+      "bytes": 1359916,
       "budgetBytes": 14680064,
       "lods": [
         {
-          "triangles": 20272,
-          "draws": 7
+          "triangles": 21828,
+          "draws": 8
         },
         {
-          "triangles": 6372,
+          "triangles": 5756,
           "draws": 6
         },
         {
@@ -74,7 +74,7 @@
       "khronos": {
         "errors": 0,
         "warnings": 0,
-        "infos": 7,
+        "infos": 9,
         "hints": 0
       }
     },

@@ -199,6 +199,30 @@ export class EntityIOSystem {
     }
   }
 
+  /**
+   * Manda un input como si lo hubiera disparado un output. Es la entrada del
+   * debug/verificación headless: sin esto, un nivel guionado sólo se puede
+   * recorrer apretando botones a mano.
+   */
+  sendInput(
+    target: string,
+    input: string,
+    param?: ConnectionParam,
+    caller = 'debug-console',
+  ): number {
+    const source = { key: caller, name: caller };
+    const resolved = this.resolveTarget(target, source, { kind: 'none' });
+    if (!resolved) return 0;
+    const handles = this.resolveHandles(resolved);
+    this.dispatch(source, resolved, input, param, { kind: 'none' });
+    return handles.length;
+  }
+
+  /** Nombres registrados, para saber a qué se le puede mandar algo. */
+  targetNames(): string[] {
+    return [...this.handles.keys()].sort();
+  }
+
   update(delta: number): void {
     this.clock += Math.max(0, delta);
     for (const handle of this.updatables) handle.update?.(delta);

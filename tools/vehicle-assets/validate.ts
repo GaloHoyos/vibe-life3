@@ -98,6 +98,83 @@ function collectNodes(node: Node, target: Map<string, Node>): void {
   }
 }
 
+function transformPoint(
+  point: readonly number[],
+  matrix: ArrayLike<number>,
+): readonly [number, number, number] {
+  return [
+    matrix[0]! * point[0]! +
+      matrix[4]! * point[1]! +
+      matrix[8]! * point[2]! +
+      matrix[12]!,
+    matrix[1]! * point[0]! +
+      matrix[5]! * point[1]! +
+      matrix[9]! * point[2]! +
+      matrix[13]!,
+    matrix[2]! * point[0]! +
+      matrix[6]! * point[1]! +
+      matrix[10]! * point[2]! +
+      matrix[14]!,
+  ];
+}
+
+function signedVolume(node: Node): number {
+  let volume = 0;
+  const mesh = node.getMesh();
+  if (mesh !== null) {
+    const matrix = node.getWorldMatrix();
+    for (const primitive of mesh.listPrimitives()) {
+      const positions = primitive.getAttribute("POSITION");
+      if (positions === null) continue;
+      const indices = primitive.getIndices();
+      const count = indices?.getCount() ?? positions.getCount();
+      for (let offset = 0; offset < count; offset += 3) {
+        const a = transformPoint(
+          positions.getElement(indices?.getScalar(offset) ?? offset, []),
+          matrix,
+        );
+        const b = transformPoint(
+          positions.getElement(indices?.getScalar(offset + 1) ?? offset + 1, []),
+          matrix,
+        );
+        const c = transformPoint(
+          positions.getElement(indices?.getScalar(offset + 2) ?? offset + 2, []),
+          matrix,
+        );
+        volume +=
+          (a[0] * (b[1] * c[2] - b[2] * c[1]) -
+            a[1] * (b[0] * c[2] - b[2] * c[0]) +
+            a[2] * (b[0] * c[1] - b[1] * c[0])) /
+          6;
+      }
+    }
+  }
+  for (const child of node.listChildren()) {
+    volume += signedVolume(child);
+  }
+  return volume;
+}
+
+function minimumY(node: Node): number {
+  let minY = Number.POSITIVE_INFINITY;
+  const mesh = node.getMesh();
+  if (mesh !== null) {
+    const matrix = node.getWorldMatrix();
+    for (const primitive of mesh.listPrimitives()) {
+      const positions = primitive.getAttribute("POSITION");
+      if (positions === null) continue;
+      for (let index = 0; index < positions.getCount(); index += 1) {
+        const world = transformPoint(positions.getElement(index, []), matrix);
+        minY = Math.min(minY, world[1]);
+      }
+    }
+  }
+  for (const child of node.listChildren()) {
+    minY = Math.min(minY, minimumY(child));
+  }
+  return minY;
+}
+
 function validateWav(bytes: Uint8Array, fileName: string): void {
   assert(bytes.byteLength >= 44, `${fileName}: WAV truncado.`);
   const ascii = (offset: number, length: number) =>
@@ -162,6 +239,35 @@ async function main(): Promise<void> {
     }
     for (const requiredName of spec.requiredNodes) {
       assert(nodes.has(requiredName), `${spec.id}: falta nodo ${requiredName}.`);
+    }
+    const wreckage = nodes.get("wreckage");
+    assert(wreckage !== undefined, `${spec.id}: falta nodo wreckage.`);
+    if (spec.id === "helicopter") {
+      const wreckageStats = countNode(wreckage);
+      assert(
+        wreckageStats.triangles >= 3_000,
+        "helicopter: el wreckage volvió a ser un blockout sin detalle.",
+      );
+      const cabin = nodes.get("wreckage_cabin");
+      assert(cabin !== undefined, "helicopter: falta wreckage_cabin.");
+      // Khronos acepta winding invertido; el volumen firmado protege la pieza
+      // protagonista que originó el defecto visible.
+      assert(
+        signedVolume(cabin) > 0,
+        "helicopter: wreckage_cabin tiene las caras orientadas hacia adentro.",
+      );
+      assert(
+        minimumY(wreckage) >= -0.15,
+        "helicopter: el wreckage queda enterrado al apoyar el collider.",
+      );
+    }
+    if (spec.id === "airboat") {
+      const hull = nodes.get("wreckage_hull");
+      assert(hull !== undefined, "airboat: falta wreckage_hull.");
+      assert(
+        signedVolume(hull) > 0,
+        "airboat: wreckage_hull tiene las caras orientadas hacia adentro.",
+      );
     }
     const lods = ([0, 1, 2] as const).map((lod) => {
       const root = nodes.get(`visual_lod${lod}`);
