@@ -11,7 +11,7 @@
   "vehicles": [
     {
       "id": "buggy",
-      "glbBytes": 1113872,
+      "glbBytes": 1375908,
       "lods": [
         {
           "triangles": 17268,
@@ -64,12 +64,17 @@
         "damage_weapon",
         "damage_fuel",
         "wreckage",
-        "wreckage_chassis"
+        "wreckage_chassis",
+        "wreckage_cage",
+        "wreckage_engine",
+        "wreckage_wheels",
+        "wreckage_turret",
+        "wreckage_debris"
       ]
     },
     {
       "id": "airboat",
-      "glbBytes": 1103004,
+      "glbBytes": 1244312,
       "lods": [
         {
           "triangles": 13960,
@@ -114,7 +119,12 @@
         "damage_weapon",
         "damage_fuel",
         "wreckage",
-        "wreckage_hull"
+        "wreckage_hull",
+        "wreckage_cockpit",
+        "wreckage_bow",
+        "wreckage_fan",
+        "wreckage_engine",
+        "wreckage_debris"
       ]
     },
     {
@@ -188,7 +198,7 @@
     },
     {
       "id": "rebelCrawler",
-      "glbBytes": 1059336,
+      "glbBytes": 1222224,
       "lods": [
         {
           "triangles": 11816,
@@ -237,7 +247,13 @@
         "damage_steering",
         "damage_fuel",
         "wreckage",
-        "wreckage_crawler_hull"
+        "wreckage_crawler_hull",
+        "wreckage_cabin",
+        "wreckage_engine",
+        "wreckage_tracks",
+        "wreckage_thrown_track",
+        "wreckage_debris",
+        "wreckage_glass"
       ]
     },
     {
@@ -297,6 +313,70 @@
         "damage_fuel",
         "wreckage",
         "wreckage_combine_glider"
+      ]
+    },
+    {
+      "id": "combineSwimmer",
+      "glbBytes": 968252,
+      "lods": [
+        {
+          "triangles": 7004,
+          "draws": 9
+        },
+        {
+          "triangles": 3232,
+          "draws": 9
+        },
+        {
+          "triangles": 1704,
+          "draws": 7
+        }
+      ],
+      "nodeNames": [
+        "combineSwimmer_vehicle",
+        "visual_lod0",
+        "combineSwimmer_body",
+        "combineSwimmer_visor",
+        "combineSwimmer_eye",
+        "fan_main",
+        "stabilizer_front",
+        "stabilizer_rear_left",
+        "stabilizer_rear_right",
+        "rudder_left",
+        "rudder_right",
+        "visual_lod1",
+        "combineSwimmer_body_lod1",
+        "combineSwimmer_visor_lod1",
+        "combineSwimmer_eye_lod1",
+        "fan_main_lod1",
+        "stabilizer_front_lod1",
+        "stabilizer_rear_left_lod1",
+        "stabilizer_rear_right_lod1",
+        "rudder_left_lod1",
+        "rudder_right_lod1",
+        "visual_lod2",
+        "combineSwimmer_body_lod2",
+        "fan_main_lod2",
+        "stabilizer_front_lod2",
+        "stabilizer_rear_left_lod2",
+        "stabilizer_rear_right_lod2",
+        "rudder_left_lod2",
+        "rudder_right_lod2",
+        "seat_driver",
+        "camera_driver",
+        "exit_left",
+        "exit_right",
+        "audio_engine",
+        "audio_hover",
+        "damage_engine",
+        "damage_hull",
+        "damage_steering",
+        "damage_fuel",
+        "wreckage",
+        "wreckage_carcass",
+        "wreckage_graft",
+        "wreckage_debris",
+        "wreckage_glass"
       ]
     }
   ],

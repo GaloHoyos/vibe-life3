@@ -127,6 +127,9 @@ const TMP_MIDPOINT = new Vector3();
 const TMP_QUATERNION = new Quaternion();
 
 export function createVehicleVisual(archetype: VehicleArchetypeId): VehicleVisual {
+  // El nadador cae en el rig del deslizador: este armado procedural sólo se ve
+  // si falla la carga del GLB, y ahí importa que el vehículo tenga el volumen y
+  // los nodos correctos, no de qué está hecho.
   const rig = archetype === "buggy"
     ? buildBuggy()
     : archetype === "airboat"
@@ -340,10 +343,11 @@ function bindImportedRig(
         ...animatedVariants(root, "wheel_rear_right", 3, -1, 2),
       ]
     : [];
-  const fans = archetype === "airboat" || archetype === "combineGlider"
-    ? animatedVariants(root, "fan_main", 0, 1, 1)
-    : [];
-  const rudders = archetype === "airboat" || archetype === "combineGlider"
+  const hasFanRig = archetype === "airboat" ||
+    archetype === "combineGlider" ||
+    archetype === "combineSwimmer";
+  const fans = hasFanRig ? animatedVariants(root, "fan_main", 0, 1, 1) : [];
+  const rudders = hasFanRig
     ? [
         ...animatedVariants(root, "rudder_left", 0, 1, 1),
         ...animatedVariants(root, "rudder_right", 1, 1, 1),
@@ -478,7 +482,7 @@ function bindImportedAnchors(
     bindExits(exits, "passenger", root, ["exit_right", "exit_left"]);
     return;
   }
-  if (archetype === "combineGlider") {
+  if (archetype === "combineGlider" || archetype === "combineSwimmer") {
     bindAnchor(seats, "driver", root, "seat_driver");
     bindAnchor(cameras, "driver", root, "camera_driver");
     bindExits(exits, "driver", root, ["exit_left", "exit_right"]);

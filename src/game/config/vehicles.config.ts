@@ -8,6 +8,7 @@ export const VEHICLE_ARCHETYPE_IDS = [
   'helicopter',
   'rebelCrawler',
   'combineGlider',
+  'combineSwimmer',
 ] as const;
 export type VehicleArchetypeId = (typeof VEHICLE_ARCHETYPE_IDS)[number];
 
@@ -247,6 +248,86 @@ const groundCamera = {
   positionDamping: 12,
   rotationDamping: 10,
 } as const;
+
+/**
+ * Chasis del deslizador Combine: todo lo que no es identidad. Lo comparten el
+ * deslizador y el nadador, que son la misma máquina con distinto modelo. Va
+ * extraído y no duplicado a mano porque dos copias de setenta números se
+ * separan en silencio en cuanto alguien ajusta una sola.
+ */
+const combineGliderChassis = {
+  defaultFaction: 'combine',
+  motor: {
+    kind: 'hover',
+    surfaceMode: 'antigrav',
+    hoverHeight: 0.52,
+    thrustForce: 6_500,
+    reverseForce: 3_000,
+    steeringTorque: 3_200,
+    rudderAngle: 0.16,
+    thrustPoint: [0, 0.34, -1.34],
+    lateralDragPoint: [0, 0.05, -0.28],
+    landThrustFactor: 1,
+    planingSpeed: 14,
+    buoyancy: 1.06,
+    waterDrag: 0.18,
+    lateralDrag: 3.4,
+    yawDamping: 2.6,
+    waterBrakeDrag: 5.2,
+    groundDrag: 0.18,
+    uprightTorque: 7_200,
+    uprightDamping: 3_000,
+    hoverSpringLength: 0.16,
+    hoverDamping: 0.2,
+    throttleResponse: 8.5,
+    steeringResponse: 16,
+    lowSpeedSteeringAuthority: 1,
+    lowSpeedSteeringFadeSpeed: 9,
+    probeOffsets: [
+      [0, -0.36, 1.28],
+      [-0.78, -0.36, -0.92],
+      [0.78, -0.36, -0.92],
+    ],
+  },
+  body: {
+    size: [2.2, 1.25, 3.5],
+    colliderCenter: [0, 0.55, 0],
+    centerOfMass: [0, -0.3, -0.08],
+    mass: 680,
+    hullFriction: 0.06,
+  },
+  camera: {
+    ...groundCamera,
+    maxYaw: 1.9,
+    speedFovGain: 11,
+    positionDamping: 10,
+    rotationDamping: 9,
+  },
+  seats: [
+    {
+      id: 'driver',
+      role: 'driver',
+      position: [0, 0.98, -0.08],
+      cameraPosition: [0, 1.5, 0.02],
+      occupantOffset: [0, 0.14, 0],
+      exits: [[-1.48, 0.25, -0.05], [1.48, 0.25, -0.05], [0, 0.25, 2.15]],
+    },
+  ],
+  damageZones: [
+    { id: 'hull', health: 360, damageMultiplier: 0.92 },
+    { id: 'engine', health: 120, damageMultiplier: 1.4, disableAtZero: true },
+    { id: 'steering', health: 90, damageMultiplier: 1.25 },
+    { id: 'fuel', health: 95, damageMultiplier: 1.5 },
+  ],
+  navigation: {
+    surface: 'ground',
+    halfWidth: 1.12,
+    halfLength: 1.78,
+    clearanceHeight: 1.65,
+    minTurnRadius: 3.8,
+    reverseAllowed: true,
+  },
+} satisfies Omit<VehiclePresetDefinition, 'id' | 'archetype' | 'displayName'>;
 
 export const VehiclePresets = {
   buggy: {
@@ -702,80 +783,21 @@ export const VehiclePresets = {
     },
   },
   combineGlider: {
+    ...combineGliderChassis,
     id: 'combineGlider',
     archetype: 'combineGlider',
     displayName: 'Deslizador Combine de reconocimiento',
-    defaultFaction: 'combine',
-    motor: {
-      kind: 'hover',
-      surfaceMode: 'antigrav',
-      hoverHeight: 0.52,
-      thrustForce: 6_500,
-      reverseForce: 3_000,
-      steeringTorque: 3_200,
-      rudderAngle: 0.16,
-      thrustPoint: [0, 0.34, -1.34],
-      lateralDragPoint: [0, 0.05, -0.28],
-      landThrustFactor: 1,
-      planingSpeed: 14,
-      buoyancy: 1.06,
-      waterDrag: 0.18,
-      lateralDrag: 3.4,
-      yawDamping: 2.6,
-      waterBrakeDrag: 5.2,
-      groundDrag: 0.18,
-      uprightTorque: 7_200,
-      uprightDamping: 3_000,
-      hoverSpringLength: 0.16,
-      hoverDamping: 0.2,
-      throttleResponse: 8.5,
-      steeringResponse: 16,
-      lowSpeedSteeringAuthority: 1,
-      lowSpeedSteeringFadeSpeed: 9,
-      probeOffsets: [
-        [0, -0.36, 1.28],
-        [-0.78, -0.36, -0.92],
-        [0.78, -0.36, -0.92],
-      ],
-    },
-    body: {
-      size: [2.2, 1.25, 3.5],
-      colliderCenter: [0, 0.55, 0],
-      centerOfMass: [0, -0.3, -0.08],
-      mass: 680,
-      hullFriction: 0.06,
-    },
-    camera: {
-      ...groundCamera,
-      maxYaw: 1.9,
-      speedFovGain: 11,
-      positionDamping: 10,
-      rotationDamping: 9,
-    },
-    seats: [
-      {
-        id: 'driver',
-        role: 'driver',
-        position: [0, 0.98, -0.08],
-        cameraPosition: [0, 1.5, 0.02],
-        occupantOffset: [0, 0.14, 0],
-        exits: [[-1.48, 0.25, -0.05], [1.48, 0.25, -0.05], [0, 0.25, 2.15]],
-      },
-    ],
-    damageZones: [
-      { id: 'hull', health: 360, damageMultiplier: 0.92 },
-      { id: 'engine', health: 120, damageMultiplier: 1.4, disableAtZero: true },
-      { id: 'steering', health: 90, damageMultiplier: 1.25 },
-      { id: 'fuel', health: 95, damageMultiplier: 1.5 },
-    ],
-    navigation: {
-      surface: 'ground',
-      halfWidth: 1.12,
-      halfLength: 1.78,
-      clearanceHeight: 1.65,
-      minTurnRadius: 3.8,
-      reverseAllowed: true,
-    },
+  },
+  /**
+   * Misma máquina que el deslizador: motor, casco, cámara, asiento, daño y
+   * navegación son copia exacta. Lo único propio es el modelo, que prueba la
+   * variante biomecánica del mismo rol.
+   */
+  combineSwimmer: {
+    ...combineGliderChassis,
+    id: 'combineSwimmer',
+    archetype: 'combineSwimmer',
+    displayName: 'Nadador Combine de transporte',
   },
 } as const satisfies Record<VehiclePresetId, VehiclePresetDefinition>;
 

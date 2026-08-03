@@ -167,6 +167,7 @@ const presetDriverDefaults: Readonly<Partial<Record<VehiclePresetId, VehicleDriv
   airboat: 'steady',
   rebelCrawler: 'cautious',
   combineGlider: 'aggressive',
+  combineSwimmer: 'aggressive',
 };
 
 const presetGunnerDefaults: Readonly<Partial<Record<VehiclePresetId, VehicleGunnerProfileId>>> = {
@@ -174,6 +175,7 @@ const presetGunnerDefaults: Readonly<Partial<Record<VehiclePresetId, VehicleGunn
   airboat: 'militia',
   rebelCrawler: 'militia',
   combineGlider: 'elite',
+  combineSwimmer: 'elite',
   helicopter: 'elite',
 };
 

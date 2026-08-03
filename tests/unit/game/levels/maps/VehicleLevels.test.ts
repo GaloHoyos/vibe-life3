@@ -62,11 +62,11 @@ describe('niveles vehiculares', () => {
     expect(Demo3WhiteoutFlight.nextLevel).toBe('snow-field');
   });
 
-  it('ofrece siete vehículos con IA y diez estacionados en el sandbox', () => {
+  it('ofrece siete vehículos con IA y once estacionados en el sandbox', () => {
     const vehicles = VehicleSandboxLevel.vehicles ?? [];
-    expect(vehicles).toHaveLength(17);
+    expect(vehicles).toHaveLength(18);
     expect(vehicles.filter((vehicle) => vehicle.ai?.enabled)).toHaveLength(7);
-    expect(vehicles.filter((vehicle) => !vehicle.ai?.enabled)).toHaveLength(10);
+    expect(vehicles.filter((vehicle) => !vehicle.ai?.enabled)).toHaveLength(11);
     expect(new Set(vehicles.map((vehicle) => vehicle.presetId))).toEqual(
       new Set([
         'buggy',
@@ -75,6 +75,7 @@ describe('niveles vehiculares', () => {
         'helicopterFree',
         'rebelCrawler',
         'combineGlider',
+        'combineSwimmer',
       ]),
     );
     expect(vehicles.every((vehicle) => vehicle.portalTraversal === 'blocked')).toBe(true);
@@ -111,7 +112,7 @@ describe('niveles vehiculares', () => {
     }, {})).toEqual({
       player: 4,
       resistance: 7,
-      combine: 6,
+      combine: 7,
     });
     expect(vehicles.find((vehicle) => vehicle.id === 'vs-player-buggy')).toMatchObject({
       faction: 'resistance',
@@ -192,6 +193,7 @@ describe('niveles vehiculares', () => {
       'airboat',
       'rebelCrawler',
       'combineGlider',
+      'combineSwimmer',
     ]);
     const navigation = bakeVehicleNavigation(input);
     const planner = new VehicleNavigationPlanner(navigation, input.profiles);

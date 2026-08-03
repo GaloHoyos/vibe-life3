@@ -137,7 +137,8 @@ export class VehicleAudioSystem {
         cabin?.setLowpassFrequency(listenerInside ? 4_600 : 13_000);
         break;
       }
-      case "combineGlider": {
+      case "combineGlider":
+      case "combineSwimmer": {
         const hover = rig.secondary[0];
         hover?.setVolume(
           running
@@ -261,7 +262,10 @@ function layerIds(archetype: VehicleArchetypeId): {
         engine: "vehicles.helicopter.rotor",
         secondary: ["vehicles.helicopter.cabin"],
       };
+    // El nadador comparte las capas del deslizador: es la misma máquina con
+    // otro modelo, así que hasta que tenga voz propia suena igual.
     case "combineGlider":
+    case "combineSwimmer":
       return {
         engine: "vehicles.combineGlider.engine",
         secondary: ["vehicles.combineGlider.hover"],
@@ -275,7 +279,7 @@ function loopOptions(
 ) {
   const maxDistance = archetype === "helicopter"
     ? 95
-    : archetype === "combineGlider"
+    : archetype === "combineGlider" || archetype === "combineSwimmer"
       ? 58
       : 48;
   return {

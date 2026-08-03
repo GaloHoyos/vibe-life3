@@ -1513,7 +1513,10 @@ function damageHitboxes(
         { zone: "steering", position: [0.48, 1.42, 1.05], size: [0.55, 0.58, 0.62] },
         { zone: "fuel", position: [-0.78, 1.08, -1.45], size: [0.5, 0.72, 0.82] },
       ];
+    // Mismas cajas que el deslizador: el nadador ocupa el mismo casco, sólo
+    // que el injerto va donde el otro tiene la turbina.
     case "combineGlider":
+    case "combineSwimmer":
       return [
         { zone: "engine", position: [0, 0.92, -1.05], size: [1.25, 0.62, 0.85] },
         { zone: "steering", position: [0, 1.08, 0.42], size: [0.72, 0.5, 0.52] },

@@ -9,6 +9,7 @@ const BUDGETS = {
   helicopter: { triangles: 125_000, draws: 24, bytes: 14 * 1024 * 1024 },
   rebelCrawler: { triangles: 90_000, draws: 18, bytes: 9 * 1024 * 1024 },
   combineGlider: { triangles: 85_000, draws: 18, bytes: 9 * 1024 * 1024 },
+  combineSwimmer: { triangles: 85_000, draws: 18, bytes: 9 * 1024 * 1024 },
 } as const;
 
 const REQUIRED_COMMON_NODES = [
@@ -36,6 +37,7 @@ describe("vehicle asset contracts", () => {
       "helicopter",
       "rebelCrawler",
       "combineGlider",
+      "combineSwimmer",
     ]);
 
     for (const vehicle of manifest.vehicles) {
