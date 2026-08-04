@@ -78,6 +78,13 @@ const MAX_HEAD_TILT = 0.34;
  * para llegar; con tope cuelgan hacia donde pueden, que es lo que hace la carne.
  */
 const LIMP_REACH = 1.15;
+/**
+ * Quiebre máximo en la junta de una antena, en radianes (~14°). Es un límite de
+ * la GEOMETRÍA y no del gesto: las varillas son finas y se encuentran en un
+ * punto, así que pasado cierto ángulo el nudillo deja de tapar la cuña y la
+ * antena se lee cortada en dos.
+ */
+const MAX_JOINT_BEND = 0.25;
 
 const TMP_DOWN = new Vector3();
 const TMP_ROTATION = new Quaternion();
@@ -572,15 +579,18 @@ function updateCorpse(delta: number, rig: CorpseRig): void {
       LIMP_REACH,
     ) * slack;
     const sweep = antenna.sweep.step(target, delta);
-    const tipSweep = antenna.tipSweep.step(target * 1.3, delta);
     const sway = antenna.sway.step(swing, delta);
+    // Misma regla que en vida: la punta persigue la orientación de la base y su
+    // rotación local es sólo lo que le falta para alcanzarla.
+    const tipSweep = jointAngle(antenna.tipSweep.step(sweep, delta) - sweep);
+    const tipSway = jointAngle(antenna.tipSway.step(sway, delta) - sway);
     antenna.base.forEach((node) => {
       node.node.rotation.x = node.restX + sweep;
       node.node.rotation.y = node.restY + sway;
     });
     antenna.tip.forEach((node) => {
       node.node.rotation.x = node.restX + tipSweep;
-      node.node.rotation.y = node.restY + sway * 0.7;
+      node.node.rotation.y = node.restY + tipSway;
     });
   });
   rig.jaws.forEach((entry) => {
@@ -723,6 +733,11 @@ function limpAngle(
   return MathUtils.lerp(current, target, 1 - Math.exp(-delta * 4.5));
 }
 
+/** Recorta el quiebre de una junta a lo que el nudillo puede tapar. */
+function jointAngle(value: number): number {
+  return MathUtils.clamp(value, -MAX_JOINT_BEND, MAX_JOINT_BEND);
+}
+
 function decay(current: number, rest: number, delta: number): number {
   return MathUtils.lerp(current, rest, 1 - Math.exp(-delta * 3));
 }
@@ -809,8 +824,15 @@ function updateAntennae(
       drive.curiosity * drive.gazeYaw * 0.42;
     const sweep = antenna.sweep.step(sweepTarget, delta);
     const sway = antenna.sway.step(swayTarget, delta);
-    const tipSweep = antenna.tipSweep.step(sweep * 0.72, delta);
-    const tipSway = antenna.tipSway.step(sway * 0.68, delta);
+    // La punta persigue la MISMA orientación que la base, con un resorte más
+    // blando: su rotación local es sólo lo que le falta para alcanzarla.
+    //
+    // Antes se le sumaba encima una fracción de la rotación de la base, así que
+    // en reposo el codo quedaba abierto de forma permanente: dos varillas finas
+    // que se tocan en un punto abren una cuña y la antena se ve partida en dos.
+    // Persiguiendo, el codo sólo existe mientras dura el latigazo.
+    const tipSweep = jointAngle(antenna.tipSweep.step(sweep, delta) - sweep);
+    const tipSway = jointAngle(antenna.tipSway.step(sway, delta) - sway);
     antenna.base.forEach((node) => {
       node.node.rotation.x = node.restX + sweep;
       node.node.rotation.y = node.restY + sway;

@@ -3193,6 +3193,19 @@ function swimmerAntennaParts(
       scale: [0.8, 0.8, 1.5],
       tile: 1,
     });
+  } else {
+    // Nudillo donde encastra el segmento siguiente. Sin él las dos varillas se
+    // encuentran en un punto y cualquier quiebre abre una cuña: la antena se ve
+    // partida en dos. Es además lo que hace que la junta lea como articulación.
+    parts.push({
+      geometry: new SphereGeometry(
+        radius * 1.45,
+        segments,
+        Math.max(4, Math.floor(segments / 2)),
+      ),
+      position: [0, 0, length],
+      tile: 3,
+    });
   }
   return parts;
 }

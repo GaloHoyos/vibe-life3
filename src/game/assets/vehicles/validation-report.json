@@ -130,15 +130,15 @@
     },
     {
       "id": "combineSwimmer",
-      "bytes": 1031508,
+      "bytes": 1032344,
       "budgetBytes": 9437184,
       "lods": [
         {
-          "triangles": 14424,
+          "triangles": 14532,
           "draws": 24
         },
         {
-          "triangles": 4972,
+          "triangles": 5044,
           "draws": 22
         },
         {

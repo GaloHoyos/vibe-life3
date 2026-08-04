@@ -192,6 +192,35 @@ describe("CreatureVehicleAnimator", () => {
     noticing.dispose();
   });
 
+  it("no abre la junta de la antena más de lo que el nudillo puede tapar", () => {
+    const { root, body } = swimmerRig();
+    const animator = createCreatureVehicleAnimator(root, body);
+    const tip = root.getObjectByName("swimmer_antenna_left_tip")!;
+    // Mismo quiebre de reposo que el GLB: la antena ya viene doblada de fábrica.
+    const restX = tip.rotation.x;
+    let worst = 0;
+    const watch = (state: CreatureVehicleState, frames: number) => {
+      for (let index = 0; index < frames; index += 1) {
+        animator.update(1 / 60, state);
+        worst = Math.max(worst, Math.abs(tip.rotation.x - restX));
+      }
+    };
+
+    // Los tres casos que abrían el codo: mirar a alguien de costado, frenar de
+    // golpe y recibir un empujón. Antes la punta sumaba encima una fracción de
+    // la rotación de la base y la antena se veía partida en dos.
+    watch({ ...IDLE, gazeYaw: 0.9, gazePitch: -0.2, attention: 1 }, 240);
+    watch(moving(26, { engine01: 1, occupied: true }), 180);
+    watch(moving(0, { occupied: true }), 120);
+    animator.startle(1.5);
+    watch({ ...IDLE, localVelocity: new Vector3(9, 3, 0), speed: 9 }, 120);
+    watch({ ...IDLE, dead: true }, 240);
+
+    expect(worst).toBeLessThanOrEqual(0.25 + 1e-6);
+
+    animator.dispose();
+  });
+
   it("acusa un empujón en el cuerpo sin torcerle el horizonte al jinete", () => {
     const { root, body } = swimmerRig();
     const animator = createCreatureVehicleAnimator(root, body);
@@ -315,7 +344,10 @@ function swimmerRig(): { root: Object3D; body: Object3D } {
   for (const side of ["left", "right"]) {
     const base = node(`swimmer_antenna_${side}`);
     base.rotation.set(-0.5, side === "left" ? -0.3 : 0.3, 0);
-    base.add(node(`swimmer_antenna_${side}_tip`));
+    const tip = node(`swimmer_antenna_${side}_tip`);
+    // Mismo quiebre de fábrica que el GLB: la junta ya arranca doblada.
+    tip.rotation.x = -0.24;
+    base.add(tip);
     head.add(base);
     for (let index = 0; index < 3; index += 1) {
       const oar = node(`swimmer_oar_${side}_${index}`);
