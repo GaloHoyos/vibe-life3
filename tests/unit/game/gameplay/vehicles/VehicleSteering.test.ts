@@ -203,6 +203,7 @@ async function spawn(
       onCrashStarted: vi.fn(),
       onCrashFinished: vi.fn(),
       onDestroyed: vi.fn(),
+      onWreckage: vi.fn(),
     },
   );
   physics.updateQueryPipeline();

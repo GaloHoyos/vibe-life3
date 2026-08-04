@@ -130,33 +130,33 @@
     },
     {
       "id": "combineSwimmer",
-      "bytes": 968252,
+      "bytes": 1031508,
       "budgetBytes": 9437184,
       "lods": [
         {
-          "triangles": 7004,
-          "draws": 9
+          "triangles": 14424,
+          "draws": 24
         },
         {
-          "triangles": 3232,
-          "draws": 9
+          "triangles": 4972,
+          "draws": 22
         },
         {
-          "triangles": 1704,
+          "triangles": 1656,
           "draws": 7
         }
       ],
       "khronos": {
         "errors": 0,
         "warnings": 0,
-        "infos": 35,
+        "infos": 33,
         "hints": 0
       }
     }
   ],
   "audio": {
-    "bytes": 1841748,
+    "bytes": 2326980,
     "budgetBytes": 12582912,
-    "files": 13
+    "files": 16
   }
 }

@@ -221,8 +221,13 @@ describe("estabilidad física de los vehículos", () => {
     });
     simulate(rig, 0.6);
     expect(speedAfterOneSecond).toBeGreaterThan(6.5);
-    expect(Math.abs(turn.yaw)).toBeGreaterThan(0.35);
-    expect(Math.abs(turn.yaw)).toBeLessThan(0.65);
+    // El piso es que doble de verdad y el techo es que no trompee: con el par
+    // de timón viejo el máximo era 0.65 rad/s y el casco describía veintiséis
+    // metros de radio a fondo, que se maneja como un barco y no como algo que
+    // esquiva. Lo que sigue defendiendo la prueba es la parte de "con
+    // precisión": deriva acotada y guiñada que se apaga al soltar.
+    expect(Math.abs(turn.yaw)).toBeGreaterThan(0.6);
+    expect(Math.abs(turn.yaw)).toBeLessThan(1.3);
     expect(turn.maxSlipDegrees).toBeLessThan(15);
     expect(
       Math.abs(rig.vehicle.getTelemetry().state.angularVelocity.y),
@@ -1008,6 +1013,7 @@ async function spawn(
         onCrashStarted: vi.fn(),
         onCrashFinished: vi.fn(),
         onDestroyed: vi.fn(),
+        onWreckage: vi.fn(),
       },
     ),
     impacts: 0,

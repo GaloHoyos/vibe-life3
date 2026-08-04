@@ -189,6 +189,61 @@ const AUDIO_LAYERS: readonly AudioLayerSpec[] = [
           periodicNoise(phase, 67) * 0.06,
       ),
   },
+  /**
+   * Voz del nadador. Es un bicho, así que la capa primaria no es un motor sino
+   * su respiración: el sistema de audio le sube el `playbackRate` con las
+   * revoluciones y lo que se oye es un animal jadeando, no una turbina
+   * acelerando. Sin esto el resto del rework no cierra — un bicho que suena a
+   * ventilador vuelve a leerse como máquina apenas arranca.
+   */
+  {
+    fileName: "combine-swimmer-breath-loop.wav",
+    durationSeconds: 5,
+    loop: true,
+    synth: (time, phase) => {
+      // Dos ciclos por vuelta: inhalación corta y exhalación larga, que es el
+      // reparto que distingue una respiración de un fuelle.
+      const cycle = (phase * 2) % 1;
+      const inhale = Math.exp(-Math.pow((cycle - 0.16) / 0.12, 2));
+      const exhale = Math.exp(-Math.pow((cycle - 0.56) / 0.25, 2));
+      const air = periodicNoise(phase, 97) * (inhale * 0.95 + exhale * 0.66);
+      // Gruñido subarmónico: el volumen de cuerpo que hay detrás del aire.
+      const growl =
+        Math.sin(Math.PI * 2 * 31 * time + Math.sin(Math.PI * 2 * phase) * 1.2) *
+        (0.15 + exhale * 0.19);
+      const rattle = Math.sin(Math.PI * 2 * 62 * time) * exhale * 0.09;
+      return softClip(air * 0.52 + growl + rattle);
+    },
+  },
+  {
+    fileName: "combine-swimmer-graft-loop.wav",
+    durationSeconds: 3,
+    loop: true,
+    // La mitad máquina: el injerto antigravedad zumbando dentro de la carne.
+    // Va más grave y más sucio que el del deslizador porque suena amortiguado
+    // por el cuerpo que lo rodea.
+    synth: (time, phase) =>
+      softClip(
+        Math.sin(Math.PI * 2 * 186 * time + Math.sin(phase * Math.PI * 4) * 0.9) * 0.1 +
+          Math.sin(Math.PI * 2 * 93 * time) * 0.07 +
+          periodicNoise(phase, 71) * 0.07,
+      ),
+  },
+  {
+    fileName: "combine-swimmer-strain-loop.wav",
+    durationSeconds: 3,
+    loop: true,
+    // Chillido de esfuerzo: sólo se oye cuando se lo fuerza. Es la capa que
+    // convierte acelerar en maltratar a algo.
+    synth: (time, phase) => {
+      const wobble = Math.sin(Math.PI * 2 * phase * 3);
+      return softClip(
+        Math.sin(Math.PI * 2 * 194 * time + wobble * 2.4) * 0.2 +
+          Math.sin(Math.PI * 2 * 291 * time + wobble) * 0.11 +
+          periodicNoise(phase, 89) * 0.1,
+      );
+    },
+  },
   {
     fileName: "vehicle-alarm-loop.wav",
     durationSeconds: 2,

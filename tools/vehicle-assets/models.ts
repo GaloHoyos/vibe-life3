@@ -254,21 +254,33 @@ const COMBINE_GLIDER = {
 } as const;
 
 /**
- * Nadador Combine: la misma máquina que el deslizador resuelta como criatura
- * reconvertida. Comparte preset, así que comparte casco (`vehicles.config.ts`:
- * body.size [2.2, 1.25, 3.5], colliderCenter.y 0.55) y las mismas anclas de
- * asiento, cámara y salidas. El disco pectoral ocupa el ancho del collider y la
- * cola sale por detrás, donde el deslizador tiene el núcleo antigravedad.
+ * Nadador Combine: criatura reconvertida sobre el casco del deslizador
+ * (`vehicles.config.ts`: body.size [2.2, 1.25, 3.5], colliderCenter.y 0.55).
+ * El disco pectoral ocupa el ancho del collider y la cola sale por detrás,
+ * donde el deslizador tiene el núcleo antigravedad.
+ *
+ * La lectura buscada es híbrida: disco de manta para la silueta de nadador y
+ * tórax de artrópodo para el eje central, que es de donde cuelgan los remos.
+ * Todo lo que se mueve vive fuera de la piel, en nodos propios, porque una
+ * malla horneada no puede animarse por más orgánico que sea su contorno.
  */
 const COMBINE_SWIMMER = {
-  halfWidth: 1.08,
   noseZ: 1.6,
-  tailZ: -1.9,
-  bellyY: 0.32,
-  backY: 0.88,
-  /** Injerto de propulsión, grapado en la base de la cola. */
-  graftY: 0.66,
-  graftZ: -1.12,
+  /**
+   * Collar del injerto: el anillo antigravedad clampeado en la base de la cola.
+   * Es rígido a propósito y la cola sale ondulando de adentro. Esa es la
+   * imagen: la máquina agarra la carne y la carne se retuerce igual.
+   */
+  graftY: 0.6,
+  graftZ: -1.16,
+  /** Pivote del cuello: de acá gira la cabeza hacia donde mira el jinete. */
+  headY: 0.55,
+  headZ: 1.05,
+  /** Cota del vientre donde se atornillan las cuencas de los remos. */
+  oarY: 0.36,
+  oarX: 0.6,
+  /** Z de cada par de remos, de proa a popa. La IA de la ola los usa en orden. */
+  oarZ: [0.52, 0.04, -0.46],
 } as const;
 
 function createBladeGeometry(
@@ -2979,21 +2991,35 @@ function buildCombineGlider(context: BuildContext): void {
  * Contorno del cuerpo: secciones de popa a proa. El rombo de la manta sale de
  * cómo crece y decrece el semiancho, y el canto afilado del ala sale solo,
  * porque la altura de cada sección se anula en el borde.
+ *
+ * Termina en punta en −1.5 en vez de seguir hasta la cola: de ahí para atrás la
+ * cola es articulada y vive en sus propios nodos. Si la piel llegara hasta el
+ * final, la parte que más tiene que ondular sería justo la que no puede.
  */
 const COMBINE_SWIMMER_SECTIONS: readonly LoftSection[] = [
-  { z: -1.94, halfWidth: 0, top: 0, bottom: 0 },
-  { z: -1.68, halfWidth: 0.07, top: 0.05, bottom: 0.04, y: 0.56 },
-  { z: -1.34, halfWidth: 0.14, top: 0.09, bottom: 0.07, y: 0.56 },
-  { z: -1.06, halfWidth: 0.3, top: 0.14, bottom: 0.1, y: 0.55 },
-  { z: -0.78, halfWidth: 0.6, top: 0.18, bottom: 0.13, y: 0.54 },
-  { z: -0.5, halfWidth: 0.9, top: 0.21, bottom: 0.15, y: 0.53 },
-  { z: -0.22, halfWidth: 1.08, top: 0.23, bottom: 0.17, y: 0.53 },
-  { z: 0.16, halfWidth: 0.96, top: 0.26, bottom: 0.18, y: 0.53 },
-  { z: 0.56, halfWidth: 0.78, top: 0.26, bottom: 0.17, y: 0.53 },
-  { z: 0.96, halfWidth: 0.57, top: 0.23, bottom: 0.15, y: 0.52 },
-  { z: 1.3, halfWidth: 0.37, top: 0.18, bottom: 0.11, y: 0.5 },
-  { z: 1.54, halfWidth: 0.2, top: 0.13, bottom: 0.07, y: 0.48 },
-  { z: 1.7, halfWidth: 0, top: 0, bottom: 0 },
+  // La popa cierra en 8 cm, casi a tope plano: el afinado largo dejaba un
+  // cuello de lápiz del que la cola articulada salía como un remolque
+  // enganchado. Con la raíz gorda, el primer tramo de cola nace de adentro de
+  // la piel y la junta desaparece.
+  { z: -1.4, halfWidth: 0, top: 0, bottom: 0 },
+  { z: -1.32, halfWidth: 0.21, top: 0.15, bottom: 0.12, y: 0.6 },
+  { z: -1.14, halfWidth: 0.33, top: 0.18, bottom: 0.14, y: 0.59 },
+  { z: -0.9, halfWidth: 0.5, top: 0.21, bottom: 0.16, y: 0.58 },
+  { z: -0.58, halfWidth: 0.73, top: 0.24, bottom: 0.18, y: 0.57 },
+  { z: -0.24, halfWidth: 0.93, top: 0.27, bottom: 0.2, y: 0.56 },
+  { z: 0.12, halfWidth: 1.05, top: 0.28, bottom: 0.2, y: 0.55 },
+  // Envergadura máxima al 40 % de la eslora contando desde la proa: es donde
+  // la tiene una manta, y es lo que hace que el borde de ataque salga flechado
+  // en vez de dejar el rombo simétrico que leía como pastilla.
+  { z: 0.44, halfWidth: 1.08, top: 0.27, bottom: 0.19, y: 0.55 },
+  { z: 0.78, halfWidth: 0.96, top: 0.25, bottom: 0.17, y: 0.55 },
+  // El disco cierra en el cuello y la cabeza sale por delante en su propio
+  // nodo. Llevando la piel hasta la punta, al girar la cabeza el cráneo salía
+  // del morro y dejaba una cuña de piel apuntando al frente. Es además la
+  // planta correcta de una manta: los lóbulos van por delante del ala.
+  { z: 1.04, halfWidth: 0.73, top: 0.22, bottom: 0.14, y: 0.54 },
+  { z: 1.22, halfWidth: 0.45, top: 0.17, bottom: 0.1, y: 0.53 },
+  { z: 1.34, halfWidth: 0, top: 0, bottom: 0 },
 ];
 
 /**
@@ -3002,6 +3028,247 @@ const COMBINE_SWIMMER_SECTIONS: readonly LoftSection[] = [
  * bicho entero se lee como un tubo.
  */
 const COMBINE_SWIMMER_SECTION_SHAPE = 1.05;
+
+/**
+ * Cabeza, en su propio espacio con el origen en el cuello. `noseReach` es lo
+ * que sobresale hacia proa desde el pivote: la geometría se escribe relativa
+ * para que mover el pivote no obligue a reescribir cada pieza.
+ */
+function swimmerHeadParts(
+  segments: number,
+  detailed: boolean,
+  noseReach: number,
+): GeometryPart[] {
+  const parts: GeometryPart[] = [
+    // Cráneo entre los lóbulos.
+    {
+      geometry: new SphereGeometry(0.5, segments, Math.max(6, segments / 2)),
+      position: [0, -0.05, 0.31],
+      scale: [0.74, 0.3, 0.62],
+      rotation: [0.14, 0, 0],
+      tile: 0,
+    },
+    // Lóbulos cefálicos: los dos cuernos de la raya, separados por el vano de
+    // la boca. Sin ellos el frente es un borde de ataque y la criatura se lee
+    // como un ala suelta.
+    ...[-1, 1].map((side) => ({
+      geometry: new SphereGeometry(0.5, segments, Math.max(6, segments / 2)),
+      position: [side * 0.27, -0.01, noseReach - 0.04] as Vec3,
+      scale: [0.19, 0.16, 0.44],
+      rotation: [0.26, side * 0.34, 0] as Euler,
+      tile: 0 as AtlasTile,
+    })),
+    // Paladar: el techo de la boca, contra el que se recorta la mandíbula.
+    { geometry: chamferBox(0.86, 0.09, 0.26, 0.03), position: [0, -0.13, 0.27], rotation: [0.1, 0, 0], tile: 1 },
+    // Visera del sensor: la placa encajada sobre la frente, con el hueco oscuro
+    // del que sale la ranura luminosa. Baja y angosta: a 0.94 de ancho tapaba
+    // la cabeza entera y desde arriba el bicho era una caja negra con antenas.
+    {
+      geometry: chamferWedge({
+        length: 0.34,
+        height: 0.09,
+        frontWidth: 0.62,
+        rearWidth: 0.48,
+        chamfer: 0.02,
+      }),
+      position: [0, 0.24, 0.25],
+      rotation: [-0.42, 0, 0],
+      tile: 2,
+    },
+    { geometry: chamferBox(0.58, 0.09, 0.13, 0.02), position: [0, 0.17, 0.29], rotation: [-0.46, 0, 0], tile: 3 },
+  ];
+  if (detailed) {
+    parts.push(
+      // Collar del cuello: la abrazadera sobre la que pivotea la cabeza. Tapa
+      // la junta con el cuerpo cuando gira.
+      swimmerClampPart([0, -0.02, 0.02], 0.34, 0.24, 0.03, segments, 2),
+      { geometry: rivetRow([-0.24, 0.2, 0.34], [0.24, 0.2, 0.34], 5, 0.014), tile: 2 },
+    );
+  }
+  return parts;
+}
+
+/**
+ * Remo ventral: cuenca metálica atornillada al vientre, brazo quitinoso y
+ * paleta membranosa. El codo va horneado en la pose porque el nodo gira sólo
+ * desde el hombro; un remo recto se lee como varilla, y con el quiebre ya lee
+ * como pata aunque el runtime le mueva un único eje.
+ */
+function swimmerOarParts(
+  segments: number,
+  detailed: boolean,
+): GeometryPart[] {
+  const parts: GeometryPart[] = [
+    // Cuenca del injerto: el punto donde la pata sale de la carne.
+    {
+      geometry: new CylinderGeometry(0.105, 0.082, 0.15, segments),
+      position: [0, -0.05, 0],
+      tile: 2,
+    },
+    // Fémur: baja hacia popa. Grueso a propósito —el primer intento salió de
+    // 5 cm y a distancia de juego leía como alambre, no como pata—.
+    {
+      geometry: new CylinderGeometry(0.078, 0.055, 0.28, segments),
+      position: [0, -0.22, -0.04],
+      rotation: [0.22, 0, 0],
+      tile: 0,
+    },
+    // Articulación del codo: sin un bulto en el quiebre, los dos tramos leen
+    // como un solo caño doblado.
+    {
+      geometry: new SphereGeometry(0.068, segments, Math.max(4, segments / 2)),
+      position: [0, -0.35, -0.09],
+      tile: 2,
+    },
+    // Paleta: ancha, aplanada y quebrada hacia atrás. Es lo que empuja y lo
+    // único del remo que se ve de lejos.
+    {
+      geometry: chamferWedge({
+        length: 0.34,
+        height: 0.055,
+        frontWidth: 0.26,
+        rearWidth: 0.12,
+        chamfer: 0.018,
+      }),
+      position: [0, -0.46, -0.19],
+      rotation: [1.05, 0, 0],
+      tile: 3,
+    },
+  ];
+  if (detailed) {
+    parts.push(
+      // Anillo de sutura: la costura donde el implante muerde la carne.
+      {
+        geometry: new TorusGeometry(0.11, 0.019, 5, segments),
+        position: [0, 0.015, 0],
+        rotation: [Math.PI / 2, 0, 0],
+        tile: 3,
+      },
+      // Nervadura central de la paleta.
+      {
+        geometry: new CylinderGeometry(0.02, 0.012, 0.3, 5),
+        position: [0, -0.46, -0.19],
+        rotation: [1.05, 0, 0],
+        tile: 0,
+      },
+    );
+  }
+  return parts;
+}
+
+/**
+ * Segmento de antena: tubo cónico sobre +Z con anillos quitinosos. El eje +Z
+ * importa porque la cadena se encastra tip sobre base, así que cada nodo hijo
+ * arranca donde termina la geometría del padre.
+ */
+function swimmerAntennaParts(
+  length: number,
+  radius: number,
+  segments: number,
+  rings: number,
+  tipBulb: boolean,
+): GeometryPart[] {
+  const parts: GeometryPart[] = [
+    {
+      geometry: new CylinderGeometry(radius * 0.7, radius, length, segments),
+      position: [0, 0, length / 2],
+      rotation: [Math.PI / 2, 0, 0],
+      tile: 0,
+    },
+  ];
+  for (let index = 0; index < rings; index += 1) {
+    const t = (index + 0.7) / (rings + 0.4);
+    parts.push({
+      geometry: new TorusGeometry(radius * 0.95, radius * 0.3, 4, segments),
+      position: [0, 0, length * t],
+      tile: 3,
+    });
+  }
+  if (tipBulb) {
+    // Bulbo sensor en la punta: es lo que hace que la antena lea como órgano y
+    // no como cable suelto, y le da masa visible al latigazo.
+    parts.push({
+      geometry: new SphereGeometry(radius * 1.5, segments, Math.max(4, segments / 2)),
+      position: [0, 0, length],
+      scale: [0.8, 0.8, 1.5],
+      tile: 1,
+    });
+  }
+  return parts;
+}
+
+/**
+ * Abrazadera: anillo elíptico que envuelve la sección del cuerpo a esa altura.
+ *
+ * Reemplaza a las placas planas apoyadas sobre el lomo. Una chapa apoyada se
+ * lee como carrocería por más remaches que tenga; un aro que sigue la curva se
+ * lee como algo que aprieta a un ser vivo, que es la diferencia entre montar
+ * blindaje y hacer una conversión Combine.
+ */
+function swimmerClampPart(
+  position: Vec3,
+  halfWidth: number,
+  halfHeight: number,
+  thickness: number,
+  segments: number,
+  tile: AtlasTile,
+): GeometryPart {
+  const radius = 1;
+  return {
+    geometry: new TorusGeometry(radius, thickness, 5, Math.max(8, segments)),
+    position,
+    scale: [halfWidth, halfHeight, 1],
+    tile,
+  };
+}
+
+/**
+ * Segmento de cola sobre −Z. Interpolado como el cuerpo y no como cuña: una
+ * cuña chaflanada colgando de la popa leía como un cajón remolcado, mientras
+ * que la superficie continua se afina igual que la piel de la que sale.
+ */
+function swimmerTailParts(
+  length: number,
+  frontHalfWidth: number,
+  rearHalfWidth: number,
+  segments: number,
+  band: boolean,
+): GeometryPart[] {
+  const steps = 4;
+  // Secciones en Z creciente: `loftedBody` deriva las normales del orden de los
+  // anillos, y al revés el tramo sale con las caras invertidas (invisible).
+  const sections: LoftSection[] = [{ z: -length - 0.02, halfWidth: 0, top: 0, bottom: 0 }];
+  for (let index = 0; index <= steps; index += 1) {
+    const t = index / steps;
+    const halfWidth = rearHalfWidth + (frontHalfWidth - rearHalfWidth) * t;
+    sections.push({
+      z: -length * (1 - t),
+      halfWidth,
+      top: halfWidth * 0.9,
+      bottom: halfWidth * 0.72,
+    });
+  }
+  const parts: GeometryPart[] = [
+    {
+      geometry: loftedBody(sections, Math.max(8, segments * 2), 1),
+      tile: 0,
+    },
+  ];
+  if (band) {
+    const bandHalfWidth = frontHalfWidth * 0.72 + rearHalfWidth * 0.28;
+    parts.push(
+      swimmerClampPart(
+        [0, 0, -length * 0.3],
+        bandHalfWidth * 1.12,
+        bandHalfWidth * 1.02,
+        0.026,
+        segments,
+        2,
+      ),
+    );
+  }
+  return parts;
+}
 
 function buildCombineSwimmerLod(
   context: BuildContext,
@@ -3013,12 +3280,13 @@ function buildCombineSwimmerLod(
   const suffix = lod === 0 ? "" : `_lod${lod}`;
   const detailed = lod === 0;
   const segments = lod === 0 ? 18 : lod === 1 ? 10 : 6;
-  const { noseZ, bellyY, graftY, graftZ } = COMBINE_SWIMMER;
+  const articulated = lod < 2;
+  const { noseZ, graftY, graftZ, oarY, oarX, oarZ } = COMBINE_SWIMMER;
   const bodyParts: GeometryPart[] = [
-    // Cuerpo entero en una sola superficie interpolada: disco pectoral, lomo y
-    // cola salen de la misma piel, sin juntas ni facetas. Armado con cuñas y
-    // cajas —aunque el contorno en planta fuera el correcto— el bicho se leía
-    // siempre como un casco facetado.
+    // Piel en una sola superficie interpolada: disco pectoral, lomo y tórax
+    // salen de la misma malla, sin juntas ni facetas. Armado con cuñas y cajas
+    // —aunque el contorno en planta fuera el correcto— el bicho se leía siempre
+    // como un casco facetado.
     {
       geometry: loftedBody(
         COMBINE_SWIMMER_SECTIONS,
@@ -3027,15 +3295,16 @@ function buildCombineSwimmerLod(
       ),
       tile: 0,
     },
-    // Lomo: el bulto sobre el que va atado el arnés.
+    // Tórax de artrópodo: el lomo que se levanta sobre el eje del disco. Es lo
+    // que separa el híbrido de una manta pura y de donde cuelgan los remos.
     {
       geometry: new SphereGeometry(0.5, segments, Math.max(6, segments / 2)),
-      position: [0, 0.63, 0.16],
-      scale: [0.86, 0.34, 1.7],
+      position: [0, 0.64, 0.12],
+      scale: [0.8, 0.4, 1.66],
       tile: 0,
     },
-    // Panza clara: la misma piel, apenas encogida y hundida, recortada contra
-    // el lomo oscuro. Es la señal de que es un bicho de agua.
+    // Carne expuesta del vientre: piel encogida y hundida, pálida como la de un
+    // Consejero. Es la mitad viva del contraste contra el implante.
     {
       geometry: loftedBody(
         COMBINE_SWIMMER_SECTIONS.map((section) => ({
@@ -3050,174 +3319,203 @@ function buildCombineSwimmerLod(
       ),
       tile: 1,
     },
-    // Hocico entre los lóbulos, con el reborde de la boca.
+    // Cuello: el tramo de carne que queda entre el disco y la cabeza móvil.
+    // Sin él, girar la cabeza abre un hueco en la unión.
     {
       geometry: new SphereGeometry(0.5, segments, Math.max(6, segments / 2)),
-      position: [0, 0.47, 1.4],
-      scale: [0.72, 0.28, 0.6],
-      rotation: [0.14, 0, 0],
+      position: [0, 0.52, 1.06],
+      scale: [0.62, 0.34, 0.46],
       tile: 0,
     },
-    // Lóbulos cefálicos: los dos cuernos de la raya, separados por el vano de
-    // la boca. Sin ellos el frente es un borde de ataque y la criatura se lee
-    // como un ala suelta.
-    ...[-1, 1].map((side) => ({
-      geometry: new SphereGeometry(0.5, segments, Math.max(6, segments / 2)),
-      position: [side * 0.26, 0.52, noseZ + 0.06] as Vec3,
-      scale: [0.19, 0.15, 0.46],
-      rotation: [0.26, side * 0.34, 0] as Euler,
-      tile: 0 as AtlasTile,
-    })),
-    // Boca ventral abierta, con el reborde de cartílago.
-    { geometry: chamferBox(0.94, 0.13, 0.22, 0.03), position: [0, 0.38, 1.34], rotation: [0.1, 0, 0], tile: 3 },
-    { geometry: chamferBox(1.0, 0.07, 0.1, 0.02), position: [0, 0.32, 1.44], rotation: [0.2, 0, 0], tile: 1 },
-    // Cola: dos tramos que se afinan y el látigo.
-    {
-      geometry: chamferWedge({
-        length: 0.72,
-        height: 0.34,
-        frontWidth: 0.52,
-        rearWidth: 0.34,
-        topFrontWidth: 0.46,
-        topRearWidth: 0.28,
-        chamfer: 0.04,
-      }),
-      position: [0, 0.58, -1.16],
-      tile: 0,
-    },
-    {
-      geometry: chamferWedge({
-        length: 0.62,
-        height: 0.22,
-        frontWidth: 0.3,
-        rearWidth: 0.15,
-        topFrontWidth: 0.26,
-        topRearWidth: 0.12,
-        chamfer: 0.03,
-      }),
-      position: [0, 0.56, -1.58],
-      rotation: [0.07, 0, 0],
-      tile: 0,
-    },
-    // Collar del injerto: donde termina la carne y arranca el implante.
-    { geometry: new TorusGeometry(0.3, 0.07, 7, segments), position: [0, graftY, graftZ + 0.1], tile: 2 },
-    { geometry: new CylinderGeometry(0.28, 0.33, 0.16, segments), position: [0, graftY, graftZ + 0.22], rotation: [Math.PI / 2, 0, 0], tile: 2 },
-    // Visera del sensor: la placa que le encajaron sobre la frente, con el
-    // hueco oscuro del que sale la ranura luminosa.
-    {
-      geometry: chamferWedge({
-        length: 0.46,
-        height: 0.12,
-        frontWidth: 0.94,
-        rearWidth: 0.72,
-        chamfer: 0.025,
-      }),
-      position: [0, 0.8, 1.36],
-      rotation: [-0.42, 0, 0],
-      tile: 2,
-    },
-    { geometry: chamferBox(0.9, 0.12, 0.16, 0.02), position: [0, 0.71, 1.4], rotation: [-0.46, 0, 0], tile: 3 },
+    // Collar del injerto: la abrazadera que agarra la raíz de la cola. Rígida a
+    // propósito, porque de acá para atrás la carne se mueve sola.
+    { geometry: new TorusGeometry(0.3, 0.065, 7, segments), position: [0, graftY, graftZ], tile: 2 },
+    { geometry: new CylinderGeometry(0.27, 0.32, 0.18, segments), position: [0, graftY, graftZ + 0.14], rotation: [Math.PI / 2, 0, 0], tile: 2 },
   ];
 
-  if (lod < 2) {
+  if (!articulated) {
+    // Sin nodos articulados, cabeza y cola van horneadas en la piel o la
+    // silueta lejana queda cortada al ras del disco por los dos extremos.
     bodyParts.push(
-      // Placas Combine grapadas al lomo, por delante y por detrás del arnés.
-      // Angostas a propósito: cubriendo el lomo entero, la maquinaria tapaba al
-      // bicho desde arriba y volvía a ganar la lectura de vehículo.
-      ...[0.86, 0.58, -0.64, -0.92].map((z, index) => ({
-        geometry: chamferBox(0.34 - Math.abs(index - 1.5) * 0.04, 0.06, 0.24, 0.02),
-        position: [0, 0.93 - Math.abs(z) * 0.05, z] as Vec3,
-        rotation: [index % 2 === 0 ? 0.05 : -0.04, 0, 0.02] as Euler,
-        tile: 2 as AtlasTile,
-      })),
-      // Arnés: montura de cuero sobre el lomo, respaldo y asideros. El asiento
-      // del preset va a 0.98, así que la montura queda justo por debajo.
-      { geometry: chamferBox(0.52, 0.1, 0.56, 0.04), position: [0, 0.86, -0.08], tile: 3 },
-      { geometry: roundedBox(0.48, 0.3, 0.12, 0.05, detailed ? 2 : 1), position: [0, 0.98, -0.4], rotation: [-0.24, 0, 0], tile: 3 },
-      // Cubrevientos del jinete: el visor se apoya acá. Suelto en el aire
-      // parecía una lámina de vidrio flotando sobre el lomo.
-      { geometry: chamferBox(0.5, 0.11, 0.16, 0.03), position: [0, 1.0, 0.52], rotation: [-0.4, 0, 0], tile: 2 },
-      ...[-1, 1].map((side) => ({
-        geometry: chamferBox(0.09, 0.19, 0.5, 0.025),
-        position: [side * 0.35, 1.0, -0.02] as Vec3,
-        tile: 2 as AtlasTile,
-      })),
-      // Cinchas que abrazan el cuerpo y cierran bajo el vientre.
-      ...[-1, 1].flatMap((side) => [
-        {
-          geometry: chamferBox(0.09, 0.5, 0.22, 0.02),
-          position: [side * 0.46, 0.66, -0.06] as Vec3,
-          rotation: [0, 0, side * 0.24] as Euler,
-          tile: 3 as AtlasTile,
-        },
-        {
-          geometry: chamferBox(0.09, 0.42, 0.2, 0.02),
-          position: [side * 0.44, 0.66, 0.62] as Vec3,
-          rotation: [0, 0, side * 0.22] as Euler,
-          tile: 3 as AtlasTile,
-        },
-      ]),
-      // Conductos del injerto: bajan del sensor y recorren la columna hasta la
-      // cola. Son el cable que ata las dos mitades de la criatura.
-      createTubePart([-0.19, 0.93, 0.9], [-0.23, 0.83, -0.88], 0.034, segments, 2),
-      createTubePart([0.19, 0.93, 0.9], [0.25, 0.83, -0.88], 0.031, segments, 2),
-    );
-  }
-
-  if (detailed) {
-    bodyParts.push(
-      // Branquias a los dos costados del vientre.
-      ...[-1, 1].flatMap((side) =>
-        ribParts([side * 0.5, 0.44, 0.42], [0, 0, 1], 5, 0.17, [0.24, 0.13, 0.05], 3),
-      ),
-      // Espiráculos detrás de los ojos, con casquillo metálico.
-      ...[-1, 1].flatMap((side) => [
-        {
-          geometry: new CylinderGeometry(0.07, 0.07, 0.06, 10),
-          position: [side * 0.3, 0.87, 0.72] as Vec3,
-          tile: 3 as AtlasTile,
-        },
-        {
-          geometry: new TorusGeometry(0.075, 0.015, 5, 10),
-          position: [side * 0.3, 0.89, 0.72] as Vec3,
-          rotation: [Math.PI / 2, 0, 0] as Euler,
-          tile: 2 as AtlasTile,
-        },
-      ]),
-      // Grapas del blindaje: las que dicen que el metal está clavado en carne.
-      { geometry: rivetRow([-0.3, 0.93, 0.86], [0.3, 0.93, 0.86], 6, 0.016), tile: 2 },
-      { geometry: rivetRow([-0.28, 0.92, -0.9], [0.28, 0.92, -0.9], 6, 0.016), tile: 2 },
-      { geometry: rivetRow([-0.26, 0.88, 1.06], [0.26, 0.88, 1.06], 5, 0.014), tile: 2 },
-      // Costillas cartilaginosas marcadas bajo la piel del ala.
-      ...[-1, 1].flatMap((side) => [
-        createTubePart([side * 0.34, 0.62, 0.62], [side * 0.92, 0.5, -0.16], 0.03, 8, 0),
-        createTubePart([side * 0.32, 0.6, 0.16], [side * 0.86, 0.48, -0.44], 0.027, 8, 0),
-      ]),
-      // Cicatrices de la reconversión: chapas desparejas sobre la carne.
-      { geometry: panel(0.34, 0.28, 0.04), position: [-0.6, 0.66, 0.44], rotation: [0.1, 0.3, -0.14], tile: 2 },
-      { geometry: panel(0.28, 0.24, 0.04), position: [0.66, 0.62, -0.3], rotation: [0.08, -0.24, 0.1], tile: 2 },
-      // Látigo de la cola.
+      ...groupParts(swimmerHeadParts(segments, false, noseZ - COMBINE_SWIMMER.headZ), {
+        position: [0, COMBINE_SWIMMER.headY, COMBINE_SWIMMER.headZ],
+      }),
       {
-        geometry: new CylinderGeometry(0.05, 0.018, 0.4, segments),
-        position: [0, 0.56, -1.9],
-        rotation: [Math.PI / 2 + 0.12, 0, 0],
+        geometry: chamferWedge({
+          length: 0.9,
+          height: 0.3,
+          frontWidth: 0.32,
+          rearWidth: 0.44,
+          topFrontWidth: 0.24,
+          topRearWidth: 0.38,
+          chamfer: 0.04,
+        }),
+        position: [0, 0.58, -1.84],
+        tile: 0,
+      },
+      {
+        geometry: new CylinderGeometry(0.06, 0.02, 0.44, 6),
+        position: [0, 0.57, -2.42],
+        rotation: [Math.PI / 2, 0, 0],
         tile: 0,
       },
     );
   }
 
+  if (articulated) {
+    bodyParts.push(
+      // Costillar de abrazaderas: aros que muerden el tórax, uno por segmento.
+      // Acá es donde el implante gana su mitad de la superficie sin tapar al
+      // bicho: los aros siguen la curva en vez de aplanarla.
+      // Sólo abrazan el tórax. Con el semiancho del disco cruzaban el ala de
+      // punta a punta y desde arriba el bicho quedaba con una escalera encima.
+      ...[
+        [1.0, 0.26, 0.28],
+        [0.7, 0.32, 0.32],
+        [0.38, 0.36, 0.34],
+        [0.04, 0.37, 0.35],
+        [-0.3, 0.35, 0.33],
+        [-0.66, 0.3, 0.29],
+      ].map(([z, halfWidth, halfHeight]) =>
+        swimmerClampPart(
+          [0, 0.58, z ?? 0],
+          halfWidth ?? 0.5,
+          halfHeight ?? 0.34,
+          0.032,
+          segments,
+          2,
+        ),
+      ),
+      // Espinas dorsales entre aro y aro: el relieve que impide que el lomo
+      // quede liso entre abrazaderas.
+      ...[0.87, 0.55, 0.23, -0.12, -0.48].map((z, index) => ({
+        geometry: chamferWedge({
+          length: 0.2,
+          height: 0.12,
+          frontWidth: 0.07,
+          rearWidth: 0.12,
+          topFrontWidth: 0.03,
+          topRearWidth: 0.05,
+          chamfer: 0.012,
+        }),
+        position: [0, 0.92 - Math.abs(z) * 0.05, z] as Vec3,
+        rotation: [index % 2 === 0 ? -0.1 : -0.06, 0, 0] as Euler,
+        tile: 0 as AtlasTile,
+      })),
+      // Arnés: montura sobre el lomo, respaldo y asideros. El asiento del
+      // preset va a 0.98, así que la montura queda justo por debajo.
+      { geometry: chamferBox(0.52, 0.1, 0.56, 0.04), position: [0, 0.9, -0.08], tile: 3 },
+      { geometry: roundedBox(0.46, 0.24, 0.12, 0.05, detailed ? 2 : 1), position: [0, 0.96, -0.4], rotation: [-0.3, 0, 0], tile: 3 },
+      // Cubrevientos del jinete: el visor se apoya acá. Suelto en el aire
+      // parecía una lámina de vidrio flotando sobre el lomo.
+      { geometry: chamferBox(0.44, 0.09, 0.14, 0.03), position: [0, 1.0, 0.54], rotation: [-0.62, 0, 0], tile: 2 },
+      ...[-1, 1].map((side) => ({
+        geometry: chamferBox(0.09, 0.19, 0.5, 0.025),
+        position: [side * 0.35, 1.02, -0.02] as Vec3,
+        tile: 2 as AtlasTile,
+      })),
+      // Correas: aros de cuero que rodean el cuerpo entero y cierran bajo el
+      // vientre, por fuera de las abrazaderas metálicas.
+      swimmerClampPart([0, 0.56, -0.06], 0.46, 0.4, 0.038, segments, 3),
+      swimmerClampPart([0, 0.56, 0.62], 0.42, 0.38, 0.036, segments, 3),
+      // Conductos: bajan del sensor y recorren la columna hasta el collar.
+      createTubePart([-0.2, 0.95, 0.92], [-0.2, 0.78, graftZ + 0.3], 0.036, segments, 2),
+      createTubePart([0.2, 0.95, 0.92], [0.2, 0.78, graftZ + 0.3], 0.033, segments, 2),
+    );
+  }
+
+  if (detailed) {
+    bodyParts.push(
+      // Cuencas de los remos: los bocados metálicos del vientre. Van en la piel
+      // y no en el remo para que el nodo pueda girar sin abrir un hueco.
+      ...[-1, 1].flatMap((side) =>
+        oarZ.map((z) => ({
+          geometry: new SphereGeometry(0.13, segments, Math.max(5, segments / 2)),
+          position: [side * oarX, oarY + 0.05, z] as Vec3,
+          scale: [1, 0.72, 1],
+          tile: 2 as AtlasTile,
+        })),
+      ),
+      // Espiráculos detrás de los ojos, con casquillo metálico.
+      ...[-1, 1].flatMap((side) => [
+        {
+          geometry: new CylinderGeometry(0.07, 0.07, 0.06, 10),
+          position: [side * 0.3, 0.88, 0.74] as Vec3,
+          tile: 3 as AtlasTile,
+        },
+        {
+          geometry: new TorusGeometry(0.075, 0.015, 5, 10),
+          position: [side * 0.3, 0.9, 0.74] as Vec3,
+          rotation: [Math.PI / 2, 0, 0] as Euler,
+          tile: 2 as AtlasTile,
+        },
+      ]),
+      // Suturas: la carne que rebalsa a los lados de cada correa. Sin el
+      // rebalse la correa se apoya, y apoyada no lee como que apretó nunca.
+      ...[-1, 1].flatMap((side) =>
+        [-0.06, 0.62].flatMap((z) =>
+          [-1, 1].map((offset) => ({
+            geometry: new SphereGeometry(0.1, 8, 5),
+            position: [side * 0.46, 0.66, z + offset * 0.13] as Vec3,
+            scale: [0.5, 1.5, 0.42],
+            rotation: [0, 0, side * 0.24] as Euler,
+            tile: 1 as AtlasTile,
+          })),
+        ),
+      ),
+      // Grapas del blindaje: las que dicen que el metal está clavado en carne.
+      { geometry: rivetRow([-0.3, 0.94, 0.86], [0.3, 0.94, 0.86], 6, 0.016), tile: 2 },
+      { geometry: rivetRow([-0.28, 0.92, -0.72], [0.28, 0.92, -0.72], 6, 0.016), tile: 2 },
+      { geometry: rivetRow([-0.26, 0.9, 1.06], [0.26, 0.9, 1.06], 5, 0.014), tile: 2 },
+      // Costillas cartilaginosas marcadas bajo la piel del ala. Son las que
+      // hacen que la ondulación de la piel se lea como que tira de algo.
+      ...[-1, 1].flatMap((side) => [
+        createTubePart([side * 0.34, 0.62, 0.6], [side * 0.9, 0.51, -0.18], 0.03, 8, 0),
+        createTubePart([side * 0.32, 0.6, 0.14], [side * 0.84, 0.49, -0.46], 0.027, 8, 0),
+      ]),
+      // Cicatrices de la reconversión: chapas desparejas remachadas sobre la
+      // carne, de las que salen los tubos que se hunden en el ala.
+      { geometry: panel(0.34, 0.28, 0.04), position: [-0.6, 0.67, 0.44], rotation: [0.1, 0.3, -0.14], tile: 2 },
+      { geometry: panel(0.28, 0.24, 0.04), position: [0.66, 0.63, -0.3], rotation: [0.08, -0.24, 0.1], tile: 2 },
+      ...[-1, 1].map((side) => ({
+        geometry: new TorusGeometry(0.05, 0.018, 5, 8),
+        position: [side * 0.72, 0.6, side > 0 ? -0.3 : 0.44] as Vec3,
+        rotation: [Math.PI / 2, 0, 0] as Euler,
+        tile: 2 as AtlasTile,
+      })),
+    );
+  }
+
   createVisualNode(context, root, `combineSwimmer_body${suffix}`, bodyParts);
 
-  if (lod < 2) {
+  // Cabeza en nodo propio, con el pivote en el cuello: gira hacia donde mira el
+  // jinete. Todo lo que vive en la cara —ojo, mandíbula, antenas— cuelga de acá
+  // o se quedaría flotando en el aire cuando la cabeza gire.
+  const head = articulated
+    ? createVisualNode(
+        context,
+        root,
+        `swimmer_head${suffix}`,
+        swimmerHeadParts(segments, detailed, noseZ - COMBINE_SWIMMER.headZ),
+        {
+          position: [0, COMBINE_SWIMMER.headY, COMBINE_SWIMMER.headZ],
+          extras: { kind: "head" },
+        },
+      )
+    : root;
+
+  if (articulated) {
     createVisualNode(
       context,
       root,
       `combineSwimmer_visor${suffix}`,
       [
+        // Bien tumbado hacia proa: casi vertical leía como una pantalla de
+        // notebook parada sobre el lomo.
         {
-          geometry: new BoxGeometry(0.7, 0.3, 0.03),
-          position: [0, 1.19, 0.48],
-          rotation: [-0.42, 0, 0],
+          geometry: new BoxGeometry(0.56, 0.24, 0.03),
+          position: [0, 1.13, 0.6],
+          rotation: [-0.72, 0, 0],
           tile: 0,
         },
       ],
@@ -3228,23 +3526,173 @@ function buildCombineSwimmerLod(
     // de como fauna, así que tiene que leerse de lejos.
     createVisualNode(
       context,
-      root,
+      head,
       `combineSwimmer_eye${suffix}`,
       [
         {
           geometry: new SphereGeometry(0.1, segments, Math.max(5, segments / 2)),
-          scale: [4.4, 0.62, 0.75],
+          scale: [3, 0.55, 0.7],
           tile: 0,
         },
       ],
       {
-        position: [0, 0.72, 1.42],
+        position: [0, 0.17, 0.29],
         rotation: [-0.46, 0, 0],
         material: energyMaterial,
         bakeOcclusion: false,
         extras: { kind: "sensor-eye" },
       },
     );
+  }
+
+  if (detailed) {
+    // Mandíbulas: el nodo gira sobre X y la boca se abre. Sin una boca que se
+    // mueva la cabeza es una carcasa, por más branquias que tenga al costado.
+    createVisualNode(
+      context,
+      head,
+      `swimmer_jaw${suffix}`,
+      [
+        { geometry: chamferBox(0.82, 0.1, 0.3, 0.03), position: [0, -0.04, 0.1], tile: 1 },
+        // Placas laterales quitinosas, abiertas como pinzas.
+        ...[-1, 1].map((side) => ({
+          geometry: chamferWedge({
+            length: 0.34,
+            height: 0.1,
+            frontWidth: 0.1,
+            rearWidth: 0.2,
+            chamfer: 0.02,
+          }),
+          position: [side * 0.34, -0.02, 0.18] as Vec3,
+          rotation: [0, side * -0.3, 0] as Euler,
+          tile: 0 as AtlasTile,
+        })),
+        // Dentículos: la hilera que se ve cuando abre.
+        {
+          geometry: rivetRow([-0.3, 0.03, 0.24], [0.3, 0.03, 0.24], 7, 0.02),
+          tile: 2,
+        },
+      ],
+      { position: [0, -0.17, 0.19], extras: { kind: "jaw" } },
+    );
+
+    // Branquias: un solo nodo con los dos costados, porque respiran en fase.
+    createVisualNode(
+      context,
+      root,
+      `swimmer_gills${suffix}`,
+      [-1, 1].flatMap((side) => [
+        ...ribParts(
+          [side * 0.5, 0.06, 0.42],
+          [0, 0, 1],
+          5,
+          0.17,
+          [0.24, 0.14, 0.05],
+          3,
+        ),
+        // Marco metálico que las mantiene abiertas a la fuerza.
+        {
+          geometry: chamferBox(0.28, 0.02, 0.78, 0.01),
+          position: [side * 0.5, 0.14, 0.42] as Vec3,
+          tile: 2 as AtlasTile,
+        },
+      ]),
+      { position: [0, 0.38, 0], extras: { kind: "gill" } },
+    );
+  }
+
+  if (articulated) {
+    // Antenas: cadena de dos segmentos por lado, encastrados punta contra base.
+    // El runtime les mete inercia, así que el largo es lo que después se ve
+    // como latigazo al frenar.
+    for (const [name, side] of [
+      ["swimmer_antenna_left", -1],
+      ["swimmer_antenna_right", 1],
+    ] as const) {
+      const base = createVisualNode(
+        context,
+        head,
+        `${name}${suffix}`,
+        swimmerAntennaParts(0.44, 0.036, Math.max(6, segments / 2), detailed ? 2 : 0, false),
+        {
+          position: [side * 0.24, 0.29, 0.19],
+          rotation: [-0.5, side * 0.3, 0],
+          extras: { kind: "antenna", side: side < 0 ? "left" : "right" },
+        },
+      );
+      createVisualNode(
+        context,
+        base,
+        `${name}_tip${suffix}`,
+        swimmerAntennaParts(0.38, 0.026, Math.max(6, segments / 2), detailed ? 2 : 0, true),
+        {
+          position: [0, 0, 0.44],
+          rotation: [-0.24, 0, 0],
+          extras: { kind: "antenna-tip", side: side < 0 ? "left" : "right" },
+        },
+      );
+    }
+
+    // Remos ventrales: tres pares que baten en ola metacrónica. Son el
+    // vocabulario artrópodo del híbrido y lo que hace que, parado, el bicho
+    // siga teniendo algo en movimiento.
+    for (const [prefix, side] of [
+      ["swimmer_oar_left", -1],
+      ["swimmer_oar_right", 1],
+    ] as const) {
+      oarZ.forEach((z, index) => {
+        createVisualNode(
+          context,
+          root,
+          `${prefix}_${index}${suffix}`,
+          swimmerOarParts(Math.max(6, segments / 2), detailed),
+          {
+            position: [side * oarX, oarY, z],
+            rotation: [0, 0, side * 0.34],
+            extras: { kind: "oar", side: side < 0 ? "left" : "right", index },
+          },
+        );
+      });
+    }
+
+    // Cola articulada: dos tramos encastrados, y las aletas caudales cuelgan
+    // del último. Así el timón hereda la ondulación en vez de quedar fijo
+    // mientras la cola se mueve alrededor.
+    // La raíz arranca DENTRO de la piel (que cierra en −1.4) para que no se vea
+    // la junta: el primer tramo emerge del cuerpo en vez de colgar detrás.
+    const tailBase = createVisualNode(
+      context,
+      root,
+      `swimmer_tail_0${suffix}`,
+      swimmerTailParts(0.5, 0.25, 0.16, Math.max(6, segments / 2), detailed),
+      {
+        position: [0, graftY - 0.01, -1.2],
+        extras: { kind: "tail", index: 0 },
+      },
+    );
+    const tailTip = createVisualNode(
+      context,
+      tailBase,
+      `swimmer_tail_1${suffix}`,
+      [
+        ...swimmerTailParts(0.44, 0.16, 0.07, Math.max(6, segments / 2), detailed),
+        // Látigo terminal.
+        {
+          geometry: new CylinderGeometry(0.035, 0.011, 0.34, Math.max(5, segments / 2)),
+          position: [0, 0, -0.6],
+          rotation: [Math.PI / 2, 0, 0],
+          tile: 0,
+        },
+      ],
+      {
+        position: [0, 0, -0.5],
+        rotation: [0.06, 0, 0],
+        extras: { kind: "tail", index: 1 },
+      },
+    );
+    createSwimmerRudders(context, tailTip, suffix, [0, 0, -0.34]);
+  } else {
+    createSwimmerRudders(context, root, suffix, [0, 0.58, -1.72]);
   }
 
   // Injerto de propulsión: ocupa el lugar del núcleo antigravedad del
@@ -3263,7 +3711,7 @@ function buildCombineSwimmerLod(
     });
   }
   createVisualNode(context, root, `fan_main${suffix}`, graftParts, {
-    position: [0, graftY, graftZ],
+    position: [0, graftY + 0.02, graftZ + 0.16],
     material: energyMaterial,
     bakeOcclusion: false,
     extras: { kind: "antigravity-core" },
@@ -3293,397 +3741,49 @@ function buildCombineSwimmerLod(
       },
     );
   }
+}
 
-  // Aletas caudales: son los timones del preset, así que guiñan con la
-  // dirección. Van al costado de la cola, donde de verdad harían fuerza.
+/**
+ * Aletas caudales: son los timones del preset, así que guiñan con la dirección.
+ * Cuelgan de la cola cuando hay cola articulada y del root cuando no la hay,
+ * pero el runtime las busca por nombre, así que el padre le da lo mismo.
+ */
+function createSwimmerRudders(
+  context: BuildContext,
+  parent: Node,
+  suffix: string,
+  origin: Vec3,
+): void {
   for (const [name, side] of [["rudder_left", -1], ["rudder_right", 1]] as const) {
     createVisualNode(
       context,
-      root,
+      parent,
       `${name}${suffix}`,
       [
+        // Aleta triangular que se afina hacia la punta. `chamferWedge` sólo
+        // sabe estrechar en X, así que se arma acostada y se para con el giro
+        // de π/2 en Z: la caída de ancho pasa a ser caída de altura y el timón
+        // deja de ser el rectángulo que era.
         {
           geometry: chamferWedge({
-            length: 0.66,
-            height: 0.44,
-            frontWidth: 0.16,
-            rearWidth: 0.06,
-            topFrontWidth: 0.1,
-            topRearWidth: 0.04,
-            chamfer: 0.025,
+            length: 0.44,
+            height: 0.045,
+            frontWidth: 0.36,
+            rearWidth: 0.07,
+            topFrontWidth: 0.3,
+            topRearWidth: 0.05,
+            chamfer: 0.012,
           }),
-          rotation: [0.1, 0, side * 0.22],
+          rotation: [0.12, 0, Math.PI / 2 + side * 0.26],
           tile: 0,
         },
       ],
       {
-        position: [side * 0.34, 0.62, -1.46],
+        position: [origin[0] + side * 0.09, origin[1], origin[2]],
         extras: { kind: "control-fin" },
       },
     );
   }
-}
-
-/**
- * Piso al que apoya el cadáver: fondo del collider del preset (centro 0.55,
- * alto 1.25). La criatura muerta se desploma sobre el vientre, así que casi
- * todo el volumen queda pegado a esa cota.
- */
-const COMBINE_SWIMMER_WRECK_GROUND = -0.075;
-
-/**
- * Cadáver desinflado. Una criatura muerta no se abolla como una chapa: se
- * aplasta, se le marcan las costillas bajo la piel y se le abren desgarros por
- * donde asoma el cartílago. Eso es lo que la separa de un casco roto.
- */
-function wreckedCombineSwimmerCarcassParts(segments: number): GeometryPart[] {
-  const ground = COMBINE_SWIMMER_WRECK_GROUND;
-  return [
-    // Cuerpo desplomado sobre el vientre, más chato y más ancho que en vida.
-    {
-      geometry: chamferWedge({
-        length: 2.5,
-        height: 0.34,
-        frontWidth: 0.72,
-        rearWidth: 1.02,
-        topFrontWidth: 0.56,
-        topRearWidth: 0.88,
-        chamfer: 0.05,
-      }),
-      position: [0.04, ground + 0.24, 0.02],
-      rotation: [0.03, 0.04, -0.05],
-      tile: 0,
-    },
-    // Ala de babor extendida en el piso; la de estribor quedó plegada debajo
-    // del cuerpo, que es de donde sale el bulto del costado.
-    ...groupParts(
-      [
-        {
-          geometry: chamferWedge({
-            length: 0.82,
-            height: 0.16,
-            frontWidth: 1.5,
-            rearWidth: 2.3,
-            topFrontWidth: 1.2,
-            topRearWidth: 1.98,
-            chamfer: 0.035,
-          }),
-          rotation: [0, Math.PI / 2, 0],
-          tile: 0,
-        },
-      ],
-      { position: [0.66, ground + 0.13, -0.06], rotation: [0.02, 0, -0.06] },
-    ),
-    ...groupParts(
-      [
-        {
-          geometry: chamferWedge({
-            length: 0.54,
-            height: 0.13,
-            frontWidth: 0.5,
-            rearWidth: 1.4,
-            topFrontWidth: 0.4,
-            topRearWidth: 1.15,
-            chamfer: 0.03,
-          }),
-          rotation: [0, Math.PI / 2, 0],
-          tile: 0,
-        },
-      ],
-      { position: [1.28, ground + 0.1, -0.34], rotation: [0.06, 0.12, -0.3] },
-    ),
-    ...groupParts(
-      [
-        {
-          geometry: chamferWedge({
-            length: 0.6,
-            height: 0.2,
-            frontWidth: 1.2,
-            rearWidth: 2.0,
-            topFrontWidth: 0.96,
-            topRearWidth: 1.7,
-            chamfer: 0.035,
-          }),
-          rotation: [0, -Math.PI / 2, 0],
-          tile: 0,
-        },
-      ],
-      { position: [-0.6, ground + 0.16, -0.1], rotation: [0.04, 0, 0.34] },
-    ),
-    // Vientre pálido a la vista donde el ala plegada se dio vuelta.
-    {
-      geometry: chamferBox(0.66, 0.07, 1.1, 0.03),
-      position: [-0.96, ground + 0.3, -0.18],
-      rotation: [0.06, 0.14, 0.52],
-      tile: 1,
-    },
-    // Cabeza de costado, con los lóbulos partidos.
-    {
-      geometry: chamferWedge({
-        length: 0.6,
-        height: 0.26,
-        frontWidth: 0.5,
-        rearWidth: 0.8,
-        topFrontWidth: 0.4,
-        topRearWidth: 0.68,
-        chamfer: 0.04,
-      }),
-      position: [0.16, ground + 0.2, 1.26],
-      rotation: [-0.12, 0.22, 0.16],
-      tile: 0,
-    },
-    {
-      geometry: chamferWedge({
-        length: 0.5,
-        height: 0.16,
-        frontWidth: 0.1,
-        rearWidth: 0.26,
-        topFrontWidth: 0.08,
-        topRearWidth: 0.22,
-        chamfer: 0.025,
-      }),
-      position: [0.5, ground + 0.14, 1.6],
-      rotation: [0.1, 0.6, 0.2],
-      tile: 0,
-    },
-    // Boca abierta y reborde de cartílago colgando.
-    { geometry: chamferBox(0.86, 0.14, 0.2, 0.03), position: [0.14, ground + 0.12, 1.5], rotation: [0.24, 0.2, 0.14], tile: 3 },
-    // Desgarro en el lomo: cuadernas de cartílago y carne clara asomando.
-    ...[-0.34, -0.06, 0.22, 0.5].map((z, index) => ({
-      geometry: new CylinderGeometry(0.035, 0.028, 0.62 - index * 0.04, 8),
-      position: [-0.04 + index * 0.03, ground + 0.36, z] as Vec3,
-      rotation: [0.06, 0.04 * index, Math.PI / 2 + 0.12] as Euler,
-      tile: 1 as AtlasTile,
-    })),
-    {
-      geometry: chamferBox(0.5, 0.06, 0.84, 0.02),
-      position: [-0.02, ground + 0.3, 0.1],
-      rotation: [0.04, 0.06, 0.05],
-      tile: 1,
-    },
-    // Colgajos de piel levantados en el borde del desgarro.
-    {
-      geometry: chamferBox(0.3, 0.05, 0.34, 0.015),
-      position: [0.3, ground + 0.42, 0.24],
-      rotation: [0.5, 0.3, -0.6],
-      tile: 0,
-    },
-    {
-      geometry: chamferBox(0.26, 0.05, 0.3, 0.015),
-      position: [-0.34, ground + 0.4, -0.18],
-      rotation: [-0.55, -0.24, 0.62],
-      tile: 0,
-    },
-    // Cola tendida y retorcida.
-    {
-      geometry: chamferWedge({
-        length: 0.74,
-        height: 0.24,
-        frontWidth: 0.5,
-        rearWidth: 0.32,
-        topFrontWidth: 0.44,
-        topRearWidth: 0.26,
-        chamfer: 0.035,
-      }),
-      position: [-0.12, ground + 0.16, -1.2],
-      rotation: [0.04, 0.24, 0.1],
-      tile: 0,
-    },
-    {
-      geometry: chamferWedge({
-        length: 0.66,
-        height: 0.16,
-        frontWidth: 0.28,
-        rearWidth: 0.13,
-        topFrontWidth: 0.24,
-        topRearWidth: 0.1,
-        chamfer: 0.025,
-      }),
-      position: [-0.4, ground + 0.11, -1.66],
-      rotation: [0.06, 0.52, 0.14],
-      tile: 0,
-    },
-    {
-      geometry: new CylinderGeometry(0.045, 0.016, 0.42, segments),
-      position: [-0.74, ground + 0.08, -1.92],
-      rotation: [Math.PI / 2 + 0.1, 0.8, 0],
-      tile: 0,
-    },
-    // Branquias abiertas sobre el flanco que quedó arriba.
-    ...ribParts([0.5, ground + 0.3, 0.36], [0, 0, 1], 5, 0.16, [0.22, 0.11, 0.05], 3),
-  ];
-}
-
-/** Injerto arrancado: el anillo salió de la carne y quedó colgando de la cola. */
-function wreckedCombineSwimmerGraftParts(segments: number): GeometryPart[] {
-  const ground = COMBINE_SWIMMER_WRECK_GROUND;
-  return [
-    // Collar del implante, todavía grapado al muñón.
-    {
-      geometry: new TorusGeometry(0.29, 0.065, 7, segments),
-      position: [-0.14, ground + 0.24, -1.14],
-      rotation: [0.24, 0.3, 0.4],
-      tile: 2,
-    },
-    {
-      geometry: new CylinderGeometry(0.26, 0.31, 0.15, segments),
-      position: [-0.1, ground + 0.24, -1.0],
-      rotation: [Math.PI / 2 + 0.2, 0.26, 0],
-      tile: 2,
-    },
-    // Anillo del injerto, deformado y fuera de eje.
-    {
-      geometry: new TorusGeometry(0.3, 0.05, 7, segments, Math.PI * 1.5),
-      position: [-0.66, ground + 0.2, -0.86],
-      rotation: [1.2, 0.4, 0.5],
-      scale: [1, 0.86, 1],
-      tile: 2,
-    },
-    ...[0, 1].map((index) => ({
-      geometry: chamferBox(0.05, 0.36, 0.03, 0.01),
-      position: [-0.66, ground + 0.2, -0.86] as Vec3,
-      rotation: [1.2, 0.4, 0.5 + index * 1.9] as Euler,
-      tile: 2 as AtlasTile,
-    })),
-    // Grapas que lo sujetaban, arrancadas con carne.
-    ...[-1, 1].map((side) => ({
-      geometry: chamferBox(0.08, 0.06, 0.2, 0.02),
-      position: [side * 0.22 - 0.12, ground + 0.34, -1.02] as Vec3,
-      rotation: [0.3, side * 0.4, 0.2] as Euler,
-      tile: 2 as AtlasTile,
-    })),
-    // Conductos reventados, todavía atados a la columna.
-    createTubePart([-0.2, ground + 0.4, -0.72], [-0.56, ground + 0.24, -0.9], 0.032, 8, 2),
-    createTubePart([0.16, ground + 0.38, -0.66], [-0.3, ground + 0.18, -1.3], 0.028, 8, 2),
-    createTubePart([-0.02, ground + 0.42, 0.5], [-0.16, ground + 0.4, -0.6], 0.03, 8, 2),
-  ];
-}
-
-/** Arnés y blindaje que se soltaron del lomo. */
-function wreckedCombineSwimmerDebrisParts(segments: number): GeometryPart[] {
-  const ground = COMBINE_SWIMMER_WRECK_GROUND;
-  return [
-    // Montura arrancada, boca abajo en el piso.
-    {
-      geometry: chamferBox(0.58, 0.11, 0.6, 0.04),
-      position: [1.24, ground + 0.09, 0.78],
-      rotation: [0.16, 0.4, 0.24],
-      tile: 3,
-    },
-    {
-      geometry: chamferBox(0.56, 0.44, 0.11, 0.04),
-      position: [1.42, ground + 0.24, 0.5],
-      rotation: [1.1, 0.36, 0.2],
-      tile: 3,
-    },
-    ...[-1, 1].map((side) => ({
-      geometry: chamferBox(0.08, 0.18, 0.46, 0.025),
-      position: [1.2 + side * 0.16, ground + 0.14, 0.92] as Vec3,
-      rotation: [0.14, 0.4, 0.3] as Euler,
-      tile: 2 as AtlasTile,
-    })),
-    // Cinchas cortadas.
-    {
-      geometry: chamferBox(0.08, 0.06, 0.7, 0.02),
-      position: [0.86, ground + 0.04, 1.36],
-      rotation: [0.06, 0.9, 0.08],
-      tile: 3,
-    },
-    // Placas del lomo, sueltas y dobladas.
-    {
-      geometry: chamferBox(0.56, 0.07, 0.3, 0.02),
-      position: [-1.36, ground + 0.09, 0.62],
-      rotation: [0.14, 0.5, 0.22],
-      tile: 2,
-    },
-    {
-      geometry: chamferBox(0.48, 0.06, 0.28, 0.02),
-      position: [-1.02, ground + 0.06, 1.24],
-      rotation: [0.1, -0.4, 0.16],
-      tile: 2,
-    },
-    // Sensor de la frente, partido y apagado.
-    {
-      geometry: new SphereGeometry(0.15, segments, Math.max(6, segments / 2)),
-      position: [0.72, ground + 0.14, 2.02],
-      scale: [1.3, 0.66, 1.05],
-      rotation: [0.4, 0.5, 0.9],
-      tile: 2,
-    },
-    {
-      geometry: chamferBox(0.5, 0.08, 0.42, 0.03),
-      position: [0.5, ground + 0.08, 1.88],
-      rotation: [0.12, 0.44, 0.18],
-      tile: 2,
-    },
-    // Emisores de sustentación, arrancados del vientre.
-    ...[
-      [-1.5, -0.62],
-      [1.02, -1.5],
-    ].map(([x, z]) => ({
-      geometry: new TorusGeometry(0.2, 0.042, 6, segments),
-      position: [x!, ground + 0.06, z!] as Vec3,
-      rotation: [Math.PI / 2 + 0.16, 0.3, 0] as Euler,
-      tile: 2 as AtlasTile,
-    })),
-    // Punta de ala cercenada.
-    ...groupParts(
-      [
-        {
-          geometry: chamferWedge({
-            length: 0.42,
-            height: 0.11,
-            frontWidth: 0.28,
-            rearWidth: 0.86,
-            topFrontWidth: 0.22,
-            topRearWidth: 0.7,
-            chamfer: 0.025,
-          }),
-          rotation: [0, Math.PI / 2, 0],
-          tile: 0,
-        },
-      ],
-      { position: [-1.58, ground + 0.07, -1.4], rotation: [0.08, 0.5, 0.16] },
-    ),
-    createTubePart(
-      [0.4, ground + 0.04, -1.86],
-      [1.16, ground + 0.05, -1.42],
-      0.028,
-      8,
-      2,
-    ),
-  ];
-}
-
-/** Astillas del visor del jinete. */
-function wreckedCombineSwimmerGlassParts(): GeometryPart[] {
-  const ground = COMBINE_SWIMMER_WRECK_GROUND;
-  return [
-    {
-      geometry: chamferWedge({
-        length: 0.42,
-        height: 0.018,
-        frontWidth: 0.08,
-        rearWidth: 0.3,
-        chamfer: 0.006,
-      }),
-      position: [0.34, ground + 0.46, 0.36],
-      rotation: [-0.3, 0.24, 0.3],
-      tile: 0,
-    },
-    {
-      geometry: chamferWedge({
-        length: 0.34,
-        height: 0.016,
-        frontWidth: 0.06,
-        rearWidth: 0.24,
-        chamfer: 0.006,
-      }),
-      position: [1.06, ground + 0.03, 1.18],
-      rotation: [0.06, 0.7, 0.08],
-      tile: 0,
-    },
-  ];
 }
 
 function buildCombineSwimmer(context: BuildContext): void {
@@ -3746,38 +3846,14 @@ function buildCombineSwimmer(context: BuildContext): void {
     halfExtents: [0.38, 0.28, 0.36],
   });
 
-  const wreckage = createNode(context, context.sceneRoot, "wreckage", {
-    extras: { kind: "wreckage", hiddenByDefault: true },
+  // Nodo de restos vacío, y a propósito. Un cadáver autorado aparte nunca se
+  // parece al bicho vivo —era una carcasa distinta que aparecía de golpe—, así
+  // que acá el muerto ES el mismo modelo con los apéndices sueltos y el casco
+  // entregado a la física. El nodo se conserva porque el contrato del formato
+  // lo pide y porque `setWreckage` necesita a quién preguntarle.
+  createNode(context, context.sceneRoot, "wreckage", {
+    extras: { kind: "wreckage", hiddenByDefault: true, mode: "ragdoll" },
   });
-  createVisualNode(
-    context,
-    wreckage,
-    "wreckage_carcass",
-    wreckedCombineSwimmerCarcassParts(12),
-  );
-  createVisualNode(
-    context,
-    wreckage,
-    "wreckage_graft",
-    wreckedCombineSwimmerGraftParts(12),
-  );
-  createVisualNode(
-    context,
-    wreckage,
-    "wreckage_debris",
-    wreckedCombineSwimmerDebrisParts(10),
-  );
-  createVisualNode(
-    context,
-    wreckage,
-    "wreckage_glass",
-    wreckedCombineSwimmerGlassParts(),
-    {
-      material: glassMaterial,
-      bakeOcclusion: false,
-      extras: { kind: "glazing" },
-    },
-  );
 }
 
 /**

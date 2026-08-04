@@ -34,10 +34,16 @@ describe("VehicleVisual", () => {
 
     visual.update(1 / 60, {
       speed: 16,
+      forwardSpeed: 16,
+      yawRate: 0,
       steering: 0.5,
       wheelRotation: 2,
       suspension: [0.5, 0, 0, 0],
       engine01: 0.8,
+      occupied: true,
+      riderYaw: 0,
+      riderPitch: 0,
+      dead: false,
     });
     visual.aim(0.3, 0.2);
 

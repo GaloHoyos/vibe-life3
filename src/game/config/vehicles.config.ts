@@ -1,5 +1,6 @@
 import type { Faction } from '@engine/ai/Faction';
 import { WORLD_GRAVITY } from '@engine/physics/PhysicsWorld';
+import type { VehicleDriverTuning } from '@engine/physics/vehicle/VehicleDriverInput';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 
 export const VEHICLE_ARCHETYPE_IDS = [
@@ -50,8 +51,23 @@ export type VehicleMotorPreset =
       autoBrakeForce: number;
       /** Agarre lateral que le queda al tren de mano al tirar del freno, 0..1. */
       handbrakeSideFriction: number;
+      /**
+       * Tope de giro de las ruedas a baja velocidad, en radianes (`degreesSlow`
+       * de HL2, que en el buggy son 50°). Es el número que decide si el
+       * vehículo pivotea en una calle o necesita tres maniobras.
+       */
       maxSteeringAngle: number;
-      steeringFadeSpeed: number;
+      /** Tope de giro a partir de `steeringSpeedFast` (`degreesFast`). */
+      fastSteeringAngle: number;
+      /**
+       * Banda donde se cierra la dirección, en m/s (`slowcarspeed` y
+       * `fastcarspeed`). HL2 la pone baja y angosta a propósito: el contraste
+       * entre maniobrar y ir clavado aparece apenas arranca.
+       */
+      steeringSpeedSlow: number;
+      steeringSpeedFast: number;
+      /** Velocidad punta en m/s: la respeta el motor, el HUD y la IA. */
+      topSpeed: number;
       /** Curva de dirección: 1 lineal, >1 suaviza las correcciones chicas. */
       steeringExponent: number;
       boostMultiplier: number;
@@ -107,7 +123,6 @@ export type VehicleMotorPreset =
       hoverSpringLength?: number;
       hoverDamping?: number;
       throttleResponse?: number;
-      steeringResponse?: number;
       lowSpeedSteeringAuthority?: number;
       lowSpeedSteeringFadeSpeed?: number;
       probeOffsets: readonly VectorTuple[];
@@ -227,6 +242,13 @@ export interface VehiclePresetDefinition {
   };
   seats: readonly VehicleSeatPreset[];
   damageZones: readonly VehicleDamageZonePreset[];
+  /**
+   * Cómo responden el volante y el acelerador en las manos del jugador. Es
+   * distinto del motor: el motor decide qué puede hacer el vehículo, esto
+   * decide con cuánta urgencia se le pide. Sin entrada vale el tacto del jeep
+   * de HL2, que es el que quiere casi todo lo que tiene ruedas.
+   */
+  driving?: Partial<VehicleDriverTuning>;
   weapon?: VehicleMountedWeaponPreset;
   navigation: {
     surface: 'ground' | 'water' | 'rail' | 'air';
@@ -261,9 +283,11 @@ const combineGliderChassis = {
     kind: 'hover',
     surfaceMode: 'antigrav',
     hoverHeight: 0.52,
-    thrustForce: 6_500,
+    thrustForce: 8_200,
     reverseForce: 3_000,
-    steeringTorque: 3_200,
+    // Sin ruedas que muerdan, todo el giro sale de acá: con 3.200 el deslizador
+    // describía veintiséis metros de radio a fondo de timón.
+    steeringTorque: 6_400,
     rudderAngle: 0.16,
     thrustPoint: [0, 0.34, -1.34],
     lateralDragPoint: [0, 0.05, -0.28],
@@ -271,8 +295,8 @@ const combineGliderChassis = {
     planingSpeed: 14,
     buoyancy: 1.06,
     waterDrag: 0.18,
-    lateralDrag: 3.4,
-    yawDamping: 2.6,
+    lateralDrag: 4.4,
+    yawDamping: 2.2,
     waterBrakeDrag: 5.2,
     groundDrag: 0.18,
     uprightTorque: 7_200,
@@ -280,7 +304,6 @@ const combineGliderChassis = {
     hoverSpringLength: 0.16,
     hoverDamping: 0.2,
     throttleResponse: 8.5,
-    steeringResponse: 16,
     lowSpeedSteeringAuthority: 1,
     lowSpeedSteeringFadeSpeed: 9,
     probeOffsets: [
@@ -302,6 +325,19 @@ const combineGliderChassis = {
     speedFovGain: 11,
     positionDamping: 10,
     rotationDamping: 9,
+  },
+  // Antigravedad: no hay ruedas que recorten el gas ni tren delantero que
+  // frenar para hacerlo girar, así que el timón manda solo.
+  driving: {
+    turnThrottleReduceSlow: 0,
+    turnThrottleReduceFast: 0,
+    steeringRateSlow: 4.5,
+    steeringRateFast: 3.2,
+    steeringRestRateSlow: 3.6,
+    steeringRestRateFast: 2.6,
+    speedSlow: 6,
+    speedFast: 18,
+    brakeSteeringRateFactor: 1.6,
   },
   seats: [
     {
@@ -329,6 +365,73 @@ const combineGliderChassis = {
   },
 } satisfies Omit<VehiclePresetDefinition, 'id' | 'archetype' | 'displayName'>;
 
+/**
+ * El nadador arranca del deslizador y se aparta donde la diferencia se siente
+ * con el mando en la mano. No es afinado por gusto: cada desvío responde a que
+ * abajo hay un animal y no una turbina.
+ *
+ * La navegación queda IDÉNTICA a propósito. La IA vehicular planifica sobre
+ * esos números y el radio de giro es el que evita que se trabe en interiores;
+ * tocarlos para "hacerlo más orgánico" es cambiarle el pathfinding, no el tacto.
+ */
+const combineSwimmerChassis = {
+  ...combineGliderChassis,
+  // El bicho tarda en obedecer y sigue doblando después de que soltás: la
+  // diferencia entre pedirle algo a una máquina y pedírselo a un animal.
+  driving: {
+    ...combineGliderChassis.driving,
+    throttleRate: 6,
+    steeringRateSlow: 3.4,
+    steeringRateFast: 2.4,
+    steeringRestRateSlow: 2.4,
+    steeringRestRateFast: 1.8,
+  },
+  motor: {
+    ...combineGliderChassis.motor,
+    // Acelera como un ser vivo: primero se decide y después embala. Con la
+    // respuesta del deslizador el empuje aparecía instantáneo, que es
+    // exactamente la lectura de motor que el rework busca romper.
+    throttleResponse: 5.8,
+    // Un bicho pivotea sobre la cola parado. Es lo que lo saca de tener que
+    // maniobrar como un vehículo que necesita carrera para girar.
+    steeringTorque: 7_600,
+    lowSpeedSteeringAuthority: 1.45,
+    // Menos agarre lateral: el cuerpo derrapa de costado en las curvas en vez
+    // de ir sobre rieles, y la guiñada tarda más en apagarse, así el coleo
+    // sobrevive a la curva.
+    lateralDrag: 3.5,
+    yawDamping: 1.8,
+    // Suspensión de carne: resorte más largo y algo menos amortiguado, de donde
+    // sale el cabeceo al pasar un desnivel. Es la mitad física de la sensación
+    // de montura; la otra mitad la pone la postura del animador.
+    hoverSpringLength: 0.22,
+    hoverDamping: 0.17,
+    // Se bambolea más antes de enderezarse.
+    uprightTorque: 5_800,
+    uprightDamping: 2_400,
+    planingSpeed: 13,
+  },
+  body: {
+    ...combineGliderChassis.body,
+    // Carne y hueso pesan más que un casco hueco.
+    //
+    // El centro de masa se queda donde lo tiene el deslizador. Adelantarlo para
+    // que "pese la cabeza" inclina el casco de morro, las sondas antigravedad
+    // empujan cuesta abajo por esa inclinación y el bicho estacionado se va
+    // solo. El peso de la cabeza lo cuenta la postura del animador, que es
+    // gratis y no toca la física.
+    mass: 745,
+  },
+  damageZones: [
+    // Aguanta más castigo repartido que un casco —es masa viva— pero el
+    // injerto es lo más frágil que tiene encima.
+    { id: 'hull', health: 480, damageMultiplier: 0.86 },
+    { id: 'engine', health: 95, damageMultiplier: 1.7, disableAtZero: true },
+    { id: 'steering', health: 105, damageMultiplier: 1.2 },
+    { id: 'fuel', health: 90, damageMultiplier: 1.55 },
+  ],
+} satisfies Omit<VehiclePresetDefinition, 'id' | 'archetype' | 'displayName'>;
+
 export const VehiclePresets = {
   buggy: {
     id: 'buggy',
@@ -343,8 +446,13 @@ export const VehiclePresets = {
       handbrakeForce: 130,
       autoBrakeForce: 14,
       handbrakeSideFriction: 0.32,
-      maxSteeringAngle: 0.52,
-      steeringFadeSpeed: 28,
+      // 50° / 18° / 14 mph / 20 mph: los cuatro números del `vehicle_jeep.txt`
+      // de HL2 pasados a radianes y m/s.
+      maxSteeringAngle: 0.87,
+      fastSteeringAngle: 0.31,
+      steeringSpeedSlow: 6.3,
+      steeringSpeedFast: 8.9,
+      topSpeed: 35,
       steeringExponent: 1.4,
       boostMultiplier: 1.45,
       extraGravity: 0.3,
@@ -427,9 +535,12 @@ export const VehiclePresets = {
     motor: {
       kind: 'hover',
       surfaceMode: 'fluid',
-      thrustForce: 4200,
+      thrustForce: 5400,
       reverseForce: 1150,
-      steeringTorque: 620,
+      // El par de timón estaba calibrado contra un arrastre angular que se fue
+      // por encima: doblar a fondo describía un radio de noventa metros, o sea
+      // no doblar. Un airboat no se puede pilotar sin poder tirarlo de cola.
+      steeringTorque: 4600,
       rudderAngle: 0.6,
       thrustPoint: [0, 0.35, -1.9],
       lateralDragPoint: [0, 0, -1.6],
@@ -437,8 +548,8 @@ export const VehiclePresets = {
       planingSpeed: 10,
       buoyancy: 1.18,
       waterDrag: 0.12,
-      lateralDrag: 0.7,
-      yawDamping: 2.6,
+      lateralDrag: 0.6,
+      yawDamping: 1.9,
       waterBrakeDrag: 4,
       groundDrag: 0.35,
       probeOffsets: [
@@ -458,6 +569,19 @@ export const VehiclePresets = {
       hullFriction: 0.12,
     },
     camera: { ...groundCamera, speedFovGain: 10, positionDamping: 10 },
+    // Un hidrodeslizador dobla EMPUJANDO: recortarle el gas en la curva, que es
+    // lo correcto en un coche, acá le saca justo lo que necesita para girar.
+    driving: {
+      turnThrottleReduceSlow: 0,
+      turnThrottleReduceFast: 0,
+      steeringRateSlow: 4,
+      steeringRateFast: 3,
+      steeringRestRateSlow: 3.4,
+      steeringRestRateFast: 2.4,
+      speedSlow: 6,
+      speedFast: 16,
+      brakeSteeringRateFactor: 1.6,
+    },
     seats: [
       {
         id: 'driver',
@@ -720,8 +844,14 @@ export const VehiclePresets = {
       handbrakeForce: 165,
       autoBrakeForce: 20,
       handbrakeSideFriction: 0.45,
-      maxSteeringAngle: 0.42,
-      steeringFadeSpeed: 20,
+      // Dos toneladas de oruga giran menos que un buggy, pero el tope viejo de
+      // 24° la dejaba sin poder salir de un patio. Y la dirección se le cierra
+      // más tarde: pesa demasiado para ponerse nerviosa a 9 m/s.
+      maxSteeringAngle: 0.62,
+      fastSteeringAngle: 0.26,
+      steeringSpeedSlow: 5,
+      steeringSpeedFast: 12,
+      topSpeed: 25,
       steeringExponent: 1.25,
       boostMultiplier: 1.15,
       extraGravity: 0.55,
@@ -746,6 +876,20 @@ export const VehiclePresets = {
       speedFovGain: 5,
       positionDamping: 10,
       rotationDamping: 9,
+    },
+    // Todo llega más tarde y se va más tarde: es lo único que distingue manejar
+    // dos toneladas de manejar novecientos kilos.
+    driving: {
+      throttleRate: 5,
+      brakeRate: 4.5,
+      steeringRateSlow: 2.6,
+      steeringRateFast: 1.5,
+      steeringRestRateSlow: 2.8,
+      steeringRestRateFast: 1.7,
+      speedSlow: 5,
+      speedFast: 12,
+      turnThrottleReduceFast: 1.2,
+      brakeSteeringRateFactor: 3,
     },
     seats: [
       {
@@ -789,12 +933,12 @@ export const VehiclePresets = {
     displayName: 'Deslizador Combine de reconocimiento',
   },
   /**
-   * Misma máquina que el deslizador: motor, casco, cámara, asiento, daño y
-   * navegación son copia exacta. Lo único propio es el modelo, que prueba la
-   * variante biomecánica del mismo rol.
+   * Mismo rol que el deslizador y el mismo hueco físico, pero resuelto como
+   * criatura: modelo animado, voz propia y un chasis que se bambolea, derrapa
+   * y tarda en decidirse. Ver `combineSwimmerChassis`.
    */
   combineSwimmer: {
-    ...combineGliderChassis,
+    ...combineSwimmerChassis,
     id: 'combineSwimmer',
     archetype: 'combineSwimmer',
     displayName: 'Nadador Combine de transporte',
@@ -806,6 +950,20 @@ export function isVehiclePresetId(value: string): value is VehiclePresetId {
 }
 
 /**
+ * Vehículos que son criaturas y no máquinas. Cambia tres cosas: se animan como
+ * seres vivos, mueren dejando cadáver en vez de chatarra y revientan con
+ * vísceras. Vive acá porque lo consultan tanto el visual como el sistema, y
+ * porque es contenido: la lista crece agregando un id, no una clase.
+ */
+const CREATURE_ARCHETYPES: ReadonlySet<VehicleArchetypeId> = new Set([
+  'combineSwimmer',
+]);
+
+export function isCreatureVehicle(archetype: VehicleArchetypeId): boolean {
+  return CREATURE_ARCHETYPES.has(archetype);
+}
+
+/**
  * Velocidad punta aproximada en m/s. La usan tanto la IA para planificar como
  * el HUD para escalar el velocímetro: si cada uno la dedujera por su cuenta el
  * indicador terminaría desfasado del comportamiento real.
@@ -813,7 +971,7 @@ export function isVehiclePresetId(value: string): value is VehiclePresetId {
 export function vehicleTopSpeed(preset: VehiclePresetDefinition): number {
   switch (preset.motor.kind) {
     case 'raycast':
-      return Math.max(18, preset.motor.steeringFadeSpeed * 1.25);
+      return preset.motor.topSpeed;
     case 'hover':
       return Math.max(18, preset.motor.planingSpeed * 2.25);
     case 'onRails':

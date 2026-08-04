@@ -18,15 +18,33 @@ import {
   SpotLight,
   Vector3,
 } from "three";
-import type { VehicleArchetypeId } from "@game/config/vehicles.config";
+import {
+  isCreatureVehicle,
+  type VehicleArchetypeId,
+} from "@game/config/vehicles.config";
 import type { Disposable } from "@shared/types/lifecycle";
+import {
+  createCreatureVehicleAnimator,
+  type CreatureVehicleAnimator,
+} from "./CreatureVehicleAnimator";
 
 export interface VehicleVisualTelemetry {
   speed: number;
+  /** Velocidad con signo sobre +Z local: de acá sale la aceleración propia. */
+  forwardSpeed: number;
+  /** Guiñada en rad/s, para las inercias de los vehículos animados. */
+  yawRate: number;
   steering: number;
   wheelRotation: number;
   suspension: readonly number[];
   engine01: number;
+  /** Si hay alguien a bordo. Los vehículos vivos dormitan vacíos. */
+  occupied: boolean;
+  /** Mirada del que maneja, en ejes del vehículo. */
+  riderYaw: number;
+  riderPitch: number;
+  /** Destruido: los vehículos vivos pasan a cadáver en vez de a chatarra. */
+  dead: boolean;
 }
 
 export interface VehicleVisualModelLease extends Disposable {
@@ -46,6 +64,11 @@ export interface VehicleVisual extends Disposable {
   setLights(enabled: boolean): void;
   setDamage(hull01: number, burning: boolean): void;
   setWreckage(enabled: boolean): void;
+  /**
+   * Sacudón puntual. Sólo lo acusan los vehículos vivos: al montarlos, al
+   * recibir un impacto. En una máquina no hace nada.
+   */
+  startle(intensity: number): void;
 }
 
 interface VisualRig {
@@ -87,6 +110,7 @@ interface ImportedMaterialState {
 interface ImportedVisualRig {
   readonly root: Object3D;
   readonly lod: LOD;
+  readonly creature: CreatureVehicleAnimator | null;
   readonly wreckage: Object3D | null;
   readonly wheels: readonly ImportedAnimatedNode[];
   readonly fans: readonly ImportedAnimatedNode[];
@@ -181,6 +205,7 @@ export function createVehicleVisual(archetype: VehicleArchetypeId): VehicleVisua
         lease.dispose();
         return false;
       }
+      imported?.creature?.dispose();
       imported?.root.removeFromParent();
       importedLease?.dispose();
       importedLease = lease;
@@ -251,6 +276,21 @@ export function createVehicleVisual(archetype: VehicleArchetypeId): VehicleVisua
           rotorAngle,
           fanAngle,
         );
+        // Después del rig genérico: la criatura escribe sobre los mismos nodos
+        // (los timones son sus aletas caudales) y tiene que ganar ella.
+        imported.creature?.update(delta, {
+          speed: telemetry.speed,
+          forwardSpeed: telemetry.forwardSpeed,
+          steering,
+          yawRate: telemetry.yawRate,
+          engine01: telemetry.engine01,
+          hull01: damage01,
+          burning: isBurning,
+          occupied: telemetry.occupied,
+          riderYaw: telemetry.riderYaw,
+          riderPitch: telemetry.riderPitch,
+          dead: telemetry.dead || wreckage,
+        });
       }
 
       const targetDamage = 1 - MathUtils.clamp(damage01, 0, 1);
@@ -305,9 +345,13 @@ export function createVehicleVisual(archetype: VehicleArchetypeId): VehicleVisua
       wreckage = enabled;
       if (imported) setImportedWreckage(imported, enabled);
     },
+    startle(intensity): void {
+      imported?.creature?.startle(intensity);
+    },
     dispose(): void {
       if (disposed) return;
       disposed = true;
+      imported?.creature?.dispose();
       imported?.root.removeFromParent();
       imported = null;
       importedLease?.dispose();
@@ -397,6 +441,11 @@ function bindImportedRig(
       // panel opaco al carbonizarse y lo enciende al arder, que es justo lo
       // que un vidrio no hace.
       if (material.transparent) return;
+      // Lo mismo con lo que emite luz propia: el tiznado le pisa el
+      // `emissiveIntensity` y a vida llena lo deja en cero, que es por qué los
+      // emisores Combine se veían apagados. Su brillo lo maneja quien los
+      // encendió.
+      if (!isBlack(material.emissive)) return;
       damageMaterials.set(material, {
         material,
         color: material.color.clone(),
@@ -408,6 +457,9 @@ function bindImportedRig(
   return {
     root,
     lod,
+    creature: isCreatureVehicle(archetype)
+      ? createCreatureVehicleAnimator(root)
+      : null,
     wreckage: root.getObjectByName("wreckage") ?? null,
     wheels,
     fans,
@@ -422,6 +474,10 @@ function bindImportedRig(
     exitAnchors,
     muzzle,
   };
+}
+
+function isBlack(color: Color): boolean {
+  return color.r === 0 && color.g === 0 && color.b === 0;
 }
 
 function animatedVariants(
@@ -617,9 +673,12 @@ function setImportedWreckage(
   rig: ImportedVisualRig,
   enabled: boolean,
 ): void {
-  rig.lod.visible = !enabled;
+  // Una criatura no deja chatarra: deja un cadáver, y el cadáver es este mismo
+  // modelo con los apéndices sueltos. Esconder el LOD para mostrar una carcasa
+  // aparte era justamente lo que hacía que el muerto no se pareciera al vivo.
+  rig.lod.visible = !enabled || rig.creature !== null;
   rig.wreckage?.traverse((node) => {
-    node.visible = enabled;
+    node.visible = enabled && rig.creature === null;
   });
 }
 

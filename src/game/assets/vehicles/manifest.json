@@ -317,18 +317,18 @@
     },
     {
       "id": "combineSwimmer",
-      "glbBytes": 968252,
+      "glbBytes": 1031508,
       "lods": [
         {
-          "triangles": 7004,
-          "draws": 9
+          "triangles": 14424,
+          "draws": 24
         },
         {
-          "triangles": 3232,
-          "draws": 9
+          "triangles": 4972,
+          "draws": 22
         },
         {
-          "triangles": 1704,
+          "triangles": 1656,
           "draws": 7
         }
       ],
@@ -336,32 +336,60 @@
         "combineSwimmer_vehicle",
         "visual_lod0",
         "combineSwimmer_body",
+        "swimmer_head",
         "combineSwimmer_visor",
         "combineSwimmer_eye",
+        "swimmer_jaw",
+        "swimmer_gills",
+        "swimmer_antenna_left",
+        "swimmer_antenna_left_tip",
+        "swimmer_antenna_right",
+        "swimmer_antenna_right_tip",
+        "swimmer_oar_left_0",
+        "swimmer_oar_left_1",
+        "swimmer_oar_left_2",
+        "swimmer_oar_right_0",
+        "swimmer_oar_right_1",
+        "swimmer_oar_right_2",
+        "swimmer_tail_0",
+        "swimmer_tail_1",
+        "rudder_left",
+        "rudder_right",
         "fan_main",
         "stabilizer_front",
         "stabilizer_rear_left",
         "stabilizer_rear_right",
-        "rudder_left",
-        "rudder_right",
         "visual_lod1",
         "combineSwimmer_body_lod1",
+        "swimmer_head_lod1",
         "combineSwimmer_visor_lod1",
         "combineSwimmer_eye_lod1",
+        "swimmer_antenna_left_lod1",
+        "swimmer_antenna_left_tip_lod1",
+        "swimmer_antenna_right_lod1",
+        "swimmer_antenna_right_tip_lod1",
+        "swimmer_oar_left_0_lod1",
+        "swimmer_oar_left_1_lod1",
+        "swimmer_oar_left_2_lod1",
+        "swimmer_oar_right_0_lod1",
+        "swimmer_oar_right_1_lod1",
+        "swimmer_oar_right_2_lod1",
+        "swimmer_tail_0_lod1",
+        "swimmer_tail_1_lod1",
+        "rudder_left_lod1",
+        "rudder_right_lod1",
         "fan_main_lod1",
         "stabilizer_front_lod1",
         "stabilizer_rear_left_lod1",
         "stabilizer_rear_right_lod1",
-        "rudder_left_lod1",
-        "rudder_right_lod1",
         "visual_lod2",
         "combineSwimmer_body_lod2",
+        "rudder_left_lod2",
+        "rudder_right_lod2",
         "fan_main_lod2",
         "stabilizer_front_lod2",
         "stabilizer_rear_left_lod2",
         "stabilizer_rear_right_lod2",
-        "rudder_left_lod2",
-        "rudder_right_lod2",
         "seat_driver",
         "camera_driver",
         "exit_left",
@@ -372,11 +400,7 @@
         "damage_hull",
         "damage_steering",
         "damage_fuel",
-        "wreckage",
-        "wreckage_carcass",
-        "wreckage_graft",
-        "wreckage_debris",
-        "wreckage_glass"
+        "wreckage"
       ]
     }
   ],
@@ -433,6 +457,21 @@
         "durationSeconds": 3
       },
       {
+        "path": "audio/combine-swimmer-breath-loop.wav",
+        "bytes": 220544,
+        "durationSeconds": 5
+      },
+      {
+        "path": "audio/combine-swimmer-graft-loop.wav",
+        "bytes": 132344,
+        "durationSeconds": 3
+      },
+      {
+        "path": "audio/combine-swimmer-strain-loop.wav",
+        "bytes": 132344,
+        "durationSeconds": 3
+      },
+      {
         "path": "audio/vehicle-alarm-loop.wav",
         "bytes": 88244,
         "durationSeconds": 2
@@ -448,6 +487,6 @@
         "durationSeconds": 3.5
       }
     ],
-    "totalBytes": 1841748
+    "totalBytes": 2326980
   }
 }

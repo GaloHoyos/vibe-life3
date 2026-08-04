@@ -87,6 +87,13 @@ export interface VehicleEntityCallbacks {
   onCrashStarted(vehicle: VehicleEntity): void;
   onCrashFinished(vehicle: VehicleEntity, survivable: boolean): void;
   onDestroyed(vehicle: VehicleEntity): void;
+  /**
+   * El instante exacto en que el vehículo pasa a su modelo de restos. Es el
+   * único punto por el que salen las dos muertes —derribo y daño de casco—, así
+   * que es donde va todo lo que tiene que pasar una vez y sí o sí: el estallido
+   * es lo primero.
+   */
+  onWreckage(vehicle: VehicleEntity): void;
 }
 
 interface VisualPose {
@@ -120,6 +127,8 @@ const TMP_QUATERNION = new Quaternion();
 const TMP_FORWARD = new Vector3();
 const TMP_WORLD = new Vector3();
 const TMP_SEAT_OFFSET = new Vector3();
+const TMP_ANGULAR = new Vector3();
+const TMP_ROTATION = new Quaternion();
 const SURFACE_DOWN = new Vector3(0, -1, 0);
 const SURFACE_UP = new Vector3(0, 1, 0);
 /** Igual a la gravedad de `PhysicsWorld`; dimensiona el peso de reposo. */
@@ -171,6 +180,9 @@ export class VehicleEntity {
   private handbrakeApplied = false;
   private crashing = false;
   private wreckage = false;
+  private hullReleased = false;
+  private riderYaw = 0;
+  private riderPitch = 0;
   private disposed = false;
   private lastChassisImpactAt = -Infinity;
   private readonly actorImpactCooldowns = new Map<string, number>();
@@ -238,8 +250,7 @@ export class VehicleEntity {
         onCrashRequested: () => this.beginCrash(),
         onDestroyed: () => {
           this.engineOn = false;
-          this.wreckage = true;
-          this.visual.setWreckage(true);
+          this.enterWreckage();
           this.eventBus.emit("vehicle.destroyed", { id: this.id });
           this.io.fireOutput(this.source, "OnDestroyed", { kind: "none" });
           this.callbacks.onDestroyed(this);
@@ -406,7 +417,19 @@ export class VehicleEntity {
         : telemetry.forwardSpeed * elapsed * 1.7;
     this.visual.update(delta, {
       speed: telemetry.speed,
+      forwardSpeed: telemetry.forwardSpeed,
+      // Guiñada en ejes del vehículo: el estado la trae en mundo, y con el
+      // chasis inclinado la componente Y global no es la que se siente arriba.
+      yawRate: TMP_ANGULAR
+        .copy(telemetry.state.angularVelocity)
+        .applyQuaternion(
+          TMP_ROTATION.copy(telemetry.state.rotation).invert(),
+        ).y,
       steering: telemetry.steering,
+      occupied: this.occupantsBySeat.size > 0,
+      riderYaw: this.riderYaw,
+      riderPitch: this.riderPitch,
+      dead: this.wreckage,
       wheelRotation,
       // Recorrido de suspensión EN METROS respecto de la extensión total. El
       // visual lo suma a la posición de reposo de la rueda, así la rueda dibujada
@@ -690,17 +713,62 @@ export class VehicleEntity {
     this.finishCrash();
   }
 
-  finishCrash(): void {
-    if (this.wreckage) return;
-    this.crashing = false;
-    this.wreckage = true;
-    this.visual.setWreckage(true);
+  /**
+   * Suelta el casco a la física: apaga el motor, limpia lo que dejó aplicado y
+   * devuelve el cuerpo a dinámico con gravedad.
+   *
+   * El reseteo de fuerzas no es decorativo. Rapier ACUMULA las fuerzas de
+   * usuario hasta que alguien las resetea, y el hook de pre-step deja de correr
+   * el motor apenas hay wreckage: sin limpiarlas, la última sustentación
+   * aplicada se sigue sumando en cada step para siempre y el cadáver de un
+   * vehículo antigravedad se va flotando hacia arriba.
+   */
+  private releaseHullToPhysics(): void {
+    if (this.hullReleased) return;
+    this.hullReleased = true;
     this.motor.setEnabled(false);
     this.motor.dispose();
+    if (this.body.isValid()) {
+      this.body.resetForces(true);
+      this.body.resetTorques(true);
+    }
     this.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
     this.body.setGravityScale(1, true);
     this.body.setLinearDamping(0.45);
     this.body.setAngularDamping(0.72);
+    // El casco vivo es resbaladizo a propósito —`hullFriction` bajo y regla de
+    // combinación `Min`— para que un aerodeslizador varado no se clave en el
+    // piso. Muerto, eso mismo lo convierte en un trineo: con 4 m/s de impulso
+    // el cadáver patinaba 5 m antes de frenar, y a velocidad de combate se iba
+    // deslizando fuera de la vista. Un cuerpo raspa y se queda donde cayó.
+    for (const handle of this.colliderHandles) {
+      const collider = this.physics.world.getCollider(handle);
+      if (!collider) continue;
+      collider.setFriction(1.15);
+      collider.setFrictionCombineRule(RAPIER.CoefficientCombineRule.Average);
+      collider.setRestitution(0);
+    }
+  }
+
+  /**
+   * Paso a restos. Las dos muertes —el derribo guionado y el casco a cero—
+   * confluyen acá, así que el modelo de wreckage, la entrega a la física y el
+   * estallido ocurren juntos y una sola vez. Antes cada camino hacía su parte
+   * por separado: uno estallaba dos veces y el otro dejaba al helicóptero
+   * apareciendo como chatarra sin explosión.
+   */
+  private enterWreckage(): void {
+    if (this.wreckage) return;
+    this.wreckage = true;
+    this.visual.setWreckage(true);
+    this.releaseHullToPhysics();
+    this.callbacks.onWreckage(this);
+  }
+
+  finishCrash(): void {
+    if (this.wreckage) return;
+    this.crashing = false;
+    this.enterWreckage();
     const forward = TMP_FORWARD
       .set(0, 0, 1)
       .applyQuaternion(this.currentPose.rotation);
@@ -719,6 +787,16 @@ export class VehicleEntity {
     if (this.damage.getState() !== "disabled") {
       this.engineOn = true;
     }
+  }
+
+  /**
+   * Adónde mira el que maneja, en ejes del vehículo. Separado de `aimWeapon`
+   * porque eso apunta un arma y sale por los límites de la torreta: acá no hay
+   * torreta, hay una cabeza. Una máquina lo ignora.
+   */
+  setRiderAim(yaw: number, pitch: number): void {
+    this.riderYaw = yaw;
+    this.riderPitch = pitch;
   }
 
   aimWeapon(yaw: number, pitch: number): void {
@@ -819,6 +897,8 @@ export class VehicleEntity {
       role: preset.role,
     };
     this.occupantsBySeat.set(resolvedSeat, occupant);
+    // Subirse a un bicho lo despierta. En una máquina no pasa nada.
+    this.visual.startle(0.75);
     return occupant;
   }
 
@@ -983,6 +1063,10 @@ export class VehicleEntity {
     if (this.crashing && !this.wreckage) {
       this.rotorMotor?.setOutOfControl(true);
     }
+    // Un guardado con el vehículo ya destruido no vuelve a estallar, pero sí
+    // tiene que recuperar la entrega a la física: si no, el resto restaurado
+    // queda con el motor vivo y flotando.
+    if (this.wreckage) this.releaseHullToPhysics();
     this.visual.setWreckage(this.wreckage);
     this.snapPose();
     this.syncVisual(1);
@@ -1209,11 +1293,11 @@ export class VehicleEntity {
         maxBrakeForce: config.brakeForce,
         maxHandbrakeForce: config.handbrakeForce,
         maxSteeringAngle: config.maxSteeringAngle,
-        maxForwardSpeed: 36,
+        fastSteeringAngle: config.fastSteeringAngle,
+        steeringSpeedSlow: config.steeringSpeedSlow,
+        steeringSpeedFast: config.steeringSpeedFast,
+        maxForwardSpeed: config.topSpeed,
         maxReverseSpeed: 13,
-        throttleResponse: 5.5,
-        steeringResponse: 7.5,
-        highSpeedSteeringFactor: 0.28,
         directionChangeBrakeSpeed: 1.4,
         boostMultiplier: config.boostMultiplier,
         autoBrakeForce: config.autoBrakeForce,
@@ -1296,7 +1380,6 @@ export class VehicleEntity {
         maxPlaningLift: antigrav ? 0 : this.preset.body.mass * 11,
         landThrustFactor: config.landThrustFactor,
         throttleResponse: config.throttleResponse ?? 4.8,
-        steeringResponse: config.steeringResponse ?? 6.5,
         boostMultiplier: 1.32,
         rudderAngle: config.rudderAngle,
         thrustPoint: new Vector3(...config.thrustPoint),

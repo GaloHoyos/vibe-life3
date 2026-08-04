@@ -16,6 +16,7 @@ import {
 import { VehicleAssetRegistry } from "@game/assets/vehicles/VehicleAssetRegistry";
 import {
   isAtTheControls,
+  isCreatureVehicle,
   usesGroundNavigation,
   vehicleTopSpeed,
   type VehicleCrewRole,
@@ -177,6 +178,8 @@ const AIR_CONTROL_LOSS_MIN_ALTITUDE = 2.5;
 const DOWN = new Vector3(0, -1, 0);
 const WORLD_UP = new Vector3(0, 1, 0);
 const TMP_AIR_FORWARD = new Vector3();
+const CREATURE_BURST_DIRECTION = new Vector3();
+const CREATURE_BURST_POINT = new Vector3();
 const IDENTITY_ROTATION = new Quaternion();
 const EXIT_RADIAL_ANGLES = [
   0,
@@ -324,6 +327,7 @@ export class VehicleSystem {
           onCrashFinished: (entity, survivable) =>
             this.handleCrashFinished(entity, survivable),
           onDestroyed: (entity) => this.handleDestroyed(entity),
+          onWreckage: (entity) => this.handleWreckage(entity),
         },
       );
       this.vehicles.set(vehicle.id, vehicle);
@@ -553,6 +557,7 @@ export class VehicleSystem {
         );
         const aim = this.cameraRig.getLocalAim();
         this.mountedVehicle.aimWeapon(aim.yaw, aim.pitch);
+        this.mountedVehicle.setRiderAim(aim.yaw, aim.pitch);
         this.emitMountedTelemetry(this.mountedVehicle);
       }
     }
@@ -1986,6 +1991,7 @@ export class VehicleSystem {
     // Sin esto el acelerador y el volante del vehículo anterior arrancan
     // aplicados en el próximo.
     this.driverInput.reset();
+    this.driverInput.setTuning(vehicle.preset.driving);
     this.mountedVehicle = vehicle;
     this.mountedOccupant = occupant;
     this.pendingPlayerSeatHandoff = null;
@@ -3008,7 +3014,9 @@ export class VehicleSystem {
 
   private handleCrashStarted(vehicle: VehicleEntity): void {
     this.ensureDamageEffects(vehicle, true);
-    this.audio.crash(vehicle);
+    // El golpe suena al estallar, no al empezar a caer: un vehículo sin ruta de
+    // derribo pasa a restos en esta misma llamada, y los dos sonidos en el
+    // mismo cuadro se escuchaban como un eco.
     this.showMessage("¡Impacto inminente!");
   }
 
@@ -3016,10 +3024,6 @@ export class VehicleSystem {
     vehicle: VehicleEntity,
     survivable: boolean,
   ): void {
-    this.vfx.explosion(vehicle.getWorldPosition(), {
-      scale: vehicle.preset.archetype === "helicopter" ? 2.8 : 1.5,
-      color: new Color(0xffa04d),
-    });
     if (vehicle === this.mountedVehicle) {
       if (survivable) {
         this.tryDismountPlayer(true);
@@ -3051,12 +3055,53 @@ export class VehicleSystem {
   private handleDestroyed(vehicle: VehicleEntity): void {
     this.requestEvacuation(vehicle);
     this.ensureDamageEffects(vehicle, true);
-    if (vehicle.preset.archetype !== "helicopter") {
-      this.vfx.explosion(vehicle.getWorldPosition(), {
-        scale: 1.4,
-        color: new Color(0xff8b3d),
+  }
+
+  /**
+   * Estallido al pasar a restos. Va acá y en ningún otro lado: es el único
+   * punto por el que salen las dos muertes, así que ningún vehículo aparece
+   * como chatarra sin haber explotado y ninguno explota dos veces.
+   */
+  private handleWreckage(vehicle: VehicleEntity): void {
+    const position = vehicle.getWorldPosition();
+    if (isCreatureVehicle(vehicle.preset.archetype)) {
+      this.burstCreature(vehicle, position);
+      return;
+    }
+    this.vfx.explosion(position, {
+      scale: vehicle.preset.archetype === "helicopter" ? 3.2 : 2.2,
+      color: new Color(0xffa04d),
+    });
+    this.audio.crash(vehicle);
+  }
+
+  /**
+   * Muerte de un vehículo vivo. El estallido del injerto es más grande que el
+   * de una máquina del mismo porte —revienta un reactor metido en carne— y
+   * arrastra vísceras: sin la sangre, un bicho muere con la misma bola de fuego
+   * naranja que un buggy y vuelve a leerse como chatarra.
+   */
+  private burstCreature(vehicle: VehicleEntity, position: Vector3): void {
+    this.vfx.explosion(position, {
+      scale: 2.3,
+      color: new Color(0xff6a2a),
+    });
+    for (let index = 0; index < 7; index += 1) {
+      const angle = (index / 7) * Math.PI * 2;
+      CREATURE_BURST_DIRECTION.set(
+        Math.cos(angle),
+        0.35 + (index % 3) * 0.28,
+        Math.sin(angle),
+      ).normalize();
+      CREATURE_BURST_POINT.copy(position).addScaledVector(
+        CREATURE_BURST_DIRECTION,
+        0.7,
+      );
+      this.vfx.bloodImpact(CREATURE_BURST_POINT, CREATURE_BURST_DIRECTION, {
+        scale: 2.2,
       });
     }
+    this.audio.crash(vehicle);
   }
 
   private ensureDamageEffects(vehicle: VehicleEntity, force = false): void {
