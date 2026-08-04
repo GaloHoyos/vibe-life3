@@ -128,7 +128,10 @@ const TMP_FORWARD = new Vector3();
 const TMP_WORLD = new Vector3();
 const TMP_SEAT_OFFSET = new Vector3();
 const TMP_ANGULAR = new Vector3();
+const TMP_LOCAL_VELOCITY = new Vector3();
 const TMP_ROTATION = new Quaternion();
+/** Altura de la cabeza del bicho sobre el origen: el pitch se mide desde ahí. */
+const SEAT_EYE_HEIGHT = 0.9;
 const SURFACE_DOWN = new Vector3(0, -1, 0);
 const SURFACE_UP = new Vector3(0, 1, 0);
 /** Igual a la gravedad de `PhysicsWorld`; dimensiona el peso de reposo. */
@@ -183,6 +186,8 @@ export class VehicleEntity {
   private hullReleased = false;
   private riderYaw = 0;
   private riderPitch = 0;
+  private readonly observerBearing: LocalBearing = { yaw: 0, pitch: 0 };
+  private attention = 0;
   private disposed = false;
   private lastChassisImpactAt = -Infinity;
   private readonly actorImpactCooldowns = new Map<string, number>();
@@ -239,7 +244,11 @@ export class VehicleEntity {
           });
           this.io.fireOutput(this.source, "OnDamaged", activatorFor(attackerId));
           if (hitPoint) {
-            this.callbacks.onImpact(this, MathUtils.clamp(amount / 80, 0.08, 1));
+            const intensity = MathUtils.clamp(amount / 80, 0.08, 1);
+            this.callbacks.onImpact(this, intensity);
+            // Un bicho se sobresalta cuando lo golpean, no sólo cuando se le
+            // suben encima. Una máquina lo ignora.
+            this.visual.startle(intensity * 0.9);
           }
         },
         onDisabled: () => {
@@ -426,9 +435,17 @@ export class VehicleEntity {
           TMP_ROTATION.copy(telemetry.state.rotation).invert(),
         ).y,
       steering: telemetry.steering,
+      localVelocity: TMP_LOCAL_VELOCITY
+        .copy(telemetry.state.linearVelocity)
+        .applyQuaternion(
+          TMP_ROTATION.copy(telemetry.state.rotation).invert(),
+        ),
       occupied: this.occupantsBySeat.size > 0,
       riderYaw: this.riderYaw,
       riderPitch: this.riderPitch,
+      gazeYaw: this.observerBearing.yaw,
+      gazePitch: this.observerBearing.pitch,
+      attention: this.attention,
       dead: this.wreckage,
       wheelRotation,
       // Recorrido de suspensión EN METROS respecto de la extensión total. El
@@ -797,6 +814,27 @@ export class VehicleEntity {
   setRiderAim(yaw: number, pitch: number): void {
     this.riderYaw = yaw;
     this.riderPitch = pitch;
+  }
+
+  /**
+   * Alguien a pie a quien un vehículo VIVO puede prestarle atención. Es una
+   * posición del mundo y no un actor: la entidad no tiene por qué saber si es
+   * el jugador, un rebelde o nadie. `null` borra el interés.
+   *
+   * Una máquina lo ignora, igual que `setRiderAim`.
+   */
+  setObserver(position: Readonly<Vector3> | null): void {
+    if (!position) {
+      this.attention = 0;
+      return;
+    }
+    TMP_WORLD.copy(position).sub(this.getWorldPosition(TMP_POSITION));
+    const distance = TMP_WORLD.length();
+    // Empieza a registrarte a doce metros y te tiene encima a cuatro. Fuera de
+    // rango no vale la pena ni calcular el rumbo.
+    this.attention = MathUtils.clamp((12 - distance) / 8, 0, 1);
+    if (this.attention <= 0) return;
+    localBearing(TMP_WORLD, this.currentPose.rotation, this.observerBearing);
   }
 
   aimWeapon(yaw: number, pitch: number): void {
@@ -1606,6 +1644,44 @@ function damageHitboxes(
         { zone: "fuel", position: [0, 0.62, -0.62], size: [0.7, 0.42, 0.62] },
       ];
   }
+}
+
+export interface LocalBearing {
+  yaw: number;
+  pitch: number;
+}
+
+/**
+ * Rumbo de un punto en ejes del vehículo, con el convenio de la torreta y de
+ * `setRiderAim`: guiñada positiva apunta el morro hacia +X.
+ *
+ * OJO con el signo, porque acá se cruzan dos convenios opuestos. La DERECHA del
+ * proyecto es `forward × up` = **−X**, así que `steering` positivo es −X; pero
+ * un `rotation.y` positivo de Three lleva el +Z hacia **+X**. Para que la
+ * cabeza mire a quien tiene al lado hay que seguir el segundo, no el primero:
+ * con el signo del volante el bicho giraba la cabeza para el lado contrario.
+ *
+ * Escribe sobre un destino del llamador en vez de devolver objeto propio: se
+ * llama por vehículo y por frame, y un objeto compartido haría que guardarse dos
+ * rumbos devuelva dos veces el último.
+ *
+ * Exportada para poder fijar el signo en una prueba: no tiene estado, y metida
+ * adentro de la entidad no habría forma de verificarla sin un GLB.
+ */
+export function localBearing(
+  delta: Readonly<Vector3>,
+  rotation: Readonly<Quaternion>,
+  out: LocalBearing,
+): LocalBearing {
+  TMP_SEAT_OFFSET.copy(delta).applyQuaternion(
+    TMP_QUATERNION.copy(rotation).invert(),
+  );
+  out.yaw = Math.atan2(TMP_SEAT_OFFSET.x, TMP_SEAT_OFFSET.z);
+  out.pitch = Math.atan2(
+    TMP_SEAT_OFFSET.y - SEAT_EYE_HEIGHT,
+    Math.hypot(TMP_SEAT_OFFSET.x, TMP_SEAT_OFFSET.z),
+  );
+  return out;
 }
 
 function createAntigravitySurfaceProvider(

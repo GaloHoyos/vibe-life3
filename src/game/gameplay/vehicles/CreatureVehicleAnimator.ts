@@ -21,7 +21,12 @@ import type { Disposable } from "@shared/types/lifecycle";
  */
 export interface CreatureVehicleState {
   readonly speed: number;
-  readonly forwardSpeed: number;
+  /**
+   * Velocidad del casco en ejes del vehículo. El bamboleo sale de derivarla:
+   * un cuerpo que flota no acompaña al casco, se queda atrás cuando lo empujan
+   * y se pasa cuando lo frenan. `z` es la marcha, `x` el desplazamiento.
+   */
+  readonly localVelocity: Readonly<Vector3>;
   readonly steering: number;
   /** Guiñada en rad/s: de acá sale la fuerza centrífuga que lo tumba. */
   readonly yawRate: number;
@@ -33,6 +38,13 @@ export interface CreatureVehicleState {
   /** Mirada del que maneja, en ejes del vehículo: la cabeza la sigue. */
   readonly riderYaw: number;
   readonly riderPitch: number;
+  /**
+   * Alguien a pie cerca al que mirar, en ejes del vehículo, y cuánto le
+   * importa. En cero no hay nadie: la cabeza vuelve a lo suyo.
+   */
+  readonly gazeYaw: number;
+  readonly gazePitch: number;
+  readonly attention: number;
   /** Muerto: el ciclo de nado se apaga y todo cuelga de la gravedad. */
   readonly dead: boolean;
 }
@@ -47,9 +59,19 @@ const TAU = Math.PI * 2;
 /** Cabeceo y alabeo máximos de la postura, en radianes (~7° y ~9°). */
 const MAX_PITCH = 0.12;
 const MAX_ROLL = 0.16;
+/**
+ * Tope del bamboleo del CUERPO, que va sobre el nodo de las mallas y no sobre
+ * el de la postura. Puede ser mucho más generoso justamente porque el asiento y
+ * la cámara no cuelgan de él: el jinete ve al bicho sacudirse debajo suyo sin
+ * que se le tuerza el horizonte.
+ */
+const MAX_BODY_SHIFT = 0.16;
+const MAX_BODY_TILT = 0.2;
 /** Recorrido del cuello. Más allá, la cabeza se despega del cuerpo. */
 const MAX_HEAD_YAW = 0.95;
 const MAX_HEAD_PITCH = 0.45;
+/** Inclinación de la cabeza al mirar a alguien: el gesto de perro curioso. */
+const MAX_HEAD_TILT = 0.34;
 /**
  * Cuánto puede alejarse un apéndice muerto de su pose de reposo. Sin tope, un
  * cadáver boca abajo pide ángulos de casi π y los miembros atraviesan el cuerpo
@@ -59,6 +81,7 @@ const LIMP_REACH = 1.15;
 
 const TMP_DOWN = new Vector3();
 const TMP_ROTATION = new Quaternion();
+const TMP_ACCELERATION = new Vector3();
 
 /**
  * Geometría del nadador que el animador necesita saber, en espacio de objeto.
@@ -112,10 +135,16 @@ interface AntennaChain {
  *
  * `root` es el nodo del modelo importado, hijo de la raíz física. Moverlo mueve
  * también el asiento y la cámara, que es justo lo que se busca: el jinete tiene
- * que sentir el bicho debajo, no mirarlo moverse desde un soporte quieto.
+ * que sentir el bicho debajo, no mirarlo moverse desde un soporte quieto. Por
+ * eso mismo va acotado: cada grado ahí es un grado de horizonte torcido.
+ *
+ * `body` es el nodo de las MALLAS, que cuelga de `root` y no lleva anclas. Ahí
+ * va el bamboleo grande: la carne flotando con retardo respecto del casco. Es
+ * la diferencia entre un bicho que se sacude y un casco al que le pegaron.
  */
 export function createCreatureVehicleAnimator(
   root: Object3D,
+  body: Object3D,
 ): CreatureVehicleAnimator {
   const wave = applyOrganicWave(collectSkinMeshes(root));
   const oars = collectOars(root);
@@ -132,12 +161,30 @@ export function createCreatureVehicleAnimator(
   const heave = new SecondOrderSpring(0, 11, 0.62);
   const headYaw = new SecondOrderSpring(0, 10, 0.72);
   const headPitch = new SecondOrderSpring(0, 10, 0.75);
+  const headTilt = new SecondOrderSpring(0, 7, 0.52);
+  // Resortes del cuerpo: blandos y poco amortiguados a propósito. Un cuerpo que
+  // vuelve al sitio sin pasarse se lee como una pieza montada sobre un resorte
+  // duro; lo que hace que parezca carne flotando es justamente que se pase.
+  const bodySurge = new SecondOrderSpring(0, 5.5, 0.4);
+  const bodySway = new SecondOrderSpring(0, 5, 0.36);
+  const bodyLift = new SecondOrderSpring(0, 6.5, 0.44);
+  const bodyPitch = new SecondOrderSpring(0, 5, 0.38);
+  const bodyRoll = new SecondOrderSpring(0, 4.5, 0.34);
+  const bodyYaw = new SecondOrderSpring(0, 4.2, 0.32);
+  const bodyRest = {
+    x: body.position.x,
+    y: body.position.y,
+    z: body.position.z,
+  };
 
   let strokePhase = 0;
   let breathPhase = 0;
-  let previousForwardSpeed = 0;
+  let driftPhase = 0;
+  const previousLocalVelocity = new Vector3();
   let startleAmount = 0;
   let strain = 0;
+  let curiosity = 0;
+  let noticed = false;
   let deathElapsed = -1;
   let disposed = false;
 
@@ -146,6 +193,12 @@ export function createCreatureVehicleAnimator(
       startleAmount = Math.min(1.6, startleAmount + Math.max(0, intensity));
       heave.kick(intensity * 1.4);
       pitch.kick(intensity * 0.9);
+      // El cuerpo acusa el golpe más que la postura: el casco apenas se mueve,
+      // la carne se sacude. Sin esto un impacto es una animación de cabeza.
+      bodyLift.kick(intensity * 0.9);
+      bodySurge.kick(intensity * 0.55);
+      bodyPitch.kick(intensity * 1.3);
+      bodyRoll.kick(intensity * 1.1);
       antennae.forEach((antenna) => {
         antenna.sweep.kick(intensity * 2.2);
         antenna.tipSweep.kick(intensity * 3.4);
@@ -169,6 +222,15 @@ export function createCreatureVehicleAnimator(
         deathElapsed += delta;
         updateCorpse(delta, {
           root,
+          body,
+          bodyRest,
+          bodySurge,
+          bodySway,
+          bodyLift,
+          bodyPitch,
+          bodyRoll,
+          bodyYaw,
+          headTilt,
           wave,
           oars,
           tails,
@@ -186,6 +248,8 @@ export function createCreatureVehicleAnimator(
           deathElapsed,
         });
         startleAmount = Math.max(0, startleAmount - delta * 1.4);
+        curiosity = Math.max(0, curiosity - delta * 2);
+        previousLocalVelocity.copy(state.localVelocity);
         return;
       }
       deathElapsed = -1;
@@ -200,16 +264,28 @@ export function createCreatureVehicleAnimator(
         1,
       );
 
+      // Cambio de velocidad del frame, en ejes del bicho. Se guarda como
+      // IMPULSO y no como aceleración a propósito: dividir por el paso y
+      // recortar la aceleración le arranca a un empujón casi toda su fuerza,
+      // porque un golpe real entrega su Δv en uno o dos frames. El tope de 12
+      // m/s es contra teletransportes, no contra golpes.
+      TMP_ACCELERATION.copy(state.localVelocity)
+        .sub(previousLocalVelocity)
+        .clampLength(0, 12);
+      previousLocalVelocity.copy(state.localVelocity);
       const acceleration = MathUtils.clamp(
-        (state.forwardSpeed - previousForwardSpeed) / delta,
+        TMP_ACCELERATION.z / delta,
         -22,
         22,
       );
-      previousForwardSpeed = state.forwardSpeed;
       // Centrífuga: es lo que tumba al bicho y lo que tira de las antenas hacia
       // afuera de la curva. Sale de la guiñada por la velocidad, no de una
       // lectura del acelerómetro que el motor no publica.
-      const lateral = MathUtils.clamp(state.forwardSpeed * state.yawRate, -16, 16);
+      const lateral = MathUtils.clamp(
+        state.localVelocity.z * state.yawRate,
+        -16,
+        16,
+      );
 
       startleAmount = Math.max(0, startleAmount - delta * 2.1);
       strain = MathUtils.lerp(
@@ -248,13 +324,18 @@ export function createCreatureVehicleAnimator(
         lateral,
         breathPhase,
         vigor,
+        curiosity,
+        gazeYaw: state.gazeYaw,
       });
 
       jaws.forEach((entry) => {
         // Se abre al forzar y de golpe al sacudirse: es el gesto que más lee
-        // como reacción, porque no está atado al ciclo de nado.
+        // como reacción, porque no está atado al ciclo de nado. Mirando a
+        // alguien mastica despacio, que es lo que convierte "te apunta la
+        // cabeza" en "te está prestando atención".
+        const chew = curiosity * (0.5 + Math.sin(driftPhase * 4.3) * 0.5) * 0.16;
         entry.node.rotation.x =
-          entry.restX + (strain * 0.3 + startleAmount * 0.45) * vigor;
+          entry.restX + (strain * 0.3 + startleAmount * 0.45 + chew) * vigor;
       });
 
       gills.forEach((entry, index) => {
@@ -266,22 +347,55 @@ export function createCreatureVehicleAnimator(
         );
       });
 
+      // Curiosidad: sólo suelto. Con jinete encima la cabeza es del jinete, y
+      // un bicho montado que se distrae mirando peatones deja de leerse como
+      // vehículo. Sube rápido y baja lento: cuesta llamarle la atención una vez
+      // que la perdió, no al revés.
+      const attention = state.occupied ? 0 : MathUtils.clamp(state.attention, 0, 1);
+      if (attention > 0.45 && !noticed) {
+        // El respingo de notarte, una sola vez por acercamiento: es lo que hace
+        // que aparecer en su campo de visión sea un evento y no un cambio de
+        // pose. Vuelve a armarse recién cuando te fuiste de verdad.
+        noticed = true;
+        startleAmount = Math.min(1.6, startleAmount + 0.34);
+        antennae.forEach((antenna) => antenna.tipSweep.kick(2.6));
+      } else if (attention < 0.15) {
+        noticed = false;
+      }
+      curiosity += (attention - curiosity) * (1 - Math.exp(-delta * (attention > curiosity ? 5.5 : 1.3)));
+
       // Cabeza. Mismo convenio que la torreta —yaw directo, pitch invertido—
-      // porque el rig de cámara entrega la mirada en ejes del vehículo. Sin
-      // jinete mira adonde va, que es lo que hace un animal suelto.
+      // porque el rig de cámara entrega la mirada en ejes del vehículo. Con
+      // alguien cerca lo sigue a él; sin nadie mira adonde va, que es lo que
+      // hace un animal suelto.
       const lookYaw = state.occupied
         ? MathUtils.clamp(state.riderYaw, -MAX_HEAD_YAW, MAX_HEAD_YAW)
-        : MathUtils.clamp(-state.steering * 0.5, -MAX_HEAD_YAW, MAX_HEAD_YAW);
+        : MathUtils.lerp(
+            MathUtils.clamp(-state.steering * 0.5, -MAX_HEAD_YAW, MAX_HEAD_YAW),
+            MathUtils.clamp(state.gazeYaw, -MAX_HEAD_YAW, MAX_HEAD_YAW),
+            curiosity,
+          );
       const lookPitch = state.occupied
         ? MathUtils.clamp(state.riderPitch, -MAX_HEAD_PITCH, MAX_HEAD_PITCH)
-        : Math.sin(breathPhase * 0.5) * 0.06;
+        : MathUtils.lerp(
+            Math.sin(breathPhase * 0.5) * 0.06,
+            MathUtils.clamp(state.gazePitch, -MAX_HEAD_PITCH, MAX_HEAD_PITCH),
+            curiosity,
+          );
       const yawNow = headYaw.step(lookYaw * vigor, delta);
       const pitchNow = headPitch.step(lookPitch * vigor, delta);
+      // Ladeo de cabeza. El lado se da vuelta cada tantos segundos en vez de
+      // quedarse fijo: un ladeo permanente se lee como una cabeza mal montada,
+      // y uno que cambia de lado se lee como que te está estudiando.
+      const tiltNow = headTilt.step(
+        Math.sin(driftPhase * 0.37) * MAX_HEAD_TILT * curiosity * vigor,
+        delta,
+      );
       heads.forEach((entry) => {
         entry.node.rotation.set(
           entry.restX - pitchNow,
           entry.restY + yawNow,
-          entry.restZ + yawNow * 0.18,
+          entry.restZ + yawNow * 0.18 + tiltNow,
         );
       });
 
@@ -308,7 +422,41 @@ export function createCreatureVehicleAnimator(
       root.rotation.z = roll.step(rollTarget, delta);
       root.position.y = heave.step(heaveTarget, delta);
 
-      const pulse = 0.62 + Math.sin(breathPhase * 2) * 0.16 + startleAmount * 0.5;
+      // Bamboleo del cuerpo. Va sobre las mallas, así que puede ser grande sin
+      // marear a nadie, y es lo que hace que empujar al bicho —chocarlo, un
+      // cañonazo, la gravity gun— tenga respuesta aunque no le haya hecho daño:
+      // cualquier cosa que mueva el casco aparece acá como inercia.
+      //
+      // Los signos son de inercia pura: el cuerpo se queda donde estaba, así
+      // que se desplaza CONTRA la aceleración y cabecea levantando el lado que
+      // arranca primero.
+      driftPhase += delta;
+      const idleFloat = MathUtils.lerp(1, 0.5, effort) * vigor;
+      updateBodyFloat({
+        body,
+        bodyRest,
+        delta,
+        impulse: TMP_ACCELERATION,
+        driftPhase,
+        idleFloat,
+        startleAmount,
+        springs: {
+          surge: bodySurge,
+          sway: bodySway,
+          lift: bodyLift,
+          pitch: bodyPitch,
+          roll: bodyRoll,
+          yaw: bodyYaw,
+        },
+      });
+
+      const pulse =
+        0.62 +
+        Math.sin(breathPhase * 2) * 0.16 +
+        startleAmount * 0.5 +
+        // Los emisores se avivan cuando te registra: es la única señal de que
+        // pasó algo que se ve desde atrás y de lejos.
+        curiosity * 0.45;
       const flicker = state.burning ? 0.5 + Math.random() * 0.5 : 1;
       glowMaterials.forEach((material) => {
         material.emissiveIntensity = pulse * MathUtils.lerp(0.15, 1, hull01) * flicker;
@@ -324,6 +472,15 @@ export function createCreatureVehicleAnimator(
 
 interface CorpseRig {
   readonly root: Object3D;
+  readonly body: Object3D;
+  readonly bodyRest: { readonly x: number; readonly y: number; readonly z: number };
+  readonly bodySurge: SecondOrderSpring;
+  readonly bodySway: SecondOrderSpring;
+  readonly bodyLift: SecondOrderSpring;
+  readonly bodyPitch: SecondOrderSpring;
+  readonly bodyRoll: SecondOrderSpring;
+  readonly bodyYaw: SecondOrderSpring;
+  readonly headTilt: SecondOrderSpring;
   readonly wave: OrganicWave;
   readonly oars: readonly OarNode[];
   readonly tails: readonly RiggedNode[];
@@ -461,11 +618,96 @@ function updateCorpse(delta: number, rig: CorpseRig): void {
   rig.root.rotation.z = rig.roll.step(0, delta);
   rig.root.position.y = rig.heave.step(0, delta);
 
+  // El cuerpo deja de flotar y se asienta sobre el casco. Los resortes siguen
+  // corriendo hacia cero en vez de saltar: el último bamboleo se apaga solo, que
+  // es lo que se ve cuando algo se muere en el aire y cae.
+  rig.body.position.set(
+    rig.bodyRest.x + rig.bodySway.step(0, delta),
+    rig.bodyRest.y + rig.bodyLift.step(0, delta),
+    rig.bodyRest.z + rig.bodySurge.step(0, delta),
+  );
+  rig.body.rotation.set(
+    rig.bodyPitch.step(0, delta),
+    rig.bodyYaw.step(0, delta),
+    rig.bodyRoll.step(0, delta),
+  );
+  rig.headTilt.step(0, delta);
+
   // El ojo Combine se apaga en dos segundos: es lo último que queda encendido.
   const glow = Math.max(0, 1 - rig.deathElapsed / 2) ** 2;
   rig.glowMaterials.forEach((material) => {
     material.emissiveIntensity = glow * (0.3 + Math.random() * 0.5);
   });
+}
+
+interface BodyFloatSprings {
+  readonly surge: SecondOrderSpring;
+  readonly sway: SecondOrderSpring;
+  readonly lift: SecondOrderSpring;
+  readonly pitch: SecondOrderSpring;
+  readonly roll: SecondOrderSpring;
+  readonly yaw: SecondOrderSpring;
+}
+
+interface BodyFloatInput {
+  readonly body: Object3D;
+  readonly bodyRest: { readonly x: number; readonly y: number; readonly z: number };
+  readonly delta: number;
+  /** Cambio de velocidad del frame en ejes del bicho, ya acotado. */
+  readonly impulse: Readonly<Vector3>;
+  readonly driftPhase: number;
+  /** Cuánto del vaivén de reposo queda: parado flota, corriendo va tenso. */
+  readonly idleFloat: number;
+  readonly startleAmount: number;
+  readonly springs: BodyFloatSprings;
+}
+
+/**
+ * Cuerpo suspendido. La malla no está clavada al casco: cuelga de él por seis
+ * resortes blandos, tres de traslación y tres de giro.
+ *
+ * El movimiento del casco entra contra la VELOCIDAD del resorte y no contra su
+ * destino. La diferencia importa: mover el destino un solo frame apenas
+ * despeina un resorte blando, así que un empujón corto —un choque, un cañonazo,
+ * la gravity gun— no se veía. Entregado como impulso, un golpe suelta todo su
+ * sacudón de una vez y la aceleración pareja de manejar apenas inclina el
+ * cuerpo, que es la diferencia que se quiere leer.
+ *
+ * Y como el disparador es el movimiento y no un evento, el bicho acusa
+ * cualquier cosa que lo empuje sin que haga falta avisarle.
+ */
+function updateBodyFloat(input: BodyFloatInput): void {
+  const { impulse: a, springs, delta, driftPhase, idleFloat } = input;
+  // Deriva de reposo: tres frecuencias primas entre sí para que el ciclo no se
+  // repita a ojo. Un bicho flotando nunca está exactamente quieto.
+  const driftX = Math.sin(driftPhase * 0.53) * 0.022 * idleFloat;
+  const driftY = Math.sin(driftPhase * 0.71 + 1.4) * 0.03 * idleFloat;
+  const driftZ = Math.sin(driftPhase * 0.41 + 2.7) * 0.017 * idleFloat;
+  springs.sway.kick(-a.x * 0.14);
+  springs.lift.kick(-a.y * 0.12);
+  springs.surge.kick(-a.z * 0.13);
+  // El cabeceo levanta el lado que arranca primero y el alabeo tumba el cuerpo
+  // hacia afuera del empujón: es la misma inercia leída como giro.
+  springs.pitch.kick(-a.z * 0.15);
+  springs.roll.kick(a.x * 0.14);
+  springs.yaw.kick(-a.x * 0.06);
+
+  const shift = (value: number) =>
+    MathUtils.clamp(value, -MAX_BODY_SHIFT, MAX_BODY_SHIFT);
+  const tilt = (value: number) =>
+    MathUtils.clamp(value, -MAX_BODY_TILT, MAX_BODY_TILT);
+
+  input.body.position.set(
+    input.bodyRest.x + shift(springs.sway.step(driftX, delta)),
+    input.bodyRest.y +
+      shift(springs.lift.step(driftY + input.startleAmount * 0.03, delta)),
+    input.bodyRest.z + shift(springs.surge.step(driftZ, delta)),
+  );
+  input.body.rotation.set(
+    tilt(springs.pitch.step(driftZ * 0.6, delta)),
+    tilt(springs.yaw.step(0, delta)),
+    tilt(springs.roll.step(driftX * 0.8, delta)),
+  );
 }
 
 /** Ángulo hacia el que cuelga un miembro suelto, acotado a su alcance. */
@@ -535,6 +777,9 @@ interface AntennaDrive {
   readonly lateral: number;
   readonly breathPhase: number;
   readonly vigor: number;
+  /** 0..1 de interés en alguien, y hacia dónde está en ejes del vehículo. */
+  readonly curiosity: number;
+  readonly gazeYaw: number;
 }
 
 /**
@@ -551,11 +796,17 @@ function updateAntennae(
   antennae.forEach((antenna) => {
     const idle = Math.sin(drive.breathPhase * 0.8 + antenna.side) * 0.07;
     // El aire las peina hacia atrás sobre el lomo; frenar las manda al frente.
+    // Y si hay alguien cerca se levantan y apuntan hacia él: es el equivalente
+    // de las orejas de un animal, y lee a distancia mucho antes que la cabeza.
     const sweepTarget =
-      -drive.speed01 * 0.85 - drive.acceleration * 0.014 + idle * drive.vigor;
+      -drive.speed01 * 0.85 -
+      drive.acceleration * 0.014 +
+      idle * drive.vigor +
+      drive.curiosity * 0.62;
     const swayTarget =
       drive.lateral * 0.022 * antenna.side +
-      Math.cos(drive.breathPhase * 0.6 + antenna.side * 1.7) * 0.05;
+      Math.cos(drive.breathPhase * 0.6 + antenna.side * 1.7) * 0.05 +
+      drive.curiosity * drive.gazeYaw * 0.42;
     const sweep = antenna.sweep.step(sweepTarget, delta);
     const sway = antenna.sway.step(swayTarget, delta);
     const tipSweep = antenna.tipSweep.step(sweep * 0.72, delta);

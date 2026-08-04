@@ -16,7 +16,7 @@ import {
 
 const IDLE: CreatureVehicleState = {
   speed: 0,
-  forwardSpeed: 0,
+  localVelocity: new Vector3(),
   steering: 0,
   yawRate: 0,
   engine01: 0,
@@ -25,15 +25,28 @@ const IDLE: CreatureVehicleState = {
   occupied: false,
   riderYaw: 0,
   riderPitch: 0,
+  gazeYaw: 0,
+  gazePitch: 0,
+  attention: 0,
   dead: false,
 };
 
+/** Estado con la marcha puesta: la velocidad local es la que mueve todo. */
+function moving(forward: number, extra: Partial<CreatureVehicleState> = {}) {
+  return {
+    ...IDLE,
+    speed: Math.abs(forward),
+    localVelocity: new Vector3(0, 0, forward),
+    ...extra,
+  };
+}
+
 describe("CreatureVehicleAnimator", () => {
   it("bate los remos en ola metacrónica, con la popa adelantada a la proa", () => {
-    const root = swimmerRig();
-    const animator = createCreatureVehicleAnimator(root);
+    const { root, body } = swimmerRig();
+    const animator = createCreatureVehicleAnimator(root, body);
 
-    run(animator, { ...IDLE, speed: 20, forwardSpeed: 20, engine01: 1, occupied: true });
+    run(animator, moving(20, { engine01: 1, occupied: true }));
 
     const front = root.getObjectByName("swimmer_oar_left_0")!;
     const rear = root.getObjectByName("swimmer_oar_left_2")!;
@@ -46,12 +59,12 @@ describe("CreatureVehicleAnimator", () => {
   });
 
   it("arrastra la punta de la antena detrás de su base", () => {
-    const root = swimmerRig();
-    const animator = createCreatureVehicleAnimator(root);
+    const { root, body } = swimmerRig();
+    const animator = createCreatureVehicleAnimator(root, body);
 
     // Frenazo: la inercia manda las antenas al frente y la punta llega tarde.
-    run(animator, { ...IDLE, speed: 24, forwardSpeed: 24, engine01: 1, occupied: true }, 90);
-    run(animator, { ...IDLE, speed: 0, forwardSpeed: 0, occupied: true }, 6);
+    run(animator, moving(24, { engine01: 1, occupied: true }), 90);
+    run(animator, moving(0, { occupied: true }), 6);
 
     const base = root.getObjectByName("swimmer_antenna_left")!;
     const tip = root.getObjectByName("swimmer_antenna_left_tip")!;
@@ -61,12 +74,12 @@ describe("CreatureVehicleAnimator", () => {
   });
 
   it("acota la postura para no marear al jinete, que cuelga de este nodo", () => {
-    const root = swimmerRig();
-    const animator = createCreatureVehicleAnimator(root);
+    const { root, body } = swimmerRig();
+    const animator = createCreatureVehicleAnimator(root, body);
 
     run(
       animator,
-      { ...IDLE, speed: 30, forwardSpeed: 30, yawRate: 3, engine01: 1, occupied: true },
+      moving(30, { yawRate: 3, engine01: 1, occupied: true }),
       240,
     );
 
@@ -77,8 +90,8 @@ describe("CreatureVehicleAnimator", () => {
   });
 
   it("apaga el ojo Combine a medida que se muere", () => {
-    const root = swimmerRig();
-    const animator = createCreatureVehicleAnimator(root);
+    const { root, body } = swimmerRig();
+    const animator = createCreatureVehicleAnimator(root, body);
     const eye = root.getObjectByName("combineSwimmer_eye") as Mesh;
     const material = eye.material as MeshStandardMaterial;
 
@@ -93,8 +106,8 @@ describe("CreatureVehicleAnimator", () => {
   });
 
   it("sacude el cuerpo al montarlo y vuelve a la calma", () => {
-    const root = swimmerRig();
-    const animator = createCreatureVehicleAnimator(root);
+    const { root, body } = swimmerRig();
+    const animator = createCreatureVehicleAnimator(root, body);
 
     run(animator, IDLE, 30);
     animator.startle(1);
@@ -109,8 +122,8 @@ describe("CreatureVehicleAnimator", () => {
   });
 
   it("gira la cabeza hacia donde mira el jinete, con el convenio de la torreta", () => {
-    const root = swimmerRig();
-    const animator = createCreatureVehicleAnimator(root);
+    const { root, body } = swimmerRig();
+    const animator = createCreatureVehicleAnimator(root, body);
     const head = root.getObjectByName("swimmer_head")!;
 
     run(animator, { ...IDLE, occupied: true, riderYaw: 0.7, riderPitch: 0.3 }, 120);
@@ -124,8 +137,8 @@ describe("CreatureVehicleAnimator", () => {
   });
 
   it("no deja que el cuello se desarme aunque la mirada se vaya al hombro", () => {
-    const root = swimmerRig();
-    const animator = createCreatureVehicleAnimator(root);
+    const { root, body } = swimmerRig();
+    const animator = createCreatureVehicleAnimator(root, body);
     const head = root.getObjectByName("swimmer_head")!;
 
     run(animator, { ...IDLE, occupied: true, riderYaw: 3, riderPitch: 1.5 }, 200);
@@ -136,9 +149,84 @@ describe("CreatureVehicleAnimator", () => {
     animator.dispose();
   });
 
+  it("mira al que se le acerca y ladea la cabeza, pero sólo si está suelto", () => {
+    const curious = swimmerRig();
+    const ridden = swimmerRig();
+    const looking = createCreatureVehicleAnimator(curious.root, curious.body);
+    const busy = createCreatureVehicleAnimator(ridden.root, ridden.body);
+    // Alguien parado a la izquierda del bicho, bien cerca.
+    const nearby = { gazeYaw: 0.8, gazePitch: -0.2, attention: 1 };
+
+    run(looking, { ...IDLE, ...nearby }, 180);
+    // El mismo peatón con jinete arriba: la cabeza es del jinete, que mira al
+    // frente. Un bicho montado que se distrae deja de leerse como vehículo.
+    run(busy, { ...IDLE, ...nearby, occupied: true }, 180);
+
+    const head = curious.root.getObjectByName("swimmer_head")!;
+    expect(head.rotation.y).toBeGreaterThan(0.4);
+    expect(Math.abs(head.rotation.z)).toBeGreaterThan(0.02);
+    expect(
+      Math.abs(ridden.root.getObjectByName("swimmer_head")!.rotation.y),
+    ).toBeLessThan(0.05);
+
+    looking.dispose();
+    busy.dispose();
+  });
+
+  it("levanta las antenas hacia quien lo mira en vez de dejarlas peinadas", () => {
+    const alone = swimmerRig();
+    const watched = swimmerRig();
+    const idle = createCreatureVehicleAnimator(alone.root, alone.body);
+    const noticing = createCreatureVehicleAnimator(watched.root, watched.body);
+
+    run(idle, IDLE, 240);
+    run(noticing, { ...IDLE, gazeYaw: 0.6, attention: 1 }, 240);
+
+    expect(
+      watched.root.getObjectByName("swimmer_antenna_left")!.rotation.x,
+    ).toBeGreaterThan(
+      alone.root.getObjectByName("swimmer_antenna_left")!.rotation.x,
+    );
+
+    idle.dispose();
+    noticing.dispose();
+  });
+
+  it("acusa un empujón en el cuerpo sin torcerle el horizonte al jinete", () => {
+    const { root, body } = swimmerRig();
+    const animator = createCreatureVehicleAnimator(root, body);
+
+    run(animator, IDLE, 120);
+    const restedPosture = Math.abs(root.rotation.z);
+    // Empujón lateral puro: el casco sale despedido sin que el motor lo pida y
+    // sin que nadie haya avisado de un impacto. La única señal es la velocidad.
+    run(animator, { ...IDLE, localVelocity: new Vector3(6, 0, 0), speed: 6 }, 3);
+
+    expect(Math.abs(body.rotation.z) + Math.abs(body.position.x)).toBeGreaterThan(
+      0.01,
+    );
+    // El asiento y la cámara cuelgan de `root`: el empujón no puede llegar ahí.
+    expect(Math.abs(root.rotation.z)).toBeLessThanOrEqual(restedPosture + 0.02);
+
+    animator.dispose();
+  });
+
+  it("nunca está del todo quieto: flota aunque nadie lo toque", () => {
+    const { root, body } = swimmerRig();
+    const animator = createCreatureVehicleAnimator(root, body);
+
+    run(animator, IDLE, 60);
+    const first = body.position.clone();
+    run(animator, IDLE, 90);
+
+    expect(body.position.distanceTo(first)).toBeGreaterThan(0.002);
+
+    animator.dispose();
+  });
+
   it("cuelga los apéndices hacia el abajo del mundo cuando muere de costado", () => {
-    const root = swimmerRig();
-    const animator = createCreatureVehicleAnimator(root);
+    const { root, body } = swimmerRig();
+    const animator = createCreatureVehicleAnimator(root, body);
     // Cadáver volcado 90°: el abajo real ya no es el abajo local, y ahí es donde
     // una pose de muerte autorada se delata.
     root.parent!.rotation.z = Math.PI / 2;
@@ -161,8 +249,8 @@ describe("CreatureVehicleAnimator", () => {
   });
 
   it("apaga el ojo del cadáver y relaja la postura", () => {
-    const root = swimmerRig();
-    const animator = createCreatureVehicleAnimator(root);
+    const { root, body } = swimmerRig();
+    const animator = createCreatureVehicleAnimator(root, body);
     const material = (root.getObjectByName("combineSwimmer_eye") as Mesh)
       .material as MeshStandardMaterial;
 
@@ -176,10 +264,10 @@ describe("CreatureVehicleAnimator", () => {
   });
 
   it("sólo deforma la piel, no los apéndices articulados", () => {
-    const root = swimmerRig();
+    const { root, body } = swimmerRig();
     const skin = root.getObjectByName("combineSwimmer_body") as Mesh;
     const oar = root.getObjectByName("swimmer_oar_left_0")!.children[0] as Mesh;
-    const animator = createCreatureVehicleAnimator(root);
+    const animator = createCreatureVehicleAnimator(root, body);
 
     // La ola vive en el material: el remo no puede haber quedado parcheado, o
     // se mediría contra un pivote que no es el suyo.
@@ -204,19 +292,25 @@ function run(
  * Mismo vocabulario de nodos que emite `tools/vehicle-assets/models.ts`, colgado
  * de un padre para poder volcar el cadáver y comprobar que los miembros caen
  * hacia el abajo del mundo.
+ *
+ * `body` cuelga de `root` igual que el LOD real: las mallas van ahí y las anclas
+ * de asiento y cámara se quedan arriba, que es lo que le permite al cuerpo
+ * bambolearse sin llevarse la cámara puesta.
  */
-function swimmerRig(): Object3D {
+function swimmerRig(): { root: Object3D; body: Object3D } {
   const holder = new Group();
   const root = new Group();
   root.name = "combineSwimmer_vehicle";
   holder.add(root);
-  root.add(skinMesh("combineSwimmer_body"));
-  root.add(node("swimmer_gills"));
+  const body = node("runtime_visual_lods");
+  root.add(body);
+  body.add(skinMesh("combineSwimmer_body"));
+  body.add(node("swimmer_gills"));
 
   const head = node("swimmer_head");
   head.add(emissiveMesh("combineSwimmer_eye"));
   head.add(node("swimmer_jaw"));
-  root.add(head);
+  body.add(head);
 
   for (const side of ["left", "right"]) {
     const base = node(`swimmer_antenna_${side}`);
@@ -226,19 +320,19 @@ function swimmerRig(): Object3D {
     for (let index = 0; index < 3; index += 1) {
       const oar = node(`swimmer_oar_${side}_${index}`);
       oar.add(skinMesh(`oar_mesh_${side}_${index}`));
-      root.add(oar);
+      body.add(oar);
     }
   }
 
   const tail = node("swimmer_tail_0");
   tail.add(node("swimmer_tail_1"));
-  root.add(tail);
+  body.add(tail);
 
   // El cadáver comparte el prefijo de la piel y no debe ondular.
   const wreckage = node("wreckage");
   wreckage.add(skinMesh("combineSwimmer_body_wreck"));
   root.add(wreckage);
-  return root;
+  return { root, body };
 }
 
 function node(name: string): Object3D {

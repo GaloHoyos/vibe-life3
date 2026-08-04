@@ -521,6 +521,14 @@ export class VehicleSystem {
           attackerId = shot.attackerId;
         }
       }
+      // Quién anda cerca a pie. Los vehículos vivos lo miran; el resto lo
+      // ignora. Se pasa la posición y no el actor: la entidad no tiene por qué
+      // saber de quién se trata, y así mañana un aliado sirve igual.
+      vehicle.setObserver(
+        this.player && this.player.isAlive() && vehicle !== this.mountedVehicle
+          ? this.player.getPosition()
+          : null,
+      );
       vehicle.update(
         delta,
         elapsed,

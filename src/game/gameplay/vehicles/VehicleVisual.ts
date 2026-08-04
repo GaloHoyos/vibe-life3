@@ -38,11 +38,24 @@ export interface VehicleVisualTelemetry {
   wheelRotation: number;
   suspension: readonly number[];
   engine01: number;
+  /**
+   * Velocidad completa en ejes del vehículo. Los vehículos vivos derivan de acá
+   * su propia inercia, incluida la lateral y la vertical: es lo que les permite
+   * acusar un empujón que no produjo daño ni lo generó su motor.
+   */
+  localVelocity: Vector3;
   /** Si hay alguien a bordo. Los vehículos vivos dormitan vacíos. */
   occupied: boolean;
   /** Mirada del que maneja, en ejes del vehículo. */
   riderYaw: number;
   riderPitch: number;
+  /**
+   * Alguien a pie cerca al que un vehículo vivo puede prestarle atención, en
+   * ejes del vehículo. `attention` en cero significa que no hay nadie.
+   */
+  gazeYaw: number;
+  gazePitch: number;
+  attention: number;
   /** Destruido: los vehículos vivos pasan a cadáver en vez de a chatarra. */
   dead: boolean;
 }
@@ -280,7 +293,7 @@ export function createVehicleVisual(archetype: VehicleArchetypeId): VehicleVisua
         // (los timones son sus aletas caudales) y tiene que ganar ella.
         imported.creature?.update(delta, {
           speed: telemetry.speed,
-          forwardSpeed: telemetry.forwardSpeed,
+          localVelocity: telemetry.localVelocity,
           steering,
           yawRate: telemetry.yawRate,
           engine01: telemetry.engine01,
@@ -289,6 +302,9 @@ export function createVehicleVisual(archetype: VehicleArchetypeId): VehicleVisua
           occupied: telemetry.occupied,
           riderYaw: telemetry.riderYaw,
           riderPitch: telemetry.riderPitch,
+          gazeYaw: telemetry.gazeYaw,
+          gazePitch: telemetry.gazePitch,
+          attention: telemetry.attention,
           dead: telemetry.dead || wreckage,
         });
       }
@@ -458,7 +474,9 @@ function bindImportedRig(
     root,
     lod,
     creature: isCreatureVehicle(archetype)
-      ? createCreatureVehicleAnimator(root)
+      // El LOD lleva las mallas y ninguna ancla, así que es el nodo por el que
+      // el cuerpo puede bambolearse sin arrastrar el asiento ni la cámara.
+      ? createCreatureVehicleAnimator(root, lod)
       : null,
     wreckage: root.getObjectByName("wreckage") ?? null,
     wheels,

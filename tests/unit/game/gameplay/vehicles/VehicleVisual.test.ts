@@ -3,6 +3,7 @@ import {
   Group,
   Mesh,
   MeshStandardMaterial,
+  Vector3,
 } from "three";
 import { describe, expect, it, vi } from "vitest";
 import { prepareVehicleModelSource } from "@game/assets/vehicles/VehicleAssetRegistry";
@@ -35,6 +36,7 @@ describe("VehicleVisual", () => {
     visual.update(1 / 60, {
       speed: 16,
       forwardSpeed: 16,
+      localVelocity: new Vector3(0, 0, 16),
       yawRate: 0,
       steering: 0.5,
       wheelRotation: 2,
@@ -43,6 +45,9 @@ describe("VehicleVisual", () => {
       occupied: true,
       riderYaw: 0,
       riderPitch: 0,
+      gazeYaw: 0,
+      gazePitch: 0,
+      attention: 0,
       dead: false,
     });
     visual.aim(0.3, 0.2);
