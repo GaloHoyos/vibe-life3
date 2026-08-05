@@ -16,7 +16,7 @@ import type {
   VehicleAirState,
 } from './AirVehicleAiTypes';
 import type { VehicleNavPoint } from './VehicleAiTypes';
-import { stableJitter, stableSide } from './VehicleAiMath';
+import { planarDistance, stableJitter, stableSide } from './VehicleAiMath';
 
 /** Cadencias de decisión por distancia al jugador, en segundos. */
 const TICK_NEAR = 0.1;
@@ -102,6 +102,8 @@ export class AirVehicleAiBrain {
   private lastPlanGoal: VehicleNavPoint | null = null;
   private patrolIndex = 0;
   private disembarkRequested = false;
+  /** Dónde subió la carga que lleva ahora. */
+  private loadedAt: VehicleNavPoint | null = null;
 
   constructor(
     vehicleId: string,
@@ -130,6 +132,7 @@ export class AirVehicleAiBrain {
     this.boardingWaitSeconds = 0;
     this.lastPlanGoal = null;
     this.disembarkRequested = false;
+    this.loadedAt = null;
   }
 
   /** Adelanta el reloj sin decidir; devuelve si toca tickear. */
@@ -200,8 +203,13 @@ export class AirVehicleAiBrain {
     }
 
     if (this.wantsToLand(context)) {
-      if (context.grounded) return 'grounded';
-      return this.overLandingSpot(context) ? 'landing' : 'approach';
+      if (!context.grounded) {
+        return this.overLandingSpot(context) ? 'landing' : 'approach';
+      }
+      // Estar en el suelo no es haber llegado. Una recogida termina justo así:
+      // posado donde estaba la gente, con la carga a bordo y el destino en otro
+      // lado. Sin esto el aparato daba la misión por cumplida ahí mismo.
+      return this.overLandingSpot(context) ? 'grounded' : 'takeoff';
     }
 
     if (context.grounded) {
@@ -234,8 +242,22 @@ export class AirVehicleAiBrain {
     if (this.disembarkRequested) return true;
     if (this.behavior !== 'transport') return false;
     if (!context.landingSpot) return false;
+    // Con carga se posa a dejarla, salvo que la haya subido en este mismo sitio:
+    // una recogida termina así, y volver a posarse ahí sería devolverla.
+    if (context.passengersOnboard) return !this.justLoadedHere(context);
     // Un transporte sin carga ya cumplió: no se queda dando vueltas.
-    return context.passengersOnboard || context.grounded;
+    return context.grounded;
+  }
+
+  /**
+   * La carga que lleva subió acá mismo. Es lo que separa "llegué a destino" de
+   * "acabo de recoger": sin la distinción, el aparato descargaba a los
+   * rescatados dos segundos después de subirlos, en la misma zona.
+   */
+  private justLoadedHere(context: AirBrainContext): boolean {
+    const loaded = this.loadedAt;
+    if (!loaded) return false;
+    return planarDistance(loaded, context.position) <= AIR_LANDING_ARRIVAL_RADIUS;
   }
 
   private overLandingSpot(context: AirBrainContext): boolean {
@@ -426,13 +448,26 @@ export class AirVehicleAiBrain {
     return this.lastPlanGoal;
   }
 
-  /** Pide embarco al posarse a recoger, y desembarco al posarse con carga. */
+  /**
+   * Pide embarco al posarse a recoger, y desembarco al posarse con carga EN EL
+   * DESTINO. La zona importa: soltar a los rescatados en el mismo descampado
+   * donde se los subió deshace la recogida entera.
+   */
   private resolveCrewAction(
     context: AirBrainContext,
   ): AirBrainDecision['crewAction'] {
+    if (!context.passengersOnboard) this.loadedAt = null;
     if (this.state !== 'grounded' || !context.grounded) return 'none';
-    if (context.pickupAt) return 'requestBoarding';
-    if (context.passengersOnboard && this.behavior === 'transport') {
+    if (context.pickupAt) {
+      this.loadedAt = [...context.position];
+      return 'requestBoarding';
+    }
+    if (
+      context.passengersOnboard &&
+      this.behavior === 'transport' &&
+      this.overLandingSpot(context) &&
+      !this.justLoadedHere(context)
+    ) {
       this.disembarkRequested = true;
       return 'requestDisembark';
     }

@@ -217,6 +217,30 @@ describe('VehicleAiBrain', () => {
     expect(distanceToThreat).toBeCloseTo(30, 0);
   });
 
+  it('ya adentro de la distancia de combate orbita en vez de retroceder', () => {
+    const brain = new VehicleAiBrain(
+      'brawler',
+      { enabled: true, behavior: 'intercept' },
+      groundProfile,
+      { engagementRangeFactor: 0.5 },
+    );
+    const decision = brain.update(0.1, context({
+      weaponRange: 120,
+      pose: { position: [0, 0, 0], heading: 0 },
+      threat: {
+        id: 'player',
+        position: [0, 0, 9],
+        visible: true,
+        memoryAge: 0,
+      },
+    }));
+    expect(decision?.state).toBe('engaging');
+    const goal = decision?.goal as [number, number, number];
+    const distanceToThreat = Math.hypot(goal[0], goal[2] - 9);
+    // Se queda a los 9 m que ya tenía, no se va a los 60 del rango preferido.
+    expect(distanceToThreat).toBeCloseTo(9, 0);
+  });
+
   it('un desvío de combate caduca y devuelve al vehículo a su misión', () => {
     const brain = new VehicleAiBrain(
       'patroller',
@@ -327,14 +351,98 @@ describe('VehicleAiBrain', () => {
       expect(decision?.crewAction).toBe('none');
     });
 
-    it('no baja a nadie si no queda infantería que bajar', () => {
+    it('un conductor solo también se baja: el vehículo ya no sirve', () => {
       const decision = intercepting().update(0.2, context({
         threat: nearbyThreat,
         threatReachableByVehicle: false,
         passengersOnboard: false,
       }));
 
-      expect(decision?.crewAction).toBe('none');
+      expect(decision?.crewAction).toBe('dismountToPursue');
+    });
+
+    it('baja infantería cuando deja de acercarse al blanco que perdió', () => {
+      const brain = intercepting();
+      const stalled = context({
+        threat: { id: 'player', position: [0, 0, 12], visible: false, memoryAge: 2 },
+        threatReachableByVehicle: true,
+        passengersOnboard: true,
+      });
+      const actions: string[] = [];
+      for (let step = 0; step < 40; step += 1) {
+        const decision = brain.update(0.2, stalled);
+        if (decision) actions.push(decision.crewAction);
+      }
+
+      expect(actions).toContain('dismountToPursue');
+    });
+
+    it('mientras lo tenga a la vista no baja a nadie, aunque no se le acerque', () => {
+      const brain = intercepting();
+      const holdingRange = context({
+        weaponRange: 60,
+        threat: { id: 'player', position: [0, 0, 12], visible: true, memoryAge: 0 },
+        threatReachableByVehicle: true,
+        passengersOnboard: true,
+      });
+      const actions: string[] = [];
+      for (let step = 0; step < 40; step += 1) {
+        const decision = brain.update(0.2, holdingRange);
+        if (decision) actions.push(decision.crewAction);
+      }
+
+      expect(actions).not.toContain('dismountToPursue');
+    });
+
+    it('no baja a nadie por un blanco perdido que todavía está lejos', () => {
+      const brain = intercepting();
+      const distant = context({
+        threat: { id: 'player', position: [0, 0, 300], visible: false, memoryAge: 2 },
+        threatReachableByVehicle: true,
+        passengersOnboard: true,
+      });
+      const actions: string[] = [];
+      for (let step = 0; step < 40; step += 1) {
+        const decision = brain.update(0.2, distant);
+        if (decision) actions.push(decision.crewAction);
+      }
+
+      expect(actions).not.toContain('dismountToPursue');
+    });
+
+    it('no vacía el vehículo: pide la bajada una sola vez por contacto', () => {
+      const brain = intercepting();
+      const arrived = context({
+        threat: nearbyThreat,
+        threatReachableByVehicle: false,
+        passengersOnboard: true,
+      });
+      const actions: string[] = [];
+      for (let step = 0; step < 20; step += 1) {
+        const decision = brain.update(0.2, arrived);
+        if (decision) actions.push(decision.crewAction);
+      }
+
+      expect(actions.filter((action) => action === 'dismountToPursue')).toHaveLength(1);
+    });
+
+    it('un contacto nuevo y alcanzable devuelve el derecho a bajar tropa', () => {
+      const brain = intercepting();
+      const unreachable = context({
+        threat: nearbyThreat,
+        threatReachableByVehicle: false,
+        passengersOnboard: true,
+      });
+      expect(brain.update(0.2, unreachable)?.crewAction).toBe('dismountToPursue');
+      expect(brain.update(0.2, unreachable)?.crewAction).toBe('none');
+      // Vuelve a verlo donde sí puede seguirlo manejando: el compromiso se suelta.
+      brain.update(0.2, context({
+        threat: nearbyThreat,
+        threatReachableByVehicle: true,
+        passengersOnboard: true,
+      }));
+
+      expect(brain.update(0.2, unreachable)?.crewAction).toBe('dismountToPursue');
     });
 
     it('nunca baja a la tripulación del vehículo del jugador', () => {

@@ -136,6 +136,12 @@ const SURFACE_DOWN = new Vector3(0, -1, 0);
 const SURFACE_UP = new Vector3(0, 1, 0);
 /** Igual a la gravedad de `PhysicsWorld`; dimensiona el peso de reposo. */
 const GRAVITY_MAGNITUDE = 20.5;
+/**
+ * Geometría de rueda del motor raycast. La comparten `createMotor` y el gálibo
+ * del casco: de acá sale dónde queda el piso respecto del origen del cuerpo.
+ */
+const RAYCAST_WHEEL_RADIUS = 0.46;
+const RAYCAST_WHEEL_DROP = 0.24;
 const IMPACT_COOLDOWN = 0.18;
 // Source SDK impact-table speeds converted from inches per second to meters per second.
 const NPC_IMPACT_DAMAGE_STEPS = [
@@ -1159,12 +1165,13 @@ export class VehicleEntity {
   private createColliders(): void {
     const size = new Vector3(...this.preset.body.size);
     const center = new Vector3(...this.preset.body.colliderCenter);
+    const hull = this.hullVerticalExtents();
     const primary = RAPIER.ColliderDesc.cuboid(
       size.x * 0.5,
-      size.y * 0.38,
+      hull.halfHeight,
       size.z * 0.44,
     )
-      .setTranslation(center.x, center.y, center.z)
+      .setTranslation(center.x, hull.centerY, center.z)
       .setDensity(0.001)
       .setFriction(this.preset.body.hullFriction)
       // `Min` en vez del promedio: el casco es el que manda. Si no, el rozamiento
@@ -1189,6 +1196,43 @@ export class VehicleEntity {
         .setSensor(true);
       this.addCollider(desc, hitbox.zone, true);
     });
+  }
+
+  /**
+   * Caja del casco en vertical. La panza no se toca —de ahí salen el apoyo, la
+   * fricción y todo el tacto de manejo— pero el techo sube hasta el gálibo que
+   * el perfil de navegación le exige al vehículo. Sin esto el buggy se colaba
+   * por debajo de techos que la IA rodeaba, con el cañón atravesando la chapa:
+   * la grilla decía "no cabe" y la física decía que sí.
+   */
+  private hullVerticalExtents(): { halfHeight: number; centerY: number } {
+    const [, sizeY] = this.preset.body.size;
+    const centerY = this.preset.body.colliderCenter[1];
+    const bottom = centerY - sizeY * 0.38;
+    const ground = this.groundContactOffset();
+    const top =
+      ground === null
+        ? centerY + sizeY * 0.38
+        : Math.max(
+            centerY + sizeY * 0.38,
+            ground + this.preset.navigation.clearanceHeight,
+          );
+    return { halfHeight: (top - bottom) * 0.5, centerY: (top + bottom) * 0.5 };
+  }
+
+  /**
+   * Altura del piso respecto del origen del cuerpo, o `null` si el motor no
+   * apoya en ruedas y la pregunta no tiene respuesta fija.
+   */
+  private groundContactOffset(): number | null {
+    const motor = this.preset.motor;
+    if (motor.kind !== "raycast") return null;
+    return (
+      this.preset.body.colliderCenter[1] -
+      RAYCAST_WHEEL_DROP -
+      motor.suspensionRestLength -
+      RAYCAST_WHEEL_RADIUS
+    );
   }
 
   private capturePreStepVelocity(): void {
@@ -1303,7 +1347,7 @@ export class VehicleEntity {
     if (config.kind === "raycast") {
       const halfWidth = this.preset.body.size[0] * 0.46;
       const halfLength = this.preset.body.size[2] * 0.36;
-      const wheelY = this.preset.body.colliderCenter[1] - 0.24;
+      const wheelY = this.preset.body.colliderCenter[1] - RAYCAST_WHEEL_DROP;
       return new RaycastVehicleMotor(this.physics, this.body, {
         wheels: [
           [-halfWidth, wheelY, halfLength],
@@ -1312,7 +1356,7 @@ export class VehicleEntity {
           [halfWidth, wheelY, -halfLength],
         ].map(([x, y, z], index) => ({
           connection: new Vector3(x, y, z),
-          radius: 0.46,
+          radius: RAYCAST_WHEEL_RADIUS,
           suspensionRestLength: config.suspensionRestLength,
           maxSuspensionTravel: config.suspensionTravel,
           suspensionStiffness: config.suspensionStiffness,

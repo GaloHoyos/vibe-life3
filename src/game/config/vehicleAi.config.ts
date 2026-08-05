@@ -216,8 +216,14 @@ export function defaultAllowsMissionDeviation(behavior: VehicleAiBehavior): bool
 /** Cuánto puede durar un desvío antes de que el vehículo retome su misión. */
 export const VEHICLE_DEVIATION_BUDGET_SECONDS = 12;
 
-/** Memoria del último-visto. Es el `NPC_APCDRIVER_REMEMBER_TIME` de HL2. */
-export const VEHICLE_THREAT_MEMORY_SECONDS = 4;
+/**
+ * Memoria del último-visto. Quien recuerda es la tripulación, así que no puede
+ * durar menos que la memoria del mismo soldado a pie (8 s en `combinePreset`):
+ * con los 4 s del `NPC_APCDRIVER_REMEMBER_TIME` de HL2 el vehículo olvidaba el
+ * blanco ANTES de llegar al punto donde lo perdió, y todo lo que cuelga de
+ * haber llegado —buscar, bajar infantería— no pasaba nunca.
+ */
+export const VEHICLE_THREAT_MEMORY_SECONDS = 8;
 
 export const VEHICLE_PILOT_PROFILE_IDS = ['transport', 'gunship'] as const;
 export type VehiclePilotProfileId = (typeof VEHICLE_PILOT_PROFILE_IDS)[number];
@@ -335,6 +341,12 @@ export const VEHICLE_CREW_DECISION = {
    * vehículo todavía puede acercarse; soltarlos a 300 m no ayuda a nadie.
    */
   dismountRange: 45,
+  /**
+   * Cuánto tarda en volver a ser tripulación quien acaba de bajarse a seguir a
+   * pie. Sin esto el vehículo que lo soltó lo recluta de nuevo en cuanto pierde
+   * el rastro, y el soldado pasa la pelea subiendo y bajando.
+   */
+  dismountCooldownSeconds: 25,
 } as const;
 
 export const VEHICLE_PERCEPTION = {

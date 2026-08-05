@@ -52,6 +52,22 @@ declare global {
         wreckage: boolean;
         crew: string[];
       }>;
+      /** Intenciones de tripulación: quién va a qué asiento y en qué fase. */
+      crew: () => {
+        assignments: Array<{
+          actorId: string;
+          vehicleId: string;
+          seatId: string;
+          role: string;
+          phase: string;
+          approachTarget: [number, number, number] | null;
+        }>;
+        extractions: Array<{
+          faction: string;
+          vehicleId: string | null;
+          actors: string[];
+        }>;
+      };
       /** Estado de la IA: decisión, blanco percibido y torreta. */
       ai: () => Array<{
         id: string;
@@ -63,6 +79,8 @@ declare global {
         blockedSeconds: number;
         steering: number | null;
         recovery: string | null;
+        /** Última orden a la tripulación: delata por qué nadie se baja. */
+        crewAction: string | null;
         threat: string | null;
         threatVisible: boolean;
         threatMemoryAge: number | null;
@@ -175,6 +193,30 @@ export function installVehicleConsole(
           };
         });
     },
+    crew: () => {
+      const system = getVehicles();
+      return {
+        assignments: (system?.getCrewIntents() ?? []).map((assignment) => ({
+          actorId: assignment.actorId,
+          vehicleId: assignment.vehicleId,
+          seatId: assignment.seatId,
+          role: assignment.role,
+          phase: assignment.phase,
+          approachTarget: assignment.approachTarget
+            ? ([
+                assignment.approachTarget.x,
+                assignment.approachTarget.y,
+                assignment.approachTarget.z,
+              ] as [number, number, number])
+            : null,
+        })),
+        extractions: (system?.getExtractionIntents() ?? []).map((request) => ({
+          faction: request.faction,
+          vehicleId: request.vehicleId,
+          actors: [...request.actors],
+        })),
+      };
+    },
     ai: () => {
       const system = getVehicles();
       return (system?.getVehicles() ?? []).map((vehicle) => {
@@ -190,6 +232,7 @@ export function installVehicleConsole(
           blockedSeconds: report?.blockedSeconds ?? 0,
           steering: vehicle.getTelemetry().steering,
           recovery: report?.recovery ?? null,
+          crewAction: report?.crewAction ?? null,
           threat: report?.threat ?? null,
           threatVisible: report?.threatVisible ?? false,
           threatMemoryAge: report?.threatMemoryAge ?? null,

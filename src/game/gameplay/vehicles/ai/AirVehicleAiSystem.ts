@@ -28,6 +28,7 @@ import {
   airNavProfileFromPreset,
 } from './AirVehicleNavigation';
 import { AirVehiclePathFollower } from './AirVehiclePathFollower';
+import { planarDistance } from './VehicleAiMath';
 import type { VehicleNavPoint } from './VehicleAiTypes';
 
 export interface AirVehicleAiRegistration {
@@ -50,6 +51,8 @@ export interface AirVehicleAiReport {
 const PLAN_RETRY_SECONDS = 1.5;
 /** Altura desde la que se sondea el terreno buscando dónde posarse. */
 const LANDING_SEARCH_HEIGHT = 40;
+/** Hasta dónde vale hacer caminar a los recogidos hacia una zona autorada. */
+const EXTRACTION_ZONE_RADIUS = 60;
 
 interface AirVehicleRecord {
   readonly brain: AirVehicleAiBrain;
@@ -235,9 +238,17 @@ export class AirVehicleAiSystem {
     record: AirVehicleRecord,
     context: AirBrainContext,
   ): AirLandingSpot | null {
-    // La extracción fija dónde posarse: la zona elegida es la que tiene a la
-    // gente al lado, no la que le queda más cerca al aparato.
-    if (context.pickupAt) return { position: context.pickupAt, source: 'authored' };
+    // La extracción manda el destino, pero el punto exacto donde quedó la gente
+    // no tiene por qué ser posable: ahí suele estar el vehículo que acaban de
+    // perder, ardiendo. Con una zona autorada cerca se usa ésa y la tropa
+    // camina; sin ninguna, se baja donde están.
+    if (context.pickupAt) {
+      const zone = this.nearestLandingZone(record.presetId, context.pickupAt);
+      if (zone && planarDistance(zone.position, context.pickupAt) <= EXTRACTION_ZONE_RADIUS) {
+        return zone;
+      }
+      return { position: context.pickupAt, source: 'authored' };
+    }
     const authored = this.nearestLandingZone(record.presetId, context.position);
     if (authored) return authored;
     if (context.healthFraction > 0.5 && context.pilotAvailable) return null;

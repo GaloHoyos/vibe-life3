@@ -99,7 +99,9 @@ export const VehicleLabTerrain = createMap({
     id: 'terrain-hunter-buggy',
     presetId: 'buggy',
     position: [96, 1.1, -30],
-    rotation: [0, Math.PI, 0],
+    // Mirando a la fila de estaciones: la tripulación de un vehículo parado ve
+    // por donde apunta el casco, así que de espaldas no se entera de nada.
+    rotation: [0, 0, 0],
     faction: 'combine',
     accessPolicy: 'combine',
     engineOn: true,

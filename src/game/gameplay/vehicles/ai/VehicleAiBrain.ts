@@ -60,6 +60,14 @@ const HORN_BLOCKED_SECONDS = 1.2;
 const HORN_COOLDOWN_SECONDS = 3;
 /** Cada cuánto un vehículo en órbita cambia de mano, para no ser monótono. */
 const SIDE_HOLD_SECONDS = 7;
+/**
+ * Cuánto puede un vehículo no acercarse a un blanco que perdió de vista antes
+ * de soltar infantería, y cuántos metros cuentan como haberse acercado. Es
+ * corto a propósito: un buggy raspando una pared es lo que el jugador está
+ * mirando mientras espera que pase algo.
+ */
+const DISMOUNT_STALL_SECONDS = 3;
+const APPROACH_PROGRESS_METERS = 1;
 
 export class VehicleAiBrain {
   private readonly follower: VehiclePathFollower;
@@ -80,6 +88,10 @@ export class VehicleAiBrain {
   private sideHoldSeconds = 0;
   private blockedSeconds = 0;
   private hornCooldown = 0;
+  private dismountRequested = false;
+  private trackedThreatId: string | null = null;
+  private closestApproach = Infinity;
+  private approachStallSeconds = 0;
 
   constructor(
     readonly vehicleId: string,
@@ -119,6 +131,7 @@ export class VehicleAiBrain {
     this.elapsedSinceTick = 0;
     this.updateStuckState(tickDelta, context);
     this.updateTimers(tickDelta, context);
+    this.updateApproachProgress(tickDelta, context);
 
     const recovery = this.recoveryAction(context);
     const crewAction = this.resolveCrewAction(context, recovery);
@@ -190,6 +203,10 @@ export class VehicleAiBrain {
     this.searchSeconds = 0;
     this.blockedSeconds = 0;
     this.hornCooldown = 0;
+    this.dismountRequested = false;
+    this.trackedThreatId = null;
+    this.closestApproach = Infinity;
+    this.approachStallSeconds = 0;
     this.follower.reset();
   }
 
@@ -336,9 +353,14 @@ export class VehicleAiBrain {
   }
 
   /**
-   * Punto de combate: a `preferredRange` del blanco. Fuera de banda el punto cae
-   * sobre la línea que los une (se acerca o se aleja); dentro de banda el ángulo
-   * avanza y el vehículo orbita, que es lo que se lee como "me está rodeando".
+   * Punto de combate: el vehículo se acerca hasta `preferredRange` y ahí orbita,
+   * que es lo que se lee como "me está rodeando".
+   *
+   * Estar MÁS cerca que esa distancia no es motivo para retroceder. Con un cañón
+   * de 120 m el rango preferido son decenas de metros, y un vehículo que ya
+   * tiene al blanco a diez se iba manejando hacia atrás para "tomar distancia":
+   * desde afuera eso se lee como que no sabe lo que hace. Si ya está adentro,
+   * orbita a la distancia que tiene.
    */
   private engageGoal(context: VehicleBrainContext): VehicleNavPoint | null {
     const threat = context.threat;
@@ -346,15 +368,18 @@ export class VehicleAiBrain {
     const preferredRange = this.preferredEngagementRange(context);
     if (preferredRange <= 0.5) return threat.position;
     const distance = planarDistance(context.pose.position, threat.position);
+    const standoff = Math.min(
+      preferredRange,
+      Math.max(distance, this.profile.halfLength * 2),
+    );
     const angleToOwn = headingBetween(threat.position, context.pose.position);
-    const inBand =
-      distance <= preferredRange * 1.25 && distance >= preferredRange * 0.75;
+    const inBand = distance <= standoff * 1.25 && distance >= standoff * 0.75;
     const arc = inBand ? (this.tuning.strafeArc ?? 0.5) * this.engageSide : 0;
     const forward = headingToVector(angleToOwn + arc);
     return [
-      threat.position[0] + forward[0] * preferredRange,
+      threat.position[0] + forward[0] * standoff,
       context.pose.position[1],
-      threat.position[2] + forward[1] * preferredRange,
+      threat.position[2] + forward[1] * standoff,
     ];
   }
 
@@ -425,7 +450,15 @@ export class VehicleAiBrain {
   ): VehicleCrewAiAction {
     if (!context.driverAvailable && context.replacementDriverAvailable) return 'replaceDriver';
     if (this.shouldAbandon(context, recovery)) return 'abandonVehicle';
-    if (this.shouldDismountToPursue(context)) return 'dismountToPursue';
+    this.rearmDismount(context);
+    if (this.shouldDismountToPursue(context)) {
+      // `VehicleSystem` sólo ejecuta la bajada con el vehículo ya detenido, así
+      // que el compromiso se cierra recién ahí: cerrarlo al pedirla perdería la
+      // orden mientras frena, y no cerrarlo nunca vaciaría el vehículo de a un
+      // tripulante por tick.
+      if (Math.abs(context.speed) < 1) this.dismountRequested = true;
+      return 'dismountToPursue';
+    }
     if (this.behavior !== 'transport') return 'none';
     if (context.passengersOnboard === false) return 'requestBoarding';
     const goal = context.authoredGoal;
@@ -440,23 +473,89 @@ export class VehicleAiBrain {
   }
 
   /**
-   * El vehículo dejó de servir para este objetivo: el blanco quedó donde no se
-   * llega manejando —un interior, el otro lado de un barranco— y ya está cerca.
-   * Es el patrón del APC de Half-Life 2: la infantería entra a pie y el casco se
-   * queda afuera cubriendo la salida.
+   * El vehículo dejó de servir para este objetivo y lo que sigue es a pie. Es el
+   * patrón del APC de Half-Life 2: la infantería entra y el casco se queda
+   * afuera cubriendo la salida. Dos motivos lo disparan, los dos con el blanco
+   * ya cerca:
+   *
+   *  - el blanco quedó en otra isla de la grilla: un interior, el otro lado de
+   *    un barranco;
+   *  - lo perdió de vista y dejó de acercársele. Eso cubre de una todo lo que
+   *    en la práctica separa a un vehículo de su blanco y la grilla no ve: una
+   *    pared a tres metros que igual da por alcanzable, un vano por el que no
+   *    entra, o el último-visto ya pisado y nadie ahí. La bandera de la grilla
+   *    dice cuándo es imposible; no acercarse dice cuándo da lo mismo.
+   *
+   * Quién baja y quién se queda lo decide `selectDisembarkingCrew`, que siempre
+   * suelta al menos uno: que a bordo vaya un solo tripulante no es motivo para
+   * quedarse sentado, es motivo para abandonar el vehículo.
    *
    * El jugador a bordo cancela la idea: no se lo baja a la fuerza de su propio
    * vehículo.
    */
   private shouldDismountToPursue(context: VehicleBrainContext): boolean {
-    if (context.hasPlayerOccupant || context.passengersOnboard === false) return false;
-    if (context.threatReachableByVehicle !== false) return false;
+    if (context.hasPlayerOccupant || this.dismountRequested) return false;
     const threat = context.threat;
     if (!threat) return false;
-    return (
-      planarDistance(context.pose.position, threat.position) <=
+    if (
+      planarDistance(context.pose.position, threat.position) >
       VEHICLE_CREW_DECISION.dismountRange
-    );
+    ) {
+      return false;
+    }
+    if (context.threatReachableByVehicle === false) return true;
+    return this.approachStallSeconds >= DISMOUNT_STALL_SECONDS;
+  }
+
+  /**
+   * Hace cuánto que el vehículo no se acerca al blanco. Tenerlo a la vista
+   * reinicia la cuenta: mientras hay contacto está haciendo su trabajo aunque
+   * mantenga la distancia de tiro, y el estancamiento sólo significa algo
+   * cuando lo que quiere es volver a encontrarlo.
+   */
+  private updateApproachProgress(
+    delta: number,
+    context: VehicleBrainContext,
+  ): void {
+    const threat = context.threat;
+    if (!threat) {
+      this.trackedThreatId = null;
+      this.closestApproach = Infinity;
+      this.approachStallSeconds = 0;
+      return;
+    }
+    if (threat.id !== this.trackedThreatId) {
+      this.trackedThreatId = threat.id;
+      this.closestApproach = Infinity;
+      this.approachStallSeconds = 0;
+    }
+    const distance = planarDistance(context.pose.position, threat.position);
+    if (
+      threat.visible === true ||
+      distance < this.closestApproach - APPROACH_PROGRESS_METERS
+    ) {
+      this.closestApproach = Math.min(this.closestApproach, distance);
+      this.approachStallSeconds = 0;
+      return;
+    }
+    this.approachStallSeconds += delta;
+  }
+
+  /**
+   * Un contacto nuevo que el vehículo SÍ puede perseguir devuelve el derecho a
+   * bajar tropa: sin esto, una tripulación que ya desembarcó una vez nunca
+   * vuelve a hacerlo aunque el combate empiece de cero.
+   */
+  private rearmDismount(context: VehicleBrainContext): void {
+    if (!this.dismountRequested) return;
+    const threat = context.threat;
+    if (!threat) {
+      this.dismountRequested = false;
+      return;
+    }
+    if (threat.visible === true && context.threatReachableByVehicle !== false) {
+      this.dismountRequested = false;
+    }
   }
 
   /**

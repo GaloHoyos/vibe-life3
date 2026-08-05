@@ -275,6 +275,26 @@ describe("AirVehicleAiBrain", () => {
 
       expect(decision.crewAction).toBe("requestDisembark");
     });
+
+    it("no descarga a los que acaba de recoger en la misma zona", () => {
+      const brain = create("transport");
+      const onTheGround = {
+        landingSpot: { position: LZ, source: "authored" } as const,
+        position: [LZ[0], 0, LZ[2]] as [number, number, number],
+        altitude: 0,
+        grounded: true,
+      };
+      // Se posa a recoger y sube la carga.
+      expect(
+        tick(brain, context({ ...onTheGround, pickupAt: LZ, passengersOnboard: false })).crewAction,
+      ).toBe("requestBoarding");
+
+      // Cerrada la recogida, la zona deja de ser un destino: se va con ellos.
+      const loaded = tick(brain, context({ ...onTheGround, passengersOnboard: true }));
+
+      expect(loaded.crewAction).toBe("none");
+      expect(loaded.state).toBe("takeoff");
+    });
   });
 });
 

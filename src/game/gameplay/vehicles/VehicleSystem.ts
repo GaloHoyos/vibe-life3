@@ -56,6 +56,7 @@ import {
   type VehicleNpcAnchorCandidate,
   type VehicleNpcAnchorSelection,
   type VehicleNpcCrewAction,
+  type VehicleNpcCrewAssignment,
 } from "./VehicleNpcCrewCoordinator";
 import {
   VehicleEntity,
@@ -145,6 +146,7 @@ export interface VehicleAiReport {
   timeToCollision: number | null;
   blockedSeconds: number;
   recovery: string | null;
+  crewAction: string | null;
   threat: string | null;
   threatVisible: boolean;
   threatMemoryAge: number | null;
@@ -156,6 +158,9 @@ const CAPSULE_HALF_HEIGHT = 0.55;
 const CAPSULE_RADIUS = 0.35;
 const EXIT_GROUND_CAST_HEIGHT = 1.7;
 const EXIT_GROUND_CAST_DISTANCE = 4.2;
+/** Cuánto se corre un ancla por intento al despegarla del casco, y cuántas veces. */
+const ANCHOR_CLEARANCE_STEP = 0.15;
+const ANCHOR_CLEARANCE_STEPS = 12;
 const EMPTY_CONTROL: VehicleControlInput = {
   throttle: 0,
   steering: 0,
@@ -284,6 +289,8 @@ export class VehicleSystem {
   private readonly extractionArrived = new Set<string>();
   /** Tripulación que perdió su vehículo y todavía no tocó tierra. */
   private readonly strandedCrew = new Set<string>();
+  /** Quién bajó a seguir a pie y hasta cuándo no se lo vuelve a subir. */
+  private readonly dismountedUntil = new Map<string, number>();
   private lastDismountAt = -Infinity;
   private bailoutHoldSeconds = 0;
   private disposed = false;
@@ -307,6 +314,8 @@ export class VehicleSystem {
     this.audio = new VehicleAudioSystem(sounds, positionalSounds);
     this.airAi = new AirVehicleAiSystem(solidRaycast);
     this.npcCrew = new VehicleNpcCrewCoordinator({
+      selectApproach: ({ npc, vehicle, candidates }) =>
+        this.selectNpcApproach(npc, vehicle, candidates),
       selectExit: ({ npc, vehicle, candidates, emergency }) =>
         this.selectNpcExit(npc, vehicle, candidates, emergency),
     });
@@ -331,6 +340,7 @@ export class VehicleSystem {
     const vehicle = this.vehicles.get(vehicleId);
     const npc = this.actors.get(actorId);
     if (!vehicle || !npc?.isAlive() || npc.isVehicleMounted?.()) return false;
+    if (this.isOnFootByChoice(actorId)) return false;
     if (!this.canNpcUseRole(npc, vehicle, role)) return false;
     return (
       this.npcCrew.requestBoarding(npc, vehicle, {
@@ -734,6 +744,28 @@ export class VehicleSystem {
     return [...this.vehicles.values()];
   }
 
+  /**
+   * Intenciones de tripulación vigentes, para la consola de debug. Es lo único
+   * que explica un NPC parado al lado de un vehículo: si tiene asignación y en
+   * qué fase, o si directamente nadie se la dio.
+   */
+  getCrewIntents(): readonly VehicleNpcCrewAssignment[] {
+    return this.npcCrew.getAssignments();
+  }
+
+  /** Recogidas aéreas pendientes por facción, para la consola de debug. */
+  getExtractionIntents(): readonly {
+    faction: Faction;
+    vehicleId: string | null;
+    actors: readonly string[];
+  }[] {
+    return this.crewDirector.pendingExtractions().map((request) => ({
+      faction: request.faction,
+      vehicleId: request.vehicleId,
+      actors: [...request.actors],
+    }));
+  }
+
   /** Estado de IA para la consola de debug y la verificación en runtime. */
   getAiReport(vehicleId: string): VehicleAiReport | null {
     const snapshot = this.ai.snapshot(vehicleId);
@@ -748,6 +780,7 @@ export class VehicleSystem {
       timeToCollision: decision?.control.timeToCollision ?? null,
       blockedSeconds: this.blockedSeconds.get(vehicleId) ?? 0,
       recovery: decision?.recovery ?? null,
+      crewAction: decision?.crewAction ?? null,
       threat: perception?.targetId ?? null,
       threatVisible: perception?.visible ?? false,
       threatMemoryAge: perception?.hasMemory === true ? perception.memoryAge : null,
@@ -885,6 +918,7 @@ export class VehicleSystem {
     this.extractionPickups.clear();
     this.extractionArrived.clear();
     this.strandedCrew.clear();
+    this.dismountedUntil.clear();
     this.actors.clear();
     this.authoredCrew.clear();
     this.waypointDefinitions.clear();
@@ -1882,10 +1916,35 @@ export class VehicleSystem {
       .filter((occupant) => occupant.actor !== PLAYER_ACTOR)
       .map((occupant) => ({ actor: occupant.actor, role: occupant.role }));
     if (crew.length === 0) return;
+    let dismounted = false;
     for (const leaving of selectDisembarkingCrew(crew, vehicle.preset.seats.length)) {
-      this.requestNpcExit(leaving.actor, false);
+      if (this.requestNpcExit(leaving.actor, false) === "rejected") continue;
+      dismounted = true;
+      this.dismountedUntil.set(
+        leaving.actor,
+        this.elapsed + VEHICLE_CREW_DECISION.dismountCooldownSeconds,
+      );
     }
     this.processNpcCrewActions();
+    if (dismounted) this.shareThreatWithCrew(vehicle);
+  }
+
+  /**
+   * Le pasa a la tripulación lo único que ella no tiene: dónde vio el vehículo
+   * al blanco. Sentados no perciben, así que sin esto bajan sin saber nada y se
+   * quedan parados al lado de la puerta. Va por el mismo canal de intel que usa
+   * un soldado para avisarle a su escuadra.
+   */
+  private shareThreatWithCrew(vehicle: VehicleEntity): void {
+    const snapshot = this.perceptionSnapshots.get(vehicle.id);
+    if (!snapshot?.targetId || !snapshot.position) return;
+    this.eventBus.emit("npc.threat.spotted", {
+      spotterId: vehicle.id,
+      spotterFaction: vehicle.faction,
+      threatId: snapshot.targetId,
+      threatPosition: snapshot.position.clone(),
+      spotterPosition: vehicle.getWorldPosition(),
+    });
   }
 
   private applyAiRecovery(
@@ -2388,17 +2447,72 @@ export class VehicleSystem {
     return firstFallback ?? vehiclePosition.add(new Vector3(radius, clearance, 0));
   }
 
+  /**
+   * Aparta el ancla del casco. Las anclas del preset son puntos de referencia
+   * del asiento y varias caen a centímetros de la chapa, donde un humanoide no
+   * entra parado: el buggy se quedaba sin ninguna salida no-urgente y el piloto
+   * del helicóptero caminaba contra el casco para siempre, porque la navegación
+   * a pie proyecta el destino sobre el piso que hay DEBAJO del aparato.
+   *
+   * Se empuja en vez de descartar: así se conserva la puerta que el preset
+   * eligió y sólo se corrige el margen.
+   */
+  private clearAnchorFromHull(
+    vehicle: VehicleEntity,
+    anchor: Vector3,
+  ): Vector3 {
+    if (capsuleClearsVehicleHull(anchor, vehicle)) return anchor.clone();
+    const outward = anchor
+      .clone()
+      .sub(vehicle.getWorldPosition())
+      .setY(0);
+    if (outward.lengthSq() < 1e-4) {
+      outward.set(1, 0, 0).applyQuaternion(vehicle.getWorldRotation()).setY(0);
+    }
+    if (outward.lengthSq() < 1e-4) outward.set(1, 0, 0);
+    outward.normalize();
+    const pushed = anchor.clone();
+    for (let step = 0; step < ANCHOR_CLEARANCE_STEPS; step += 1) {
+      pushed.addScaledVector(outward, ANCHOR_CLEARANCE_STEP);
+      if (capsuleClearsVehicleHull(pushed, vehicle)) break;
+    }
+    return pushed;
+  }
+
+  /** Por dónde se sube: la puerta despejada más cercana a quien viene. */
+  private selectNpcApproach(
+    npc: INpc,
+    vehicle: VehicleEntity,
+    candidates: readonly VehicleNpcAnchorCandidate[],
+  ): VehicleNpcAnchorSelection | null {
+    return [...candidates]
+      .map((candidate) => ({
+        index: candidate.index,
+        position: this.clearAnchorFromHull(vehicle, candidate.position),
+      }))
+      .sort(
+        (first, second) =>
+          first.position.distanceToSquared(npc.position) -
+          second.position.distanceToSquared(npc.position),
+      )[0] ?? null;
+  }
+
   private selectNpcExit(
     npc: INpc,
     vehicle: VehicleEntity,
     candidates: readonly VehicleNpcAnchorCandidate[],
     emergency: boolean,
   ): VehicleNpcAnchorSelection | null {
-    const ordered = [...candidates].sort(
-      (first, second) =>
-        first.position.distanceToSquared(npc.position) -
-        second.position.distanceToSquared(npc.position),
-    );
+    const ordered = candidates
+      .map((candidate) => ({
+        index: candidate.index,
+        position: this.clearAnchorFromHull(vehicle, candidate.position),
+      }))
+      .sort(
+        (first, second) =>
+          first.position.distanceToSquared(npc.position) -
+          second.position.distanceToSquared(npc.position),
+      );
     const clearance = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS + 0.08;
     for (const candidate of ordered) {
       if (
@@ -2669,6 +2783,18 @@ export class VehicleSystem {
     }
   }
 
+  /**
+   * Acaba de bajarse a seguir a pie: subirlo de nuevo deshace la decisión que el
+   * cerebro tomó hace un segundo.
+   */
+  private isOnFootByChoice(actorId: string): boolean {
+    const until = this.dismountedUntil.get(actorId);
+    if (until === undefined) return false;
+    if (this.elapsed < until) return true;
+    this.dismountedUntil.delete(actorId);
+    return false;
+  }
+
   private requestAutonomousCrew(): void {
     const followers = new Set(this.followerIds());
     const actors = [...new Set(this.actors.values())];
@@ -2707,6 +2833,7 @@ export class VehicleSystem {
             !this.npcCrew.getAssignment(npc.id) &&
             !followers.has(npc.id) &&
             npc.companionName === null &&
+            !this.isOnFootByChoice(npc.id) &&
             npc.position.distanceTo(vehicle.getWorldPosition()) <=
               (crew?.radius ?? DEFAULT_CREW_RECRUIT_RADIUS),
         )
@@ -2880,6 +3007,7 @@ export class VehicleSystem {
     }
     action.npc.setVehicleMounted?.(true);
     this.startNpcControlledEngine(action.vehicle, occupant.role);
+    this.activateOpportunisticMission(action.vehicle, occupant.role, action.npc.id);
     this.crewVisuals.board(
       action.npc,
       action.vehicle,
@@ -2899,6 +3027,28 @@ export class VehicleSystem {
       seatId: occupant.seatId,
       role: occupant.role,
     });
+  }
+
+  /**
+   * Un vehículo que el nivel dejó estacionado no tiene misión: se registra en
+   * `hold` y ahí se queda aunque alguien se siente a los mandos. Cuando quien se
+   * sienta lo hizo por decisión propia —una reserva del `VehicleCrewDirector`,
+   * no un puesto autorado— el vehículo deja de ser escenografía y sale a cazar.
+   *
+   * Se respeta lo que el nivel haya autorado: `automatic` hereda el
+   * comportamiento del mapa y sólo cae en `intercept` cuando no hay ninguno.
+   */
+  private activateOpportunisticMission(
+    vehicle: VehicleEntity,
+    role: VehicleCrewRole,
+    actorId: string,
+  ): void {
+    if (!isAtTheControls(role)) return;
+    if (!this.ai.hasVehicle(vehicle.id)) return;
+    if (vehicle.getPlayerOccupant()) return;
+    if (this.crewDirector.claimedVehicle(actorId) !== vehicle.id) return;
+    if ((this.npcDriveModes.get(vehicle.id) ?? "hold") !== "hold") return;
+    this.applyNpcDriveMode(vehicle, "automatic");
   }
 
   private commitNpcExit(
