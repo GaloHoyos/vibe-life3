@@ -283,4 +283,97 @@ describe('VehicleAiBrain', () => {
     // 3 s de enfriamiento sobre 3 s de simulación: no puede sonar dos veces.
     expect(horns).toBeLessThanOrEqual(2);
   });
+
+  describe('decisiones de tripulación', () => {
+    const nearbyThreat = { id: 'player', position: [0, 0, 12] as const, visible: true };
+
+    function intercepting(): VehicleAiBrain {
+      return new VehicleAiBrain(
+        'hunter',
+        { enabled: true, behavior: 'intercept' },
+        groundProfile,
+      );
+    }
+
+    it('baja infantería cuando el blanco quedó donde el vehículo no llega', () => {
+      const decision = intercepting().update(0.2, context({
+        threat: nearbyThreat,
+        threatReachableByVehicle: false,
+        passengersOnboard: true,
+      }));
+
+      expect(decision?.crewAction).toBe('dismountToPursue');
+      // Nadie salta en marcha: la decisión frena el vehículo primero.
+      expect(decision?.state).toBe('stopped');
+    });
+
+    it('sigue conduciendo mientras el blanco sea alcanzable', () => {
+      const decision = intercepting().update(0.2, context({
+        threat: nearbyThreat,
+        threatReachableByVehicle: true,
+        passengersOnboard: true,
+      }));
+
+      expect(decision?.crewAction).toBe('none');
+    });
+
+    it('no baja a nadie por un blanco inalcanzable pero lejano', () => {
+      const decision = intercepting().update(0.2, context({
+        threat: { id: 'player', position: [0, 0, 300], visible: true },
+        threatReachableByVehicle: false,
+        passengersOnboard: true,
+      }));
+
+      expect(decision?.crewAction).toBe('none');
+    });
+
+    it('no baja a nadie si no queda infantería que bajar', () => {
+      const decision = intercepting().update(0.2, context({
+        threat: nearbyThreat,
+        threatReachableByVehicle: false,
+        passengersOnboard: false,
+      }));
+
+      expect(decision?.crewAction).toBe('none');
+    });
+
+    it('nunca baja a la tripulación del vehículo del jugador', () => {
+      const decision = intercepting().update(0.2, context({
+        threat: nearbyThreat,
+        threatReachableByVehicle: false,
+        passengersOnboard: true,
+        hasPlayerOccupant: true,
+      }));
+
+      expect(decision?.crewAction).toBe('none');
+    });
+
+    it('abandona el vehículo que agotó todas las maniobras de desatasco', () => {
+      const brain = intercepting();
+      // Volcado: el contador de atasco se dispara hasta el escalón terminal.
+      let decision: VehicleBrainDecision | null = null;
+      for (let step = 0; step < 40; step += 1) {
+        decision = brain.update(0.5, context({ overturned: true, blocked: true })) ?? decision;
+      }
+
+      expect(decision?.recovery).toBe('waitForSafeRecovery');
+      expect(decision?.crewAction).toBe('abandonVehicle');
+    });
+
+    it('un casco bajo hace huir, no abandonar', () => {
+      const brain = new VehicleAiBrain(
+        'wounded',
+        { enabled: true, behavior: 'intercept' },
+        groundProfile,
+        { fleeThreshold: 0.35 },
+      );
+      const decision = brain.update(0.2, context({
+        healthFraction: 0.1,
+        threat: nearbyThreat,
+      }));
+
+      expect(decision?.crewAction).toBe('none');
+      expect(decision?.state).toBe('evading');
+    });
+  });
 });

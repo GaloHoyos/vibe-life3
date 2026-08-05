@@ -235,6 +235,9 @@ export class AirVehicleAiSystem {
     record: AirVehicleRecord,
     context: AirBrainContext,
   ): AirLandingSpot | null {
+    // La extracción fija dónde posarse: la zona elegida es la que tiene a la
+    // gente al lado, no la que le queda más cerca al aparato.
+    if (context.pickupAt) return { position: context.pickupAt, source: 'authored' };
     const authored = this.nearestLandingZone(record.presetId, context.position);
     if (authored) return authored;
     if (context.healthFraction > 0.5 && context.pilotAvailable) return null;

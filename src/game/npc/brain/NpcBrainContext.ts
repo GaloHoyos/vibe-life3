@@ -11,6 +11,7 @@ import type { NpcTacticalHandle } from '@game/npc/brain/NpcCoverSensor';
 import type { SquadRole } from '@game/npc/ai/SquadDirector';
 import type { NpcScriptOrder } from '@game/script/NpcScriptOrder';
 import type { NpcVehicleApproachStatus } from '@game/npc/core/INpc';
+import type { VehicleSeatOffer } from '@game/gameplay/vehicles/ai/VehicleOpportunityRegistry';
 
 export interface NpcSelfSnapshot {
   id: string;
@@ -25,6 +26,12 @@ export interface NpcSelfSnapshot {
 
 export interface NpcNavigationQueries {
   projectPoint(position: Vector3, profile: NavAgentProfile): Vector3 | null;
+  /**
+   * Largo del camino peatonal entre dos puntos, o null si no hay ruta. Es lo
+   * que permite comparar "ir a pie" contra "ir en vehiculo" sin confundir la
+   * linea recta con el recorrido real.
+   */
+  pathDistance(profile: NavAgentProfile, from: Vector3, to: Vector3): number | null;
 }
 
 /**
@@ -137,6 +144,19 @@ export interface NpcVehicleApproachHandle {
 }
 
 /**
+ * Decision de usar un vehiculo, del lado del brain. Misma relacion que
+ * `NpcTacticalHandle` tiene con el `TacticalMap`: el brain decide y pide, y
+ * `VehicleSystem` sigue siendo la autoridad que valida y concede.
+ */
+export interface NpcVehicleHandle {
+  /** Asiento que hoy conviene tomar, ya comparado contra ir a pie. */
+  bestOffer(): VehicleSeatOffer | null;
+  /** Reserva el asiento. True si quedo concedido. */
+  requestSeat(): boolean;
+  releaseSeat(): void;
+}
+
+/**
  * Punto del threat para MOVERSE (goal de pathfinding). Los ghosts de portal
  * proyectan `position` detrás del disco — correcto para apuntar/encarar, pero
  * como goal de A* cae en celdas del lado equivocado de la pared. `navPosition`
@@ -194,6 +214,8 @@ export interface NpcBrainContext {
   script: NpcScriptOrder | null;
   /** Vehicle-entry reservation; present only before mounting. */
   vehicleApproach?: NpcVehicleApproachHandle | null;
+  /** Oportunidad de subirse a un vehiculo. Null en presets que no conducen. */
+  vehicle?: NpcVehicleHandle | null;
   /** Dispara un gesto procedural nombrado (pasos `gesture` de una secuencia). */
   gesture(id: GestureId, duration: number): void;
   conditions: ConditionMask;

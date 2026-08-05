@@ -42,6 +42,11 @@ export interface AirBrainContext {
   hasPlayerOccupant: boolean;
   /** Hay tripulación en camino: despegar ahora la dejaría en tierra. */
   crewPending: boolean;
+  /**
+   * Hay gente esperando extracción en este punto. Manda sobre la lógica normal
+   * de transporte, que sólo se posa con carga: para recoger hay que bajar vacío.
+   */
+  pickupAt?: VehicleNavPoint;
   authoredGoal?: VehicleNavPoint;
   patrolPoints?: readonly VehicleNavPoint[];
   escortTarget?: VehicleAiTarget;

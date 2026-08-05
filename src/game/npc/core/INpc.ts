@@ -138,6 +138,13 @@ export interface NpcAiDebugSnapshot {
   threatId: string | null;
   threatPosition: Vector3 | null;
   coverId: string | null;
+  /** Ultima decision de "¿me conviene un vehiculo?"; ausente si no evalua. */
+  vehicle?: {
+    verdict: string;
+    vehicleId: string | null;
+    footSeconds: number | null;
+    vehicleSeconds: number | null;
+  };
   path: NpcPathDebugSnapshot;
   perception?: {
     visibleNow: boolean;
@@ -333,6 +340,15 @@ export type NpcVehicleApproachStatus =
   | "arrived"
   | "blocked";
 
+/** Lo que un NPC sabe de su amenaza: visible ahora, o ultimo punto conocido. */
+export interface NpcThreatKnowledge {
+  readonly id: string;
+  readonly position: Vector3;
+  readonly visible: boolean;
+  /** Segundos desde la ultima vez que lo vio. */
+  readonly memoryAge: number;
+}
+
 /** Interfaz uniforme que consume `Game`/`LevelLoader`. La implementa `Npc`. */
 export interface INpc {
   readonly id: string;
@@ -364,6 +380,12 @@ export interface INpc {
   /** Transient order to walk toward a reserved entrance. */
   setVehicleApproach?(order: NpcVehicleApproachOrder | null): void;
   getVehicleApproachStatus?(): NpcVehicleApproachStatus;
+  /**
+   * Lo que este NPC sabe de su amenaza actual. Montado sigue percibiendo, asi
+   * que la tripulacion ve mas que el sensor del casco: el vehiculo funde ambas
+   * fuentes para decidir.
+   */
+  getThreatKnowledge?(): NpcThreatKnowledge | null;
 
   update(ctx: AiFrameContext): void;
   syncFromPhysics(): void;

@@ -82,9 +82,28 @@ interface VehicleAiRecord {
   pathChangedPending: boolean;
 }
 
+/**
+ * Planes simultáneos en vuelo hacia el worker. Cada plan corre un Hybrid A*
+ * sobre una grilla de decenas de miles de celdas: sin tope, una docena de
+ * vehículos replanificando a la vez encola trabajo que llega tarde y ya no
+ * sirve. Quien no entra reintenta al tick siguiente, que es gratis porque el
+ * cerebro sigue pidiendo plan mientras la ruta no llegue al objetivo.
+ */
+const MAX_CONCURRENT_PLANS = 3;
+/** Cupo reservado para lo que pasa cerca del jugador. */
+const MAX_DISTANT_PLANS = 2;
+const DISTANT_PLAN_METERS = 120;
+
 export class VehicleAiSystem {
   private plannerClient: VehicleNavigationPlanService | null = null;
+  /**
+   * Copia local del planificador. El worker resuelve las rutas; esta copia sólo
+   * responde consultas sincrónicas de distancia y alcanzabilidad, que la
+   * decisión de embarque necesita en el mismo frame.
+   */
+  private planner: VehicleNavigationPlanner | null = null;
   private currentNavigationHash: string | null = null;
+  private planningInFlight = 0;
   private readonly laneEdges = new Map<string, VehicleLaneEdge>();
   private readonly vehicles = new Map<string, VehicleAiRecord>();
 
@@ -100,7 +119,9 @@ export class VehicleAiSystem {
     this.plannerClient?.dispose();
     this.plannerClient = null;
     this.currentNavigationHash = null;
+    this.planningInFlight = 0;
     const result = await VehicleNavigationPlanner.create(input, this.cache);
+    this.planner = result.planner;
     this.laneEdges.clear();
     for (const edge of result.planner.navigation.laneGraph.edges) {
       this.laneEdges.set(edge.id, edge);
@@ -124,6 +145,19 @@ export class VehicleAiSystem {
 
   navigationHash(): string | null {
     return this.currentNavigationHash;
+  }
+
+  /** Metros de recorrido manejable, o `null` si el destino está en otra isla. */
+  travelDistance(
+    profileId: string,
+    from: VehicleNavPoint,
+    to: VehicleNavPoint,
+  ): number | null {
+    return this.planner?.travelDistance(profileId, from, to) ?? null;
+  }
+
+  isReachable(profileId: string, from: VehicleNavPoint, to: VehicleNavPoint): boolean {
+    return this.planner?.isReachable(profileId, from, to) ?? false;
   }
 
   hasVehicle(vehicleId: string): boolean {
@@ -292,7 +326,11 @@ export class VehicleAiSystem {
     let pathChanged = record.pathChangedPending;
     record.pathChangedPending = false;
     if (decision.goal && decision.requestPlan && this.plannerClient) {
-      if (!record.planPending && record.planRetrySeconds <= 0) {
+      if (
+        !record.planPending &&
+        record.planRetrySeconds <= 0 &&
+        this.hasPlanningBudget(context.distanceToPlayer)
+      ) {
         const authoredHeading =
           record.goal &&
           record.goal.heading !== null &&
@@ -395,8 +433,16 @@ export class VehicleAiSystem {
     this.plannerClient?.dispose();
     this.plannerClient = null;
     this.currentNavigationHash = null;
+    this.planningInFlight = 0;
     this.laneEdges.clear();
     this.vehicles.clear();
+  }
+
+  private hasPlanningBudget(distanceToPlayer: number): boolean {
+    const cap = distanceToPlayer > DISTANT_PLAN_METERS
+      ? MAX_DISTANT_PLANS
+      : MAX_CONCURRENT_PLANS;
+    return this.planningInFlight < cap;
   }
 
   private requestPlan(
@@ -411,6 +457,10 @@ export class VehicleAiSystem {
     const generation = record.planGeneration + 1;
     record.planGeneration = generation;
     record.planPending = true;
+    this.planningInFlight += 1;
+    const settle = (): void => {
+      this.planningInFlight = Math.max(0, this.planningInFlight - 1);
+    };
     const requestedGoal: VehicleNavPoint = [...goal];
     void plannerClient.plan(
       record.profile.id,
@@ -423,6 +473,7 @@ export class VehicleAiSystem {
         heading: goalHeading,
       },
     ).then((route) => {
+      settle();
       const current = this.vehicles.get(vehicleId);
       if (current !== record || current.planGeneration !== generation) return;
       current.planPending = false;
@@ -444,6 +495,7 @@ export class VehicleAiSystem {
       current.restoredPath = null;
       current.pathChangedPending = true;
     }).catch(() => {
+      settle();
       const current = this.vehicles.get(vehicleId);
       if (current !== record || current.planGeneration !== generation) return;
       current.planPending = false;

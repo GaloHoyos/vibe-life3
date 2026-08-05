@@ -22,6 +22,7 @@ import {
   reloadSchedules,
   scriptedSchedules,
   vehicleApproachSchedule,
+  vehicleSeekSchedule,
 } from './commonSchedules';
 import type { NpcPreset } from './NpcPreset';
 
@@ -41,6 +42,7 @@ export function buildAlyxPreset(): NpcPreset {
     ...scriptedSchedules(),
     hitSchedule(0.18),
     vehicleApproachSchedule(),
+    vehicleSeekSchedule(),
     ...reloadSchedules(),
     {
       id: 'regroup',

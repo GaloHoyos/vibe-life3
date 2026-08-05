@@ -222,6 +222,60 @@ describe("AirVehicleAiBrain", () => {
     const third = tick(brain, context({ patrolPoints: [[260, 0, 0]] }));
     expect(third.planGoal).not.toBeNull();
   });
+
+  describe("extracción", () => {
+    const LZ = [80, 0, 40] as const;
+
+    it("baja a recoger aunque venga vacío", () => {
+      const brain = create("transport");
+      const decision = tick(brain, context({
+        pickupAt: LZ,
+        landingSpot: { position: LZ, source: "authored" },
+        passengersOnboard: false,
+      }));
+
+      // Sin extracción, un transporte vacío no se posa: ya cumplió su misión.
+      expect(decision.state).toBe("approach");
+    });
+
+    it("pide embarco al posarse en la zona de recogida", () => {
+      const brain = create("transport");
+      const decision = tick(brain, context({
+        pickupAt: LZ,
+        landingSpot: { position: LZ, source: "authored" },
+        position: [LZ[0], 0, LZ[2]],
+        altitude: 0,
+        grounded: true,
+        passengersOnboard: false,
+      }));
+
+      expect(decision.state).toBe("grounded");
+      expect(decision.crewAction).toBe("requestBoarding");
+    });
+
+    it("un transporte vacío sin extracción no se queda dando vueltas", () => {
+      const brain = create("transport");
+      const decision = tick(brain, context({
+        landingSpot: { position: LZ, source: "authored" },
+        passengersOnboard: false,
+      }));
+
+      expect(decision.state).not.toBe("approach");
+    });
+
+    it("con carga a bordo pide desembarco, no embarco", () => {
+      const brain = create("transport");
+      const decision = tick(brain, context({
+        landingSpot: { position: LZ, source: "authored" },
+        position: [LZ[0], 0, LZ[2]],
+        altitude: 0,
+        grounded: true,
+        passengersOnboard: true,
+      }));
+
+      expect(decision.crewAction).toBe("requestDisembark");
+    });
+  });
 });
 
 function create(behavior: VehicleAiBehavior): AirVehicleAiBrain {

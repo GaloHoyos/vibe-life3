@@ -427,6 +427,31 @@ export interface GameEventMap {
   "vehicle.stuck": {
     id: string;
   };
+  /** Un NPC ocupó un asiento. Hasta acá el embarque de NPCs era invisible. */
+  "vehicle.crew.boarded": {
+    id: string;
+    actorId: string;
+    seatId: string;
+    role: VehicleCrewRole;
+  };
+  "vehicle.crew.exited": {
+    id: string;
+    actorId: string;
+    seatId: string;
+    /** Bajada forzada: evacuación o vehículo inservible. */
+    emergency: boolean;
+  };
+  /** Una facción pidió recogida. `vehicleId` null = todavía sin aparato. */
+  "vehicle.extraction.requested": {
+    faction: Faction;
+    position: Vector3;
+    vehicleId: string | null;
+  };
+  /** El transporte se posó en la zona de recogida. */
+  "vehicle.extraction.arrived": {
+    faction: Faction;
+    id: string;
+  };
   /** El jugador levantó un prop con E (+USE). */
   "carry.grabbed": {
     id?: string;

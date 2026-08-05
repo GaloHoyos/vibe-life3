@@ -46,7 +46,12 @@ const preset: NpcPreset = {
 
 function fakeMotor(position: Vector3): NpcMotor {
   return {
-    body: {} as RAPIER.RigidBody,
+    // Lo mínimo que `setVehicleMounted` toca al suspender el cuerpo.
+    body: {
+      setEnabled: vi.fn(),
+      numColliders: () => 0,
+      collider: vi.fn(),
+    } as unknown as RAPIER.RigidBody,
     update: vi.fn(),
     getPosition: () => position,
     getYaw: () => 0,
@@ -340,6 +345,54 @@ describe("Npc scripted sequence lifecycle", () => {
 
     expect(notifyDone).toHaveBeenCalledOnce();
     expect(notifyDone).toHaveBeenCalledWith("canceled");
+  });
+});
+
+describe("Npc montado", () => {
+  /** LOS despejada: el raycast pega en el propio blanco. */
+  function seeingNpc(): ReturnType<typeof createNpc> {
+    return createNpc({
+      cast: vi.fn(() => ({ metadata: { id: "combine-1" } } as never)),
+    } as unknown as Raycast);
+  }
+
+  it("sigue percibiendo sentado, para no bajarse con amnesia", () => {
+    const { npc } = seeingNpc();
+    const combine = actor("combine-1", new Vector3(0, 0, 10), "combine");
+
+    npc.setVehicleMounted?.(true);
+    npc.update(context([combine]));
+
+    const knowledge = npc.getThreatKnowledge?.();
+    expect(knowledge?.id).toBe("combine-1");
+    expect(knowledge?.visible).toBe(true);
+  });
+
+  it("no corre el brain mientras va sentado", () => {
+    const { npc } = seeingNpc();
+    const combine = actor("combine-1", new Vector3(0, 0, 10), "combine");
+
+    npc.update(context([combine]));
+    const onFoot = npc.getState();
+    npc.setVehicleMounted?.(true);
+    npc.update(context([combine]));
+
+    // El schedule queda congelado en el que estaba: a bordo decide el vehículo.
+    expect(npc.getState()).toBe(onFoot);
+  });
+
+  it("conserva el último punto conocido cuando pierde la vista", () => {
+    const { npc } = createNpc({
+      cast: vi.fn(() => ({ metadata: { id: "combine-1" } } as never)),
+    } as unknown as Raycast);
+    const combine = actor("combine-1", new Vector3(0, 0, 10), "combine");
+
+    npc.setVehicleMounted?.(true);
+    npc.update(context([combine]));
+    // Se lo llevan de la lista: queda sólo la memoria.
+    npc.update(context([]));
+
+    expect(npc.getThreatKnowledge?.()).toBeNull();
   });
 });
 

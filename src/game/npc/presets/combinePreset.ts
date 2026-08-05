@@ -29,6 +29,7 @@ import {
   scriptedSchedules,
   searchLastKnownSchedule,
   vehicleApproachSchedule,
+  vehicleSeekSchedule,
 } from './commonSchedules';
 import type { NpcPreset, NpcPresetOptions } from './NpcPreset';
 
@@ -51,6 +52,7 @@ export function buildCombinePreset(options: NpcPresetOptions = {}): NpcPreset {
     ...scriptedSchedules(),
     hitSchedule(flinch.duration),
     vehicleApproachSchedule(),
+    vehicleSeekSchedule(),
     {
       id: 'retreat',
       priority: 850,

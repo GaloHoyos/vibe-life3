@@ -11,6 +11,7 @@ import type {
   VehicleNavPoint,
   VehicleRecoveryAction,
 } from './VehicleAiTypes';
+import { VEHICLE_CREW_DECISION } from '@game/config/vehicleAi.config';
 import {
   clamp,
   headingBetween,
@@ -120,7 +121,7 @@ export class VehicleAiBrain {
     this.updateTimers(tickDelta, context);
 
     const recovery = this.recoveryAction(context);
-    const crewAction = this.resolveCrewAction(context);
+    const crewAction = this.resolveCrewAction(context, recovery);
     this.state = this.resolveState(context, recovery, crewAction);
     if (this.state === 'engaging' || this.state === 'pursuing' || this.state === 'searching') {
       if (this.deviationCountsAgainstMission()) this.deviationSeconds += tickDelta;
@@ -249,7 +250,9 @@ export class VehicleAiBrain {
     crewAction: VehicleCrewAiAction,
   ): VehicleAiState {
     if (!context.driverAvailable && !context.replacementDriverAvailable) return 'stopped';
-    if (crewAction === 'requestBoarding' || crewAction === 'requestDisembark') return 'stopped';
+    // Bajarse en movimiento no existe: cualquier acción de tripulación frena
+    // primero y `VehicleSystem` sólo la ejecuta con el vehículo ya detenido.
+    if (crewAction !== 'none' && crewAction !== 'replaceDriver') return 'stopped';
     if (recovery !== 'none') return 'recovering';
     if (this.shouldFlee(context)) return 'evading';
 
@@ -416,8 +419,13 @@ export class VehicleAiBrain {
     return points[this.patrolIndex % points.length];
   }
 
-  private resolveCrewAction(context: VehicleBrainContext): VehicleCrewAiAction {
+  private resolveCrewAction(
+    context: VehicleBrainContext,
+    recovery: VehicleRecoveryAction,
+  ): VehicleCrewAiAction {
     if (!context.driverAvailable && context.replacementDriverAvailable) return 'replaceDriver';
+    if (this.shouldAbandon(context, recovery)) return 'abandonVehicle';
+    if (this.shouldDismountToPursue(context)) return 'dismountToPursue';
     if (this.behavior !== 'transport') return 'none';
     if (context.passengersOnboard === false) return 'requestBoarding';
     const goal = context.authoredGoal;
@@ -429,6 +437,43 @@ export class VehicleAiBrain {
       return 'requestDisembark';
     }
     return 'none';
+  }
+
+  /**
+   * El vehículo dejó de servir para este objetivo: el blanco quedó donde no se
+   * llega manejando —un interior, el otro lado de un barranco— y ya está cerca.
+   * Es el patrón del APC de Half-Life 2: la infantería entra a pie y el casco se
+   * queda afuera cubriendo la salida.
+   *
+   * El jugador a bordo cancela la idea: no se lo baja a la fuerza de su propio
+   * vehículo.
+   */
+  private shouldDismountToPursue(context: VehicleBrainContext): boolean {
+    if (context.hasPlayerOccupant || context.passengersOnboard === false) return false;
+    if (context.threatReachableByVehicle !== false) return false;
+    const threat = context.threat;
+    if (!threat) return false;
+    return (
+      planarDistance(context.pose.position, threat.position) <=
+      VEHICLE_CREW_DECISION.dismountRange
+    );
+  }
+
+  /**
+   * El vehículo agotó todas las maniobras para desatascarse y sigue sin
+   * moverse: volcado, encajado o donde no hay salida. Bajarse es lo único que
+   * queda.
+   *
+   * Un casco bajo NO alcanza para abandonar: para eso está `evading`, que es
+   * huir manejando. Un vehículo que todavía anda siempre sirve más que un
+   * vehículo vacío, y la destrucción ya dispara la evacuación por otro lado.
+   */
+  private shouldAbandon(
+    context: VehicleBrainContext,
+    recovery: VehicleRecoveryAction,
+  ): boolean {
+    if (context.hasPlayerOccupant) return false;
+    return recovery === 'waitForSafeRecovery';
   }
 
   private resolveSignals(context: VehicleBrainContext): VehicleAiSignals {

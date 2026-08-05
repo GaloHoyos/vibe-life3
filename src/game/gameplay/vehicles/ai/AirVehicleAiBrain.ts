@@ -229,6 +229,8 @@ export class AirVehicleAiBrain {
 
   /** Si la misión pide posarse ahora mismo. */
   private wantsToLand(context: AirBrainContext): boolean {
+    // Una extracción manda sobre todo lo demás: hay gente esperando abajo.
+    if (context.pickupAt) return true;
     if (this.disembarkRequested) return true;
     if (this.behavior !== 'transport') return false;
     if (!context.landingSpot) return false;
@@ -424,16 +426,13 @@ export class AirVehicleAiBrain {
     return this.lastPlanGoal;
   }
 
-  /** Pide desembarco cuando el transporte ya se posó con carga. */
+  /** Pide embarco al posarse a recoger, y desembarco al posarse con carga. */
   private resolveCrewAction(
     context: AirBrainContext,
   ): AirBrainDecision['crewAction'] {
-    if (
-      this.state === 'grounded' &&
-      context.grounded &&
-      context.passengersOnboard &&
-      this.behavior === 'transport'
-    ) {
+    if (this.state !== 'grounded' || !context.grounded) return 'none';
+    if (context.pickupAt) return 'requestBoarding';
+    if (context.passengersOnboard && this.behavior === 'transport') {
       this.disembarkRequested = true;
       return 'requestDisembark';
     }

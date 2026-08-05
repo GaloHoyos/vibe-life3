@@ -21,6 +21,7 @@ import { loadOrBakeVehicleNavigation } from './VehicleNavigationCache';
 import { bakeVehicleNavigationAsync } from './VehicleNavigationBakeClient';
 import { bakeVehicleNavigation } from './VehicleNavigationBake';
 import { headingBetween, planarDistance } from './VehicleAiMath';
+import { smoothVehiclePath } from './VehiclePathSmoother';
 
 export interface VehiclePlannedRoute {
   hash: string;
@@ -131,8 +132,43 @@ export class VehicleNavigationPlanner {
     return this.localPlanners.get(profileId)?.plan(start, goal, options) ?? null;
   }
 
+  /**
+   * Recorta la escalera del Hybrid A* antes de entregar la ruta. Sin esto el
+   * seguidor recibe un serrucho de un metro por escalón, con el volante
+   * moviéndose por la discretización y no por la geometría.
+   */
+  private smooth(
+    profileId: string,
+    points: readonly VehicleDrivingPathPoint[],
+  ): VehicleDrivingPathPoint[] {
+    const local = this.localPlanners.get(profileId);
+    const profile = this.profiles.get(profileId);
+    if (!local || !profile) return [...points];
+    return smoothVehiclePath(points, {
+      isClear: (from, to) => local.isClearBetween(from, to),
+      maxSpacing: Math.max(4, profile.halfLength * 4),
+    });
+  }
+
   planGlobal(start: VehicleNavPoint, goal: VehicleNavPoint): VehicleLaneRoute | null {
     return this.laneGraph.findRoute(start, goal);
+  }
+
+  /**
+   * Metros de recorrido manejable entre dos puntos, o `null` si no se llega.
+   * Barato a propósito: alimenta la comparación "¿voy en vehículo o a pie?",
+   * que se hace muchas veces por segundo y no necesita la ruta, sólo el largo.
+   */
+  travelDistance(
+    profileId: string,
+    from: VehicleNavPoint,
+    to: VehicleNavPoint,
+  ): number | null {
+    return this.localPlanners.get(profileId)?.travelDistance(from, to) ?? null;
+  }
+
+  isReachable(profileId: string, from: VehicleNavPoint, to: VehicleNavPoint): boolean {
+    return this.localPlanners.get(profileId)?.isReachable(from, to) ?? false;
   }
 
   plan(
@@ -153,7 +189,7 @@ export class VehicleNavigationPlanner {
       if (!direct?.reachedGoal) return null;
       return {
         hash: this.navigation.hash,
-        path: { points: hybridToDrivingPoints(direct) },
+        path: { points: this.smooth(profileId, hybridToDrivingPoints(direct)) },
         laneRoute: null,
         startManeuver: direct,
         endManeuver: null,
@@ -170,7 +206,7 @@ export class VehicleNavigationPlanner {
       if (!direct?.reachedGoal) return null;
       return {
         hash: this.navigation.hash,
-        path: { points: hybridToDrivingPoints(direct) },
+        path: { points: this.smooth(profileId, hybridToDrivingPoints(direct)) },
         laneRoute: null,
         startManeuver: direct,
         endManeuver: null,
@@ -206,7 +242,7 @@ export class VehicleNavigationPlanner {
       if (!direct?.reachedGoal) return null;
       return {
         hash: this.navigation.hash,
-        path: { points: hybridToDrivingPoints(direct) },
+        path: { points: this.smooth(profileId, hybridToDrivingPoints(direct)) },
         laneRoute: null,
         startManeuver: direct,
         endManeuver: null,
@@ -223,9 +259,9 @@ export class VehicleNavigationPlanner {
       };
     });
     const points = deduplicatePathPoints([
-      ...hybridToDrivingPoints(startManeuver),
+      ...this.smooth(profileId, hybridToDrivingPoints(startManeuver)),
       ...lanePoints,
-      ...hybridToDrivingPoints(endManeuver),
+      ...this.smooth(profileId, hybridToDrivingPoints(endManeuver)),
     ]);
     if (points.length === 0) return null;
     return {

@@ -261,12 +261,25 @@ describe('niveles vehiculares', () => {
         },
       );
       expect(route, routeDefinition.id).not.toBeNull();
-      expect(route?.path.points.length, routeDefinition.id).toBeGreaterThan(4);
+      expect(route?.path.points.length ?? 0, routeDefinition.id).toBeGreaterThanOrEqual(2);
+      // Contar puntos dejó de medir nada cuando el suavizado empezó a colapsar
+      // los tramos rectos. Lo que sí sigue valiendo: ninguna ruta puede ser más
+      // corta que la línea recta entre sus extremos.
+      const straight = Math.hypot(
+        routeDefinition.goal[0] - routeDefinition.start[0],
+        routeDefinition.goal[2] - routeDefinition.start[2],
+      );
+      expect(
+        polylineLength(route?.path.points ?? []),
+        routeDefinition.id,
+      ).toBeGreaterThanOrEqual(straight - 0.5);
       if (routeDefinition.id === 'buggy-flank') {
         expect(route?.laneRoute, routeDefinition.id).not.toBeNull();
       }
     }
-  });
+    // Hornear el sandbox entero y resolver seis rutas es trabajo de integración:
+    // el presupuesto por defecto no alcanza cuando la suite corre en paralelo.
+  }, 30_000);
 
   it('autoriza el ciclo aéreo del sandbox y mantiene su ruta enlazada', () => {
     const helicopter = VehicleSandboxLevel.vehicles?.find(
@@ -325,3 +338,20 @@ describe('niveles vehiculares', () => {
     ).toHaveLength(3);
   });
 });
+
+/** Largo de la polilínea en planta. */
+function polylineLength(
+  points: readonly { position: readonly [number, number, number] }[],
+): number {
+  let total = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    if (!previous || !current) continue;
+    total += Math.hypot(
+      current.position[0] - previous.position[0],
+      current.position[2] - previous.position[2],
+    );
+  }
+  return total;
+}

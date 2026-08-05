@@ -1318,6 +1318,7 @@ export class Game {
     ) {
       return undefined;
     }
+    const vehicles = this.engine.services.resolve(GameTokens.Vehicles);
     return {
       navigation: this.navigation,
       navigationRequests: this.navigationRequests,
@@ -1326,6 +1327,8 @@ export class Game {
       ...this.buildNpcPortalServices(),
       tacticalMap: this.tacticalMap,
       squadDirector: this.squadDirector,
+      vehicleOpportunities: vehicles.opportunities,
+      vehicleSeats: vehicles.crewDirector,
     };
   }
 
@@ -3273,6 +3276,8 @@ export class Game {
       characters,
       assets,
       this.buildNpcPortalServices(),
+      vehicles.opportunities,
+      vehicles.crewDirector,
     );
 
     // Teardown completo del nivel anterior para cargar in-place (transición

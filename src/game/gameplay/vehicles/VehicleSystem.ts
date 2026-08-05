@@ -49,6 +49,7 @@ import {
   isManualPlayerExitAllowed,
 } from "./VehicleAccessPolicy";
 import { VehicleCameraRig } from "./VehicleCameraRig";
+import { selectDisembarkingCrew } from "./VehicleDisembarkPolicy";
 import { VehicleCrewVisuals } from "./VehicleCrewVisuals";
 import {
   VehicleNpcCrewCoordinator,
@@ -67,7 +68,9 @@ import {
   VehicleAiPerception,
   VehicleAiSystem,
   VehicleConvoyCoordinator,
+  VehicleCrewDirector,
   VehicleGunnerController,
+  VehicleOpportunityRegistry,
   VehicleReservationManager,
   vehicleNavigationInputFromLevel,
   vehiclePerceptionConfig,
@@ -77,17 +80,21 @@ import {
   type VehicleAiTarget,
   type VehicleBrainContext,
   type VehicleControlCommand,
+  type VehicleCrewAiAction,
   type VehicleDrivingPath,
   type VehicleNavPoint,
   type VehicleObstacleObservation,
   type VehiclePerceptionSnapshot,
+  type VehicleSeatOffer,
   type VehicleShapeCastObservation,
 } from "./ai";
 import {
   defaultGunnerProfileId,
   gunnerProfile,
+  VEHICLE_CREW_DECISION,
 } from "@game/config/vehicleAi.config";
 import type { PerceptionTarget } from "@engine/ai/perception/PerceptionSystem";
+import type { Faction } from "@engine/ai/Faction";
 
 export interface VehicleSystemSnapshot {
   readonly vehicles: readonly VehicleEntitySnapshot[];
@@ -216,6 +223,10 @@ const YIELD_SPEED_FACTOR = 0.4;
 export class VehicleSystem {
   readonly water: WaterVolumeSystem;
   readonly audio: VehicleAudioSystem;
+  /** Asientos libres que los NPCs a pie pueden evaluar. */
+  readonly opportunities = new VehicleOpportunityRegistry();
+  /** Arbitra quién puede pedir cuál, por facción. */
+  readonly crewDirector: VehicleCrewDirector;
 
   private readonly vehicles = new Map<string, VehicleEntity>();
   private readonly actors = new Map<string, INpc>();
@@ -267,6 +278,12 @@ export class VehicleSystem {
   private pendingPlayerSeatHandoff: PendingPlayerSeatHandoff | null = null;
   private elapsed = 0;
   private readonly rotorcraftPiloted = new Set<string>();
+  private nextOpportunityPublishAt = 0;
+  /** Zona de recogida vigente por aparato; alimenta `pickupAt` del cerebro. */
+  private readonly extractionPickups = new Map<string, VehicleNavPoint>();
+  private readonly extractionArrived = new Set<string>();
+  /** Tripulación que perdió su vehículo y todavía no tocó tierra. */
+  private readonly strandedCrew = new Set<string>();
   private lastDismountAt = -Infinity;
   private bailoutHoldSeconds = 0;
   private disposed = false;
@@ -293,6 +310,92 @@ export class VehicleSystem {
       selectExit: ({ npc, vehicle, candidates, emergency }) =>
         this.selectNpcExit(npc, vehicle, candidates, emergency),
     });
+    this.crewDirector = new VehicleCrewDirector({
+      grantSeat: (actorId, vehicleId, seatId, role) =>
+        this.grantOpportunisticSeat(actorId, vehicleId, seatId, role),
+      cancelSeat: (actorId) => this.npcCrew.cancel(actorId),
+    });
+  }
+
+  /**
+   * Reserva pedida por un NPC que decidió por su cuenta que le conviene. Pasa
+   * por el mismo coordinador que la tripulación autorada: acá se valida y se
+   * concede, la decisión ya la tomó el brain.
+   */
+  private grantOpportunisticSeat(
+    actorId: string,
+    vehicleId: string,
+    seatId: string,
+    role: VehicleCrewRole,
+  ): boolean {
+    const vehicle = this.vehicles.get(vehicleId);
+    const npc = this.actors.get(actorId);
+    if (!vehicle || !npc?.isAlive() || npc.isVehicleMounted?.()) return false;
+    if (!this.canNpcUseRole(npc, vehicle, role)) return false;
+    return (
+      this.npcCrew.requestBoarding(npc, vehicle, {
+        preferredSeatId: seatId,
+        roles: [role],
+      }) !== null
+    );
+  }
+
+  /**
+   * Republica la foto de asientos libres. Se deja afuera todo lo que el nivel
+   * asignó a mano: un vehículo de setpiece no es una oportunidad, es guion.
+   */
+  private publishOpportunities(): void {
+    const offers: VehicleSeatOffer[] = [];
+    for (const vehicle of this.vehicles.values()) {
+      if (
+        !vehicle.isEnabled() ||
+        vehicle.isLocked() ||
+        vehicle.isOnRails() ||
+        !vehicle.damage.isAlive() ||
+        this.crewingDisabled.has(vehicle.id) ||
+        this.evacuationVehicles.has(vehicle.id)
+      ) {
+        continue;
+      }
+      const authored =
+        (this.authoredCrew.get(vehicle.id)?.length ?? 0) > 0 ||
+        vehicle.definition.aiCrew?.enabled === true;
+      const taken = new Set<string>([
+        ...vehicle.getOccupants().map((occupant) => occupant.seatId),
+        ...this.npcCrew.getAssignments(vehicle.id).map((assignment) => assignment.seatId),
+      ]);
+      const hasDriver = vehicle
+        .getOccupants()
+        .some((occupant) => isAtTheControls(occupant.role));
+      const position = vehicle.getWorldPosition();
+      const cruiseSpeed = vehicleTopSpeed(vehicle.preset);
+      for (const seat of vehicle.preset.seats) {
+        if (taken.has(seat.id)) continue;
+        const boarding = vehicle.getExitWorldPositions(seat.id)[0] ?? position;
+        offers.push({
+          vehicleId: vehicle.id,
+          profileId: vehicle.preset.id,
+          seatId: seat.id,
+          role: seat.role,
+          position: position.clone(),
+          boarding: boarding.clone(),
+          cruiseSpeed,
+          hasDriver,
+          access: {
+            ...(vehicle.definition.accessPolicy !== undefined
+              ? { accessPolicy: vehicle.definition.accessPolicy }
+              : {}),
+            ...(vehicle.definition.faction !== undefined
+              ? { faction: vehicle.definition.faction }
+              : {}),
+          },
+          authored,
+        });
+      }
+    }
+    this.opportunities.publish(offers, (profileId, from, to) =>
+      this.ai.travelDistance(profileId, from, to),
+    );
   }
 
   async load(
@@ -414,7 +517,7 @@ export class VehicleSystem {
   ): void {
     this.elapsed = elapsed;
     this.trafficReservations.update(elapsed);
-    this.updateNpcCrew(delta);
+    this.updateNpcCrew(delta, elapsed);
     for (const vehicle of this.vehicles.values()) {
       this.updateRotorcraftPilot(vehicle);
       if (vehicle !== this.mountedVehicle || !this.mountedOccupant) {
@@ -776,6 +879,12 @@ export class VehicleSystem {
     this.activeEffects.clear();
     this.crewVisuals.clear();
     this.npcCrew.dispose();
+    this.opportunities.clear();
+    this.crewDirector.clear();
+    this.nextOpportunityPublishAt = 0;
+    this.extractionPickups.clear();
+    this.extractionArrived.clear();
+    this.strandedCrew.clear();
     this.actors.clear();
     this.authoredCrew.clear();
     this.waypointDefinitions.clear();
@@ -905,6 +1014,9 @@ export class VehicleSystem {
       ),
       hasPlayerOccupant: vehicle.getPlayerOccupant() !== null,
       crewPending: this.airCrewPending(vehicle),
+      ...(this.extractionPickups.has(vehicle.id)
+        ? { pickupAt: this.extractionPickups.get(vehicle.id) as VehicleNavPoint }
+        : {}),
       authoredGoal: this.resolveTarget(vehicle.definition.ai?.goal)?.position,
       patrolPoints: this.patrolPoints(vehicle),
       threat: threat ?? undefined,
@@ -1126,6 +1238,17 @@ export class VehicleSystem {
       overturned: up.dot(WORLD_UP) < 0.35,
       weaponRange: vehicle.isWeaponEnabled() ? vehicle.preset.weapon?.range ?? 0 : 0,
       turretAtTraverseLimit: this.turretAtLimit.has(vehicle.id),
+      // Un blanco en otra isla del grid es un blanco al que no se llega
+      // manejando: entró a un edificio o cruzó donde el vehículo no pasa.
+      ...(threat
+        ? {
+            threatReachableByVehicle: this.ai.isReachable(
+              vehicle.preset.id,
+              tuple(position),
+              threat.position,
+            ),
+          }
+        : {}),
       ...(speedLimit !== null ? { externalSpeedLimit: speedLimit } : {}),
       ...(route ? { route } : {}),
       ...(target ? { authoredGoal: target.position } : {}),
@@ -1717,7 +1840,7 @@ export class VehicleSystem {
 
   private applyAiCrewAction(
     vehicle: VehicleEntity,
-    action: "none" | "replaceDriver" | "requestBoarding" | "requestDisembark",
+    action: VehicleCrewAiAction,
     replacement: VehicleOccupant | null,
   ): void {
     if (action === "replaceDriver" && replacement) {
@@ -1728,15 +1851,41 @@ export class VehicleSystem {
       }
       return;
     }
-    if (
-      action === "requestDisembark" &&
-      vehicle.getTelemetry().speed < 1
-    ) {
+    // Nadie salta de un vehículo en marcha: el cerebro ya pidió frenar al
+    // decidir la acción, acá sólo se ejecuta cuando de verdad está detenido.
+    if (vehicle.getTelemetry().speed >= 1) return;
+    if (action === "requestDisembark") {
       for (const occupant of [...vehicle.getOccupants()]) {
         if (occupant.role === "driver" || occupant.role === "pilot") continue;
         this.ejectActor(vehicle, occupant.actor);
       }
+      return;
     }
+    if (action === "dismountToPursue") {
+      this.disembarkPursuitParty(vehicle);
+      return;
+    }
+    if (action === "abandonVehicle") {
+      this.requestEvacuation(vehicle);
+    }
+  }
+
+  /**
+   * Baja a la infantería que va a seguir al blanco a pie y conserva a bordo lo
+   * que sirve para cubrirlos: el conductor, y el artillero si el vehículo tiene
+   * más de dos plazas. Siempre baja alguien, aunque eso signifique que el propio
+   * conductor sea el que sale.
+   */
+  private disembarkPursuitParty(vehicle: VehicleEntity): void {
+    const crew = vehicle
+      .getOccupants()
+      .filter((occupant) => occupant.actor !== PLAYER_ACTOR)
+      .map((occupant) => ({ actor: occupant.actor, role: occupant.role }));
+    if (crew.length === 0) return;
+    for (const leaving of selectDisembarkingCrew(crew, vehicle.preset.seats.length)) {
+      this.requestNpcExit(leaving.actor, false);
+    }
+    this.processNpcCrewActions();
   }
 
   private applyAiRecovery(
@@ -2434,10 +2583,21 @@ export class VehicleSystem {
     }
   }
 
-  private updateNpcCrew(delta: number): void {
+  private updateNpcCrew(delta: number, elapsed: number): void {
     this.reconcileFollowerCrew();
     this.requestFollowerBoarding();
     this.requestAutonomousCrew();
+    // Lo oportunista va después de lo autorado: un setpiece nunca compite con
+    // una decisión emergente por el mismo asiento.
+    this.crewDirector.update(elapsed);
+    // Al ritmo al que los sensores consultan, no al del frame: rearmar la foto
+    // recorre todos los asientos de todos los vehículos.
+    if (elapsed >= this.nextOpportunityPublishAt) {
+      this.nextOpportunityPublishAt = elapsed + VEHICLE_CREW_DECISION.evaluateSeconds;
+      this.publishOpportunities();
+      this.updateStrandedCrew();
+      this.updateExtractions();
+    }
     this.npcCrew.update(delta);
     this.processNpcCrewActions();
   }
@@ -2588,6 +2748,94 @@ export class VehicleSystem {
     }
   }
 
+  /**
+   * Pide recogida para un actor. Público a propósito: lo dispara un guion, una
+   * entrada de entity I/O o una heurística de escuadra, y el sistema se ocupa
+   * de encontrar aparato, mandarlo a la zona y subir a todo el que espere.
+   */
+  requestExtraction(actorId: string): boolean {
+    const npc = this.actors.get(actorId);
+    if (!npc?.isAlive() || npc.isVehicleMounted?.()) return false;
+    this.crewDirector.requestExtraction(
+      { id: npc.id, faction: npc.faction, vehicleCapability: npc.vehicleCapability },
+      npc.position,
+    );
+    return true;
+  }
+
+  /**
+   * Lleva adelante las recogidas pendientes: busca aparato libre, lo manda a la
+   * zona más cercana a quien espera, y cuando se posa manda a la gente a subir
+   * por la misma vía que cualquier otro embarque.
+   */
+  private updateExtractions(): void {
+    for (const request of this.crewDirector.pendingExtractions()) {
+      const waiting = [...request.actors]
+        .map((actorId) => this.actors.get(actorId))
+        .filter((npc): npc is INpc => Boolean(npc?.isAlive() && !npc.isVehicleMounted?.()));
+      if (waiting.length === 0) {
+        this.finishExtraction(request.faction, request.vehicleId);
+        continue;
+      }
+      if (!request.vehicleId) {
+        this.assignExtractionVehicle(request.faction, request.position);
+        continue;
+      }
+      const vehicle = this.vehicles.get(request.vehicleId);
+      if (!vehicle || !vehicle.damage.isAlive()) {
+        this.finishExtraction(request.faction, request.vehicleId);
+        continue;
+      }
+      this.extractionPickups.set(vehicle.id, tuple(request.position));
+      if (!vehicle.getTelemetry().grounded) continue;
+      if (!this.extractionArrived.has(vehicle.id)) {
+        this.extractionArrived.add(vehicle.id);
+        this.eventBus.emit("vehicle.extraction.arrived", {
+          faction: request.faction,
+          id: vehicle.id,
+        });
+      }
+      for (const npc of waiting) {
+        if (this.npcCrew.getAssignment(npc.id)) continue;
+        this.npcCrew.requestBoarding(npc, vehicle);
+      }
+    }
+  }
+
+  /** Cierra la recogida y suelta el aparato: sin `pickupAt` vuelve a despegar. */
+  private finishExtraction(faction: Faction, vehicleId: string | null): void {
+    this.crewDirector.clearExtraction(faction);
+    if (!vehicleId) return;
+    this.extractionPickups.delete(vehicleId);
+    this.extractionArrived.delete(vehicleId);
+  }
+
+  /** Transporte aéreo libre de la facción, o nada si no hay ninguno. */
+  private assignExtractionVehicle(faction: Faction, position: Vector3): void {
+    const candidate = [...this.vehicles.values()]
+      .filter(
+        (vehicle) =>
+          this.airAi.hasVehicle(vehicle.id) &&
+          vehicle.definition.faction === faction &&
+          vehicle.damage.isAlive() &&
+          vehicle.getPlayerOccupant() === null &&
+          !this.extractionPickups.has(vehicle.id),
+      )
+      .sort(
+        (first, second) =>
+          first.getWorldPosition().distanceToSquared(position) -
+          second.getWorldPosition().distanceToSquared(position),
+      )[0];
+    if (!candidate) return;
+    if (!this.crewDirector.assignExtraction(faction, candidate.id)) return;
+    this.extractionPickups.set(candidate.id, tuple(position));
+    this.eventBus.emit("vehicle.extraction.requested", {
+      faction,
+      position: position.clone(),
+      vehicleId: candidate.id,
+    });
+  }
+
   /** Comportamiento vigente, venga del dominio terrestre o del aéreo. */
   private behaviorOf(vehicle: VehicleEntity): VehicleAiBehavior | null {
     if (this.airAi.hasVehicle(vehicle.id)) {
@@ -2643,7 +2891,14 @@ export class VehicleSystem {
       action.vehicle.detachOccupant(action.npc.id);
       this.crewVisuals.forget(action.npc.id);
       action.npc.setVehicleMounted?.(false, action.approachPosition);
+      return;
     }
+    this.eventBus.emit("vehicle.crew.boarded", {
+      id: action.vehicle.id,
+      actorId: action.npc.id,
+      seatId: occupant.seatId,
+      role: occupant.role,
+    });
   }
 
   private commitNpcExit(
@@ -2655,6 +2910,12 @@ export class VehicleSystem {
     const finish = (): void => {
       action.vehicle.detachOccupant(action.npc.id);
       this.npcCrew.confirmExited(action.npc.id);
+      this.eventBus.emit("vehicle.crew.exited", {
+        id: action.vehicle.id,
+        actorId: action.npc.id,
+        seatId: action.seatId,
+        emergency: action.emergency,
+      });
       this.npcCrewSource?.onFollowerExited?.(
         action.npc.id,
         action.exitPosition.clone(),
@@ -3063,6 +3324,10 @@ export class VehicleSystem {
   private handleDestroyed(vehicle: VehicleEntity): void {
     this.requestEvacuation(vehicle);
     this.ensureDamageEffects(vehicle, true);
+    // Veda a la facción dueña: sin esto la escuadra sigue mandando gente de a
+    // uno al mismo sitio donde acaban de perder un vehículo.
+    const faction = vehicle.definition.faction;
+    if (faction) this.crewDirector.notifyVehicleLost(faction);
   }
 
   /**
@@ -3193,6 +3458,41 @@ export class VehicleSystem {
     }
     if (vehicle === this.mountedVehicle) {
       this.showMessage("¡Evacuá el vehículo!");
+    }
+    this.callExtractionForStrandedCrew(vehicle);
+  }
+
+  /**
+   * Único disparador automático de recogida: la tripulación que acaba de perder
+   * su vehículo. Es una causa concreta —se quedaron a pie donde no había nada—
+   * y no un umbral de "van perdiendo", que sin jugarlo no se puede calibrar.
+   *
+   * El pedido no puede salir todavía: siguen sentados, y `requestExtraction`
+   * necesita su posición a pie. Se anota y se resuelve cuando bajen.
+   */
+  private callExtractionForStrandedCrew(vehicle: VehicleEntity): void {
+    if (this.airAi.hasVehicle(vehicle.id)) return;
+    for (const occupant of vehicle.getOccupants()) {
+      if (occupant.actor === PLAYER_ACTOR) continue;
+      this.strandedCrew.add(occupant.actor);
+    }
+  }
+
+  /**
+   * Pide recogida por los que ya tocaron tierra. Si la facción no tiene
+   * transporte aéreo el pedido queda sin asignar y se descarta solo: pedirla no
+   * garantiza que venga nadie.
+   */
+  private updateStrandedCrew(): void {
+    for (const actorId of [...this.strandedCrew]) {
+      const npc = this.actors.get(actorId);
+      if (!npc?.isAlive()) {
+        this.strandedCrew.delete(actorId);
+        continue;
+      }
+      if (npc.isVehicleMounted?.()) continue;
+      this.strandedCrew.delete(actorId);
+      this.requestExtraction(actorId);
     }
   }
 

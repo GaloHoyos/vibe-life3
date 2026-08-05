@@ -272,6 +272,11 @@ export interface WaterVolumeDefinition {
 
 export type VehicleNavSurface = 'ground' | 'water' | 'both';
 
+/**
+ * Anotacion sobre el terreno manejable, que el bake deriva de la colision real.
+ * No define donde se puede conducir: lo ajusta (`cost`, `speedLimit`, `flags`) o
+ * lo recorta (`blocked`).
+ */
 export interface VehicleNavAreaDefinition {
   id: string;
   polygon: VectorTuple[];
@@ -280,6 +285,8 @@ export interface VehicleNavAreaDefinition {
   speedLimit?: number;
   tags?: string[];
   flags?: Array<'noCombat' | 'noReverse' | 'parking' | 'shore'>;
+  /** Recorta el poligono del grid aunque la geometria lo declare manejable. */
+  blocked?: boolean;
 }
 
 export interface VehicleNavLaneDefinition {

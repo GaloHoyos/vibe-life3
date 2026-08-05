@@ -67,27 +67,63 @@ export interface VehicleNavigationBakeInput {
   lanes: readonly VehicleNavLaneDefinition[];
   markers: readonly VehicleNavMarkerDefinition[];
   profiles: readonly VehicleNavigationProfile[];
+  /**
+   * Puntos donde de verdad hay vehículos: spawns, carriles y marcadores. Sólo
+   * sobreviven las islas que alcanzan alguno. Sin esto la cara superior de cada
+   * edificio entra al grid como plataforma inalcanzable.
+   */
+  seeds?: readonly VehicleNavPoint[];
   options?: VehicleNavigationBakeOptions;
 }
 
-export interface VehicleNavCell {
-  key: string;
+export type VehicleNavCellFlag = 'noCombat' | 'noReverse' | 'parking' | 'shore';
+
+/** Anotaciones que comparten muchas celdas; la grilla las guarda en paleta. */
+export interface VehicleNavAttributes {
+  /** `''` cuando la celda salio de la geometria y ninguna area la anota. */
+  areaId: string;
+  cost: number;
+  speedLimit: number | null;
+  flags: readonly VehicleNavCellFlag[];
+  tags: readonly string[];
+}
+
+/** Celda expandida: forma de trabajo del bake y de las consultas puntuales. */
+export interface VehicleNavCell extends VehicleNavAttributes {
   ix: number;
   iz: number;
   position: VehicleNavPoint;
-  areaId: string;
   surface: 'ground' | 'water';
-  cost: number;
-  speedLimit: number | null;
-  flags: readonly ('noCombat' | 'noReverse' | 'parking' | 'shore')[];
-  tags: readonly string[];
+  /**
+   * Isla de conectividad. Dos celdas con distinto `componentId` no se alcanzan
+   * manejando, aunque esten a metros: es el test barato de "¿me sirve el
+   * vehiculo para llegar ahi?".
+   */
+  componentId: number;
+}
+
+/**
+ * Columnas paralelas ordenadas por `(ix, iz)`. Un valle de 340 x 320 da del
+ * orden de 70k celdas por perfil: como array de objetos son ~20 MB de structured
+ * clone por nivel, que no entran ni en el postMessage del worker ni en
+ * IndexedDB. En columnas son ~16 bytes por celda.
+ */
+export interface VehicleNavCells {
+  readonly ix: Int32Array;
+  readonly iz: Int32Array;
+  /** Cota de la superficie; `x` y `z` salen de `origin`, `ix`/`iz` y `cellSize`. */
+  readonly y: Float32Array;
+  readonly attribute: Uint16Array;
+  readonly component: Uint16Array;
 }
 
 export interface VehicleNavGrid {
   profileId: string;
   cellSize: number;
   origin: readonly [number, number];
-  cells: readonly VehicleNavCell[];
+  surface: 'ground' | 'water' | 'rail' | 'air';
+  attributes: readonly VehicleNavAttributes[];
+  cells: VehicleNavCells;
 }
 
 export interface VehicleLaneNode {
@@ -117,7 +153,7 @@ export interface VehicleLaneGraphData {
 }
 
 export interface VehicleNavigationBake {
-  schemaVersion: 1;
+  schemaVersion: 2;
   hash: string;
   grids: readonly VehicleNavGrid[];
   laneGraph: VehicleLaneGraphData;
@@ -257,6 +293,12 @@ export interface VehicleBrainContext {
   turretAtTraverseLimit?: boolean;
   /** Tope de velocidad impuesto por convoy o por ceder el paso. */
   externalSpeedLimit?: number;
+  /**
+   * Si el blanco está en la misma isla del grid que el vehículo. `false` es
+   * "hasta acá llego manejando": el interior de un edificio o el otro lado de
+   * un barranco. Ausente = todavía no se sabe, se asume alcanzable.
+   */
+  threatReachableByVehicle?: boolean;
 }
 
 /** Señales no-motrices que el conductor puede accionar. */
@@ -280,7 +322,11 @@ export type VehicleCrewAiAction =
   | 'none'
   | 'replaceDriver'
   | 'requestBoarding'
-  | 'requestDisembark';
+  | 'requestDisembark'
+  /** El blanco quedó donde el vehículo no llega: baja infantería a seguirlo. */
+  | 'dismountToPursue'
+  /** El vehículo ya no sirve: se baja todo el mundo. */
+  | 'abandonVehicle';
 
 export interface VehicleBrainDecision {
   tickInterval: number;
