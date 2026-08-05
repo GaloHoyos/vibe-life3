@@ -517,7 +517,7 @@ map
   // La emboscada converge sobre la calzada por delante del jugador, no sobre
   // el depósito: además de leerse mejor, un destino a 100 m se le va del
   // presupuesto de nodos al Hybrid-A* y los deja sin plan.
-  .vehicleNavMarker({ id: 'd3-marker-ambush', position: [30, 0, 10], heading: Math.PI, kind: 'dropZone' })
+  .vehicleNavMarker({ id: 'd3-marker-ambush', position: [30, 0, 10], heading: -Math.PI / 2, kind: 'dropZone' })
   .vehicleNavMarker({ id: 'd3-marker-gate-bay', position: [78, 0, -4], heading: Math.PI, kind: 'passingBay' })
   .vehicleNavMarker({ id: 'd3-marker-relay-gate', position: [56, 0, -84], heading: Math.PI, kind: 'dropZone' })
   .vehicleNavMarker({ id: 'd3-marker-combine-pad', position: [64, 0, -40], heading: Math.PI, kind: 'landingZone', allowedPresets: ['helicopterFree'] })

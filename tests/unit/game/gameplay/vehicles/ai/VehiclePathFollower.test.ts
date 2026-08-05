@@ -92,6 +92,122 @@ describe('VehiclePathFollower', () => {
     expect(command.targetSpeed).toBeLessThan(20);
   });
 
+  it('trata la velocidad segura de curva como límite duro aunque haya un piso alto', () => {
+    const follower = new VehiclePathFollower(groundProfile, {
+      maximumLateralAcceleration: 2.5,
+      minimumSpeedFactor: 0.8,
+      baseLookAhead: 2,
+    });
+    const command = follower.update({
+      delta: 0.1,
+      pose: { position: [0, 0, 0], heading: 0 },
+      speed: 8,
+      path: {
+        points: [
+          { position: [0, 0, 0], speedLimit: 24 },
+          { position: [0, 0, 4], speedLimit: 24 },
+          { position: [4, 0, 4], speedLimit: 24 },
+        ],
+      },
+    });
+
+    expect(command.targetSpeed).toBeLessThan(5);
+  });
+
+  it('se reengancha por proyección al recibir un path nuevo a mitad de recorrido', () => {
+    const follower = new VehiclePathFollower(groundProfile, { baseLookAhead: 1 });
+    const command = follower.update({
+      delta: 0.1,
+      pose: { position: [0, 0, 15], heading: 0 },
+      speed: 4,
+      path: {
+        points: [
+          { position: [0, 0, 0], speedLimit: 12 },
+          { position: [0, 0, 10], speedLimit: 12 },
+          { position: [0, 0, 20], speedLimit: 12 },
+        ],
+      },
+    });
+
+    expect(command.targetPoint?.[2]).toBeGreaterThan(15);
+    expect(follower.getProgress()?.distance).toBeCloseTo(15, 1);
+  });
+
+  it('no retrocede el progreso al pasar cerca de un tramo ya recorrido', () => {
+    const path = {
+      points: [
+        { position: [0, 0, 0] as const, speedLimit: 12 },
+        { position: [0, 0, 10] as const, speedLimit: 12 },
+        { position: [0, 0, 20] as const, speedLimit: 12 },
+      ],
+    };
+    const follower = new VehiclePathFollower(groundProfile, { baseLookAhead: 1 });
+    follower.update({
+      delta: 0.1,
+      pose: { position: [0, 0, 18], heading: 0 },
+      speed: 3,
+      path,
+    });
+    const command = follower.update({
+      delta: 0.1,
+      pose: { position: [0, 0, 2], heading: 0 },
+      speed: 3,
+      path,
+    });
+
+    expect(follower.getProgress()?.distance).toBeGreaterThanOrEqual(18);
+    expect(command.targetPoint?.[2]).toBeGreaterThanOrEqual(18);
+  });
+
+  it('envuelve loops sin reiniciar el progreso acumulado', () => {
+    const path = {
+      loop: true,
+      points: [
+        { position: [0, 0, 0] as const, speedLimit: 10 },
+        { position: [0, 0, 10] as const, speedLimit: 10 },
+        { position: [10, 0, 10] as const, speedLimit: 10 },
+        { position: [10, 0, 0] as const, speedLimit: 10 },
+      ],
+    };
+    const follower = new VehiclePathFollower(groundProfile, { baseLookAhead: 1 });
+    follower.update({
+      delta: 0.1,
+      pose: { position: [10, 0, 1], heading: -Math.PI / 2 },
+      speed: 3,
+      path,
+    });
+    const command = follower.update({
+      delta: 0.1,
+      pose: { position: [0, 0, 0.5], heading: 0 },
+      speed: 3,
+      path,
+    });
+
+    expect(follower.getProgress()?.lap).toBe(1);
+    expect(follower.getProgress()?.distance).toBeGreaterThan(40);
+    expect(command.targetPoint?.[2]).toBeGreaterThan(0.5);
+  });
+
+  it('frena antes de una cúspide y cambia de marcha recién después', () => {
+    const follower = new VehiclePathFollower(groundProfile, { baseLookAhead: 2 });
+    const command = follower.update({
+      delta: 0.1,
+      pose: { position: [0, 0, 3.5], heading: 0 },
+      speed: 2,
+      path: {
+        points: [
+          { position: [0, 0, 0], direction: 'forward' },
+          { position: [0, 0, 4], direction: 'forward' },
+          { position: [0, 0, 2], direction: 'reverse' },
+        ],
+      },
+    });
+
+    expect(command.reverse).toBe(false);
+    expect(command.targetSpeed).toBe(0);
+    expect(command.targetPoint?.[2]).toBeCloseTo(4);
+  });
+
   it('frena por TTC y acepta obstáculos de shape cast', () => {
     const input: VehicleFollowerInput = {
       delta: 0.1,

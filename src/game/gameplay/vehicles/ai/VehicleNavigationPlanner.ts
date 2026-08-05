@@ -147,6 +147,7 @@ export class VehicleNavigationPlanner {
     return smoothVehiclePath(points, {
       isClear: (from, to) => local.isClearBetween(from, to),
       maxSpacing: Math.max(4, profile.halfLength * 4),
+      minimumTurnRadius: profile.minTurnRadius,
     });
   }
 

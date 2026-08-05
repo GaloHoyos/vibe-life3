@@ -22,6 +22,7 @@ import {
 import {
   stoppedCommand,
   VehiclePathFollower,
+  type VehiclePathProgress,
   type VehiclePathFollowerTuning,
 } from './VehiclePathFollower';
 
@@ -68,6 +69,13 @@ const SIDE_HOLD_SECONDS = 7;
  */
 const DISMOUNT_STALL_SECONDS = 3;
 const APPROACH_PROGRESS_METERS = 1;
+const VISIBLE_FOOT_DEPLOY_RANGE = 20;
+const ENGAGEMENT_ANCHOR_SECONDS = 3;
+const ENGAGEMENT_ANCHOR_MOVE_METERS = 8;
+/** Cuánto pasa la meta del ataque en pasada detrás del blanco, para no frenar sobre él. */
+const ATTACK_RUN_OVERSHOOT_METERS = 14;
+const RECOVERY_SUCCESS_METERS = 5;
+const RECOVERY_MIN_CLEARANCE = 1.25;
 
 export class VehicleAiBrain {
   private readonly follower: VehiclePathFollower;
@@ -75,8 +83,10 @@ export class VehicleAiBrain {
   private state: VehicleAiState = 'idle';
   private secondsUntilTick = 0;
   private elapsedSinceTick = 0;
-  private stuckSeconds = 0;
-  private wasStuck = false;
+  private recoveryActive = false;
+  private recoveryElapsed = 0;
+  private recoveryTravel = 0;
+  private recoveryStart: VehicleNavPoint | null = null;
   private recoveryAttempts = 0;
   private recoverySide: 1 | -1;
   private patrolIndex = 0;
@@ -92,6 +102,10 @@ export class VehicleAiBrain {
   private trackedThreatId: string | null = null;
   private closestApproach = Infinity;
   private approachStallSeconds = 0;
+  private dismountCooldown = 0;
+  private engageAnchor: VehicleNavPoint | null = null;
+  private engageAnchorTarget: VehicleNavPoint | null = null;
+  private engageAnchorSeconds = 0;
 
   constructor(
     readonly vehicleId: string,
@@ -129,7 +143,7 @@ export class VehicleAiBrain {
     this.secondsUntilTick = tickInterval;
     const tickDelta = Math.max(1e-4, this.elapsedSinceTick);
     this.elapsedSinceTick = 0;
-    this.updateStuckState(tickDelta, context);
+    this.updateRecoveryState(tickDelta, context);
     this.updateTimers(tickDelta, context);
     this.updateApproachProgress(tickDelta, context);
 
@@ -150,24 +164,14 @@ export class VehicleAiBrain {
     this.previousGoal = goal;
 
     let control = context.route && goal
-      ? this.follower.update({
-          delta: Math.max(tickDelta, tickInterval),
-          pose: context.pose,
-          speed: context.speed,
-          path: context.route,
-          obstacles: context.obstacles,
-          shapeCasts: context.shapeCasts,
-          ...(context.externalSpeedLimit !== undefined
-            ? { speedLimit: context.externalSpeedLimit }
-            : {}),
-        })
+      ? this.followPath(Math.max(tickDelta, tickInterval), context)
       : stoppedCommand();
     if (this.state === 'stopped' || goal === null) control = stoppedCommand();
 
     // El override de recovery va último: es lo único que puede pedir acelerador
     // sin tener un goal alcanzable, que es justamente el caso de estar trabado.
     if (recovery !== 'none') {
-      const override = recoveryControl(recovery, this.stuckSeconds, this.recoverySide);
+      const override = recoveryControl(recovery, this.recoveryElapsed, this.recoverySide);
       control = override ?? control;
       if (recovery === 'replan') requestPlan = true;
       if (recovery === 'passingBay' && context.passingBay) {
@@ -192,8 +196,10 @@ export class VehicleAiBrain {
   reset(): void {
     this.secondsUntilTick = 0;
     this.elapsedSinceTick = 0;
-    this.stuckSeconds = 0;
-    this.wasStuck = false;
+    this.recoveryActive = false;
+    this.recoveryElapsed = 0;
+    this.recoveryTravel = 0;
+    this.recoveryStart = null;
     this.recoveryAttempts = 0;
     this.patrolIndex = 0;
     this.previousGoal = null;
@@ -207,6 +213,10 @@ export class VehicleAiBrain {
     this.trackedThreatId = null;
     this.closestApproach = Infinity;
     this.approachStallSeconds = 0;
+    this.dismountCooldown = 0;
+    this.engageAnchor = null;
+    this.engageAnchorTarget = null;
+    this.engageAnchorSeconds = 0;
     this.follower.reset();
   }
 
@@ -218,6 +228,31 @@ export class VehicleAiBrain {
 
   getState(): VehicleAiState {
     return this.state;
+  }
+
+  /**
+   * Runs the physical path follower independently from the strategic tick.
+   * The caller refreshes pose and speed every frame while route and obstacle
+   * observations remain valid until the next perception update.
+   */
+  followPath(delta: number, context: VehicleBrainContext): VehicleControlCommand {
+    const path = context.route;
+    if (!path) return stoppedCommand();
+    return this.follower.update({
+      delta: Math.max(1e-4, delta),
+      pose: context.pose,
+      speed: context.speed,
+      path,
+      obstacles: context.obstacles,
+      shapeCasts: context.shapeCasts,
+      ...(context.externalSpeedLimit !== undefined
+        ? { speedLimit: context.externalSpeedLimit }
+        : {}),
+    });
+  }
+
+  getPathProgress(): VehiclePathProgress | null {
+    return this.follower.getProgress();
   }
 
   private tickInterval(context: VehicleBrainContext): number {
@@ -236,6 +271,9 @@ export class VehicleAiBrain {
 
   private updateTimers(delta: number, context: VehicleBrainContext): void {
     if (this.hornCooldown > 0) this.hornCooldown = Math.max(0, this.hornCooldown - delta);
+    if (this.dismountCooldown > 0) {
+      this.dismountCooldown = Math.max(0, this.dismountCooldown - delta);
+    }
     if (this.deviationCooldown > 0) {
       this.deviationCooldown = Math.max(0, this.deviationCooldown - delta);
     }
@@ -243,6 +281,7 @@ export class VehicleAiBrain {
     this.searchSeconds += this.state === 'searching' ? delta : 0;
     // La mano sólo cambia orbitando: una misión de flanqueo mantiene su lado.
     if (this.state === 'engaging') {
+      this.engageAnchorSeconds += delta;
       this.sideHoldSeconds += delta;
       if (
         this.sideHoldSeconds >= SIDE_HOLD_SECONDS ||
@@ -254,6 +293,7 @@ export class VehicleAiBrain {
       }
     } else {
       this.sideHoldSeconds = 0;
+      this.engageAnchorSeconds = 0;
     }
     if (this.deviationSeconds > this.deviationBudget()) {
       this.deviationSeconds = 0;
@@ -274,7 +314,7 @@ export class VehicleAiBrain {
     if (this.shouldFlee(context)) return 'evading';
 
     const threat = context.threat;
-    if (threat && this.canEngage()) {
+    if (threat && this.canEngage(context)) {
       if (threat.visible === true) {
         this.searchSeconds = 0;
         return 'engaging';
@@ -304,9 +344,18 @@ export class VehicleAiBrain {
       case 'evading':
         return this.evadeGoal(context);
       case 'engaging':
-        return this.engageGoal(context);
+        return this.tacticalEngageGoal(context) ??
+          (context.threat?.mobility === 'vehicle'
+            ? interceptGoal(
+                context.pose.position,
+                context.threat,
+                this.profile.maxSpeed,
+              )
+            : this.engageGoal(context));
       case 'pursuing':
-        return context.threat?.position ?? this.missionGoal(context);
+        return this.tacticalEngageGoal(context) ??
+          context.threat?.position ??
+          this.missionGoal(context);
       case 'searching':
         // Se queda quieto barriendo con la torreta: moverse a ciegas al último
         // punto visto es lo que hace que una IA parezca tonta.
@@ -353,34 +402,80 @@ export class VehicleAiBrain {
   }
 
   /**
-   * Punto de combate: el vehículo se acerca hasta `preferredRange` y ahí orbita,
-   * que es lo que se lee como "me está rodeando".
-   *
-   * Estar MÁS cerca que esa distancia no es motivo para retroceder. Con un cañón
-   * de 120 m el rango preferido son decenas de metros, y un vehículo que ya
-   * tiene al blanco a diez se iba manejando hacia atrás para "tomar distancia":
-   * desde afuera eso se lee como que no sabe lo que hace. Si ya está adentro,
-   * orbita a la distancia que tiene.
+   * Metas de las tácticas que mandan sobre la pose de combate por defecto. El
+   * ataque en pasada apunta más allá del blanco para no frenar encima suyo y la
+   * reposición orbita hasta una pose desde la que el arma sí entra.
    */
+  private tacticalEngageGoal(
+    context: VehicleBrainContext,
+  ): VehicleNavPoint | null {
+    const threat = context.threat;
+    if (!threat) return null;
+    if (context.tactic === 'attackRun') {
+      const lead = interceptGoal(
+        context.pose.position,
+        threat,
+        this.profile.maxSpeed,
+      ) ?? threat.position;
+      const dx = lead[0] - context.pose.position[0];
+      const dz = lead[2] - context.pose.position[2];
+      const length = Math.max(0.001, Math.hypot(dx, dz));
+      const overshoot = Math.max(
+        ATTACK_RUN_OVERSHOOT_METERS,
+        this.profile.halfLength * 4,
+      );
+      return [
+        lead[0] + (dx / length) * overshoot,
+        lead[1],
+        lead[2] + (dz / length) * overshoot,
+      ];
+    }
+    if (context.tactic === 'reposition') {
+      if (context.tacticalAnchor) return context.tacticalAnchor;
+      const distance = Math.max(
+        this.preferredEngagementRange(context),
+        this.tuning.flankDistance ?? 12,
+      );
+      return flankGoal(
+        this.engageSide,
+        context.pose.position,
+        threat,
+        distance,
+      );
+    }
+    return null;
+  }
+
   private engageGoal(context: VehicleBrainContext): VehicleNavPoint | null {
     const threat = context.threat;
     if (!threat) return this.missionGoal(context);
+    if (context.tactic === 'suppress' && context.tacticalAnchor) {
+      return context.tacticalAnchor;
+    }
+    const anchorStillValid =
+      this.engageAnchor !== null &&
+      this.engageAnchorTarget !== null &&
+      this.engageAnchorSeconds < ENGAGEMENT_ANCHOR_SECONDS &&
+      planarDistance(this.engageAnchorTarget, threat.position) <
+        ENGAGEMENT_ANCHOR_MOVE_METERS &&
+      !context.blocked &&
+      context.turretAtTraverseLimit !== true;
+    if (anchorStillValid) return this.engageAnchor;
+
     const preferredRange = this.preferredEngagementRange(context);
     if (preferredRange <= 0.5) return threat.position;
     const distance = planarDistance(context.pose.position, threat.position);
-    const standoff = Math.min(
-      preferredRange,
-      Math.max(distance, this.profile.halfLength * 2),
-    );
-    const angleToOwn = headingBetween(threat.position, context.pose.position);
-    const inBand = distance <= standoff * 1.25 && distance >= standoff * 0.75;
-    const arc = inBand ? (this.tuning.strafeArc ?? 0.5) * this.engageSide : 0;
-    const forward = headingToVector(angleToOwn + arc);
-    return [
-      threat.position[0] + forward[0] * standoff,
-      context.pose.position[1],
-      threat.position[2] + forward[1] * standoff,
-    ];
+    const anchor = distance <= preferredRange * 1.1
+      ? context.pose.position
+      : standoffPoint(
+          threat.position,
+          context.pose.position,
+          preferredRange,
+        );
+    this.engageAnchor = [...anchor];
+    this.engageAnchorTarget = [...threat.position];
+    this.engageAnchorSeconds = 0;
+    return this.engageAnchor;
   }
 
   private preferredEngagementRange(context: VehicleBrainContext): number {
@@ -416,7 +511,17 @@ export class VehicleAiBrain {
     return context.threat !== undefined;
   }
 
-  private canEngage(): boolean {
+  private canEngage(context: VehicleBrainContext): boolean {
+    if (
+      context.tactic === 'intercept' ||
+      context.tactic === 'attackRun' ||
+      context.tactic === 'suppress' ||
+      context.tactic === 'reposition' ||
+      context.tactic === 'deploy' ||
+      context.tactic === 'search'
+    ) {
+      return true;
+    }
     if (this.missionIsCombat()) return true;
     if (!(this.tuning.allowMissionDeviation ?? false)) return false;
     return this.deviationCooldown <= 0;
@@ -448,15 +553,30 @@ export class VehicleAiBrain {
     context: VehicleBrainContext,
     recovery: VehicleRecoveryAction,
   ): VehicleCrewAiAction {
-    if (!context.driverAvailable && context.replacementDriverAvailable) return 'replaceDriver';
+    if (
+      context.tactic === 'replaceDriver' ||
+      (!context.driverAvailable && context.replacementDriverAvailable)
+    ) return 'replaceDriver';
+    if (
+      context.tactic === 'abandon' ||
+      context.tactic === 'switchVehicle' ||
+      context.tactic === 'requestExtraction'
+    ) return 'abandonVehicle';
     if (this.shouldAbandon(context, recovery)) return 'abandonVehicle';
     this.rearmDismount(context);
-    if (this.shouldDismountToPursue(context)) {
+    const tacticalDismount =
+      !this.dismountRequested &&
+      (context.tactic === 'deploy' || context.tactic === 'continueOnFoot') &&
+      context.safeToDismount !== false;
+    if (tacticalDismount || this.shouldDismountToPursue(context)) {
       // `VehicleSystem` sólo ejecuta la bajada con el vehículo ya detenido, así
       // que el compromiso se cierra recién ahí: cerrarlo al pedirla perdería la
       // orden mientras frena, y no cerrarlo nunca vaciaría el vehículo de a un
       // tripulante por tick.
-      if (Math.abs(context.speed) < 1) this.dismountRequested = true;
+      if ((context.planarSpeed ?? Math.abs(context.speed)) < 1) {
+        this.dismountRequested = true;
+        this.dismountCooldown = 10;
+      }
       return 'dismountToPursue';
     }
     if (this.behavior !== 'transport') return 'none';
@@ -494,14 +614,22 @@ export class VehicleAiBrain {
    * vehículo.
    */
   private shouldDismountToPursue(context: VehicleBrainContext): boolean {
-    if (context.hasPlayerOccupant || this.dismountRequested) return false;
+    if (
+      context.hasPlayerOccupant ||
+      this.dismountRequested ||
+      this.dismountCooldown > 0
+    ) return false;
     const threat = context.threat;
     if (!threat) return false;
+    if (threat.mobility === 'vehicle') return false;
+    const distance = planarDistance(context.pose.position, threat.position);
+    if (distance > VEHICLE_CREW_DECISION.dismountRange) return false;
     if (
-      planarDistance(context.pose.position, threat.position) >
-      VEHICLE_CREW_DECISION.dismountRange
+      threat.mobility === 'foot' &&
+      threat.visible === true &&
+      distance <= VISIBLE_FOOT_DEPLOY_RANGE
     ) {
-      return false;
+      return true;
     }
     if (context.threatReachableByVehicle === false) return true;
     return this.approachStallSeconds >= DISMOUNT_STALL_SECONDS;
@@ -528,12 +656,11 @@ export class VehicleAiBrain {
       this.trackedThreatId = threat.id;
       this.closestApproach = Infinity;
       this.approachStallSeconds = 0;
+      this.dismountRequested = false;
+      this.dismountCooldown = 0;
     }
     const distance = planarDistance(context.pose.position, threat.position);
-    if (
-      threat.visible === true ||
-      distance < this.closestApproach - APPROACH_PROGRESS_METERS
-    ) {
+    if (distance < this.closestApproach - APPROACH_PROGRESS_METERS) {
       this.closestApproach = Math.min(this.closestApproach, distance);
       this.approachStallSeconds = 0;
       return;
@@ -541,19 +668,11 @@ export class VehicleAiBrain {
     this.approachStallSeconds += delta;
   }
 
-  /**
-   * Un contacto nuevo que el vehículo SÍ puede perseguir devuelve el derecho a
-   * bajar tropa: sin esto, una tripulación que ya desembarcó una vez nunca
-   * vuelve a hacerlo aunque el combate empiece de cero.
-   */
+  /** Libera el compromiso cuando terminó el contacto; un target nuevo lo hace en updateApproachProgress. */
   private rearmDismount(context: VehicleBrainContext): void {
     if (!this.dismountRequested) return;
     const threat = context.threat;
-    if (!threat) {
-      this.dismountRequested = false;
-      return;
-    }
-    if (threat.visible === true && context.threatReachableByVehicle !== false) {
+    if (!threat && this.dismountCooldown <= 0) {
       this.dismountRequested = false;
     }
   }
@@ -592,40 +711,60 @@ export class VehicleAiBrain {
     };
   }
 
-  private updateStuckState(delta: number, context: VehicleBrainContext): void {
-    const tryingToMove =
-      this.behavior !== 'hold' &&
-      context.driverAvailable &&
-      (context.route?.points.length ?? 0) > 0;
-    if (context.overturned) {
-      this.stuckSeconds = Math.max(this.stuckSeconds + delta, 10);
-      this.wasStuck = true;
-      return;
-    }
-    if (tryingToMove && context.blocked && Math.abs(context.speed) < 0.55) {
-      this.stuckSeconds += delta;
-      this.wasStuck = this.wasStuck || this.stuckSeconds >= 0.5;
-      return;
-    }
-    if (!context.blocked || Math.abs(context.speed) > 1.2) {
-      // Se desatascó: la próxima vez que se trabe prueba del otro lado, igual
-      // que hace `NavigationLocomotion` con los humanoides.
-      if (this.wasStuck) {
-        this.recoveryAttempts += 1;
-        this.recoverySide = this.recoverySide === 1 ? -1 : 1;
-        this.wasStuck = false;
+  private updateRecoveryState(delta: number, context: VehicleBrainContext): void {
+    if (!this.recoveryActive) {
+      if (!context.blocked && !context.overturned) return;
+      this.recoveryActive = true;
+      this.recoveryElapsed = 0;
+      this.recoveryTravel = 0;
+      this.recoveryStart = [...context.pose.position];
+      const clearance = context.recoveryClearance;
+      if (clearance && clearance.left !== clearance.right) {
+        this.recoverySide = clearance.left > clearance.right ? 1 : -1;
       }
-      this.stuckSeconds = 0;
+    }
+
+    this.recoveryElapsed += delta;
+    this.recoveryTravel = this.recoveryStart
+      ? planarDistance(this.recoveryStart, context.pose.position)
+      : 0;
+    if (
+      this.recoveryTravel >= RECOVERY_SUCCESS_METERS &&
+      !context.blocked &&
+      !context.overturned
+    ) {
+      this.recoveryActive = false;
+      this.recoveryElapsed = 0;
+      this.recoveryTravel = 0;
+      this.recoveryStart = null;
+      this.recoveryAttempts += 1;
+      this.recoverySide = this.recoverySide === 1 ? -1 : 1;
     }
   }
 
   private recoveryAction(context: VehicleBrainContext): VehicleRecoveryAction {
-    if (this.stuckSeconds < 0.5) return 'none';
-    if (this.stuckSeconds < 1.2) return 'brake';
-    if (this.stuckSeconds < 2.5) return 'replan';
-    if (this.stuckSeconds < 4.5 && this.profile.reverseAllowed) return 'reverse';
-    if (this.stuckSeconds < 7) return 'rock';
-    if (this.stuckSeconds < 10 && context.passingBay) return 'passingBay';
+    if (!this.recoveryActive) return 'none';
+    if (context.overturned) this.recoveryElapsed = Math.max(this.recoveryElapsed, 10);
+    const clearance = context.recoveryClearance;
+    const rearClear = !clearance || clearance.rear >= RECOVERY_MIN_CLEARANCE;
+    const frontClear = !clearance || clearance.front >= RECOVERY_MIN_CLEARANCE;
+    if (this.recoveryElapsed < 0.3) return 'brake';
+    if (this.recoveryElapsed < 0.9) return 'replan';
+    if (
+      this.recoveryElapsed < 3.4 &&
+      this.profile.reverseAllowed &&
+      rearClear
+    ) return 'reverse';
+    if (this.recoveryElapsed < 5.4 && frontClear) return 'forwardCounter';
+    if (
+      this.recoveryElapsed < 7.9 &&
+      this.profile.reverseAllowed &&
+      rearClear
+    ) {
+      return 'reverseOpposite';
+    }
+    if (this.recoveryElapsed < 9.9 && frontClear) return 'forwardCounterOpposite';
+    if (this.recoveryElapsed < 12 && context.passingBay) return 'passingBay';
     const markerAllowsRecovery =
       context.recoveryMarker?.kind === 'recovery' &&
       context.recoveryMarker.allowRecoverySnap === true;
@@ -633,6 +772,7 @@ export class VehicleAiBrain {
       this.definition.allowRecoverySnap &&
       markerAllowsRecovery &&
       !context.visibleToPlayer &&
+      context.distanceToPlayer > 35 &&
       !context.hasPlayerOccupant
     ) {
       return 'selfRight';
@@ -677,6 +817,21 @@ function interceptGoal(
     target.position[0] + velocity[0] * leadSeconds,
     target.position[1] + velocity[1] * leadSeconds,
     target.position[2] + velocity[2] * leadSeconds,
+  ];
+}
+
+function standoffPoint(
+  target: VehicleNavPoint,
+  ownPosition: VehicleNavPoint,
+  distance: number,
+): VehicleNavPoint {
+  const dx = ownPosition[0] - target[0];
+  const dz = ownPosition[2] - target[2];
+  const length = Math.max(0.001, Math.hypot(dx, dz));
+  return [
+    target[0] + (dx / length) * distance,
+    ownPosition[1],
+    target[2] + (dz / length) * distance,
   ];
 }
 
@@ -753,6 +908,33 @@ function recoveryControl(
         steering: 0.42 * side,
         reverse: true,
         targetSpeed: 4,
+      };
+    case 'forwardCounter':
+      return {
+        ...stoppedCommand(),
+        throttle: 0.68,
+        brake: 0,
+        steering: -0.58 * side,
+        reverse: false,
+        targetSpeed: 5,
+      };
+    case 'reverseOpposite':
+      return {
+        ...stoppedCommand(),
+        throttle: 0.62,
+        brake: 0,
+        steering: -0.48 * side,
+        reverse: true,
+        targetSpeed: 4,
+      };
+    case 'forwardCounterOpposite':
+      return {
+        ...stoppedCommand(),
+        throttle: 0.68,
+        brake: 0,
+        steering: 0.58 * side,
+        reverse: false,
+        targetSpeed: 5,
       };
     case 'rock': {
       const reverse = Math.floor(stuckSeconds / 0.55) % 2 === 0;

@@ -10,14 +10,14 @@ import { sandbagLine } from '@game/levels/builders/PropBuilder';
  * vehicular y el bake la descarta: para la IA de conducción, ahí no se llega.
  *
  * Metete en cualquiera de los tres quedando a la vista desde la puerta. Los
- * Combine que te venían siguiendo pierden la ruta —no la vista— y aplican la
- * regla de desembarque: baja siempre al menos uno, y el conductor es lo último
- * que se suelta.
+ * Combine que te venían siguiendo pierden la ruta —no la vista— y buscan una
+ * pose de despliegue con espacio para frenar, línea de tiro y salidas libres.
  *
- * Con buggies de dos plazas eso significa que baja el artillero y el conductor
- * queda cubriendo la salida. El refugio del medio tiene enfrente un vehículo con
- * un solo tripulante, para ver el otro extremo de la regla: ahí baja el propio
- * conductor y el buggy queda vacío.
+ * En el buggy armado de dos plazas baja el conductor y el artillero queda como
+ * apoyo estacionario. El refugio del medio tiene enfrente un vehículo con un
+ * solo tripulante, para ver el otro extremo: ahí también baja el conductor y el
+ * buggy queda vacío. Si volvés al buggy del jugador, ambos perseguidores deben
+ * cancelar el despliegue y volver al cutoff vehicular.
  */
 
 const SHELTERS: readonly HouseSpec[] = [
@@ -86,7 +86,7 @@ const map = createMap({
     engineOn: false,
     portalTraversal: 'blocked',
   })
-  // Dos plazas y dos tripulantes: baja el artillero, queda el conductor.
+  // Dos plazas y dos tripulantes: baja el conductor, queda el artillero.
   .vehicle({
     id: 'dismount-hunter-full',
     presetId: 'buggy',

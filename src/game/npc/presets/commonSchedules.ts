@@ -5,6 +5,7 @@ import { condMask, type CondKey } from '@game/npc/brain/NpcConditions';
 import {
   createFaceSuspicionTask,
   createFlinchTask,
+  createTacticalOrderTask,
   createWaitTask,
   PlayDeathTask,
   ReloadWeaponTask,
@@ -115,6 +116,33 @@ export function vehicleApproachSchedule(): NpcSchedule {
     blockedBy: condMask("IsDead", "ScriptActive"),
     interrupts: condMask("IsDead", "ScriptActive"),
     tasks: [createApproachVehicleTask()],
+  };
+}
+
+/**
+ * Continuación autónoma a pie: manda sobre follow/patrol, pero combate,
+ * entrada a vehículos y scripted_sequence pueden pausarla sin cancelarla.
+ */
+export function tacticalOrderSchedule(): NpcSchedule {
+  return {
+    id: 'tacticalOrder',
+    priority: 870,
+    required: condMask('TacticalOrder'),
+    blockedBy: condMask(
+      'IsDead',
+      'ScriptActive',
+      'JustHit',
+      'SeeEnemy',
+      'VehicleApproach',
+    ),
+    interrupts: condMask(
+      'IsDead',
+      'ScriptActive',
+      'JustHit',
+      'SeeEnemy',
+      'VehicleApproach',
+    ),
+    tasks: [createTacticalOrderTask()],
   };
 }
 

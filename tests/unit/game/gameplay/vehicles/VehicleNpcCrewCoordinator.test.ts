@@ -162,6 +162,24 @@ describe("VehicleNpcCrewCoordinator", () => {
     expect(exitActions(coordinator.drainActions())).toHaveLength(1);
   });
 
+  it("cancela un descenso en cola sin expulsar al NPC al detenerse", () => {
+    const harness = createVehicle([seat("passenger", "passenger")]);
+    const npc = createNpc("alyx");
+    harness.occupy(npc.npc.id, "passenger");
+    npc.setMounted(true);
+    harness.setSpeed(4);
+    const coordinator = new VehicleNpcCrewCoordinator();
+    coordinator.adoptMounted(npc.npc, harness.vehicle);
+
+    expect(coordinator.requestExit(npc.npc.id)).toBe("queued");
+    expect(coordinator.cancel(npc.npc.id)).toBe(true);
+
+    harness.setSpeed(0);
+    coordinator.update(0.1);
+    expect(coordinator.getAssignment(npc.npc.id)?.phase).toBe("mounted");
+    expect(exitActions(coordinator.drainActions())).toHaveLength(0);
+  });
+
   it("fuerza una salida de emergencia aunque el asiento no tenga anchors", () => {
     const harness = createVehicle(
       [seat("passenger", "passenger")],

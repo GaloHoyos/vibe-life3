@@ -26,6 +26,42 @@ describe("AirVehicleAiBrain", () => {
     expect(decision.intent.targetAltitude).toBeGreaterThan(20);
   });
 
+  it("mantiene el ascenso vertical hasta alcanzar altura segura", () => {
+    const brain = create("transport");
+    const landing = {
+      landingRequested: true,
+      landingStatus: "selected" as const,
+      landingSpot: {
+        position: [40, 0, 0] as const,
+        source: "improvised" as const,
+      },
+    };
+
+    const starting = tick(brain, context({
+      ...landing,
+      position: [0, 0, 0],
+      altitude: 0,
+      grounded: true,
+    }));
+    const belowClearance = tick(brain, context({
+      ...landing,
+      position: [0, 3, 0],
+      altitude: 3,
+      grounded: false,
+    }));
+    const clear = tick(brain, context({
+      ...landing,
+      position: [0, 7, 0],
+      altitude: 7,
+      grounded: false,
+    }));
+
+    expect(starting.state).toBe("takeoff");
+    expect(belowClearance.state).toBe("takeoff");
+    expect(belowClearance.intent.cruiseSpeed).toBe(0);
+    expect(clear.state).toBe("approach");
+  });
+
   it("no despega dejando en tierra a la tripulación que viene", () => {
     const brain = create("intercept");
 
@@ -62,6 +98,36 @@ describe("AirVehicleAiBrain", () => {
 
     expect(decision.state).toBe("landing");
     expect(decision.intent.descend).toBe(true);
+  });
+
+  it("sostiene vuelo mientras todavía se resuelve un claro", () => {
+    const brain = create("transport");
+
+    const decision = tick(brain, context({
+      landingRequested: true,
+      landingStatus: "resolving",
+    }));
+
+    expect(decision.state).toBe("stopped");
+    expect(decision.intent.descend).toBe(false);
+    expect(decision.intent.target).toBeNull();
+  });
+
+  it("aborta el descenso ganando altura antes de una nueva aproximación", () => {
+    const brain = create("transport");
+
+    const decision = tick(brain, context({
+      landingRequested: true,
+      landingStatus: "goAround",
+      landingGoAround: true,
+      landingSpot: { position: [30, 0, 0], source: "improvised" },
+      altitude: 5,
+    }));
+
+    expect(decision.state).toBe("goAround");
+    expect(decision.intent.descend).toBe(false);
+    expect(decision.intent.targetAltitude).toBeGreaterThan(10);
+    expect(decision.intent.cruiseSpeed).toBe(0);
   });
 
   it("orbita al blanco a distancia de tiro con el morro apuntado", () => {
@@ -147,6 +213,45 @@ describe("AirVehicleAiBrain", () => {
     );
     expect(overhead.state).toBe("landing");
     expect(overhead.intent.descend).toBe(true);
+  });
+
+  it("frena y alinea el casco antes de iniciar el descenso", () => {
+    const brain = create("transport");
+    const landingSpot = {
+      position: [0, 0, 0] as const,
+      source: "improvised" as const,
+      approachHeading: Math.PI / 2,
+    };
+
+    const fast = tick(brain, context({
+      landingRequested: true,
+      landingStatus: "selected",
+      landingSpot,
+      velocity: [8, 0, 0],
+      heading: Math.PI / 2,
+    }));
+    expect(fast.state).toBe("approach");
+    expect(fast.intent.descend).toBe(false);
+
+    const misaligned = tick(brain, context({
+      landingRequested: true,
+      landingStatus: "selected",
+      landingSpot,
+      velocity: [0, 0, 0],
+      heading: 0,
+    }));
+    expect(misaligned.state).toBe("approach");
+    expect(misaligned.intent.facing).not.toBeNull();
+
+    const ready = tick(brain, context({
+      landingRequested: true,
+      landingStatus: "selected",
+      landingSpot,
+      velocity: [0, 0, 0],
+      heading: Math.PI / 2,
+    }));
+    expect(ready.state).toBe("landing");
+    expect(ready.intent.descend).toBe(true);
   });
 
   it("reventado y sin dónde posarse, baja donde esté", () => {
@@ -274,6 +379,36 @@ describe("AirVehicleAiBrain", () => {
       }));
 
       expect(decision.crewAction).toBe("requestDisembark");
+    });
+
+    it("después de descargar despega y continúa al nuevo destino", () => {
+      const brain = create("transport");
+      const landed = {
+        landingSpot: { position: LZ, source: "authored" } as const,
+        position: [LZ[0], 0, LZ[2]] as [number, number, number],
+        altitude: 0,
+        grounded: true,
+      };
+      expect(
+        tick(brain, context({ ...landed, passengersOnboard: true })).crewAction,
+      ).toBe("requestDisembark");
+
+      const empty = tick(brain, context({
+        ...landed,
+        passengersOnboard: false,
+        authoredGoal: [160, 0, 20],
+      }));
+      expect(empty.state).toBe("takeoff");
+
+      const airborne = tick(brain, context({
+        position: [LZ[0], 20, LZ[2]],
+        altitude: 20,
+        grounded: false,
+        passengersOnboard: false,
+        authoredGoal: [160, 0, 20],
+      }));
+      expect(airborne.state).toBe("cruising");
+      expect(airborne.intent.target).toEqual([160, 0, 20]);
     });
 
     it("no descarga a los que acaba de recoger en la misma zona", () => {

@@ -30,6 +30,8 @@ import type {
   NpcPortalHandle,
   NpcSaveSnapshot,
   NpcSeatPose,
+  NpcTacticalOrder,
+  NpcTacticalOrderResult,
   NpcVehicleApproachOrder,
   NpcVehicleApproachStatus,
   NpcThreatKnowledge,
@@ -208,6 +210,12 @@ export class Npc implements INpc {
     facing: Vector3;
     arriveRadius: number;
     status: Exclude<NpcVehicleApproachStatus, "none">;
+  } | null = null;
+  private tacticalOrder: {
+    commandId: string;
+    target: Vector3;
+    arriveRadius: number;
+    onResult?: (result: NpcTacticalOrderResult) => void;
   } | null = null;
   private readonly raycast: Raycast;
   private readonly losRaycast: RaycastSource;
@@ -439,6 +447,7 @@ export class Npc implements INpc {
       // La IA no vuelve a tickear schedules después de morir, por lo que la
       // secuencia debe cerrarse antes del early-return (incluye override AI).
       ctx.script?.orderFor(this.id)?.notifyDone('canceled');
+      this.finishTacticalOrder('failed');
       if (this.frozenSolid) {
         // La estatua física del ice gun es dueña del visual: no tocarlo.
         return;
@@ -590,6 +599,9 @@ export class Npc implements INpc {
     if (this.vehicleSensor?.isVehicleUseful()) {
       conditions = add(conditions, Cond.VehicleUseful);
     }
+    if (this.tacticalOrder) {
+      conditions = add(conditions, Cond.TacticalOrder);
+    }
     // Si el NPC ya estaba en combate/JustHit al recibir Start, el schedule
     // scripted nunca llega a activarse y por tanto no existe un task que lo
     // aborte. Cerramos la orden aquí; para una secuencia ya corriendo esto es
@@ -613,6 +625,7 @@ export class Npc implements INpc {
 
     const isSquadMember =
       this.playerSquadEligible && (ctx.playerSquad?.isMember(this.id) ?? false);
+    const tacticalOrder = this.tacticalOrder;
     const brainCtx: NpcBrainContext = {
       delta,
       elapsed: ctx.elapsed,
@@ -643,6 +656,15 @@ export class Npc implements INpc {
             setStatus: (status) => {
               if (this.vehicleApproach) this.vehicleApproach.status = status;
             },
+          }
+        : null,
+      tacticalOrder: tacticalOrder
+        ? {
+            commandId: tacticalOrder.commandId,
+            target: tacticalOrder.target,
+            arriveRadius: tacticalOrder.arriveRadius,
+            complete: (result) =>
+              this.finishTacticalOrder(result, tacticalOrder.commandId),
           }
         : null,
       gesture: (id, duration) => this.animation?.playGesture?.(id, duration),
@@ -770,6 +792,39 @@ export class Npc implements INpc {
 
   getVehicleApproachStatus(): NpcVehicleApproachStatus {
     return this.vehicleApproach?.status ?? "none";
+  }
+
+  setTacticalOrder(order: NpcTacticalOrder | null): void {
+    if (!order) {
+      this.finishTacticalOrder('cancelled');
+      return;
+    }
+    if (
+      this.disposed ||
+      !this.health.isAlive() ||
+      order.commandId.trim().length === 0 ||
+      !isFiniteVector(order.target)
+    ) {
+      order.onResult?.('failed');
+      return;
+    }
+    const arriveRadius =
+      order.arriveRadius !== undefined && Number.isFinite(order.arriveRadius)
+        ? Math.max(0.25, order.arriveRadius)
+        : 1.25;
+    if (this.tacticalOrder?.commandId === order.commandId) {
+      this.tacticalOrder.target.copy(order.target);
+      this.tacticalOrder.arriveRadius = arriveRadius;
+      if (order.onResult) this.tacticalOrder.onResult = order.onResult;
+      return;
+    }
+    this.finishTacticalOrder('cancelled');
+    this.tacticalOrder = {
+      commandId: order.commandId,
+      target: order.target.clone(),
+      arriveRadius,
+      ...(order.onResult ? { onResult: order.onResult } : {}),
+    };
   }
 
   getThreatKnowledge(): NpcThreatKnowledge | null {
@@ -1035,6 +1090,7 @@ export class Npc implements INpc {
     hitPartName?: string,
     attackerId?: string,
   ): void {
+    this.finishTacticalOrder('failed');
     this.eventBus.emit('npc.killed', {
       id: this.id,
       characterId: this.preset.id,
@@ -1225,6 +1281,7 @@ export class Npc implements INpc {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.finishTacticalOrder('cancelled');
     this.organicMatter?.invalidate();
     this.behavior?.dispose();
     this.noiseSensor.dispose();
@@ -1691,6 +1748,16 @@ export class Npc implements INpc {
     const smooth = restraint * restraint * (3 - 2 * restraint);
     this.motor.setSpeedMultiplier(this.gaitMultiplier * (1 - smooth));
   }
+
+  private finishTacticalOrder(
+    result: NpcTacticalOrderResult,
+    expectedCommandId?: string,
+  ): void {
+    const order = this.tacticalOrder;
+    if (!order || (expectedCommandId && order.commandId !== expectedCommandId)) return;
+    this.tacticalOrder = null;
+    order.onResult?.(result);
+  }
 }
 
 /** Candidato con `id` dado más cercano a `position` (desambigua player vs sus ghosts). */
@@ -1723,6 +1790,14 @@ const tmpUp = new Vector3();
 function isBodyTipped(rotation: Quaternion): boolean {
   tmpUp.set(0, 1, 0).applyQuaternion(rotation);
   return tmpUp.y < 0.5;
+}
+
+function isFiniteVector(vector: Vector3): boolean {
+  return (
+    Number.isFinite(vector.x) &&
+    Number.isFinite(vector.y) &&
+    Number.isFinite(vector.z)
+  );
 }
 
 /**

@@ -47,6 +47,24 @@ describe('smoothVehiclePath', () => {
     expect(positions(smoothed)).toEqual(['0,0', '0,4', '0,8', '0,12']);
   });
 
+  it('conserva una curva coherente en vez de convertirla en una cuerda', () => {
+    const radius = 10;
+    const arc = Array.from({ length: 7 }, (_, index) => {
+      const angle = (index / 6) * Math.PI / 2;
+      return point(Math.sin(angle) * radius, Math.cos(angle) * radius);
+    });
+
+    const smoothed = smoothVehiclePath(arc, {
+      isClear: () => true,
+      maxSpacing: 100,
+      minimumTurnRadius: 8,
+    });
+
+    expect(smoothed.length).toBeGreaterThan(2);
+    expect(smoothed[0]).toEqual(arc[0]);
+    expect(smoothed.at(-1)).toEqual(arc.at(-1));
+  });
+
   it('nunca cruza una cúspide: ahí el vehículo frena y cambia de sentido', () => {
     const points = [
       point(0, 0), point(0, 2), point(0, 4),

@@ -27,3 +27,8 @@ export * from './VehiclePathFollower';
 export * from './VehiclePathSmoother';
 export * from './VehicleDubins';
 export * from './VehicleTrafficCoordinator';
+export * from './VehicleObjectiveController';
+export * from './VehicleTacticCatalog';
+export * from './VehicleTacticMemory';
+export * from './VehicleTacticalDirector';
+export * from './VehicleTacticalTypes';

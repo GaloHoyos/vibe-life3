@@ -262,9 +262,8 @@ describe('niveles vehiculares', () => {
       );
       expect(route, routeDefinition.id).not.toBeNull();
       expect(route?.path.points.length ?? 0, routeDefinition.id).toBeGreaterThanOrEqual(2);
-      // Contar puntos dejó de medir nada cuando el suavizado empezó a colapsar
-      // los tramos rectos. Lo que sí sigue valiendo: ninguna ruta puede ser más
-      // corta que la línea recta entre sus extremos.
+      // El Hybrid A* puede terminar dentro de su tolerancia de celda; fuera de
+      // ese margen, una ruta no puede ser más corta que la línea recta.
       const straight = Math.hypot(
         routeDefinition.goal[0] - routeDefinition.start[0],
         routeDefinition.goal[2] - routeDefinition.start[2],
@@ -272,7 +271,7 @@ describe('niveles vehiculares', () => {
       expect(
         polylineLength(route?.path.points ?? []),
         routeDefinition.id,
-      ).toBeGreaterThanOrEqual(straight - 0.5);
+      ).toBeGreaterThanOrEqual(straight - 2);
       if (routeDefinition.id === 'buggy-flank') {
         expect(route?.laneRoute, routeDefinition.id).not.toBeNull();
       }

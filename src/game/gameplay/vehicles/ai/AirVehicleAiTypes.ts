@@ -1,4 +1,5 @@
 import type { VehicleAiBehavior } from '@game/levels/LevelDefinition';
+import type { SurfaceType } from '@shared/types/Surface';
 import type { VehicleAiTarget, VehicleNavPoint } from './VehicleAiTypes';
 
 /**
@@ -10,6 +11,7 @@ import type { VehicleAiTarget, VehicleNavPoint } from './VehicleAiTypes';
 export type VehicleAirState =
   | 'grounded'
   | 'takeoff'
+  | 'goAround'
   | 'cruising'
   | 'engaging'
   | 'pursuing'
@@ -24,7 +26,83 @@ export interface AirLandingSpot {
   position: VehicleNavPoint;
   /** `authored` sale de un `vehicleNavMarker` de tipo `landingZone`. */
   source: 'authored' | 'improvised';
+  /** Punto pedido antes de resolver el claro físicamente apto más cercano. */
+  requestedPosition?: VehicleNavPoint;
+  markerId?: string;
+  slopeDegrees?: number;
+  /** Stable hull heading selected for the final approach. */
+  approachHeading?: number;
+  surfaceId?: string;
+  surfaceType?: SurfaceType;
 }
+
+export type AirLandingStatus =
+  | 'none'
+  | 'resolving'
+  | 'selected'
+  | 'goAround'
+  | 'landed'
+  | 'failed';
+
+export type AirLandingFailureReason =
+  | 'noSafeSite'
+  | 'siteBlocked'
+  | 'approachBlocked'
+  | 'aborted';
+
+export interface AirLandingOrderOptions {
+  /** Se limita a 35 m aunque el llamador pase un valor mayor. */
+  searchRadius?: number;
+  /** Las zonas autoradas reciben preferencia, pero no evitan la validación. */
+  preferAuthored?: boolean;
+  /** Mantiene el aparato posado hasta cancelar o reemplazar la orden. */
+  holdAfterLanding?: boolean;
+  orderId?: string;
+}
+
+export interface AirLandingOrder {
+  id: string;
+  revision: number;
+  target: VehicleNavPoint;
+  options: Readonly<Required<Omit<AirLandingOrderOptions, 'orderId'>>>;
+}
+
+/** Volumen world-space que prohíbe apoyar el disco del rotor. */
+export interface AirNoLandingArea {
+  id: string;
+  center: VehicleNavPoint;
+  halfExtents: VehicleNavPoint;
+}
+
+export type AirLandingEvent =
+  | {
+      type: 'selected';
+      vehicleId: string;
+      orderId: string;
+      revision: number;
+      requested: VehicleNavPoint;
+      selected: VehicleNavPoint;
+      deviation: number;
+      source: AirLandingSpot['source'];
+      surfaceId?: string;
+      surfaceType?: SurfaceType;
+    }
+  | {
+      type: 'landed';
+      vehicleId: string;
+      orderId: string;
+      revision: number;
+      requested: VehicleNavPoint;
+      selected: VehicleNavPoint;
+    }
+  | {
+      type: 'failed';
+      vehicleId: string;
+      orderId: string;
+      revision: number;
+      requested: VehicleNavPoint;
+      reason: AirLandingFailureReason;
+    };
 
 export interface AirBrainContext {
   position: VehicleNavPoint;
@@ -42,6 +120,8 @@ export interface AirBrainContext {
   hasPlayerOccupant: boolean;
   /** Hay tripulación en camino: despegar ahora la dejaría en tierra. */
   crewPending: boolean;
+  /** Mission phase owns the grounded pose while cargo exits. */
+  groundHold?: boolean;
   /**
    * Hay gente esperando extracción en este punto. Manda sobre la lógica normal
    * de transporte, que sólo se posa con carga: para recoger hay que bajar vacío.
@@ -53,6 +133,11 @@ export interface AirBrainContext {
   threat?: VehicleAiTarget;
   retreatPoint?: VehicleNavPoint;
   landingSpot?: AirLandingSpot;
+  /** Hay una intención de posarse, aunque todavía se esté buscando el claro. */
+  landingRequested?: boolean;
+  landingStatus?: AirLandingStatus;
+  /** Un sitio cambió o quedó bloqueado durante el descenso. */
+  landingGoAround?: boolean;
   weaponRange?: number;
   /** La torreta agotó su recorrido: conviene virar el casco. */
   turretAtTraverseLimit?: boolean;

@@ -148,6 +148,8 @@ export interface VehicleAiDefinition {
   gunnerProfile?: VehicleGunnerProfileId;
   /** Oficio del piloto en aparatos aéreos. Default según el comportamiento. */
   pilotProfile?: VehiclePilotProfileId;
+  /** Doctrina táctica. Si se omite se deriva de facción, preset y misión. */
+  tacticalProfile?: 'combine' | 'resistance' | 'transport';
   /**
    * Si puede abandonar temporalmente su `behavior` para pelear o huir. Default
    * según el comportamiento: los ofensivos sí, los de logística no.

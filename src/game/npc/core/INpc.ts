@@ -340,6 +340,20 @@ export type NpcVehicleApproachStatus =
   | "arrived"
   | "blocked";
 
+export type NpcTacticalOrderResult = "completed" | "failed" | "cancelled";
+
+/**
+ * Orden liviana que puede sobrevivir a interrupciones del brain. A diferencia
+ * de una scripted_sequence, expresa una intención táctica y no toma control
+ * del NPC durante combate.
+ */
+export interface NpcTacticalOrder {
+  readonly commandId: string;
+  readonly target: Vector3;
+  readonly arriveRadius?: number;
+  readonly onResult?: (result: NpcTacticalOrderResult) => void;
+}
+
 /** Lo que un NPC sabe de su amenaza: visible ahora, o ultimo punto conocido. */
 export interface NpcThreatKnowledge {
   readonly id: string;
@@ -380,6 +394,8 @@ export interface INpc {
   /** Transient order to walk toward a reserved entrance. */
   setVehicleApproach?(order: NpcVehicleApproachOrder | null): void;
   getVehicleApproachStatus?(): NpcVehicleApproachStatus;
+  /** Persistent foot objective that resumes after combat or scripted interruptions. */
+  setTacticalOrder?(order: NpcTacticalOrder | null): void;
   /**
    * Lo que este NPC sabe de su amenaza actual. Montado sigue percibiendo, asi
    * que la tripulacion ve mas que el sensor del casco: el vehiculo funde ambas

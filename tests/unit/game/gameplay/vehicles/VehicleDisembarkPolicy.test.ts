@@ -40,6 +40,23 @@ describe('selectDisembarkingCrew', () => {
     expect(leaving([driver, rear], 2)).toEqual(['rear']);
   });
 
+  it('en un buggy armado baja el conductor y el artillero queda cubriendo', () => {
+    expect(
+      selectDisembarkingCrew([driver, gunner], 2, true).map(
+        (entry) => entry.actor,
+      ),
+    ).toEqual(['driver']);
+  });
+
+  it('en un transporte armado conserva conductor y artillero', () => {
+    expect(
+      selectDisembarkingCrew([driver, gunner, rear, flank], 4, true).map(
+        (entry) => entry.actor,
+      ),
+    ).toEqual(['rear', 'flank']);
+    expect(selectDisembarkingCrew([driver, gunner], 4, true)).toEqual([]);
+  });
+
   it('con un solo tripulante baja el conductor', () => {
     expect(leaving([driver], 4)).toEqual(['driver']);
     expect(leaving([driver], 2)).toEqual(['driver']);

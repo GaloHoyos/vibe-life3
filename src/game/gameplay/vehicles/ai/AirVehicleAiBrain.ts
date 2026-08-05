@@ -27,6 +27,9 @@ const MID_DISTANCE = 160;
 
 /** Cada cuánto se invierte el sentido de la órbita, para que no sea un reloj. */
 const ORBIT_FLIP_SECONDS = 9;
+const MAX_LANDING_ENTRY_PLANAR_SPEED = 3.5;
+const MAX_LANDING_ENTRY_VERTICAL_SPEED = 2.5;
+const MAX_LANDING_HEADING_ERROR = Math.PI / 9;
 /** Distancia mínima que el destino debe moverse para justificar replanificar. */
 const REPLAN_DISTANCE = 12;
 /** Paciencia máxima esperando a la tripulación que viene en camino. */
@@ -102,6 +105,7 @@ export class AirVehicleAiBrain {
   private lastPlanGoal: VehicleNavPoint | null = null;
   private patrolIndex = 0;
   private disembarkRequested = false;
+  private takeoffStartHeight: number | null = null;
   /** Dónde subió la carga que lleva ahora. */
   private loadedAt: VehicleNavPoint | null = null;
 
@@ -115,8 +119,11 @@ export class AirVehicleAiBrain {
   }
 
   setBehavior(behavior: VehicleAiBehavior): void {
+    if (this.behavior === behavior) return;
     this.behavior = behavior;
     this.deviationSeconds = 0;
+    this.disembarkRequested = false;
+    this.loadedAt = null;
   }
 
   getState(): VehicleAirState {
@@ -132,6 +139,7 @@ export class AirVehicleAiBrain {
     this.boardingWaitSeconds = 0;
     this.lastPlanGoal = null;
     this.disembarkRequested = false;
+    this.takeoffStartHeight = null;
     this.loadedAt = null;
   }
 
@@ -150,10 +158,21 @@ export class AirVehicleAiBrain {
     this.secondsUntilTick = tickInterval;
 
     this.updateTimers(tickDelta);
+    if (!context.passengersOnboard) {
+      this.disembarkRequested = false;
+      this.loadedAt = null;
+    }
     this.boardingWaitSeconds = context.crewPending
       ? this.boardingWaitSeconds + tickDelta
       : 0;
-    this.state = this.resolveState(context);
+    const previousState = this.state;
+    const nextState = this.resolveState(context);
+    if (nextState === 'takeoff' && previousState !== 'takeoff') {
+      this.takeoffStartHeight = context.position[1];
+    } else if (nextState !== 'takeoff') {
+      this.takeoffStartHeight = null;
+    }
+    this.state = nextState;
     const intent = this.resolveIntent(context);
     const planGoal = this.resolvePlanGoal(intent);
 
@@ -194,17 +213,40 @@ export class AirVehicleAiBrain {
       return context.grounded ? 'grounded' : 'landing';
     }
 
+    if (context.landingGoAround && !context.grounded) return 'goAround';
+
+    if (context.groundHold && context.grounded) return 'grounded';
+
+    // Resolver un claro puede repartir decenas de raycasts entre varios ticks.
+    // Mientras tanto se sostiene un hover estable en vez de descender a ciegas
+    // o perseguir la coordenada cruda que quizá cae sobre una pared.
+    if (
+      context.landingRequested &&
+      context.landingStatus === 'resolving' &&
+      !context.landingSpot
+    ) {
+      return context.grounded ? 'grounded' : 'stopped';
+    }
+
     if (context.healthFraction <= this.tuning.emergencyLandingThreshold) {
       if (context.grounded) return 'grounded';
       // Sin ningún sitio donde posarse, un aparato reventado baja donde esté;
       // con uno a la vista, primero se pone encima.
       if (!context.landingSpot) return 'landing';
-      return this.overLandingSpot(context) ? 'landing' : 'approach';
+      return this.readyToDescend(context) ? 'landing' : 'approach';
+    }
+
+    if (
+      this.state === 'takeoff' &&
+      !context.grounded &&
+      !this.takeoffClearanceReached(context)
+    ) {
+      return 'takeoff';
     }
 
     if (this.wantsToLand(context)) {
       if (!context.grounded) {
-        return this.overLandingSpot(context) ? 'landing' : 'approach';
+        return this.readyToDescend(context) ? 'landing' : 'approach';
       }
       // Estar en el suelo no es haber llegado. Una recogida termina justo así:
       // posado donde estaba la gente, con la carga a bordo y el destino en otro
@@ -220,9 +262,6 @@ export class AirVehicleAiBrain {
       }
       return 'takeoff';
     }
-    if (context.altitude < AIR_TAKEOFF_CLEAR_ALTITUDE && this.state === 'takeoff') {
-      return 'takeoff';
-    }
 
     if (context.healthFraction <= this.tuning.fleeThreshold) return 'evading';
 
@@ -235,8 +274,17 @@ export class AirVehicleAiBrain {
     return 'cruising';
   }
 
+  private takeoffClearanceReached(context: AirBrainContext): boolean {
+    if (Number.isFinite(context.altitude)) {
+      return context.altitude >= AIR_TAKEOFF_CLEAR_ALTITUDE;
+    }
+    const startHeight = this.takeoffStartHeight ?? context.position[1];
+    return context.position[1] - startHeight >= AIR_TAKEOFF_CLEAR_ALTITUDE;
+  }
+
   /** Si la misión pide posarse ahora mismo. */
   private wantsToLand(context: AirBrainContext): boolean {
+    if (context.landingRequested) return Boolean(context.landingSpot);
     // Una extracción manda sobre todo lo demás: hay gente esperando abajo.
     if (context.pickupAt) return true;
     if (this.disembarkRequested) return true;
@@ -245,8 +293,9 @@ export class AirVehicleAiBrain {
     // Con carga se posa a dejarla, salvo que la haya subido en este mismo sitio:
     // una recogida termina así, y volver a posarse ahí sería devolverla.
     if (context.passengersOnboard) return !this.justLoadedHere(context);
-    // Un transporte sin carga ya cumplió: no se queda dando vueltas.
-    return context.grounded;
+    // Un transporte sin carga ya cumplió. El spot puede sobrevivir un tick a la
+    // descarga; no debe reactivar por sí solo una aproximación sin misión.
+    return false;
   }
 
   /**
@@ -270,6 +319,19 @@ export class AirVehicleAiBrain {
     return planar <= AIR_LANDING_ARRIVAL_RADIUS;
   }
 
+  private readyToDescend(context: AirBrainContext): boolean {
+    if (!this.overLandingSpot(context)) return false;
+    if (
+      Math.hypot(context.velocity[0], context.velocity[2]) >
+        MAX_LANDING_ENTRY_PLANAR_SPEED ||
+      Math.abs(context.velocity[1]) > MAX_LANDING_ENTRY_VERTICAL_SPEED
+    ) return false;
+    const approachHeading = context.landingSpot?.approachHeading;
+    return approachHeading === undefined ||
+      Math.abs(wrappedAngle(approachHeading - context.heading)) <=
+        MAX_LANDING_HEADING_ERROR;
+  }
+
   private canEngage(): boolean {
     if (!this.tuning.allowMissionDeviation) return false;
     return this.deviationSeconds < this.tuning.deviationBudgetSeconds;
@@ -291,13 +353,47 @@ export class AirVehicleAiBrain {
           false,
           false,
         );
+      case 'goAround':
+        return intent(
+          [context.position[0], context.position[1], context.position[2]],
+          Math.max(
+            AIR_TAKEOFF_CLEAR_ALTITUDE + 5,
+            tuning.cruiseAltitude * 0.65,
+          ),
+          null,
+          0,
+          false,
+          false,
+        );
       case 'landing': {
         const spot = context.landingSpot?.position ?? null;
         return intent(spot, 0, null, 2, true, false);
       }
       case 'approach': {
-        const spot = context.landingSpot?.position ?? null;
-        return intent(spot, tuning.cruiseAltitude * 0.6, null, tuning.cruiseSpeed * 0.6, false, false);
+        const landing = context.landingSpot?.position;
+        const approachHeading = context.landingSpot?.approachHeading;
+        const approachAltitude = Math.max(
+          AIR_TAKEOFF_CLEAR_ALTITUDE + 5,
+          tuning.cruiseAltitude * 0.6,
+        );
+        const spot: VehicleNavPoint | null = landing
+          ? [landing[0], landing[1] + approachAltitude, landing[2]]
+          : null;
+        const facing: VehicleNavPoint | null = landing && approachHeading !== undefined
+          ? [
+              landing[0] + Math.sin(approachHeading) * 12,
+              landing[1] + approachAltitude,
+              landing[2] + Math.cos(approachHeading) * 12,
+            ]
+          : null;
+        return intent(
+          spot,
+          approachAltitude,
+          facing,
+          tuning.cruiseSpeed * 0.6,
+          false,
+          false,
+        );
       }
       case 'engaging':
         return this.orbitIntent(context);
@@ -430,7 +526,12 @@ export class AirVehicleAiBrain {
     }
     // En órbita y en aterrizaje el punto se recalcula por frame: pedir ruta
     // sería pedirla siempre.
-    if (this.state === 'engaging' || this.state === 'landing' || this.state === 'takeoff') {
+    if (
+      this.state === 'engaging' ||
+      this.state === 'landing' ||
+      this.state === 'takeoff' ||
+      this.state === 'goAround'
+    ) {
       this.lastPlanGoal = null;
       return null;
     }
@@ -456,7 +557,6 @@ export class AirVehicleAiBrain {
   private resolveCrewAction(
     context: AirBrainContext,
   ): AirBrainDecision['crewAction'] {
-    if (!context.passengersOnboard) this.loadedAt = null;
     if (this.state !== 'grounded' || !context.grounded) return 'none';
     if (context.pickupAt) {
       this.loadedAt = [...context.position];
@@ -490,4 +590,8 @@ function resolveTickInterval(distanceToPlayer: number): number {
   if (distanceToPlayer <= NEAR_DISTANCE) return TICK_NEAR;
   if (distanceToPlayer <= MID_DISTANCE) return TICK_MID;
   return TICK_FAR;
+}
+
+function wrappedAngle(angle: number): number {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
 }

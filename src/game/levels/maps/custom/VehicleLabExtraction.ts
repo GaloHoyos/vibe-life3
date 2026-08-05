@@ -4,32 +4,39 @@ import { crateStack } from '@game/levels/builders/PropBuilder';
 /**
  * Laboratorio 3 — extracción aérea.
  *
- * Explanada con una zona de aterrizaje marcada y un transporte Combine esperando
+ * Explanada sin zona obligatoria de recogida y un transporte Combine esperando
  * lejos. La cadena que prueba es la que arranca cuando una tripulación pierde su
  * vehículo:
  *
  *   destruís el buggy -> la tripulación evacúa -> al tocar tierra pide recogida
- *   -> el director le asigna el transporte -> baja vacío a la zona -> suben -> se va.
+ *   -> el director le asigna el transporte -> encuentra un claro cerca de los
+ *   supervivientes -> suben -> vuelve a la base y los deja.
  *
  * Ese es el único disparador automático de recogida que existe: perder el
  * vehículo. No hay umbral de "van perdiendo", que sin jugarlo no se puede
  * calibrar.
+ *
+ * La recogida y la base son info_targets normales. Hay una landing zone
+ * secundaria cerca de la base para comprobar que funciona como preferencia y no
+ * como requisito.
  *
  * Cómo leerlo: agarrá el RPG, reventá el buggy Combine y no toques nada más.
  * Si matás también a la tripulación no hay a quién recoger y el transporte se
  * queda donde está, que es el comportamiento correcto.
  */
 
-const LANDING_ZONE: [number, number, number] = [0, 0, 30];
+const PICKUP_POINT: [number, number, number] = [10, 0, -12];
+const RETURN_POINT: [number, number, number] = [48, 0, 48];
+const PREFERRED_LANDING_ZONE: [number, number, number] = [40, 0, 48];
 
 export const VehicleLabExtraction = createMap({
   id: 'vehicle-lab-extraction',
   title: 'Lab 3: extracción aérea',
   description:
-    'Perdé un vehículo Combine y mirá cómo su tripulación pide recogida y el transporte baja a buscarla.',
+    'Perdé un vehículo Combine y mirá cómo el transporte busca un claro, embarca supervivientes y vuelve a una base no obligatoria.',
   objective: {
-    text: 'Destruí el buggy Combine y seguí a la tripulación hasta la zona de recogida',
-    marker: LANDING_ZONE,
+    text: 'Destruí el buggy Combine y observá la recogida, el vuelo de regreso y la descarga',
+    marker: PICKUP_POINT,
   },
   background: 0x8ea4b0,
   sun: { direction: [0.3, 0.85, -0.35], color: 0xffdcae, intensity: 1.55 },
@@ -46,14 +53,26 @@ export const VehicleLabExtraction = createMap({
   },
 })
   .ground({ size: [140, 140], material: 'concrete', boundary: { height: 4 } })
-  // La zona de recogida. El cerebro aéreo se posa acá aunque venga vacío: un
-  // transporte normal sólo aterriza con carga, y `pickupAt` pisa esa regla.
+  // This marker only biases the return. It stays outside the pickup search
+  // radius so the first landing must resolve on ordinary ground.
   .vehicleNavMarker({
-    id: 'extraction-lz',
-    position: LANDING_ZONE,
+    id: 'extraction-preferred-lz',
+    position: PREFERRED_LANDING_ZONE,
     heading: Math.PI,
     kind: 'landingZone',
     allowedPresets: ['helicopterFree'],
+  })
+  .logic({
+    kind: 'marker',
+    id: 'extraction-pickup-point',
+    name: 'extraction-pickup-point',
+    position: PICKUP_POINT,
+  })
+  .logic({
+    kind: 'marker',
+    id: 'extraction-return-point',
+    name: 'extraction-return-point',
+    position: RETURN_POINT,
   })
   // Patrulla Combine: es la que va a quedarse a pie.
   .vehicle({
@@ -81,7 +100,11 @@ export const VehicleLabExtraction = createMap({
     faction: 'combine',
     accessPolicy: 'combine',
     engineOn: false,
-    ai: { enabled: true, behavior: 'transport' },
+    ai: {
+      enabled: true,
+      behavior: 'transport',
+      goal: 'extraction-return-point',
+    },
     aiCrew: { enabled: true, roles: ['pilot'] },
     portalTraversal: 'blocked',
   })

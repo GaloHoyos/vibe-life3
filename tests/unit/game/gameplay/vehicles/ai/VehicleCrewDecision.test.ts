@@ -242,6 +242,24 @@ describe('VehicleCrewDirector', () => {
     expect(director.extraction('combine')?.vehicleId).toBe('heli-1');
   });
 
+  it('restaura la antigüedad relativa de una extracción sin transporte', () => {
+    const { director } = directorWith();
+    director.update(30);
+
+    director.restoreExtraction(
+      'combine',
+      new Vector3(4, 2, -6),
+      ['a', 'b'],
+      12,
+    );
+
+    const request = director.extraction('combine');
+    expect(request?.requestedAt).toBe(18);
+    expect(request?.position.toArray()).toEqual([4, 2, -6]);
+    expect([...request?.actors ?? []]).toEqual(['a', 'b']);
+    expect(request?.vehicleId).toBeNull();
+  });
+
   it('mantiene separados los pedidos de cada facción', () => {
     const { director } = directorWith();
     director.requestExtraction(soldier('a'), new Vector3());

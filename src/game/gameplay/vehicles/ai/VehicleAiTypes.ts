@@ -11,6 +11,7 @@ import type {
   VehicleNavMarkerDefinition,
   WaterVolumeDefinition,
 } from '@game/levels/LevelDefinition';
+import type { VehicleTacticId } from './VehicleTacticalTypes';
 
 export type VehicleNavPoint = readonly [number, number, number];
 
@@ -206,6 +207,16 @@ export interface VehicleShapeCastObservation {
   closingSpeed: number;
   lateralOffset: number;
   radius?: number;
+  id?: string;
+  position?: VehicleNavPoint;
+}
+
+export interface VehicleRecoveryClearance {
+  /** Free distance measured from the hull, in metres. */
+  front: number;
+  rear: number;
+  left: number;
+  right: number;
 }
 
 export interface VehicleFollowerInput {
@@ -242,6 +253,7 @@ export interface VehicleAiTarget {
   position: VehicleNavPoint;
   velocity?: VehicleNavPoint;
   heading?: number;
+  mobility?: 'foot' | 'vehicle' | 'unknown';
   /** LOS confirmada ahora mismo. Sin esto la posición es un último-visto. */
   visible?: boolean;
   /** Segundos desde la última vez que se lo vio. */
@@ -265,7 +277,12 @@ export type VehicleAiState =
 
 export interface VehicleBrainContext {
   pose: VehiclePose2D;
+  /** Invalidates asynchronous plans when an order, tactic, anchor or blocker changes. */
+  planContextKey?: string;
+  /** Signed planar velocity along local +Z. */
   speed: number;
+  /** Unsigned XZ velocity, used for safe exits and progress checks. */
+  planarSpeed?: number;
   distanceToPlayer: number;
   visibleToPlayer: boolean;
   hasPlayerOccupant: boolean;
@@ -287,6 +304,8 @@ export interface VehicleBrainContext {
   recoveryMarker?: VehicleNavMarkerDefinition;
   obstacles?: readonly VehicleObstacleObservation[];
   shapeCasts?: readonly VehicleShapeCastObservation[];
+  /** Four-way physical probe used to choose a feasible recovery manoeuvre. */
+  recoveryClearance?: VehicleRecoveryClearance;
   /** Alcance del arma montada; 0 si el vehículo va desarmado. */
   weaponRange?: number;
   /** La torreta se quedó sin recorrido: conviene reposicionar el casco. */
@@ -299,6 +318,12 @@ export interface VehicleBrainContext {
    * un barranco. Ausente = todavía no se sabe, se asume alcanzable.
    */
   threatReachableByVehicle?: boolean;
+  /** Utility-selected action committed independently from the authored mission. */
+  tactic?: VehicleTacticId;
+  /** Stable combat pose retained while the tactical commitment is valid. */
+  tacticalAnchor?: VehicleNavPoint;
+  /** Physical exit check supplied by the runtime. */
+  safeToDismount?: boolean;
 }
 
 /** Señales no-motrices que el conductor puede accionar. */
@@ -313,6 +338,9 @@ export type VehicleRecoveryAction =
   | 'brake'
   | 'replan'
   | 'reverse'
+  | 'forwardCounter'
+  | 'reverseOpposite'
+  | 'forwardCounterOpposite'
   | 'rock'
   | 'passingBay'
   | 'selfRight'

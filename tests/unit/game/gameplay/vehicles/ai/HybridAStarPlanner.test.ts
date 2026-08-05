@@ -73,6 +73,35 @@ describe('HybridAStarPlanner', () => {
     expect(forwardOnly?.reachedGoal ?? false).toBe(false);
   });
 
+  it('prefiere una reversa corta a la primera vuelta Dubins hacia adelante', () => {
+    const planner = new HybridAStarPlanner(rectangularGrid(24, 24), groundProfile);
+    const path = planner.plan(
+      { position: [12.5, 0, 12.5], heading: 0 },
+      { position: [12.5, 0, 7.5], heading: 0 },
+    );
+
+    expect(path?.reachedGoal).toBe(true);
+    expect(path?.points.some((point) => point.direction === 'reverse')).toBe(true);
+    const length = (path?.points ?? []).slice(1).reduce((total, point, index) => {
+      const previous = path?.points[index];
+      return previous ? total + planarDistance(previous.position, point.position) : total;
+    }, 0);
+    expect(length).toBeLessThan(8);
+    expect(path?.expandedStates).toBeGreaterThan(1);
+  });
+
+  it('permite metas sólo posicionales sin cerrar un heading artificial', () => {
+    const path = new HybridAStarPlanner(rectangularGrid(24, 24), groundProfile).plan(
+      { position: [12.5, 0, 12.5], heading: 0 },
+      { position: [12.5, 0, 7.5], heading: Math.PI / 2 },
+      { requireGoalHeading: false },
+    );
+
+    expect(path?.reachedGoal).toBe(true);
+    expect(path?.points.some((point) => point.direction === 'reverse')).toBe(true);
+    expect(path?.points.at(-1)?.heading).not.toBeCloseTo(Math.PI / 2, 1);
+  });
+
   it('cuantiza 16 headings y respeta la longitud mínima del arco de giro', () => {
     const profile = { ...groundProfile, minTurnRadius: 6 };
     // Sin el atajo de Dubins: su tramo final es una curva continua, y esta
@@ -178,6 +207,21 @@ describe('HybridAStarPlanner', () => {
     expect(planner.plan(start, goal, {
       blockers: [{ position: [2.5, 0, 5.5], radius: 1 }],
     })).toBeNull();
+  });
+
+  it('rechaza una pose cuyo centro está libre pero el casco orientado invade un muro', () => {
+    const planner = new HybridAStarPlanner(
+      rectangularGrid(9, 9, new Set(['3:4'])),
+      { ...groundProfile, halfLength: 1.6 },
+    );
+
+    const path = planner.plan(
+      { position: [3.5, 0, 3.5], heading: 0 },
+      { position: [7.5, 0, 3.5], heading: Math.PI / 2 },
+      { requireGoalHeading: false },
+    );
+
+    expect(path).toBeNull();
   });
 
   it('mantiene resultados deterministas cuando hay alternativas con el mismo costo', () => {

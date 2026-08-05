@@ -11,6 +11,7 @@ import type { NpcTacticalHandle } from '@game/npc/brain/NpcCoverSensor';
 import type { SquadRole } from '@game/npc/ai/SquadDirector';
 import type { NpcScriptOrder } from '@game/script/NpcScriptOrder';
 import type { NpcVehicleApproachStatus } from '@game/npc/core/INpc';
+import type { NpcTacticalOrderResult } from '@game/npc/core/INpc';
 import type { VehicleSeatOffer } from '@game/gameplay/vehicles/ai/VehicleOpportunityRegistry';
 
 export interface NpcSelfSnapshot {
@@ -143,6 +144,13 @@ export interface NpcVehicleApproachHandle {
   setStatus(status: Exclude<NpcVehicleApproachStatus, "none">): void;
 }
 
+export interface NpcTacticalOrderHandle {
+  readonly commandId: string;
+  readonly target: Vector3;
+  readonly arriveRadius: number;
+  complete(result: NpcTacticalOrderResult): void;
+}
+
 /**
  * Decision de usar un vehiculo, del lado del brain. Misma relacion que
  * `NpcTacticalHandle` tiene con el `TacticalMap`: el brain decide y pide, y
@@ -214,6 +222,8 @@ export interface NpcBrainContext {
   script: NpcScriptOrder | null;
   /** Vehicle-entry reservation; present only before mounting. */
   vehicleApproach?: NpcVehicleApproachHandle | null;
+  /** Orden táctica a pie vigente; persiste aunque otro schedule la interrumpa. */
+  tacticalOrder?: NpcTacticalOrderHandle | null;
   /** Oportunidad de subirse a un vehiculo. Null en presets que no conducen. */
   vehicle?: NpcVehicleHandle | null;
   /** Dispara un gesto procedural nombrado (pasos `gesture` de una secuencia). */

@@ -140,6 +140,88 @@ describe('VehicleAiPerception', () => {
     expect(switched).toBe(true);
   });
 
+  it('prioriza el objetivo preferido visible aunque otro hostil esté más cerca', () => {
+    const perception = new VehicleAiPerception('v', config);
+    const candidates = [
+      target('near', new Vector3(0, 0, 8)),
+      target('preferred', new Vector3(0, 0, 40)),
+    ];
+
+    let snapshot = perception.update(
+      0.1,
+      SELF,
+      FORWARD,
+      candidates,
+      clearRaycast,
+      'preferred',
+    );
+    expect(snapshot.targetId).toBe('preferred');
+
+    candidates[0]!.position.z = 2;
+    snapshot = perception.update(
+      0.6,
+      SELF,
+      FORWARD,
+      candidates,
+      clearRaycast,
+      'preferred',
+    );
+    expect(snapshot.targetId).toBe('preferred');
+  });
+
+  it('ignora la posición real de un preferido oculto y selecciona otro visible', () => {
+    const perception = new VehicleAiPerception('v', config);
+    const preferredPosition = new Vector3(8, 0, 30);
+    const fallbackPosition = new Vector3(-8, 0, 24);
+    const selectiveRaycast: RaycastSource = {
+      cast: (origin, direction) => direction.x > 0
+        ? {
+            point: origin.clone().addScaledVector(direction.clone().normalize(), 1),
+            normal: new Vector3(0, 0, -1),
+            toi: 1,
+            collider: {} as RaycastHit['collider'],
+            metadata: { id: 'wall', kind: 'static' },
+          }
+        : null,
+    };
+
+    const snapshot = perception.update(
+      0.1,
+      SELF,
+      FORWARD,
+      [
+        target('preferred', preferredPosition),
+        target('fallback', fallbackPosition),
+      ],
+      selectiveRaycast,
+      'preferred',
+    );
+
+    expect(snapshot.targetId).toBe('fallback');
+    expect(snapshot.visible).toBe(true);
+    expect(snapshot.position?.toArray()).toEqual(fallbackPosition.toArray());
+    expect(snapshot.position?.toArray()).not.toEqual(preferredPosition.toArray());
+  });
+
+  it('no adquiere un objetivo preferido que no tiene línea de visión', () => {
+    const perception = new VehicleAiPerception('v', config);
+    const snapshot = perception.update(
+      0.1,
+      SELF,
+      FORWARD,
+      [target('preferred', new Vector3(0, 0, 30))],
+      blockedRaycast,
+      'preferred',
+    );
+
+    expect(snapshot).toMatchObject({
+      targetId: null,
+      position: null,
+      visible: false,
+      hasMemory: false,
+    });
+  });
+
   it('descarta un blanco muerto', () => {
     const perception = new VehicleAiPerception('v', config);
     const position = new Vector3(0, 0, 20);
@@ -152,5 +234,36 @@ describe('VehicleAiPerception', () => {
       clearRaycast,
     );
     expect(snapshot.targetId).toBeNull();
+  });
+
+  it('investiga sonido o intel aliada sin rastrear la posición real oculta', () => {
+    const perception = new VehicleAiPerception('v', config);
+    perception.rememberIntel('player', new Vector3(8, 0, 12));
+
+    let snapshot = perception.update(
+      0.5,
+      SELF,
+      FORWARD,
+      [target('player', new Vector3(70, 0, 70))],
+      blockedRaycast,
+    );
+    expect(snapshot).toMatchObject({
+      targetId: 'player',
+      visible: false,
+      hasMemory: true,
+    });
+    expect(snapshot.position?.toArray()).toEqual([8, 0, 12]);
+
+    for (let frame = 0; frame < 8; frame += 1) {
+      snapshot = perception.update(
+        0.5,
+        SELF,
+        FORWARD,
+        [target('player', new Vector3(90, 0, 90))],
+        blockedRaycast,
+      );
+    }
+    expect(snapshot.hasMemory).toBe(false);
+    expect(snapshot.position).toBeNull();
   });
 });

@@ -9,6 +9,10 @@ export interface VehiclePathSmootherOptions {
    * para saber por dónde va.
    */
   maxSpacing: number;
+  /** Radio físico mínimo para no introducir un empalme que el volante no alcanza. */
+  minimumTurnRadius?: number;
+  /** Giro coherente máximo que puede reemplazarse por una cuerda recta. */
+  maximumShortcutTurnRadians?: number;
 }
 
 /**
@@ -41,6 +45,7 @@ export function smoothVehiclePath(
       if (!homogeneous(points, anchor, candidate)) break;
       if (planar(from.position, to.position) > options.maxSpacing) break;
       if (!options.isClear(from.position, to.position)) break;
+      if (!preservesKinematics(points, result, anchor, candidate, options)) continue;
       furthest = candidate;
     }
     const next = points[furthest];
@@ -49,6 +54,95 @@ export function smoothVehiclePath(
     anchor = furthest;
   }
   return result;
+}
+
+function preservesKinematics(
+  points: readonly VehicleDrivingPathPoint[],
+  result: readonly VehicleDrivingPathPoint[],
+  from: number,
+  to: number,
+  options: VehiclePathSmootherOptions,
+): boolean {
+  const coherentTurn = coherentTurnBetween(points, from, to);
+  if (
+    coherentTurn >
+    (options.maximumShortcutTurnRadians ?? Math.PI / 8)
+  ) {
+    return false;
+  }
+  const minimumRadius = options.minimumTurnRadius;
+  if (minimumRadius === undefined || minimumRadius <= 0) return true;
+  const start = points[from];
+  const end = points[to];
+  if (!start || !end) return false;
+  const previous = result.length > 1 ? result[result.length - 2] : undefined;
+  if (
+    previous &&
+    estimatedJunctionRadius(previous.position, start.position, end.position) < minimumRadius
+  ) {
+    return false;
+  }
+  const next = points[to + 1];
+  if (
+    next &&
+    estimatedJunctionRadius(start.position, end.position, next.position) < minimumRadius
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Un serrucho de grilla alterna el signo del giro y puede colapsarse. Una curva
+ * real acumula giro hacia un solo lado: convertirla en cuerda perdería su radio.
+ */
+function coherentTurnBetween(
+  points: readonly VehicleDrivingPathPoint[],
+  from: number,
+  to: number,
+): number {
+  let positive = 0;
+  let negative = 0;
+  for (let index = from + 1; index < to; index += 1) {
+    const before = points[index - 1];
+    const current = points[index];
+    const after = points[index + 1];
+    if (!before || !current || !after) continue;
+    const incoming = Math.atan2(
+      current.position[0] - before.position[0],
+      current.position[2] - before.position[2],
+    );
+    const outgoing = Math.atan2(
+      after.position[0] - current.position[0],
+      after.position[2] - current.position[2],
+    );
+    const turn = normalize(outgoing - incoming);
+    if (turn > 1e-3) positive += turn;
+    else if (turn < -1e-3) negative -= turn;
+  }
+  if (positive > 1e-3 && negative > 1e-3) return 0;
+  return positive + negative;
+}
+
+function estimatedJunctionRadius(
+  before: VehicleNavPoint,
+  at: VehicleNavPoint,
+  after: VehicleNavPoint,
+): number {
+  const incomingLength = planar(before, at);
+  const outgoingLength = planar(at, after);
+  if (incomingLength <= 1e-5 || outgoingLength <= 1e-5) return 0;
+  const incoming = Math.atan2(at[0] - before[0], at[2] - before[2]);
+  const outgoing = Math.atan2(after[0] - at[0], after[2] - at[2]);
+  const turn = Math.abs(normalize(outgoing - incoming));
+  if (turn <= 1e-3) return Infinity;
+  return Math.min(incomingLength, outgoingLength) /
+    Math.max(1e-5, 2 * Math.sin(turn * 0.5));
+}
+
+function normalize(angle: number): number {
+  const wrapped = (angle + Math.PI) % (Math.PI * 2);
+  return (wrapped < 0 ? wrapped + Math.PI * 2 : wrapped) - Math.PI;
 }
 
 /** Mismo sentido de marcha y mismo tope de velocidad. */

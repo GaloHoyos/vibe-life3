@@ -80,6 +80,8 @@ export const Cond = {
    * contando lo que cuesta caminar hasta el y subirse. Todavia sin reservar.
    */
   VehicleUseful: conditionBit(33),
+  /** Hay una orden táctica a pie pendiente; combate y scripting pueden pausarla. */
+  TacticalOrder: conditionBit(34),
 } as const;
 
 export type CondKey = keyof typeof Cond;

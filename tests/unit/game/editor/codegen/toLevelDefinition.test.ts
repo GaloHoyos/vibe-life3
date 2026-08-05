@@ -147,6 +147,11 @@ describe("toLevelDefinition", () => {
           crashPolicy: "survivable",
           accessPolicy: "resistance",
           allowPlayerExit: true,
+          ai: {
+            enabled: true,
+            behavior: "transport",
+            tacticalProfile: "transport",
+          },
           crew: [{ actor: "!player", role: "gunner", seatId: "door-gunner" }],
           weaponEnabled: true,
           portalTraversal: "blocked",
@@ -165,6 +170,7 @@ describe("toLevelDefinition", () => {
           id: "drive-area",
           polygon: [[-8, 0, -8], [8, 0, -8], [8, 0, 8], [-8, 0, 8]],
           surface: "ground",
+          tags: ["noLanding"],
         },
       },
       {
@@ -198,10 +204,12 @@ describe("toLevelDefinition", () => {
       crashPolicy: "survivable",
       accessPolicy: "resistance",
       allowPlayerExit: true,
+      ai: { tacticalProfile: "transport" },
     });
     expect(level.vehicleWaypoints).toHaveLength(2);
     expect(level.waterVolumes?.[0].size).toEqual([12, 2, 30]);
     expect(level.vehicleNavAreas).toHaveLength(1);
+    expect(level.vehicleNavAreas?.[0].tags).toEqual(["noLanding"]);
     expect(level.vehicleNavLanes).toHaveLength(1);
     expect(level.vehicleNavMarkers?.[0].kind).toBe("landingZone");
     expect(level.checkpoints?.[0].id).toBe("save-vehicle");
@@ -209,7 +217,14 @@ describe("toLevelDefinition", () => {
     const roundTripped = fromLevelDefinition(level);
     expect(roundTripped.schemaVersion).toBe(1);
     expect(roundTripped.entities.find((entity) => entity.kind === "vehicle")).toMatchObject({
-      def: { accessPolicy: "resistance", allowPlayerExit: true },
+      def: {
+        accessPolicy: "resistance",
+        allowPlayerExit: true,
+        ai: { tacticalProfile: "transport" },
+      },
+    });
+    expect(roundTripped.entities.find((entity) => entity.kind === "vehicleNavArea")).toMatchObject({
+      def: { tags: ["noLanding"] },
     });
     expect(roundTripped.entities.map((entity) => entity.kind)).toEqual(
       expect.arrayContaining([
@@ -231,6 +246,8 @@ describe("toLevelDefinition", () => {
     expect(source).toContain(".vehicleNavLane(");
     expect(source).toContain(".vehicleNavMarker(");
     expect(source).toContain(".checkpoint(");
+    expect(source).toContain('"tacticalProfile":"transport"');
+    expect(source).toContain('"tags":["noLanding"]');
   });
 
   it("rechaza rutas vehiculares cíclicas sin pathLoop", () => {

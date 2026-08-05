@@ -154,7 +154,7 @@ describe('navegación de Demo 3', () => {
       const route = planner.plan(
         'buggy',
         { position: [66, 0, -4], heading: -Math.PI / 2 },
-        { position: [30, 0, 10], heading: Math.PI },
+        { position: [30, 0, 10], heading: -Math.PI / 2 },
       );
 
       expect(route).not.toBeNull();

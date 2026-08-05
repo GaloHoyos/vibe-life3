@@ -71,6 +71,24 @@ export const VehicleLabTerrain = createMap({
 })
   .ground({ size: [220, 90], material: 'concrete', boundary: { height: 4 } })
   .boxes(...EXHIBITS)
+  // These do not enter the bake: runtime sensing must use them as temporary
+  // blockers while keeping the last valid route during replanning.
+  .dynamicBoxes(
+    {
+      id: 'lab-dynamic-blocker-a',
+      position: [72, 0.8, -4],
+      size: [2.4, 1.6, 2.4],
+      mass: 110,
+      material: 'crate',
+    },
+    {
+      id: 'lab-dynamic-blocker-b',
+      position: [76, 1.1, 3],
+      size: [2.2, 2.2, 2.2],
+      mass: 140,
+      material: 'crate',
+    },
+  )
   // 4. La única área autorada del mapa, y es para RECORTAR. Desde que el grid
   // se deriva de la geometría, un polígono ya no dice dónde se puede manejar:
   // sólo anota o veda.

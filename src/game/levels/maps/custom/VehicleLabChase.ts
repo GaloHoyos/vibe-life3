@@ -112,4 +112,43 @@ for (const post of POSTS) {
     );
 }
 
+// Overwatch owns only one section: it sends an ahead lateral cutoff, then
+// releases the order so perception can drive the pursuit again.
+map
+  .vehicleWaypoint({
+    id: 'chase-overwatch-cutoff',
+    position: [HALF_LENGTH - 18, 0, 10],
+    speed: 16,
+  })
+  .trigger({
+    id: 'chase-overwatch-order',
+    position: [28, 1.5, 0],
+    size: [3, 3, HALF_WIDTH * 2 - 2],
+    once: true,
+    connections: [
+      {
+        output: 'OnStartTouch',
+        target: 'chase-buggy-a',
+        input: 'SetGoal',
+        param: 'chase-overwatch-cutoff',
+      },
+      {
+        output: 'OnStartTouch',
+        target: 'chase-buggy-b',
+        input: 'SetGoal',
+        param: 'chase-overwatch-cutoff',
+      },
+    ],
+  })
+  .trigger({
+    id: 'chase-overwatch-release',
+    position: [HALF_LENGTH - 38, 1.5, 0],
+    size: [3, 3, HALF_WIDTH * 2 - 2],
+    once: true,
+    connections: [
+      { output: 'OnStartTouch', target: 'chase-buggy-a', input: 'ClearGoal' },
+      { output: 'OnStartTouch', target: 'chase-buggy-b', input: 'ClearGoal' },
+    ],
+  });
+
 export const VehicleLabChase = map.build();

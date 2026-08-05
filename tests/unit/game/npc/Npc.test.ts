@@ -275,6 +275,48 @@ describe("Npc.dispose", () => {
   });
 });
 
+describe("Npc tactical orders", () => {
+  it("cancela la orden anterior al reemplazarla o limpiarla", () => {
+    const { npc } = createNpc();
+    const firstResult = vi.fn();
+    const secondResult = vi.fn();
+
+    npc.setTacticalOrder({
+      commandId: "first",
+      target: new Vector3(4, 0, 0),
+      onResult: firstResult,
+    });
+    npc.setTacticalOrder({
+      commandId: "second",
+      target: new Vector3(8, 0, 0),
+      onResult: secondResult,
+    });
+
+    expect(firstResult).toHaveBeenCalledOnce();
+    expect(firstResult).toHaveBeenCalledWith("cancelled");
+    expect(secondResult).not.toHaveBeenCalled();
+
+    npc.setTacticalOrder(null);
+    expect(secondResult).toHaveBeenCalledOnce();
+    expect(secondResult).toHaveBeenCalledWith("cancelled");
+  });
+
+  it("reporta failed si el NPC muere antes de completar la orden", () => {
+    const { npc } = createNpc();
+    const onResult = vi.fn();
+    npc.setTacticalOrder({
+      commandId: "continue-on-foot",
+      target: new Vector3(12, 0, 0),
+      onResult,
+    });
+
+    npc.applyDamage(1000);
+
+    expect(onResult).toHaveBeenCalledOnce();
+    expect(onResult).toHaveBeenCalledWith("failed");
+  });
+});
+
 describe("Npc specialized behavior", () => {
   it("entrega el agresor reciente mientras siga vivo", () => {
     const updateBehavior = vi.fn(() => null);

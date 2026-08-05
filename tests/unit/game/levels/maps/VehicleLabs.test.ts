@@ -95,6 +95,36 @@ describe('laboratorios vehiculares', () => {
     }
   });
 
+  it('permite que Overwatch reemplace la meta del Lab 1 y luego devuelva autonomía', () => {
+    const order = VehicleLabChase.triggers.find(
+      (trigger) => trigger.id === 'chase-overwatch-order',
+    );
+    const release = VehicleLabChase.triggers.find(
+      (trigger) => trigger.id === 'chase-overwatch-release',
+    );
+    const cutoff = VehicleLabChase.vehicleWaypoints?.find(
+      (waypoint) => waypoint.id === 'chase-overwatch-cutoff',
+    );
+
+    expect(cutoff).toBeDefined();
+    expect(order?.connections).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        target: 'chase-buggy-a',
+        input: 'SetGoal',
+        param: 'chase-overwatch-cutoff',
+      }),
+      expect.objectContaining({
+        target: 'chase-buggy-b',
+        input: 'SetGoal',
+        param: 'chase-overwatch-cutoff',
+      }),
+    ]));
+    expect(release?.connections).toEqual(expect.arrayContaining([
+      expect.objectContaining({ target: 'chase-buggy-a', input: 'ClearGoal' }),
+      expect.objectContaining({ target: 'chase-buggy-b', input: 'ClearGoal' }),
+    ]));
+  });
+
   it('deja el interior de los refugios del Lab 2 fuera del grid vehicular', () => {
     const { planner, cells } = bake(VehicleLabDismount);
     const outside = VehicleLabDismount.vehicles?.[0]?.position;
@@ -110,6 +140,17 @@ describe('laboratorios vehiculares', () => {
     }
     // Y afuera sí hay grid, o el test anterior pasaría por vacío.
     expect(cells.length).toBeGreaterThan(500);
+  });
+
+  it('arma el Lab 2 para driver desmontado y artillero en apoyo', () => {
+    const armedBuggy = VehicleLabDismount.vehicles?.find(
+      (vehicle) => vehicle.id === 'dismount-hunter-full',
+    );
+    expect(armedBuggy?.crew).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actor: 'dismount-full-driver', role: 'driver' }),
+      expect.objectContaining({ actor: 'dismount-full-gunner', role: 'gunner' }),
+    ]));
+    expect(armedBuggy?.ai?.behavior).toBe('intercept');
   });
 
   it('resuelve las cinco estaciones del Lab 4 como dicen sus comentarios', () => {
@@ -133,14 +174,24 @@ describe('laboratorios vehiculares', () => {
 
     // 5. El pasillo entra: el buggy tiene por dónde meterse.
     expect(cellIn(cells, 87, 89, 6, 12)).toBeDefined();
+
+    // Dynamic blockers belong to runtime sensing, never to the baked grid.
+    expect(VehicleLabTerrain.dynamicBoxes?.map((box) => box.id)).toEqual([
+      'lab-dynamic-blocker-a',
+      'lab-dynamic-blocker-b',
+    ]);
   });
 
-  it('arma el Lab 3 con transporte aéreo y zona de recogida', () => {
+  it('arma el Lab 3 con pickup y retorno sistémicos', () => {
     const transport = VehicleLabExtraction.vehicles?.find(
       (vehicle) => vehicle.id === 'extraction-transport',
     );
     expect(transport?.presetId).toBe('helicopterFree');
-    expect(transport?.ai).toMatchObject({ enabled: true, behavior: 'transport' });
+    expect(transport?.ai).toMatchObject({
+      enabled: true,
+      behavior: 'transport',
+      goal: 'extraction-return-point',
+    });
     // Sin `crew` autorada: el puesto de piloto lo cubre la facción.
     expect(transport?.crew).toBeUndefined();
 
@@ -148,7 +199,25 @@ describe('laboratorios vehiculares', () => {
       (marker) => marker.kind === 'landingZone',
     );
     expect(zones).toHaveLength(1);
+    expect(zones[0]?.id).toBe('extraction-preferred-lz');
     expect(zones[0]?.allowedPresets).toContain('helicopterFree');
+
+    const points = new Map(
+      (VehicleLabExtraction.logicEntities ?? [])
+        .filter((entity) => entity.kind === 'marker')
+        .map((marker) => [marker.id, marker.position] as const),
+    );
+    expect(points.get('extraction-pickup-point')).toEqual([10, 0, -12]);
+    expect(points.get('extraction-return-point')).toEqual([48, 0, 48]);
+
+    const pickup = points.get('extraction-pickup-point');
+    const preferred = zones[0]?.position;
+    expect(pickup).toBeDefined();
+    expect(preferred).toBeDefined();
+    if (pickup && preferred) {
+      expect(Math.hypot(pickup[0] - preferred[0], pickup[2] - preferred[2]))
+        .toBeGreaterThan(35);
+    }
 
     // El buggy que hay que destruir lleva tripulación: sin ella no hay a quién
     // recoger y el laboratorio no demuestra nada.

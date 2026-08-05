@@ -21,6 +21,7 @@ import {
   noticeSuspicionSchedule,
   reloadSchedules,
   scriptedSchedules,
+  tacticalOrderSchedule,
   vehicleApproachSchedule,
   vehicleSeekSchedule,
 } from './commonSchedules';
@@ -42,6 +43,7 @@ export function buildAlyxPreset(): NpcPreset {
     ...scriptedSchedules(),
     hitSchedule(0.18),
     vehicleApproachSchedule(),
+    tacticalOrderSchedule(),
     vehicleSeekSchedule(),
     ...reloadSchedules(),
     {

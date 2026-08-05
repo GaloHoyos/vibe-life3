@@ -146,6 +146,22 @@ export class VehicleCrewDirector implements NpcVehicleSeatBroker {
     return true;
   }
 
+  restoreExtraction(
+    faction: Faction,
+    position: Vector3,
+    actorIds: readonly string[],
+    requestedAgoSeconds = 0,
+  ): void {
+    if (actorIds.length === 0) return;
+    this.extractions.set(faction, {
+      faction,
+      position: position.clone(),
+      actors: new Set(actorIds),
+      vehicleId: null,
+      requestedAt: this.elapsed - Math.max(0, requestedAgoSeconds),
+    });
+  }
+
   clearExtraction(faction: Faction): void {
     this.extractions.delete(faction);
   }

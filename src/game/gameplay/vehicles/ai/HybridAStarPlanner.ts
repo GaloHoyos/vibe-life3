@@ -7,6 +7,7 @@ import type {
   VehiclePose2D,
 } from './VehicleAiTypes';
 import {
+  headingBetween,
   headingToVector,
   normalizeAngle,
   planarDistance,
@@ -35,6 +36,11 @@ export interface HybridAStarOptions {
    * para verificar la búsqueda en sí.
    */
   analyticExpansion?: boolean;
+  /**
+   * `false` para objetivos móviles o posicionales: llegar vale con cualquier
+   * orientación y no se fuerza una vuelta Dubins para cerrar un heading inútil.
+   */
+  requireGoalHeading?: boolean;
 }
 
 export interface VehicleNavBlocker {
@@ -71,6 +77,12 @@ interface PreviousState {
   key: string;
 }
 
+interface AnalyticCompletion {
+  state: SearchState;
+  tail: readonly VehicleHybridPathPoint[];
+  cost: number;
+}
+
 export class HybridAStarPlanner {
   private readonly cells: VehicleNavGridIndex;
   private readonly cellSize: number;
@@ -96,14 +108,15 @@ export class HybridAStarPlanner {
       1,
       Math.ceil(planarDistance(from, to) / (this.cellSize * 0.45)),
     );
+    const heading = headingBetween(from, to);
     for (let step = 0; step <= steps; step += 1) {
       const alpha = step / steps;
-      if (
-        this.containingRow(
-          from[0] + (to[0] - from[0]) * alpha,
-          from[2] + (to[2] - from[2]) * alpha,
-        ) === NO_ROW
-      ) {
+      const position: VehicleNavPoint = [
+        from[0] + (to[0] - from[0]) * alpha,
+        from[1] + (to[1] - from[1]) * alpha,
+        from[2] + (to[2] - from[2]) * alpha,
+      ];
+      if (!this.poseFootprintIsTraversable(position, heading)) {
         return false;
       }
     }
@@ -156,6 +169,10 @@ export class HybridAStarPlanner {
     const startRow = this.freeRow(start.position, this.cellSize * 2.5);
     const goalRow = this.freeRow(goal.position, this.cellSize * 2.5);
     if (startRow === NO_ROW || goalRow === NO_ROW) return null;
+    if (
+      !this.poseFootprintIsTraversable(this.cells.position(startRow), start.heading) ||
+      !this.poseFootprintIsTraversable(this.cells.position(goalRow), goal.heading)
+    ) return null;
     // Dos islas distintas no se conectan manejando: sale gratis y evita quemar
     // los 20.000 estados barriendo un componente entero para no llegar.
     if (this.cells.component(startRow) !== this.cells.component(goalRow)) return null;
@@ -187,9 +204,11 @@ export class HybridAStarPlanner {
       options.headingTolerance ?? HEADING_STEP * 1.5,
     );
     const analyticRange = this.profile.minTurnRadius * 4;
+    const requireGoalHeading = options.requireGoalHeading !== false;
     let expandedStates = 0;
     let best = startState;
     let bestDistance = planarDistance(startState.position, goalPosition);
+    let analyticCompletion: AnalyticCompletion | null = null;
 
     while (open.size > 0 && expandedStates < maximumExpandedStates) {
       const queued = open.pop();
@@ -197,17 +216,48 @@ export class HybridAStarPlanner {
       const current = states.get(queued.key);
       if (!current) continue;
       if (queued.pathCost > (costs.get(current.key) ?? Infinity) + 1e-8) continue;
+      if (analyticCompletion && queued.score >= analyticCompletion.cost - 1e-8) {
+        return reconstruct(
+          analyticCompletion.state,
+          previous,
+          states,
+          this.cells,
+          expandedStates,
+          true,
+          analyticCompletion.tail,
+          analyticCompletion.cost,
+        );
+      }
       expandedStates += 1;
       const distanceToGoal = planarDistance(current.position, goalPosition);
       if (distanceToGoal < bestDistance) {
         best = current;
         bestDistance = distanceToGoal;
       }
+      const headingError = Math.abs(
+        normalizeAngle(indexHeading(current.headingIndex) - goal.heading),
+      );
       if (
         distanceToGoal <= goalTolerance &&
-        Math.abs(normalizeAngle(indexHeading(current.headingIndex) - goal.heading)) <= headingTolerance
+        (!requireGoalHeading || headingError <= headingTolerance)
       ) {
-        return reconstruct(current, previous, states, this.cells, expandedStates, true);
+        if (
+          !analyticCompletion ||
+          headingError <= 0.05 ||
+          current.cost < analyticCompletion.cost - 1e-8
+        ) {
+          return reconstruct(current, previous, states, this.cells, expandedStates, true);
+        }
+        return reconstruct(
+          analyticCompletion.state,
+          previous,
+          states,
+          this.cells,
+          expandedStates,
+          true,
+          analyticCompletion.tail,
+          analyticCompletion.cost,
+        );
       }
 
       // Expansión analítica: cerca del objetivo, intentar cerrar de una sola vez
@@ -217,12 +267,16 @@ export class HybridAStarPlanner {
       // tolerancia.
       if (
         options.analyticExpansion !== false &&
+        requireGoalHeading &&
         current.direction > 0 &&
         (distanceToGoal <= analyticRange || expandedStates % ANALYTIC_ATTEMPT_INTERVAL === 0)
       ) {
-        const tail = this.analyticShot(current, goalPosition, goal.heading);
-        if (tail) {
-          return reconstruct(current, previous, states, this.cells, expandedStates, true, tail);
+        const shot = this.analyticShot(current, goalPosition, goal.heading);
+        if (shot) {
+          const cost = current.cost + shot.cost;
+          if (!analyticCompletion || cost < analyticCompletion.cost) {
+            analyticCompletion = { state: current, tail: shot.points, cost };
+          }
         }
       }
 
@@ -241,6 +295,18 @@ export class HybridAStarPlanner {
       }
     }
 
+    if (analyticCompletion) {
+      return reconstruct(
+        analyticCompletion.state,
+        previous,
+        states,
+        this.cells,
+        expandedStates,
+        true,
+        analyticCompletion.tail,
+        analyticCompletion.cost,
+      );
+    }
     if (best.key === startState.key) return null;
     return reconstruct(best, previous, states, this.cells, expandedStates, false);
   }
@@ -345,7 +411,12 @@ export class HybridAStarPlanner {
         from[1],
         from[2] + travel[1] * partialDistance,
       ];
-      if (this.freeRow(point, this.cellSize * 0.8) === NO_ROW) return false;
+      if (
+        !this.poseFootprintIsTraversable(
+          point,
+          normalizeAngle(heading + partialDelta),
+        )
+      ) return false;
     }
     return true;
   }
@@ -385,7 +456,10 @@ export class HybridAStarPlanner {
     if (!blockers || blockers.length === 0) return NO_BLOCKERS;
     const rows = new Set<number>();
     for (const blocker of blockers) {
-      const reach = Math.max(this.cellSize, blocker.radius);
+      const reach = Math.max(
+        this.cellSize,
+        blocker.radius + this.profile.halfWidth,
+      );
       const span = Math.ceil(reach / this.cellSize);
       const centerIx = Math.floor((blocker.position[0] - this.cells.origin[0]) / this.cellSize);
       const centerIz = Math.floor((blocker.position[2] - this.cells.origin[1]) / this.cellSize);
@@ -412,7 +486,7 @@ export class HybridAStarPlanner {
     state: SearchState,
     goalPosition: VehicleNavPoint,
     goalHeading: number,
-  ): VehicleHybridPathPoint[] | null {
+  ): { points: readonly VehicleHybridPathPoint[]; cost: number } | null {
     const samples = dubinsShortestPath(
       {
         x: state.position[0],
@@ -426,19 +500,25 @@ export class HybridAStarPlanner {
     if (!samples) return null;
 
     const points: VehicleHybridPathPoint[] = [];
+    let cost = 0;
+    let previous = state.position;
     for (const sample of samples) {
       const row = this.containingRow(sample.x, sample.z);
       if (row === NO_ROW) return null;
+      const position: VehicleNavPoint = [sample.x, this.cells.y(row), sample.z];
+      if (!this.poseFootprintIsTraversable(position, sample.heading)) return null;
+      cost += planarDistance(previous, position) * this.cells.cost(row);
       points.push({
         // La posición es la del arco, no la del centro de celda: redondearla
         // al grid tiraría justamente la suavidad que este tramo aporta.
-        position: [sample.x, this.cells.y(row), sample.z],
+        position,
         heading: sample.heading,
         direction: 'forward',
         speedLimit: this.cells.speedLimit(row),
       });
+      previous = position;
     }
-    return points;
+    return { points, cost };
   }
 
   /**
@@ -459,6 +539,46 @@ export class HybridAStarPlanner {
     const row = this.cells.nearestRow(position, maxDistance);
     return row !== NO_ROW && this.blocked.has(row) ? NO_ROW : row;
   }
+
+  /** Validates the complete oriented hull support instead of only its centre. */
+  private poseFootprintIsTraversable(
+    position: VehicleNavPoint,
+    heading: number,
+  ): boolean {
+    const centerRow = this.containingRow(position[0], position[2]);
+    if (centerRow === NO_ROW) return false;
+    const centerY = this.cells.y(centerRow);
+    const forward = headingToVector(heading);
+    // Each baked cell already guarantees an axis-aligned half-width envelope.
+    // Sampling only the longitudinal excess completes the oriented footprint
+    // without inflating the hull twice near lane and area boundaries.
+    const longitudinalReach = Math.max(
+      0,
+      this.profile.halfLength - this.profile.halfWidth,
+    );
+    const longitudinalSteps = Math.max(
+      2,
+      Math.ceil(
+        (longitudinalReach * 2) /
+          Math.max(this.cellSize * 0.45, this.profile.halfWidth),
+      ),
+    );
+    const slopeRise = Math.tan(this.profile.maxSlopeRadians);
+    for (let index = 0; index <= longitudinalSteps; index += 1) {
+      const longitudinal =
+        -longitudinalReach +
+        (longitudinalReach * 2 * index) / longitudinalSteps;
+      const x = position[0] + forward[0] * longitudinal;
+      const z = position[2] + forward[1] * longitudinal;
+      const row = this.containingRow(x, z);
+      if (row === NO_ROW) return false;
+      if (
+        Math.abs(this.cells.y(row) - centerY) >
+        Math.abs(longitudinal) * slopeRise + STEP_TOLERANCE
+      ) return false;
+    }
+    return true;
+  }
 }
 
 function reconstruct(
@@ -469,6 +589,7 @@ function reconstruct(
   expandedStates: number,
   reachedGoal: boolean,
   tail: readonly VehicleHybridPathPoint[] = [],
+  totalCost = goal.cost,
 ): VehicleHybridPath {
   const ordered = [goal];
   let cursor = goal;
@@ -488,7 +609,7 @@ function reconstruct(
     speedLimit: cells.speedLimit(state.row),
   }));
   points.push(...tail);
-  return { points, cost: goal.cost, expandedStates, reachedGoal };
+  return { points, cost: totalCost, expandedStates, reachedGoal };
 }
 
 function stateKey(row: number, heading: number, direction: 1 | -1): string {
