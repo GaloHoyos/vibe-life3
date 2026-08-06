@@ -91,6 +91,7 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
       { label: 'Mensaje', icon: 'bolt', logic: 'message' },
       { label: 'Objetivo', icon: 'target', logic: 'objective' },
       { label: 'Ambiente sonoro', icon: 'bolt', logic: 'soundscape' },
+      { label: 'Fuente de sonido', icon: 'target', logic: 'ambientSound' },
       { label: 'Spawner de NPCs', icon: 'person', logic: 'npcSpawner' },
       { label: 'Accion de nivel', icon: 'bolt', logic: 'levelAction' },
       { label: 'Cambio de nivel', icon: 'bolt', logic: 'changelevel' },

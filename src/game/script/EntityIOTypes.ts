@@ -72,6 +72,26 @@ export type LogicEntityDefinition =
   | { kind: 'objective'; id: string; name: string; text: string; completed?: boolean; marker?: VectorTuple; connections?: EntityConnection[] }
   /** Cambia el soundscape activo. Input `Activate`. */
   | { kind: 'soundscape'; id: string; name: string; soundscape: SoundscapeId; connections?: EntityConnection[] }
+  /**
+   * Fuente de sonido en un punto del mundo (`ambient_generic`): un generador
+   * zumbando, una radio, una gotera. Suena espacializada, con oclusión y con
+   * la reverb del espacio, y se prende y apaga por I/O.
+   * Inputs `PlaySound` / `StopSound` / `Toggle`.
+   */
+  | {
+      kind: 'ambientSound';
+      id: string;
+      name: string;
+      /** Id de clip del catálogo de audio. */
+      sound: string;
+      position: VectorTuple;
+      /** Distancia a la que deja de oírse. Default 24 m. */
+      radius?: number;
+      /** Default `true`: el uso normal es una máquina que zumba sin parar. */
+      loop?: boolean;
+      startDisabled?: boolean;
+      connections?: EntityConnection[];
+    }
   /** Spawnea un grupo de NPCs. Input `Spawn` → output `OnSpawned`. */
   | { kind: 'npcSpawner'; id: string; name: string; npcs: NPCDefinition[]; connections?: EntityConnection[] }
   /** Acción de nivel (respawn de encuentros, arsenal). Input `Trigger`. */

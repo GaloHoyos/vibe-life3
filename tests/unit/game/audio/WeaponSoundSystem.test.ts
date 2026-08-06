@@ -9,10 +9,10 @@ describe("WeaponSoundSystem", () => {
   it("plays mapped weapon sounds on weapon events", () => {
     const bus = new EventBus<GameEventMap>();
     const sounds = fakeSoundManager([
-      "weapons.pistol.shot",
-      "weapons.smg.secondary",
-      "weapons.shotgun.cock",
-      "weapons.crowbar.hitFlesh",
+      "weapons.pistol.hl2.shot1",
+      "weapons.smg.hl2.altFire",
+      "weapons.shotgun.hl2.cock",
+      "weapons.crowbar.hl2.hit1",
     ]);
     const origin = new Vector3();
     const direction = new Vector3(0, 0, -1);
@@ -41,16 +41,16 @@ describe("WeaponSoundSystem", () => {
     });
 
     expect(sounds.played).toEqual([
-      { id: "weapons.pistol.shot", options: { bus: "weapons" } },
-      { id: "weapons.smg.secondary", options: { bus: "weapons" } },
-      { id: "weapons.shotgun.cock", options: { bus: "weapons" } },
-      { id: "weapons.crowbar.hitFlesh", options: { bus: "weapons" } },
+      { id: "weapons.pistol.hl2.shot1", options: { bus: "weapons" } },
+      { id: "weapons.smg.hl2.altFire", options: { bus: "weapons" } },
+      { id: "weapons.shotgun.hl2.cock", options: { bus: "weapons" } },
+      { id: "weapons.crowbar.hl2.hit1", options: { bus: "weapons" } },
     ]);
   });
 
   it("does not play when an event has no mapped available clip", () => {
     const bus = new EventBus<GameEventMap>();
-    const sounds = fakeSoundManager(["weapons.pistol.shot"]);
+    const sounds = fakeSoundManager(["weapons.pistol.hl2.shot1"]);
 
     new WeaponSoundSystem(bus, sounds);
 

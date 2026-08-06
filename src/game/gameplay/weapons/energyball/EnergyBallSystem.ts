@@ -206,7 +206,6 @@ export class EnergyBallSystem implements Disposable {
       loop: true,
       refDistance: 1.8,
       maxDistance: 35,
-      volume: 0.38,
     });
 
     const ball: ActiveBall = {
@@ -337,7 +336,7 @@ export class EnergyBallSystem implements Disposable {
           hit.point,
         );
         this.vfx.explosion(hit.point, { scale: 1.1, color: CYAN });
-        this.playRandomAt(DISINTEGRATE_SOUNDS, hit.point, 0.75);
+        this.playRandomAt(DISINTEGRATE_SOUNDS, hit.point);
         tmpOrigin.copy(hit.point).addScaledVector(tmpDir, 0.4);
         remaining -= advance + 0.4;
         continue;
@@ -345,7 +344,7 @@ export class EnergyBallSystem implements Disposable {
 
       // Geometría del mundo → rebote elástico + corrección de rumbo.
       reflect(ball.velocity, hit.normal ?? tmpDir);
-      this.playRandomAt(BOUNCE_SOUNDS, hit.point, 0.62);
+      this.playRandomAt(BOUNCE_SOUNDS, hit.point);
       tmpOrigin.copy(hit.point).addScaledVector(hit.normal ?? tmpDir, SURFACE_EPS);
       ball.bouncesLeft -= 1;
       this.nudgeTowardHostile(ball, tmpOrigin, targets);
@@ -412,7 +411,6 @@ export class EnergyBallSystem implements Disposable {
     this.positionalSounds.playAt("weapons.energyball.hl2.explosion", point, {
       refDistance: 2.2,
       maxDistance: 42,
-      volume: 0.82,
     });
     this.grenades.detonate(point.clone(), {
       damage: 35,
@@ -451,15 +449,10 @@ export class EnergyBallSystem implements Disposable {
     });
   }
 
-  private playRandomAt(
-    soundIds: readonly string[],
-    point: Vector3,
-    volume: number,
-  ): void {
+  private playRandomAt(soundIds: readonly string[], point: Vector3): void {
     this.positionalSounds.playAt(this.pickRandom(soundIds), point, {
       refDistance: 1.6,
       maxDistance: 32,
-      volume,
     });
   }
 

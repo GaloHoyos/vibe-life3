@@ -1,5 +1,4 @@
-﻿import { AudioClipCatalog } from "@engine/audio/AudioManifest";
-import type { SoundManager } from "@engine/audio/core/SoundManager";
+﻿import type { SoundManager } from "@engine/audio/core/SoundManager";
 
 /**
  * Reproduce ambientes en loop a partir de una lista de ids de clips.
@@ -18,12 +17,13 @@ export class BackgroundAmbienceSystem {
       if (this.activeIds.has(id)) {
         return;
       }
-      const clip = AudioClipCatalog[id];
-      if (!clip) {
+      // `hasSound` (y no el catálogo base) para ver también los clips que
+      // registran los módulos del juego.
+      if (!this.sounds.hasSound(id)) {
         return;
       }
       this.activeIds.add(id);
-      this.sounds.playLoop(id, { volume: clip.volume, fadeIn });
+      this.sounds.playLoop(id, { fadeIn });
     });
   }
 

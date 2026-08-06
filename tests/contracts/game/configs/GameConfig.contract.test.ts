@@ -6,7 +6,6 @@ import { PlayerConfig } from "@game/config/gameplay.config";
 import { ChargerTypes, ItemDefinitions } from "@game/config/items.config";
 import { AmmoDefinitions } from "@game/config/ammo.config";
 import {
-	  AudioDspPresets,
 	  EnemyAudio,
 	  HevSuitAudio,
 	  Soundscapes,
@@ -122,13 +121,12 @@ describe("game config contracts", () => {
 
 	    for (const soundId of flattenSoundRefs(Object.values(HevSuitAudio))) {
 	      expect(AudioClipCatalog[soundId]).toBeDefined();
-	      expect(["dialogue", "ui"]).toContain(AudioClipCatalog[soundId].bus);
+	      expect(["voice", "ui"]).toContain(AudioClipCatalog[soundId].bus);
 	    }
 	  });
 
-  it("keeps soundscapes pointing at DSP presets and ambience clips", () => {
+  it("keeps soundscapes pointing at ambience clips", () => {
     for (const soundscape of Object.values(Soundscapes)) {
-      expect(AudioDspPresets[soundscape.dsp]).toBeDefined();
       const ambiences = "ambiences" in soundscape ? soundscape.ambiences : [];
       for (const soundId of ambiences) {
         expect(AudioClipCatalog[soundId]).toBeDefined();

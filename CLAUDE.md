@@ -44,7 +44,7 @@ Mapa rapido:
 | `engine/input` | Teclado, mouse, pointer-lock y bindings. |
 | `engine/render` | Renderer, camara, primitivas, terreno, materiales, texturas, HDRI, skybox y luces. |
 | `engine/physics` | Rapier, colliders, raycasts, character controller, motor y spawn validation. |
-| `engine/audio` | Buses, carga/reproduccion, musica, ambience, footsteps y manifiesto de clips. |
+| `engine/audio` | Mixer jerarquico de buses, gain staging por rol, voces espaciales con oclusion, reverb por espacio, musica, ambience, footsteps y manifiesto de clips. |
 | `engine/animation` | Capas, pose humanoide, procedural animation, ragdoll y debug. |
 | `engine/ai` | Factions, brain/schedules, perception, locomotion, navspace, pathfinding y smoothing. |
 | `engine/assets` | Manifiestos y assets compilados de texturas, HDRI y sonidos. |
@@ -77,7 +77,7 @@ Mapa rapido:
 | Evento | `src/game/GameEvents.ts` | Extender el map, emitir donde nace, suscribir donde reacciona y disponer listeners. |
 | Panel UI | `MyPanel.ts` + `MyPanelView.ts` | Ambos `Disposable`; registrar `GameTokens.*` solo si otros sistemas deben resolverlo. |
 | Servicio | `ServiceTokens.ts`, `Engine.registerServices()` o `Game.registerServices()` | Elegir capa por conocimiento: engine generico, game reglas/contenido. |
-| Sonido | `AudioManifest.ts`, `audio.config.ts` | `src/engine/assets/sounds/` requiere permiso por ser binario del artista. |
+| Sonido | `AudioManifest.ts`, `audio.config.ts` | `src/engine/assets/sounds/` requiere permiso por ser binario del artista. Asset nuevo = correr `npm run audio:levels` (un test de contrato lo exige). El nivel lo fija el `role` del clip, no un `volume` a mano; `trimDb` es solo para excepciones artisticas. |
 | Material PBR | `Textures.ts`, `Materials.ts`, assets en `engine/assets/textures` | Requiere permiso; nombres estandar: `albedo`, `normal`, `roughness`, `ao`; agregar `MaterialKey` si corresponde. |
 | HDRI / skybox | `Skybox.ts`, assets en `engine/assets/hdri` | Requiere permiso; usar `.hdr` 2K y referenciar con `skybox` en el nivel. |
 

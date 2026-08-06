@@ -1,69 +1,79 @@
+import { sliderToGain } from "@engine/audio/mix/GainStaging";
+import { ReverbRack } from "@engine/audio/dsp/ReverbRack";
 import { AudioBus } from "./AudioBus";
 
 export type AudioBusName =
   | "master"
   | "music"
+  | "voice"
   | "ambience"
+  | "ui"
   | "sfx"
   | "weapons"
   | "vehicles"
   | "enemies"
   | "footsteps"
-  | "dialogue"
-  | "ui";
+  | "world";
 
-export interface AudioEnvironmentReverbSettings {
-  readonly duration: number;
-  readonly decay: number;
-  readonly wet: number;
-  readonly preDelay?: number;
-  readonly tone?: number;
-}
+/**
+ * Árbol del mixer. `sfx` es un grupo, no una hoja: agrupa todo lo que produce
+ * el mundo para que un solo fader de "efectos" signifique algo. Antes era una
+ * hoja plana que usaba un único clip de 215.
+ */
+const BusParents: Readonly<Record<Exclude<AudioBusName, "master">, AudioBusName>> =
+  {
+    music: "master",
+    voice: "master",
+    ambience: "master",
+    ui: "master",
+    sfx: "master",
+    weapons: "sfx",
+    enemies: "sfx",
+    vehicles: "sfx",
+    footsteps: "sfx",
+    world: "sfx",
+  };
 
-export interface AudioEnvironmentEchoSettings {
-  readonly delay: number;
-  readonly feedback: number;
-  readonly wet: number;
-  readonly tone?: number;
-}
+/** Buses hijos en orden de creación: un padre siempre existe antes que su hijo. */
+const BusOrder: readonly Exclude<AudioBusName, "master">[] = [
+  "music",
+  "voice",
+  "ambience",
+  "ui",
+  "sfx",
+  "weapons",
+  "enemies",
+  "vehicles",
+  "footsteps",
+  "world",
+];
 
-export interface AudioEnvironmentPreset {
-  readonly reverb: AudioEnvironmentReverbSettings;
-  readonly echo: AudioEnvironmentEchoSettings;
-  readonly sends: Partial<Record<AudioBusName, number>>;
-}
-
+/**
+ * Posición de cada fader (0..1), no ganancia: `sliderToGain` aplica la curva.
+ *
+ * Casi todo arranca en la unidad a propósito. La mezcla la definen los
+ * objetivos de sonoridad por rol (`MixProfile`); los faders son preferencia
+ * del jugador. Los que bajan de 1 son decisiones de mezcla explícitas: música y
+ * ambiente ceden lugar a la acción, la interfaz no compite con el mundo, y el
+ * master reserva margen para el limiter.
+ */
 const defaultVolumes: Record<AudioBusName, number> = {
-  master: 1,
-  music: 0.65,
-  ambience: 0.75,
-  sfx: 0.85,
-  weapons: 0.9,
-  vehicles: 0.82,
-  enemies: 0.85,
-  footsteps: 0.65,
-  dialogue: 0.8,
-  ui: 0.7,
+  master: 0.9,
+  music: 0.85,
+  voice: 1,
+  ambience: 0.85,
+  ui: 0.8,
+  sfx: 1,
+  weapons: 1,
+  vehicles: 1,
+  enemies: 1,
+  footsteps: 1,
+  world: 1,
 };
 
-const storageKey = "hl3.audio.volumes";
-
-interface AudioBusDspSends {
-  readonly reverb: GainNode;
-  readonly echo: GainNode;
-}
-
-interface AudioDspRack {
-  readonly reverbInput: GainNode;
-  readonly reverbPreDelay: DelayNode;
-  readonly convolver: ConvolverNode;
-  readonly reverbTone: BiquadFilterNode;
-  readonly echoInput: GainNode;
-  readonly echoDelay: DelayNode;
-  readonly echoTone: BiquadFilterNode;
-  readonly echoFeedback: GainNode;
-  readonly busSends: Map<AudioBusName, AudioBusDspSends>;
-}
+const storageKey = "hl3.audio.mix.v2";
+/** Esquema viejo: ganancia lineal directa, con `dialogue` en vez de `voice`. */
+const legacyStorageKey = "hl3.audio.volumes";
 
 const audioUnlockEvents = [
   "pointerdown",
@@ -99,19 +109,18 @@ export class AudioSystem {
   private readonly duckFactors: Record<AudioBusName, number> = {
     master: 1,
     music: 1,
+    voice: 1,
     ambience: 1,
+    ui: 1,
     sfx: 1,
     weapons: 1,
     vehicles: 1,
     enemies: 1,
     footsteps: 1,
-    dialogue: 1,
-    ui: 1,
+    world: 1,
   };
   private limiter: DynamicsCompressorNode | null = null;
-  private dspRack: AudioDspRack | null = null;
-  private dspVolume = 1;
-  private currentEnvironment: AudioEnvironmentPreset | null = null;
+  private reverbRack: ReverbRack | null = null;
   private muted = false;
 
   constructor() {
@@ -198,7 +207,8 @@ export class AudioSystem {
     this.context = null;
     this.buses.clear();
     this.limiter = null;
-    this.dspRack = null;
+    this.reverbRack?.dispose();
+    this.reverbRack = null;
     if (context && context.state !== "closed") {
       void context.close().catch(() => {
         // El teardown no debe fallar si el navegador ya cerró el contexto.
@@ -226,29 +236,9 @@ export class AudioSystem {
     return this.buses.get(bus) ?? null;
   }
 
-  setAudioEnvironment(
-    preset: AudioEnvironmentPreset,
-    fadeSeconds = 1,
-  ): void {
-    this.currentEnvironment = preset;
-    const context = this.context;
-    const rack = this.dspRack;
-    if (!context || !rack) {
-      return;
-    }
-
-    this.applyEnvironmentPreset(context, rack, preset, fadeSeconds);
-  }
-
-  setDspVolume(value: number, fadeSeconds = 0.2): void {
-    this.dspVolume = clamp01(value);
-    const context = this.context;
-    const rack = this.dspRack;
-    if (!context || !rack || !this.currentEnvironment) {
-      return;
-    }
-
-    this.applyEnvironmentSends(context, rack, this.currentEnvironment, fadeSeconds);
+  /** Retorno de efectos del mixer; lo maneja el sistema de espacios acústicos. */
+  getReverbRack(): ReverbRack | null {
+    return this.reverbRack;
   }
 
   /**
@@ -277,12 +267,17 @@ export class AudioSystem {
       return;
     }
 
-    let target = this.volumes[bus] * this.duckFactors[bus];
-    if (bus === "master" && this.muted) {
-      target = 0;
-    }
+    const muted = bus === "master" && this.muted;
+    const target = muted
+      ? 0
+      : sliderToGain(this.volumes[bus]) * this.duckFactors[bus];
 
-    const param = node.gain.gain;
+    // El aux sigue al fader para que el wet arrastre los mismos volúmenes.
+    this.rampGain(node.gain.gain, target, rampSeconds);
+    this.rampGain(node.auxGain.gain, target, rampSeconds);
+  }
+
+  private rampGain(param: AudioParam, target: number, rampSeconds: number): void {
     if (this.context && rampSeconds > 0) {
       const now = this.context.currentTime;
       param.cancelScheduledValues(now);
@@ -394,235 +389,76 @@ export class AudioSystem {
       return;
     }
 
-    // Limiter suave en la salida: evita clipping cuando se apilan disparos +
-    // explosiones. Se ubica entre el bus master y el destino.
+    // Red de seguridad, no compresor de mezcla: umbral alto y ratio casi
+    // brick-wall para que solo actúe en los picos. Un umbral bajo con ratio
+    // moderado agacharía música y diálogo en cada tiroteo (pumping).
     const limiter = this.context.createDynamicsCompressor();
-    limiter.threshold.value = -3;
-    limiter.knee.value = 6;
-    limiter.ratio.value = 12;
-    limiter.attack.value = 0.003;
-    limiter.release.value = 0.25;
+    limiter.threshold.value = -1;
+    limiter.knee.value = 2;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.12;
     limiter.connect(this.context.destination);
     this.limiter = limiter;
 
     const master = new AudioBus("master", this.context, limiter);
-    master.gain.gain.value = this.volumes.master;
     this.buses.set("master", master);
-    this.dspRack = this.createDspRack(this.context, master);
 
-    const children: AudioBusName[] = [
-      "music",
-      "ambience",
-      "sfx",
-      "weapons",
-      "vehicles",
-      "enemies",
-      "footsteps",
-      "dialogue",
-      "ui",
-    ];
+    // El retorno entra al limiter y no al master: el wet ya arrastró la cadena
+    // de faders por el camino aux, aplicarle master otra vez lo duplicaría.
+    const rack = new ReverbRack(this.context, limiter);
+    master.auxGain.connect(rack.getInput());
+    this.reverbRack = rack;
 
-    children.forEach((name) => {
-      const bus = new AudioBus(name, this.context as AudioContext, master);
-      bus.gain.gain.value = this.volumes[name];
-      this.buses.set(name, bus);
-      if (this.dspRack) {
-        this.connectDspSends(name, bus, this.dspRack);
-      }
-    });
-
-    if (this.dspRack && this.currentEnvironment) {
-      this.applyEnvironmentPreset(
-        this.context,
-        this.dspRack,
-        this.currentEnvironment,
-        0,
-      );
-    }
-  }
-
-  private createDspRack(context: AudioContext, master: AudioBus): AudioDspRack {
-    const reverbInput = context.createGain();
-    const reverbPreDelay = context.createDelay(0.5);
-    const convolver = context.createConvolver();
-    const reverbTone = context.createBiquadFilter();
-
-    reverbTone.type = "lowpass";
-    reverbTone.frequency.value = 12000;
-    reverbInput.connect(reverbPreDelay);
-    reverbPreDelay.connect(convolver);
-    convolver.connect(reverbTone);
-    reverbTone.connect(master.gain);
-
-    const echoInput = context.createGain();
-    const echoDelay = context.createDelay(1.5);
-    const echoTone = context.createBiquadFilter();
-    const echoFeedback = context.createGain();
-
-    echoTone.type = "lowpass";
-    echoTone.frequency.value = 5000;
-    echoFeedback.gain.value = 0;
-    echoInput.connect(echoDelay);
-    echoDelay.connect(echoTone);
-    echoTone.connect(master.gain);
-    echoTone.connect(echoFeedback);
-    echoFeedback.connect(echoDelay);
-
-    return {
-      reverbInput,
-      reverbPreDelay,
-      convolver,
-      reverbTone,
-      echoInput,
-      echoDelay,
-      echoTone,
-      echoFeedback,
-      busSends: new Map(),
-    };
-  }
-
-  private connectDspSends(
-    name: AudioBusName,
-    bus: AudioBus,
-    rack: AudioDspRack,
-  ): void {
-    const reverb = this.context?.createGain();
-    const echo = this.context?.createGain();
-    if (!reverb || !echo) {
-      return;
-    }
-
-    reverb.gain.value = 0;
-    echo.gain.value = 0;
-    bus.gain.connect(reverb);
-    bus.gain.connect(echo);
-    reverb.connect(rack.reverbInput);
-    echo.connect(rack.echoInput);
-    rack.busSends.set(name, { reverb, echo });
-  }
-
-  private applyEnvironmentPreset(
-    context: AudioContext,
-    rack: AudioDspRack,
-    preset: AudioEnvironmentPreset,
-    fadeSeconds: number,
-  ): void {
-    rack.convolver.buffer = this.createImpulseResponse(context, preset.reverb);
-
-    this.rampParam(
-      context,
-      rack.reverbPreDelay.delayTime,
-      clamp(preset.reverb.preDelay ?? 0, 0, 0.25),
-      0,
-    );
-    this.rampParam(
-      context,
-      rack.reverbTone.frequency,
-      clamp(preset.reverb.tone ?? 12000, 250, 20000),
-      fadeSeconds,
-    );
-    this.rampParam(
-      context,
-      rack.echoDelay.delayTime,
-      clamp(preset.echo.delay, 0, 1.25),
-      0,
-    );
-    this.rampParam(
-      context,
-      rack.echoFeedback.gain,
-      clamp(preset.echo.feedback, 0, 0.75),
-      fadeSeconds,
-    );
-    this.rampParam(
-      context,
-      rack.echoTone.frequency,
-      clamp(preset.echo.tone ?? 5000, 250, 20000),
-      fadeSeconds,
-    );
-    this.applyEnvironmentSends(context, rack, preset, fadeSeconds);
-  }
-
-  private applyEnvironmentSends(
-    context: AudioContext,
-    rack: AudioDspRack,
-    preset: AudioEnvironmentPreset,
-    fadeSeconds: number,
-  ): void {
-    rack.busSends.forEach((sends, bus) => {
-      const amount = clamp01(preset.sends[bus] ?? 0);
-      const reverbWet = clamp01(preset.reverb.wet);
-      const echoWet = clamp01(preset.echo.wet);
-      this.rampParam(
-        context,
-        sends.reverb.gain,
-        amount * reverbWet * this.dspVolume,
-        fadeSeconds,
-      );
-      this.rampParam(
-        context,
-        sends.echo.gain,
-        amount * echoWet * this.dspVolume,
-        fadeSeconds,
+    BusOrder.forEach((name) => {
+      const parent = this.buses.get(BusParents[name]);
+      this.buses.set(
+        name,
+        new AudioBus(name, this.context as AudioContext, parent),
       );
     });
-  }
 
-  private createImpulseResponse(
-    context: AudioContext,
-    settings: AudioEnvironmentReverbSettings,
-  ): AudioBuffer {
-    const duration = clamp(settings.duration, 0.05, 4);
-    const decay = clamp(settings.decay, 0.2, 8);
-    const length = Math.max(1, Math.floor(context.sampleRate * duration));
-    const buffer = context.createBuffer(2, length, context.sampleRate);
-
-    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
-      const data = buffer.getChannelData(channel);
-      let seed = channel === 0 ? 0x12345678 : 0x87654321;
-      for (let i = 0; i < length; i += 1) {
-        seed = (1664525 * seed + 1013904223) >>> 0;
-        const noise = (seed / 0xffffffff) * 2 - 1;
-        const t = i / length;
-        data[i] = noise * (1 - t) ** decay;
-      }
-    }
-
-    return buffer;
-  }
-
-  private rampParam(
-    context: AudioContext,
-    param: AudioParam,
-    target: number,
-    seconds: number,
-  ): void {
-    const now = context.currentTime;
-    const duration = Math.max(0, seconds);
-    param.cancelScheduledValues(now);
-    if (duration === 0) {
-      param.value = target;
-      return;
-    }
-    param.setValueAtTime(param.value, now);
-    param.linearRampToValueAtTime(target, now + duration);
+    (["master", ...BusOrder] as AudioBusName[]).forEach((name) => {
+      this.applyBusGain(name);
+    });
   }
 
   private loadSavedVolumes(): void {
     const raw = window.localStorage.getItem(storageKey);
-    if (!raw) {
+    if (raw) {
+      this.applySavedVolumes(raw, storageKey, (value) => value);
       return;
     }
 
+    const legacy = window.localStorage.getItem(legacyStorageKey);
+    if (!legacy) {
+      return;
+    }
+
+    // El esquema viejo guardaba ganancia lineal; ahora se guarda posición de
+    // fader. `sqrt` es la inversa de la curva, así el jugador conserva el
+    // volumen que tenía en vez de encontrarse todo más bajo tras el update.
+    this.applySavedVolumes(legacy, legacyStorageKey, Math.sqrt);
+    window.localStorage.removeItem(legacyStorageKey);
+    this.saveVolumes();
+  }
+
+  private applySavedVolumes(
+    raw: string,
+    key: string,
+    convert: (value: number) => number,
+  ): void {
     try {
-      const parsed = JSON.parse(raw) as Partial<Record<AudioBusName, number>>;
-      (Object.keys(parsed) as AudioBusName[]).forEach((bus) => {
-        const value = parsed[bus];
-        if (typeof value === "number") {
-          this.volumes[bus] = Math.min(1, Math.max(0, value));
+      const parsed = JSON.parse(raw) as Partial<Record<string, number>>;
+      Object.entries(parsed).forEach(([name, value]) => {
+        // El bus de diálogo se fusionó con la voz del traje HEV.
+        const bus = (name === "dialogue" ? "voice" : name) as AudioBusName;
+        if (typeof value === "number" && bus in this.volumes) {
+          this.volumes[bus] = clamp01(convert(value));
         }
       });
     } catch {
-      window.localStorage.removeItem(storageKey);
+      window.localStorage.removeItem(key);
     }
   }
 

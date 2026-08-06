@@ -277,6 +277,7 @@ export class ShotgunWeapon extends Weapon {
         weaponName: this.name,
         targetId: hit.metadata?.id,
         surfaceKind: hit.metadata?.kind,
+        surface: hit.metadata?.surface,
         point: hit.point,
         normal: hit.normal,
         damage,

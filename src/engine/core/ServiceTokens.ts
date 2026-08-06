@@ -2,6 +2,7 @@
 import type { AudioSystem } from "@engine/audio/core/AudioSystem";
 import type { PositionalSoundManager } from "@engine/audio/core/PositionalSoundManager";
 import type { SoundManager } from "@engine/audio/core/SoundManager";
+import type { SpatialAudioSystem } from "@engine/audio/spatial/SpatialAudioSystem";
 import type { Gizmos } from "@engine/debug/Gizmos";
 import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
@@ -36,6 +37,7 @@ export const EngineTokens = {
   Input: new ServiceToken<Input>("Input"),
   Audio: new ServiceToken<AudioSystem>("AudioSystem"),
   Sound: new ServiceToken<SoundManager>("SoundManager"),
+  SpatialAudio: new ServiceToken<SpatialAudioSystem>("SpatialAudioSystem"),
   PositionalSound: new ServiceToken<PositionalSoundManager>(
     "PositionalSoundManager",
   ),

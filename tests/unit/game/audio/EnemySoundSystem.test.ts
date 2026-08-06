@@ -9,8 +9,8 @@ describe("EnemySoundSystem", () => {
   it("plays mapped enemy sounds on npc events", () => {
     const bus = new EventBus<GameEventMap>();
     const sounds = fakeSoundManager([
-      "enemies.zombie.alert",
-      "enemies.zombie.damaged",
+      "enemies.zombie.hl2.alert1",
+      "enemies.zombie.hl2.pain1",
     ]);
 
     new EnemySoundSystem(bus, sounds, fakePositionalSounds());
@@ -24,14 +24,14 @@ describe("EnemySoundSystem", () => {
     });
 
     expect(sounds.played).toEqual([
-      { id: "enemies.zombie.alert", options: { bus: "enemies" } },
-      { id: "enemies.zombie.damaged", options: { bus: "enemies" } },
+      { id: "enemies.zombie.hl2.alert1", options: { bus: "enemies" } },
+      { id: "enemies.zombie.hl2.pain1", options: { bus: "enemies" } },
     ]);
   });
 
   it("ignores unmapped or unavailable sounds", () => {
     const bus = new EventBus<GameEventMap>();
-    const sounds = fakeSoundManager(["enemies.zombie.alert"]);
+    const sounds = fakeSoundManager(["enemies.zombie.hl2.alert1"]);
 
     new EnemySoundSystem(bus, sounds, fakePositionalSounds());
 
@@ -49,7 +49,7 @@ describe("EnemySoundSystem", () => {
   it("plays turret clips without falling back to zombie vocals", () => {
     const bus = new EventBus<GameEventMap>();
     const sounds = fakeSoundManager([
-      "enemies.zombie.alert",
+      "enemies.zombie.hl2.alert1",
       "enemies.turret.hl2.alert",
     ]);
 

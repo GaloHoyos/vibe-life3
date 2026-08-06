@@ -1632,6 +1632,25 @@
   grid-template-columns: 1fr auto;
 }
 
+.hl2-option__group {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 12px;
+}
+
+.hl2-option__group > summary {
+  cursor: pointer;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--hl2-text-dim, var(--hl2-text));
+}
+
+.hl2-option__group > summary:hover {
+  color: var(--hl2-orange);
+}
+
 .hl2-bindings {
   display: grid;
   gap: 4px;

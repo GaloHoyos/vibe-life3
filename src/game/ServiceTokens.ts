@@ -1,14 +1,20 @@
 import type { EventBus } from "@engine/core/EventBus";
 import { ServiceToken } from "@engine/core/ServiceContainer";
 import type { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
+import type { AcousticSpaceSystem } from "@engine/audio/spatial/AcousticSpaceSystem";
+import type { AmbientSoundSystem } from "@game/audio/AmbientSoundSystem";
 import type { FootstepSoundSystem } from "@engine/audio/systems/FootstepSoundSystem";
 import type { MusicManager } from "@engine/audio/core/MusicManager";
 import type { CharacterFactory } from "@game/characters/CharacterFactory";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { DifficultyService } from "@game/gameplay/difficulty/DifficultyService";
 import type { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
+import type { DoorSoundSystem } from "@game/audio/DoorSoundSystem";
 import type { EnemySoundSystem } from "@game/audio/EnemySoundSystem";
 import type { HevSuitSoundSystem } from "@game/audio/HevSuitSoundSystem";
+import type { ImpactSoundSystem } from "@game/audio/ImpactSoundSystem";
+import type { PlayerSoundSystem } from "@game/audio/PlayerSoundSystem";
+import type { PropCollisionSoundSystem } from "@game/audio/PropCollisionSoundSystem";
 import type { SoundscapeSystem } from "@game/audio/SoundscapeSystem";
 import type { UISoundSystem } from "@game/audio/UISoundSystem";
 import type { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
@@ -90,6 +96,8 @@ export const GameTokens = {
     "BackgroundAmbienceSystem",
   ),
   Soundscapes: new ServiceToken<SoundscapeSystem>("SoundscapeSystem"),
+  Acoustics: new ServiceToken<AcousticSpaceSystem>("AcousticSpaceSystem"),
+  AmbientSounds: new ServiceToken<AmbientSoundSystem>("AmbientSoundSystem"),
   Music: new ServiceToken<MusicManager>("MusicManager"),
   Footsteps: new ServiceToken<FootstepSoundSystem>("FootstepSoundSystem"),
   WeaponSounds: new ServiceToken<WeaponSoundSystem>("WeaponSoundSystem"),
@@ -97,4 +105,10 @@ export const GameTokens = {
   DialogueSounds: new ServiceToken<DialogueAudioSystem>("DialogueAudioSystem"),
   HevSuitSounds: new ServiceToken<HevSuitSoundSystem>("HevSuitSoundSystem"),
   UISounds: new ServiceToken<UISoundSystem>("UISoundSystem"),
+  ImpactSounds: new ServiceToken<ImpactSoundSystem>("ImpactSoundSystem"),
+  PropCollisionSounds: new ServiceToken<PropCollisionSoundSystem>(
+    "PropCollisionSoundSystem",
+  ),
+  DoorSounds: new ServiceToken<DoorSoundSystem>("DoorSoundSystem"),
+  PlayerSounds: new ServiceToken<PlayerSoundSystem>("PlayerSoundSystem"),
 } as const;

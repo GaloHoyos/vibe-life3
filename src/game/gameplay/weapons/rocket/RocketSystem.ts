@@ -624,7 +624,6 @@ export class RocketSystem implements Disposable {
       loop: true,
       refDistance: 2,
       maxDistance: 48,
-      volume: 0.72,
       bus: "weapons",
     });
   }

@@ -28,6 +28,9 @@ export interface WorldEntityHooks {
   runLevelAction(action: LevelActionKind): void;
   updateObjective(text: string, completed: boolean | undefined, marker: VectorTuple | undefined): void;
   activateSoundscape(id: SoundscapeId): void;
+  playAmbientSound(id: string): void;
+  stopAmbientSound(id: string): void;
+  toggleAmbientSound(id: string): void;
   endLevel(landmark: LandmarkReference | undefined): void;
   setTriggerEnabled(triggerId: string, enabled: boolean): void;
   toggleTrigger(triggerId: string): void;
@@ -80,6 +83,9 @@ export function bindWorldEntities(
       case 'soundscape':
         io.registerEntity(createSoundscapeHandle(def, hooks));
         break;
+      case 'ambientSound':
+        io.registerEntity(createAmbientSoundHandle(def, hooks));
+        break;
       case 'npcSpawner':
         io.registerEntity(createSpawnerHandle(def, io, hooks));
         break;
@@ -119,6 +125,7 @@ export function bindWorldEntities(
 type MessageDef = Extract<LogicEntityDefinition, { kind: 'message' }>;
 type ObjectiveDef = Extract<LogicEntityDefinition, { kind: 'objective' }>;
 type SoundscapeDef = Extract<LogicEntityDefinition, { kind: 'soundscape' }>;
+type AmbientSoundDef = Extract<LogicEntityDefinition, { kind: 'ambientSound' }>;
 type SpawnerDef = Extract<LogicEntityDefinition, { kind: 'npcSpawner' }>;
 type LevelActionDef = Extract<LogicEntityDefinition, { kind: 'levelAction' }>;
 type ChangelevelDef = Extract<LogicEntityDefinition, { kind: 'changelevel' }>;
@@ -155,6 +162,20 @@ function createSoundscapeHandle(def: SoundscapeDef, hooks: WorldEntityHooks): En
     classId: 'soundscape',
     acceptInput(input: string): void {
       if (input === 'Activate') hooks.activateSoundscape(def.soundscape);
+    },
+  };
+}
+
+function createAmbientSoundHandle(def: AmbientSoundDef, hooks: WorldEntityHooks): EntityHandle {
+  const name = effectiveName(def);
+  return {
+    key: def.id,
+    name,
+    classId: 'ambientSound',
+    acceptInput(input: string): void {
+      if (input === 'PlaySound') hooks.playAmbientSound(def.id);
+      else if (input === 'StopSound') hooks.stopAmbientSound(def.id);
+      else if (input === 'Toggle') hooks.toggleAmbientSound(def.id);
     },
   };
 }

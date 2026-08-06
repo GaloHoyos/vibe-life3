@@ -1,12 +1,14 @@
 ﻿import {
   AudioClipCatalog,
   type AudioClipDefinition,
-  type AudioCategory,
 } from "@engine/audio/AudioManifest";
+import { resolveClipGain } from "@engine/audio/mix/GainStaging";
+import { RoleReverbSend } from "@engine/audio/mix/MixProfile";
 import type { AudioBusName } from "./AudioSystem";
 import type { AudioSystem } from "./AudioSystem";
 
 export interface PlayOptions {
+  /** Multiplicador sobre la ganancia normalizada del clip. */
   volume?: number;
   loop?: boolean;
   fadeIn?: number;
@@ -17,11 +19,12 @@ export interface PlayOptions {
   playbackRate?: number;
   /** Jitter de volumen relativo (0..1). El volumen final se randomiza ±jitter. */
   volumeJitter?: number;
+  /** Envío al retorno de reverb (0..1). Default: el del rol del clip. */
+  reverbSend?: number;
 }
 
 interface SoundInstance {
   id: string;
-  category: AudioCategory;
   bus: AudioBusName;
   source: AudioBufferSourceNode;
   gain: GainNode;
@@ -56,6 +59,11 @@ const MinRetriggerSeconds = 0.02;
  */
 export class SoundManager {
   private readonly buffers = new Map<string, AudioBuffer>();
+  /**
+   * Cargas en vuelo. Sin esto, disparar la SMG antes de que llegue el buffer
+   * lanza un `fetch` + `decodeAudioData` por bala.
+   */
+  private readonly loading = new Map<string, Promise<AudioBuffer | null>>();
   private readonly active = new Map<string, SoundInstance[]>();
   private readonly lastPlayedAt = new Map<string, number>();
   private readonly registeredClips = new Map<
@@ -91,7 +99,7 @@ export class SoundManager {
         registered &&
         (registered.definition.path !== definition.path ||
           registered.definition.bus !== definition.bus ||
-          registered.definition.category !== definition.category)
+          registered.definition.role !== definition.role)
       ) {
         throw new Error(
           `[SoundManager] El clip dinámico '${definition.id}' ya fue registrado con otra definición.`,
@@ -170,16 +178,6 @@ export class SoundManager {
     this.active.delete(soundId);
   }
 
-  stopAllByCategory(category: AudioCategory): void {
-    [...this.active.entries()].forEach(([id, instances]) => {
-      const clip = this.getClip(id);
-      if (clip && clip.category === category) {
-        instances.forEach((instance) => instance.source.stop());
-        this.active.delete(id);
-      }
-    });
-  }
-
   setBusVolume(bus: AudioBusName, value: number): void {
     this.audio.setVolume(bus, value);
   }
@@ -194,6 +192,15 @@ export class SoundManager {
 
   hasSound(soundId: string): boolean {
     return this.getClip(soundId) !== null;
+  }
+
+  /** Definición del clip (catálogo base o registro dinámico). */
+  getClip(soundId: string): AudioClipDefinition | null {
+    return (
+      this.registeredClips.get(soundId)?.definition ??
+      AudioClipCatalog[soundId] ??
+      null
+    );
   }
 
   async getBuffer(soundId: string): Promise<AudioBuffer | null> {
@@ -241,6 +248,7 @@ export class SoundManager {
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.loop = loop;
+
     if (options.playbackRate !== undefined) {
       source.playbackRate.value = options.playbackRate;
     }
@@ -252,15 +260,26 @@ export class SoundManager {
     const jitter = options.volumeJitter
       ? 1 + (Math.random() * 2 - 1) * options.volumeJitter
       : 1;
-    const baseVolume = clip.volume * (options.volume ?? 1) * jitter;
+    const baseVolume = resolveClipGain(clip, options.volume ?? 1) * jitter;
     gain.gain.value = baseVolume;
 
     source.connect(gain);
     gain.connect(bus.gain);
 
+    // Envío al retorno de efectos. Un sonido 2D es "el que emite el jugador":
+    // su disparo retumba en el pasillo igual que el de un enemigo, pero la voz
+    // del traje y la interfaz suenan dentro del casco y no mandan nada.
+    const send = options.reverbSend ?? RoleReverbSend[clip.role];
+    if (send > 0) {
+      const wet = context.createGain();
+      wet.gain.value = baseVolume * send;
+      source.connect(wet);
+      wet.connect(bus.auxGain);
+      source.addEventListener("ended", () => wet.disconnect(), { once: true });
+    }
+
     const instance: SoundInstance = {
       id: soundId,
-      category: clip.category,
       bus: busName,
       source,
       gain,
@@ -339,8 +358,14 @@ export class SoundManager {
     soundId: string,
     readyContext?: AudioContext,
   ): Promise<AudioBuffer | null> {
-    if (this.buffers.has(soundId)) {
-      return this.buffers.get(soundId) ?? null;
+    const cached = this.buffers.get(soundId);
+    if (cached) {
+      return cached;
+    }
+
+    const inFlight = this.loading.get(soundId);
+    if (inFlight) {
+      return inFlight;
     }
 
     const clip = this.getClip(soundId);
@@ -348,13 +373,27 @@ export class SoundManager {
       return null;
     }
 
+    const request = this.fetchBuffer(soundId, clip.path, readyContext).finally(
+      () => {
+        this.loading.delete(soundId);
+      },
+    );
+    this.loading.set(soundId, request);
+    return request;
+  }
+
+  private async fetchBuffer(
+    soundId: string,
+    path: string,
+    readyContext?: AudioContext,
+  ): Promise<AudioBuffer | null> {
     const context = readyContext ?? (await this.audio.getContextWhenReady());
     if (!context) {
       return null;
     }
 
     try {
-      const response = await fetch(clip.path);
+      const response = await fetch(path);
       const arrayBuffer = await response.arrayBuffer();
       const buffer = await context.decodeAudioData(arrayBuffer);
       this.buffers.set(soundId, buffer);
@@ -365,13 +404,4 @@ export class SoundManager {
     }
   }
 
-  private getClip(soundId: string): AudioClipDefinition | null {
-    const clip =
-      this.registeredClips.get(soundId)?.definition ??
-      AudioClipCatalog[soundId];
-    if (!clip) {
-      return null;
-    }
-    return clip;
-  }
 }
