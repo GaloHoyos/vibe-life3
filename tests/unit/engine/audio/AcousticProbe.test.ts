@@ -132,11 +132,11 @@ describe("reverbSpaceFor", () => {
 
   it("una sala mas grande alarga la cola y sube el wet", () => {
     const small = reverbSpaceFor(
-      { volume: 40, absorption: 0.12, openness: 0, meanDistance: 2 },
+      { volume: 40, absorption: 0.12, openness: 0, meanDistance: 2, longestExtent: 2 },
       tuning,
     );
     const hall = reverbSpaceFor(
-      { volume: 40_000, absorption: 0.12, openness: 0, meanDistance: 18 },
+      { volume: 40_000, absorption: 0.12, openness: 0, meanDistance: 18, longestExtent: 18 },
       tuning,
     );
 
@@ -146,9 +146,22 @@ describe("reverbSpaceFor", () => {
     expect(hall.decay).toBeLessThan(small.decay);
   });
 
+  it("una explanada no suena como una nave del mismo volumen medido", () => {
+    // A la intemperie los rayos que escapan reportan su alcance maximo, asi que
+    // el volumen medido es enorme; lo que la diferencia de una nave cerrada es
+    // que la energia se va en vez de rebotar.
+    const measured = { volume: 60_000, absorption: 0.69, meanDistance: 30, longestExtent: 40 };
+    const plain = reverbSpaceFor({ ...measured, openness: 0.64 }, tuning);
+    const hall = reverbSpaceFor({ ...measured, openness: 0 }, tuning);
+
+    expect(plain.duration).toBeLessThan(hall.duration * 0.6);
+    expect(plain.wet).toBeLessThan(hall.wet);
+    expect(plain.echoFeedback).toBeLessThan(hall.echoFeedback);
+  });
+
   it("a cielo abierto la reverb se apaga", () => {
     const outdoor = reverbSpaceFor(
-      { volume: 500_000, absorption: 1, openness: 1, meanDistance: 40 },
+      { volume: 500_000, absorption: 1, openness: 1, meanDistance: 40, longestExtent: 40 },
       tuning,
     );
 
@@ -158,11 +171,11 @@ describe("reverbSpaceFor", () => {
 
   it("el material reflectante abre el tono del retorno", () => {
     const metal = reverbSpaceFor(
-      { volume: 2_000, absorption: 0.05, openness: 0, meanDistance: 6 },
+      { volume: 2_000, absorption: 0.05, openness: 0, meanDistance: 6, longestExtent: 6 },
       tuning,
     );
     const grass = reverbSpaceFor(
-      { volume: 2_000, absorption: 0.65, openness: 0, meanDistance: 6 },
+      { volume: 2_000, absorption: 0.65, openness: 0, meanDistance: 6, longestExtent: 6 },
       tuning,
     );
 
@@ -170,13 +183,31 @@ describe("reverbSpaceFor", () => {
     expect(metal.wet).toBeGreaterThan(grass.wet);
   });
 
+  it("un tunel repica mas lento que un cuarto del mismo volumen", () => {
+    const base = { volume: 320, absorption: 0.06, openness: 0 };
+    // Mismo volumen: 34x3.2x3 (tunel) contra ~6.8x6.8x6.8 (cuarto).
+    const tunnel = reverbSpaceFor(
+      { ...base, meanDistance: 4, longestExtent: 34 },
+      tuning,
+    );
+    const room = reverbSpaceFor(
+      { ...base, meanDistance: 4, longestExtent: 6.8 },
+      tuning,
+    );
+
+    // El golpeteo rebota entre las superficies mas lejanas: en el tunel el
+    // periodo es largo y se oye como slap; en el cuarto se funde con la cola.
+    expect(tunnel.echoDelay).toBeGreaterThan(room.echoDelay * 4);
+    expect(tunnel.duration).toBeCloseTo(room.duration);
+  });
+
   it("satura fuera del rango en vez de extrapolar", () => {
     const huge = reverbSpaceFor(
-      { volume: 10_000_000, absorption: 0, openness: 0, meanDistance: 40 },
+      { volume: 10_000_000, absorption: 0, openness: 0, meanDistance: 40, longestExtent: 40 },
       tuning,
     );
     const tiny = reverbSpaceFor(
-      { volume: 1, absorption: 0, openness: 0, meanDistance: 1 },
+      { volume: 1, absorption: 0, openness: 0, meanDistance: 1, longestExtent: 1 },
       tuning,
     );
 

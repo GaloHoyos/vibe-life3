@@ -44,18 +44,26 @@ export function reverbSpaceFor(
   const reflectivity = clamp01(1 - estimate.absorption);
   // A cielo abierto no hay superficies que devuelvan: la reverb se apaga sola.
   const enclosure = clamp01(1 - estimate.openness);
+  /**
+   * Los rayos que se van reportan su alcance máximo, así que a la intemperie el
+   * estimador "ve" un recinto enorme que no existe. La energía que escapa por
+   * una abertura se comporta como absorción total (Sabine), o sea que acorta la
+   * cola igual que un material absorbente: por eso la extensión que alimenta la
+   * duración escala con el encierro y no con el volumen crudo.
+   */
+  const tailSize = size * enclosure;
 
-  const duration = lerp(tuning.minDuration, tuning.maxDuration, size);
+  const duration = lerp(tuning.minDuration, tuning.maxDuration, tailSize);
   const wet =
     lerp(tuning.minWet, tuning.maxWet, size) *
     enclosure *
     (0.35 + 0.65 * reflectivity);
-  const echoStrength = size * reflectivity * enclosure;
+  const echoStrength = tailSize * reflectivity;
 
   return {
     duration,
     // Salas chicas: cola corta y seca (exponente alto). Grandes: cola larga.
-    decay: lerp(4.5, 1.8, size),
+    decay: lerp(4.5, 1.8, tailSize),
     diffusion: enclosure,
     toneHz: lerp(
       tuning.absorbentToneHz,
@@ -66,7 +74,11 @@ export function reverbSpaceFor(
       MaxPreDelay,
       (estimate.meanDistance * 2) / SpeedOfSound,
     ),
-    echoDelay: Math.min(0.3, Math.max(0.02, estimate.meanDistance / SpeedOfSound)),
+    // Período del golpeteo: el viaje hasta la superficie más lejana.
+    echoDelay: Math.min(
+      0.3,
+      Math.max(0.02, estimate.longestExtent / SpeedOfSound),
+    ),
     echoFeedback: tuning.maxEchoFeedback * echoStrength,
     echoWet: tuning.maxEchoWet * echoStrength,
     wet,

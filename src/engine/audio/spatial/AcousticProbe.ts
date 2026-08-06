@@ -25,6 +25,13 @@ export interface AcousticEstimate {
   readonly openness: number;
   /** Distancia media al primer obstáculo, en metros. */
   readonly meanDistance: number;
+  /**
+   * Mayor de las tres dimensiones del recinto, en metros. El eco de golpeteo
+   * (flutter) rebota entre las dos superficies más lejanas, así que su período
+   * lo marca esto y no el promedio: un túnel angosto y largo repica, un cuarto
+   * del mismo volumen no.
+   */
+  readonly longestExtent: number;
 }
 
 const axisDirections: readonly Vector3[] = [
@@ -148,6 +155,7 @@ export class AcousticProbe {
       absorption: absorptionSum / rays,
       openness: openRays / rays,
       meanDistance: distanceSum / rays,
+      longestExtent: Math.max(width, height, depth),
     };
   }
 
@@ -177,6 +185,7 @@ function blend(
     absorption: lerp(previous.absorption, next.absorption, t),
     openness: lerp(previous.openness, next.openness, t),
     meanDistance: lerp(previous.meanDistance, next.meanDistance, t),
+    longestExtent: lerp(previous.longestExtent, next.longestExtent, t),
   };
 }
 
