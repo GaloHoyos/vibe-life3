@@ -9,8 +9,12 @@ import type { CharacterFactory } from "@game/characters/CharacterFactory";
 import type { Controls } from "@game/gameplay/player/Controls";
 import type { DifficultyService } from "@game/gameplay/difficulty/DifficultyService";
 import type { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
+import type { DoorSoundSystem } from "@game/audio/DoorSoundSystem";
 import type { EnemySoundSystem } from "@game/audio/EnemySoundSystem";
 import type { HevSuitSoundSystem } from "@game/audio/HevSuitSoundSystem";
+import type { ImpactSoundSystem } from "@game/audio/ImpactSoundSystem";
+import type { PlayerSoundSystem } from "@game/audio/PlayerSoundSystem";
+import type { PropCollisionSoundSystem } from "@game/audio/PropCollisionSoundSystem";
 import type { SoundscapeSystem } from "@game/audio/SoundscapeSystem";
 import type { UISoundSystem } from "@game/audio/UISoundSystem";
 import type { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
@@ -101,4 +105,10 @@ export const GameTokens = {
   DialogueSounds: new ServiceToken<DialogueAudioSystem>("DialogueAudioSystem"),
   HevSuitSounds: new ServiceToken<HevSuitSoundSystem>("HevSuitSoundSystem"),
   UISounds: new ServiceToken<UISoundSystem>("UISoundSystem"),
+  ImpactSounds: new ServiceToken<ImpactSoundSystem>("ImpactSoundSystem"),
+  PropCollisionSounds: new ServiceToken<PropCollisionSoundSystem>(
+    "PropCollisionSoundSystem",
+  ),
+  DoorSounds: new ServiceToken<DoorSoundSystem>("DoorSoundSystem"),
+  PlayerSounds: new ServiceToken<PlayerSoundSystem>("PlayerSoundSystem"),
 } as const;

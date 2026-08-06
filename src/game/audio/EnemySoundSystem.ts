@@ -4,6 +4,7 @@ import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { SoundManager } from "@engine/audio/core/SoundManager";
 import type { PositionalSoundManager } from "@engine/audio/core/PositionalSoundManager";
 import { EnemyAudio, type SoundRef } from "@game/config/audio.config";
+import { pickSound } from "./SoundPool";
 
 /**
  * Reproduce vocalizaciones / impacto de NPCs reaccionando a eventos del bus.
@@ -84,7 +85,7 @@ export class EnemySoundSystem {
     position?: Vector3,
     id?: string,
   ): void {
-    const soundId = this.pickAvailable(soundRef);
+    const soundId = pickSound(this.sounds, soundRef);
     if (!soundId) {
       return;
     }
@@ -108,17 +109,5 @@ export class EnemySoundSystem {
       return;
     }
     this.sounds.play(soundId, { bus: "enemies" });
-  }
-
-  private pickAvailable(soundRef: SoundRef | undefined): string | null {
-    if (!soundRef) {
-      return null;
-    }
-    const candidates = typeof soundRef === "string" ? [soundRef] : soundRef;
-    const available = candidates.filter((soundId) => this.sounds.hasSound(soundId));
-    if (available.length === 0) {
-      return null;
-    }
-    return available[Math.floor(Math.random() * available.length)] ?? null;
   }
 }

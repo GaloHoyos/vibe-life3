@@ -37,9 +37,30 @@ export function inferAudioRole(clip: ClipRoleInput): AudioRole {
       return enemyRole(segment, clip);
     case "weapons":
       return weaponRole(segment, clip);
+    case "player":
+      return playerRole(segment);
+    // `world` son las fuentes del entorno: el fuego que arde, la chispa que
+    // salta. Lo que se sostiene es lecho; lo que golpea es impacto.
+    case "world":
+      return clip.loop ? "ambienceBed" : "impact";
+    // `physics` y `doors` caen al default: todo lo que hacen es golpear.
     default:
       return "impact";
   }
+}
+
+/**
+ * El jugador tiene voz propia (el gruñido al recibir daño) y objetos que suenan
+ * alrededor suyo (el casquillo que cae). No es la voz del traje: eso es `hev`.
+ */
+function playerRole(segment: string): AudioRole {
+  if (segment.startsWith("heartbeat")) {
+    return "hevBeep";
+  }
+  if (startsWithAny(segment, ["pain", "drown", "burn", "fall", "breathe"])) {
+    return "vocalization";
+  }
+  return "impact";
 }
 
 function weaponRole(segment: string, clip: ClipRoleInput): AudioRole {

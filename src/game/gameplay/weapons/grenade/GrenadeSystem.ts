@@ -45,8 +45,8 @@ const GRENADE_FRICTION = 1.8;
 const GRENADE_ANGULAR_DAMPING = 3.2;
 const GRENADE_LINEAR_DAMPING = 0.7;
 
-const SOUND_BEEP = "weapons.grenade.beep";
-const SOUND_EXPLOSION = "weapons.grenade.explosion";
+const SOUND_BEEP = "weapons.grenade.hl2.tick";
+const SOUND_EXPLOSION = "weapons.explosion.hl2.blast1";
 
 const tmpExplosionPos = new Vector3();
 const tmpOffset = new Vector3();

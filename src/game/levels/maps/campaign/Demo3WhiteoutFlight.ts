@@ -1,3 +1,4 @@
+import { MusicTracks } from '@game/config/audio.config';
 import { createMap } from '@game/levels/builders/MapCreator';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { NPCDefinition } from '@game/levels/LevelDefinition';
@@ -58,6 +59,7 @@ const map = createMap({
     ambiences: ['background.wind', 'background.hl2.wind.wasteland'],
     footstepSounds: SNOW_FOOTSTEPS,
     soundscape: 'wasteland',
+    music: MusicTracks.chase,
   },
 })
   .ground({

@@ -16,13 +16,18 @@ import { CharacterPresets, isFlyingCharacter } from "@game/characters/CharacterP
 import {
   AcousticResponse,
   FootstepsConfig,
+  MusicTracks,
   SurfaceAbsorption,
   SurfaceFootsteps,
 } from "@game/config/audio.config";
 import { Dialogue, MenuStrings } from "@game/config/strings";
 import { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
+import { DoorSoundSystem } from "@game/audio/DoorSoundSystem";
 import { EnemySoundSystem } from "@game/audio/EnemySoundSystem";
 import { HevSuitSoundSystem } from "@game/audio/HevSuitSoundSystem";
+import { ImpactSoundSystem } from "@game/audio/ImpactSoundSystem";
+import { PlayerSoundSystem } from "@game/audio/PlayerSoundSystem";
+import { PropCollisionSoundSystem } from "@game/audio/PropCollisionSoundSystem";
 import { AmbientSoundSystem } from "@game/audio/AmbientSoundSystem";
 import { BuildingAcousticSpaces } from "@game/audio/BuildingAcousticSpaces";
 import { SoundscapeSystem } from "@game/audio/SoundscapeSystem";
@@ -551,6 +556,23 @@ export class Game {
     );
     s.register(GameTokens.HevSuitSounds, new HevSuitSoundSystem(eventBus, sound));
     s.register(GameTokens.UISounds, new UISoundSystem(eventBus, sound));
+    s.register(
+      GameTokens.ImpactSounds,
+      new ImpactSoundSystem(eventBus, sound, positionalSound),
+    );
+    s.register(
+      GameTokens.PropCollisionSounds,
+      new PropCollisionSoundSystem(
+        s.resolve(EngineTokens.Physics),
+        sound,
+        positionalSound,
+      ),
+    );
+    s.register(
+      GameTokens.DoorSounds,
+      new DoorSoundSystem(eventBus, sound, positionalSound),
+    );
+    s.register(GameTokens.PlayerSounds, new PlayerSoundSystem(eventBus, sound));
   }
 
   private registerGameplay(): void {
@@ -975,6 +997,7 @@ export class Game {
     this.engine.services
       .resolve(GameTokens.AmbientSounds)
       .load(logic.filter((def) => def.kind === "ambientSound"));
+    this.engine.services.resolve(GameTokens.DoorSounds).load(level.doors);
 
     const companion = new CompanionSystem(entityIO, this.npcDirectory, eventBus);
     this.companionSystem = companion;
@@ -2824,6 +2847,8 @@ export class Game {
     vehicles.postPhysics(time.delta, time.elapsed);
     this.npcs.forEach((npc) => npc.syncFromPhysics());
     s.resolve(GameTokens.PropImpacts).update(time.delta, time.elapsed);
+    s.resolve(GameTokens.PropCollisionSounds).update(time.elapsed);
+    s.resolve(GameTokens.PlayerSounds).update(time.delta);
     this.updateGunshipCrashes(time.elapsed, raycast, grenades);
     this.updateStriderCollapses(time.elapsed, raycast, grenades);
     grenades.update(time.delta, time.elapsed);
@@ -3054,6 +3079,12 @@ export class Game {
     // El HUD queda visible en "gameOver" para mostrar los vitales reales bajo
     // el terminal H.E.V.; el DeathScreen ya oscurece el resto.
     hud.setVisible(state === "playing" || state === "gameOver");
+
+    // Sólo el arranque: entrar a un nivel siempre pasa por
+    // `activateLevelSoundscape`, que pone la música del mapa o la corta.
+    if (state === "mainMenu") {
+      s.resolve(GameTokens.Music).fadeToMusic(MusicTracks.menu);
+    }
 
     if (state === "playing") {
       hud.setDeathMode(false);
@@ -3369,6 +3400,8 @@ export class Game {
     hazardVolumes.clear();
     services.resolve(GameTokens.GrabSystem).clear();
     services.resolve(GameTokens.PropImpacts).clear();
+    services.resolve(GameTokens.PropCollisionSounds).clear();
+    services.resolve(GameTokens.DoorSounds).clear();
     services.resolve(GameTokens.PlayerSquad).reset();
     this.navigation?.dispose();
     this.navigation = null;

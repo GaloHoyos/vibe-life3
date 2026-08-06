@@ -1,3 +1,4 @@
+import { MusicTracks } from '@game/config/audio.config';
 import { createMap } from '@game/levels/builders/MapCreator';
 import {
   crateStack,
@@ -43,6 +44,7 @@ const map = createMap({
     ambiences: ['background.wind', 'background.hl2.wind.wasteland', 'background.hl2.atmosphere.cityRumble'],
     footstepSounds: ['footsteps.hl2.concrete1', 'footsteps.hl2.concrete2', 'footsteps.hl2.concrete3', 'footsteps.hl2.concrete4'],
     soundscape: 'wasteland',
+    music: MusicTracks.ravenholm,
   },
 })
   .ground({
