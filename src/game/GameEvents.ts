@@ -14,9 +14,33 @@ import type {
   VehicleArchetypeId,
   VehicleCrewRole,
 } from "@game/config/vehicles.config";
+import type {
+  VehicleObjectiveFailureReason,
+  VehicleObjectiveKind,
+  VehicleObjectiveSource,
+} from "@game/gameplay/vehicles/ai/VehicleTacticalTypes";
+import type {
+  AirLandingFailureReason,
+  AirLandingSpot,
+} from "@game/gameplay/vehicles/ai/AirVehicleAiTypes";
 
 export type LevelActionKind = "respawnEncounters" | "spawnAllWeapons";
 export type CombatEventSourceKind = "player" | "npc" | "system";
+export type VehicleExtractionActorFailurePhase =
+  | "waiting"
+  | "pickup"
+  | "boarding"
+  | "outbound"
+  | "dropoff";
+export type VehicleExtractionActorFailureReason =
+  | "dead"
+  | "resourceUnavailable"
+  | "boardingTimedOut"
+  | "boardingRejected"
+  | "lostInTransit"
+  | "vehicleDisabled"
+  | "disembarkTimedOut"
+  | "disembarkRejected";
 
 /** Snapshot del estado del selector que se publica al HUD. */
 export interface WeaponSelectorItemState {
@@ -426,6 +450,86 @@ export interface GameEventMap {
   };
   "vehicle.stuck": {
     id: string;
+  };
+  "vehicle.order.changed": {
+    id: string;
+    objectiveId: string;
+    revision: number;
+    source: VehicleObjectiveSource;
+    kind: VehicleObjectiveKind;
+  };
+  "vehicle.order.completed": {
+    id: string;
+    objectiveId: string;
+    revision: number;
+    source: VehicleObjectiveSource;
+    kind: VehicleObjectiveKind;
+  };
+  "vehicle.order.failed": {
+    id: string;
+    objectiveId: string;
+    revision: number;
+    source: VehicleObjectiveSource;
+    kind: VehicleObjectiveKind;
+    reason: VehicleObjectiveFailureReason;
+    detail?: string;
+  };
+  "vehicle.landing.selected": {
+    id: string;
+    orderId: string;
+    revision: number;
+    requested: Vector3;
+    selected: Vector3;
+    deviation: number;
+    source: AirLandingSpot["source"];
+    surfaceId?: string;
+    surfaceType?: AirLandingSpot["surfaceType"];
+  };
+  "vehicle.landing.landed": {
+    id: string;
+    orderId: string;
+    revision: number;
+    requested: Vector3;
+    selected: Vector3;
+  };
+  "vehicle.landing.failed": {
+    id: string;
+    orderId: string;
+    revision: number;
+    requested: Vector3;
+    reason: AirLandingFailureReason;
+  };
+  /** Un NPC ocupó un asiento. Hasta acá el embarque de NPCs era invisible. */
+  "vehicle.crew.boarded": {
+    id: string;
+    actorId: string;
+    seatId: string;
+    role: VehicleCrewRole;
+  };
+  "vehicle.crew.exited": {
+    id: string;
+    actorId: string;
+    seatId: string;
+    /** Bajada forzada: evacuación o vehículo inservible. */
+    emergency: boolean;
+  };
+  /** Una facción pidió recogida. `vehicleId` null = todavía sin aparato. */
+  "vehicle.extraction.requested": {
+    faction: Faction;
+    position: Vector3;
+    vehicleId: string | null;
+  };
+  /** El transporte se posó en la zona de recogida. */
+  "vehicle.extraction.arrived": {
+    faction: Faction;
+    id: string;
+  };
+  "vehicle.extraction.actorFailed": {
+    faction: Faction;
+    vehicleId: string | null;
+    actorId: string;
+    phase: VehicleExtractionActorFailurePhase;
+    reason: VehicleExtractionActorFailureReason;
   };
   /** El jugador levantó un prop con E (+USE). */
   "carry.grabbed": {

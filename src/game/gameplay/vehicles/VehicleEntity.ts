@@ -87,6 +87,13 @@ export interface VehicleEntityCallbacks {
   onCrashStarted(vehicle: VehicleEntity): void;
   onCrashFinished(vehicle: VehicleEntity, survivable: boolean): void;
   onDestroyed(vehicle: VehicleEntity): void;
+  /**
+   * El instante exacto en que el vehículo pasa a su modelo de restos. Es el
+   * único punto por el que salen las dos muertes —derribo y daño de casco—, así
+   * que es donde va todo lo que tiene que pasar una vez y sí o sí: el estallido
+   * es lo primero.
+   */
+  onWreckage(vehicle: VehicleEntity): void;
 }
 
 interface VisualPose {
@@ -120,10 +127,21 @@ const TMP_QUATERNION = new Quaternion();
 const TMP_FORWARD = new Vector3();
 const TMP_WORLD = new Vector3();
 const TMP_SEAT_OFFSET = new Vector3();
+const TMP_ANGULAR = new Vector3();
+const TMP_LOCAL_VELOCITY = new Vector3();
+const TMP_ROTATION = new Quaternion();
+/** Altura de la cabeza del bicho sobre el origen: el pitch se mide desde ahí. */
+const SEAT_EYE_HEIGHT = 0.9;
 const SURFACE_DOWN = new Vector3(0, -1, 0);
 const SURFACE_UP = new Vector3(0, 1, 0);
 /** Igual a la gravedad de `PhysicsWorld`; dimensiona el peso de reposo. */
 const GRAVITY_MAGNITUDE = 20.5;
+/**
+ * Geometría de rueda del motor raycast. La comparten `createMotor` y el gálibo
+ * del casco: de acá sale dónde queda el piso respecto del origen del cuerpo.
+ */
+const RAYCAST_WHEEL_RADIUS = 0.46;
+const RAYCAST_WHEEL_DROP = 0.24;
 const IMPACT_COOLDOWN = 0.18;
 // Source SDK impact-table speeds converted from inches per second to meters per second.
 const NPC_IMPACT_DAMAGE_STEPS = [
@@ -171,6 +189,11 @@ export class VehicleEntity {
   private handbrakeApplied = false;
   private crashing = false;
   private wreckage = false;
+  private hullReleased = false;
+  private riderYaw = 0;
+  private riderPitch = 0;
+  private readonly observerBearing: LocalBearing = { yaw: 0, pitch: 0 };
+  private attention = 0;
   private disposed = false;
   private lastChassisImpactAt = -Infinity;
   private readonly actorImpactCooldowns = new Map<string, number>();
@@ -227,7 +250,11 @@ export class VehicleEntity {
           });
           this.io.fireOutput(this.source, "OnDamaged", activatorFor(attackerId));
           if (hitPoint) {
-            this.callbacks.onImpact(this, MathUtils.clamp(amount / 80, 0.08, 1));
+            const intensity = MathUtils.clamp(amount / 80, 0.08, 1);
+            this.callbacks.onImpact(this, intensity);
+            // Un bicho se sobresalta cuando lo golpean, no sólo cuando se le
+            // suben encima. Una máquina lo ignora.
+            this.visual.startle(intensity * 0.9);
           }
         },
         onDisabled: () => {
@@ -238,8 +265,7 @@ export class VehicleEntity {
         onCrashRequested: () => this.beginCrash(),
         onDestroyed: () => {
           this.engineOn = false;
-          this.wreckage = true;
-          this.visual.setWreckage(true);
+          this.enterWreckage();
           this.eventBus.emit("vehicle.destroyed", { id: this.id });
           this.io.fireOutput(this.source, "OnDestroyed", { kind: "none" });
           this.callbacks.onDestroyed(this);
@@ -406,7 +432,27 @@ export class VehicleEntity {
         : telemetry.forwardSpeed * elapsed * 1.7;
     this.visual.update(delta, {
       speed: telemetry.speed,
+      forwardSpeed: telemetry.forwardSpeed,
+      // Guiñada en ejes del vehículo: el estado la trae en mundo, y con el
+      // chasis inclinado la componente Y global no es la que se siente arriba.
+      yawRate: TMP_ANGULAR
+        .copy(telemetry.state.angularVelocity)
+        .applyQuaternion(
+          TMP_ROTATION.copy(telemetry.state.rotation).invert(),
+        ).y,
       steering: telemetry.steering,
+      localVelocity: TMP_LOCAL_VELOCITY
+        .copy(telemetry.state.linearVelocity)
+        .applyQuaternion(
+          TMP_ROTATION.copy(telemetry.state.rotation).invert(),
+        ),
+      occupied: this.occupantsBySeat.size > 0,
+      riderYaw: this.riderYaw,
+      riderPitch: this.riderPitch,
+      gazeYaw: this.observerBearing.yaw,
+      gazePitch: this.observerBearing.pitch,
+      attention: this.attention,
+      dead: this.wreckage,
       wheelRotation,
       // Recorrido de suspensión EN METROS respecto de la extensión total. El
       // visual lo suma a la posición de reposo de la rueda, así la rueda dibujada
@@ -690,17 +736,62 @@ export class VehicleEntity {
     this.finishCrash();
   }
 
-  finishCrash(): void {
-    if (this.wreckage) return;
-    this.crashing = false;
-    this.wreckage = true;
-    this.visual.setWreckage(true);
+  /**
+   * Suelta el casco a la física: apaga el motor, limpia lo que dejó aplicado y
+   * devuelve el cuerpo a dinámico con gravedad.
+   *
+   * El reseteo de fuerzas no es decorativo. Rapier ACUMULA las fuerzas de
+   * usuario hasta que alguien las resetea, y el hook de pre-step deja de correr
+   * el motor apenas hay wreckage: sin limpiarlas, la última sustentación
+   * aplicada se sigue sumando en cada step para siempre y el cadáver de un
+   * vehículo antigravedad se va flotando hacia arriba.
+   */
+  private releaseHullToPhysics(): void {
+    if (this.hullReleased) return;
+    this.hullReleased = true;
     this.motor.setEnabled(false);
     this.motor.dispose();
+    if (this.body.isValid()) {
+      this.body.resetForces(true);
+      this.body.resetTorques(true);
+    }
     this.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
     this.body.setGravityScale(1, true);
     this.body.setLinearDamping(0.45);
     this.body.setAngularDamping(0.72);
+    // El casco vivo es resbaladizo a propósito —`hullFriction` bajo y regla de
+    // combinación `Min`— para que un aerodeslizador varado no se clave en el
+    // piso. Muerto, eso mismo lo convierte en un trineo: con 4 m/s de impulso
+    // el cadáver patinaba 5 m antes de frenar, y a velocidad de combate se iba
+    // deslizando fuera de la vista. Un cuerpo raspa y se queda donde cayó.
+    for (const handle of this.colliderHandles) {
+      const collider = this.physics.world.getCollider(handle);
+      if (!collider) continue;
+      collider.setFriction(1.15);
+      collider.setFrictionCombineRule(RAPIER.CoefficientCombineRule.Average);
+      collider.setRestitution(0);
+    }
+  }
+
+  /**
+   * Paso a restos. Las dos muertes —el derribo guionado y el casco a cero—
+   * confluyen acá, así que el modelo de wreckage, la entrega a la física y el
+   * estallido ocurren juntos y una sola vez. Antes cada camino hacía su parte
+   * por separado: uno estallaba dos veces y el otro dejaba al helicóptero
+   * apareciendo como chatarra sin explosión.
+   */
+  private enterWreckage(): void {
+    if (this.wreckage) return;
+    this.wreckage = true;
+    this.visual.setWreckage(true);
+    this.releaseHullToPhysics();
+    this.callbacks.onWreckage(this);
+  }
+
+  finishCrash(): void {
+    if (this.wreckage) return;
+    this.crashing = false;
+    this.enterWreckage();
     const forward = TMP_FORWARD
       .set(0, 0, 1)
       .applyQuaternion(this.currentPose.rotation);
@@ -719,6 +810,37 @@ export class VehicleEntity {
     if (this.damage.getState() !== "disabled") {
       this.engineOn = true;
     }
+  }
+
+  /**
+   * Adónde mira el que maneja, en ejes del vehículo. Separado de `aimWeapon`
+   * porque eso apunta un arma y sale por los límites de la torreta: acá no hay
+   * torreta, hay una cabeza. Una máquina lo ignora.
+   */
+  setRiderAim(yaw: number, pitch: number): void {
+    this.riderYaw = yaw;
+    this.riderPitch = pitch;
+  }
+
+  /**
+   * Alguien a pie a quien un vehículo VIVO puede prestarle atención. Es una
+   * posición del mundo y no un actor: la entidad no tiene por qué saber si es
+   * el jugador, un rebelde o nadie. `null` borra el interés.
+   *
+   * Una máquina lo ignora, igual que `setRiderAim`.
+   */
+  setObserver(position: Readonly<Vector3> | null): void {
+    if (!position) {
+      this.attention = 0;
+      return;
+    }
+    TMP_WORLD.copy(position).sub(this.getWorldPosition(TMP_POSITION));
+    const distance = TMP_WORLD.length();
+    // Empieza a registrarte a doce metros y te tiene encima a cuatro. Fuera de
+    // rango no vale la pena ni calcular el rumbo.
+    this.attention = MathUtils.clamp((12 - distance) / 8, 0, 1);
+    if (this.attention <= 0) return;
+    localBearing(TMP_WORLD, this.currentPose.rotation, this.observerBearing);
   }
 
   aimWeapon(yaw: number, pitch: number): void {
@@ -819,6 +941,8 @@ export class VehicleEntity {
       role: preset.role,
     };
     this.occupantsBySeat.set(resolvedSeat, occupant);
+    // Subirse a un bicho lo despierta. En una máquina no pasa nada.
+    this.visual.startle(0.75);
     return occupant;
   }
 
@@ -983,6 +1107,10 @@ export class VehicleEntity {
     if (this.crashing && !this.wreckage) {
       this.rotorMotor?.setOutOfControl(true);
     }
+    // Un guardado con el vehículo ya destruido no vuelve a estallar, pero sí
+    // tiene que recuperar la entrega a la física: si no, el resto restaurado
+    // queda con el motor vivo y flotando.
+    if (this.wreckage) this.releaseHullToPhysics();
     this.visual.setWreckage(this.wreckage);
     this.snapPose();
     this.syncVisual(1);
@@ -1037,12 +1165,13 @@ export class VehicleEntity {
   private createColliders(): void {
     const size = new Vector3(...this.preset.body.size);
     const center = new Vector3(...this.preset.body.colliderCenter);
+    const hull = this.hullVerticalExtents();
     const primary = RAPIER.ColliderDesc.cuboid(
       size.x * 0.5,
-      size.y * 0.38,
+      hull.halfHeight,
       size.z * 0.44,
     )
-      .setTranslation(center.x, center.y, center.z)
+      .setTranslation(center.x, hull.centerY, center.z)
       .setDensity(0.001)
       .setFriction(this.preset.body.hullFriction)
       // `Min` en vez del promedio: el casco es el que manda. Si no, el rozamiento
@@ -1067,6 +1196,43 @@ export class VehicleEntity {
         .setSensor(true);
       this.addCollider(desc, hitbox.zone, true);
     });
+  }
+
+  /**
+   * Caja del casco en vertical. La panza no se toca —de ahí salen el apoyo, la
+   * fricción y todo el tacto de manejo— pero el techo sube hasta el gálibo que
+   * el perfil de navegación le exige al vehículo. Sin esto el buggy se colaba
+   * por debajo de techos que la IA rodeaba, con el cañón atravesando la chapa:
+   * la grilla decía "no cabe" y la física decía que sí.
+   */
+  private hullVerticalExtents(): { halfHeight: number; centerY: number } {
+    const [, sizeY] = this.preset.body.size;
+    const centerY = this.preset.body.colliderCenter[1];
+    const bottom = centerY - sizeY * 0.38;
+    const ground = this.groundContactOffset();
+    const top =
+      ground === null
+        ? centerY + sizeY * 0.38
+        : Math.max(
+            centerY + sizeY * 0.38,
+            ground + this.preset.navigation.clearanceHeight,
+          );
+    return { halfHeight: (top - bottom) * 0.5, centerY: (top + bottom) * 0.5 };
+  }
+
+  /**
+   * Altura del piso respecto del origen del cuerpo, o `null` si el motor no
+   * apoya en ruedas y la pregunta no tiene respuesta fija.
+   */
+  private groundContactOffset(): number | null {
+    const motor = this.preset.motor;
+    if (motor.kind !== "raycast") return null;
+    return (
+      this.preset.body.colliderCenter[1] -
+      RAYCAST_WHEEL_DROP -
+      motor.suspensionRestLength -
+      RAYCAST_WHEEL_RADIUS
+    );
   }
 
   private capturePreStepVelocity(): void {
@@ -1181,7 +1347,7 @@ export class VehicleEntity {
     if (config.kind === "raycast") {
       const halfWidth = this.preset.body.size[0] * 0.46;
       const halfLength = this.preset.body.size[2] * 0.36;
-      const wheelY = this.preset.body.colliderCenter[1] - 0.24;
+      const wheelY = this.preset.body.colliderCenter[1] - RAYCAST_WHEEL_DROP;
       return new RaycastVehicleMotor(this.physics, this.body, {
         wheels: [
           [-halfWidth, wheelY, halfLength],
@@ -1190,7 +1356,7 @@ export class VehicleEntity {
           [halfWidth, wheelY, -halfLength],
         ].map(([x, y, z], index) => ({
           connection: new Vector3(x, y, z),
-          radius: 0.46,
+          radius: RAYCAST_WHEEL_RADIUS,
           suspensionRestLength: config.suspensionRestLength,
           maxSuspensionTravel: config.suspensionTravel,
           suspensionStiffness: config.suspensionStiffness,
@@ -1209,11 +1375,11 @@ export class VehicleEntity {
         maxBrakeForce: config.brakeForce,
         maxHandbrakeForce: config.handbrakeForce,
         maxSteeringAngle: config.maxSteeringAngle,
-        maxForwardSpeed: 36,
+        fastSteeringAngle: config.fastSteeringAngle,
+        steeringSpeedSlow: config.steeringSpeedSlow,
+        steeringSpeedFast: config.steeringSpeedFast,
+        maxForwardSpeed: config.topSpeed,
         maxReverseSpeed: 13,
-        throttleResponse: 5.5,
-        steeringResponse: 7.5,
-        highSpeedSteeringFactor: 0.28,
         directionChangeBrakeSpeed: 1.4,
         boostMultiplier: config.boostMultiplier,
         autoBrakeForce: config.autoBrakeForce,
@@ -1296,7 +1462,6 @@ export class VehicleEntity {
         maxPlaningLift: antigrav ? 0 : this.preset.body.mass * 11,
         landThrustFactor: config.landThrustFactor,
         throttleResponse: config.throttleResponse ?? 4.8,
-        steeringResponse: config.steeringResponse ?? 6.5,
         boostMultiplier: 1.32,
         rudderAngle: config.rudderAngle,
         thrustPoint: new Vector3(...config.thrustPoint),
@@ -1513,13 +1678,54 @@ function damageHitboxes(
         { zone: "steering", position: [0.48, 1.42, 1.05], size: [0.55, 0.58, 0.62] },
         { zone: "fuel", position: [-0.78, 1.08, -1.45], size: [0.5, 0.72, 0.82] },
       ];
+    // Mismas cajas que el deslizador: el nadador ocupa el mismo casco, sólo
+    // que el injerto va donde el otro tiene la turbina.
     case "combineGlider":
+    case "combineSwimmer":
       return [
         { zone: "engine", position: [0, 0.92, -1.05], size: [1.25, 0.62, 0.85] },
         { zone: "steering", position: [0, 1.08, 0.42], size: [0.72, 0.5, 0.52] },
         { zone: "fuel", position: [0, 0.62, -0.62], size: [0.7, 0.42, 0.62] },
       ];
   }
+}
+
+export interface LocalBearing {
+  yaw: number;
+  pitch: number;
+}
+
+/**
+ * Rumbo de un punto en ejes del vehículo, con el convenio de la torreta y de
+ * `setRiderAim`: guiñada positiva apunta el morro hacia +X.
+ *
+ * OJO con el signo, porque acá se cruzan dos convenios opuestos. La DERECHA del
+ * proyecto es `forward × up` = **−X**, así que `steering` positivo es −X; pero
+ * un `rotation.y` positivo de Three lleva el +Z hacia **+X**. Para que la
+ * cabeza mire a quien tiene al lado hay que seguir el segundo, no el primero:
+ * con el signo del volante el bicho giraba la cabeza para el lado contrario.
+ *
+ * Escribe sobre un destino del llamador en vez de devolver objeto propio: se
+ * llama por vehículo y por frame, y un objeto compartido haría que guardarse dos
+ * rumbos devuelva dos veces el último.
+ *
+ * Exportada para poder fijar el signo en una prueba: no tiene estado, y metida
+ * adentro de la entidad no habría forma de verificarla sin un GLB.
+ */
+export function localBearing(
+  delta: Readonly<Vector3>,
+  rotation: Readonly<Quaternion>,
+  out: LocalBearing,
+): LocalBearing {
+  TMP_SEAT_OFFSET.copy(delta).applyQuaternion(
+    TMP_QUATERNION.copy(rotation).invert(),
+  );
+  out.yaw = Math.atan2(TMP_SEAT_OFFSET.x, TMP_SEAT_OFFSET.z);
+  out.pitch = Math.atan2(
+    TMP_SEAT_OFFSET.y - SEAT_EYE_HEIGHT,
+    Math.hypot(TMP_SEAT_OFFSET.x, TMP_SEAT_OFFSET.z),
+  );
+  return out;
 }
 
 function createAntigravitySurfaceProvider(

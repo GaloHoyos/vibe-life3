@@ -27,6 +27,8 @@ import { NavigationRequestQueue } from '@engine/ai/navigation/NavigationRequestQ
 import type { NavigationActionLink } from '@engine/ai/navigation/NavigationTypes';
 import { NavigationProfiles } from '@game/npc/navigation/NavAgentProfiles';
 import type { NpcRuntimeServices } from '@game/characters/CharacterFactory';
+import type { NpcVehicleSeatBroker } from '@game/npc/brain/NpcVehicleSensor';
+import type { VehicleOpportunityRegistry } from '@game/gameplay/vehicles/ai/VehicleOpportunityRegistry';
 import { TacticalMap, TacticalMapAnalyzer } from '@game/npc/ai/TacticalMap';
 import { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
 import { quatFromEuler } from '@game/levels/builders/transform';
@@ -82,6 +84,9 @@ export class LevelLoader {
     private readonly characters: CharacterFactory,
     private readonly assets: AssetManager,
     private readonly npcPortalServices: NpcPortalServices,
+    /** Catálogo de asientos libres y quién los concede; ver `NpcRuntimeServices`. */
+    private readonly vehicleOpportunities: VehicleOpportunityRegistry | null = null,
+    private readonly vehicleSeats: NpcVehicleSeatBroker | null = null,
   ) {}
 
   async load(level: LevelDefinition): Promise<LoadedLevel> {
@@ -286,6 +291,8 @@ export class LevelLoader {
       ...this.npcPortalServices,
       tacticalMap,
       squadDirector,
+      vehicleOpportunities: this.vehicleOpportunities,
+      vehicleSeats: this.vehicleSeats,
     };
 
     for (const definition of level.npcs) {

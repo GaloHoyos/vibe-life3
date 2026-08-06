@@ -65,6 +65,73 @@ describe("RaycastVehicleMotor", () => {
     expect(motor.isEnabled()).toBe(false);
   });
 
+  it("cierra el tope de giro con la velocidad y aplica el volante sin retardo propio", async () => {
+    const physics = new PhysicsWorld();
+    await physics.init();
+    physics.createStaticBox({
+      id: "floor",
+      position: new Vector3(0, -0.5, 0),
+      size: new Vector3(600, 1, 600),
+    });
+    const body = physics.createDynamicBox(
+      {
+        id: "chassis",
+        position: new Vector3(0, 0.8, 0),
+        size: new Vector3(2, 0.5, 3),
+        mass: 450,
+      },
+      new Object3D(),
+    );
+    const config = buggyConfig();
+    const motor = new RaycastVehicleMotor(physics, body, config);
+    const disposePre = physics.addPreStepHook((delta) =>
+      motor.prePhysicsStep(delta),
+    );
+    const disposePost = physics.addPostStepHook((delta) =>
+      motor.postPhysicsStep(delta),
+    );
+
+    // El volante entra ya rampado por quien conduce: un solo paso tiene que
+    // dejar las ruedas en el tope, no arrancar a filtrarlo de nuevo.
+    motor.setControl({
+      throttle: 0,
+      steering: 1,
+      brake: 0,
+      handbrake: 0,
+      boost: false,
+    });
+    physics.step(1 / 60);
+    const parked = Math.abs(motor.getTelemetry().wheels[0].steering);
+    expect(parked).toBeCloseTo(config.maxSteeringAngle, 3);
+
+    motor.setControl({
+      throttle: 1,
+      steering: 1,
+      brake: 0,
+      handbrake: 0,
+      boost: false,
+    });
+    // Un margen por encima del umbral: el ángulo se calcula antes del paso, así
+    // que en el frame exacto del cruce todavía lleva la velocidad anterior.
+    const saturated = config.steeringSpeedFast + 2;
+    for (let frame = 0; frame < 600; frame += 1) {
+      physics.step(1 / 60);
+      if (Math.abs(motor.getTelemetry().forwardSpeed) >= saturated) break;
+    }
+
+    expect(Math.abs(motor.getTelemetry().forwardSpeed)).toBeGreaterThanOrEqual(
+      saturated,
+    );
+    expect(Math.abs(motor.getTelemetry().wheels[0].steering)).toBeCloseTo(
+      config.fastSteeringAngle,
+      3,
+    );
+
+    disposePre();
+    disposePost();
+    motor.dispose();
+  });
+
   it("captura y restaura pose y velocidades sin apropiarse del body", async () => {
     const physics = new PhysicsWorld();
     await physics.init();
@@ -126,11 +193,11 @@ function buggyConfig(): RaycastVehicleMotorConfig {
     maxBrakeForce: 140,
     maxHandbrakeForce: 220,
     maxSteeringAngle: 0.55,
+    fastSteeringAngle: 0.18,
+    steeringSpeedSlow: 6,
+    steeringSpeedFast: 9,
     maxForwardSpeed: 30,
     maxReverseSpeed: 12,
-    throttleResponse: 8,
-    steeringResponse: 10,
-    highSpeedSteeringFactor: 0.25,
     directionChangeBrakeSpeed: 1.5,
     boostMultiplier: 1.4,
     antiRollStiffness: 1800,

@@ -148,6 +148,8 @@ export interface VehicleAiDefinition {
   gunnerProfile?: VehicleGunnerProfileId;
   /** Oficio del piloto en aparatos aéreos. Default según el comportamiento. */
   pilotProfile?: VehiclePilotProfileId;
+  /** Doctrina táctica. Si se omite se deriva de facción, preset y misión. */
+  tacticalProfile?: 'combine' | 'resistance' | 'transport';
   /**
    * Si puede abandonar temporalmente su `behavior` para pelear o huir. Default
    * según el comportamiento: los ofensivos sí, los de logística no.
@@ -272,6 +274,11 @@ export interface WaterVolumeDefinition {
 
 export type VehicleNavSurface = 'ground' | 'water' | 'both';
 
+/**
+ * Anotacion sobre el terreno manejable, que el bake deriva de la colision real.
+ * No define donde se puede conducir: lo ajusta (`cost`, `speedLimit`, `flags`) o
+ * lo recorta (`blocked`).
+ */
 export interface VehicleNavAreaDefinition {
   id: string;
   polygon: VectorTuple[];
@@ -280,6 +287,8 @@ export interface VehicleNavAreaDefinition {
   speedLimit?: number;
   tags?: string[];
   flags?: Array<'noCombat' | 'noReverse' | 'parking' | 'shore'>;
+  /** Recorta el poligono del grid aunque la geometria lo declare manejable. */
+  blocked?: boolean;
 }
 
 export interface VehicleNavLaneDefinition {

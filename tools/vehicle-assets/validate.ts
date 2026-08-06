@@ -261,12 +261,63 @@ async function main(): Promise<void> {
         "helicopter: el wreckage queda enterrado al apoyar el collider.",
       );
     }
+    if (spec.id === "buggy") {
+      const wreckageStats = countNode(wreckage);
+      assert(
+        wreckageStats.triangles >= 3_000,
+        "buggy: el wreckage volvió a ser un blockout sin detalle.",
+      );
+      const chassis = nodes.get("wreckage_chassis");
+      assert(chassis !== undefined, "buggy: falta wreckage_chassis.");
+      assert(
+        signedVolume(chassis) > 0,
+        "buggy: wreckage_chassis tiene las caras orientadas hacia adentro.",
+      );
+      // El collider del preset apoya en y = 0.075; por debajo de cero la
+      // chatarra queda enterrada en el piso.
+      assert(
+        minimumY(wreckage) >= -0.05,
+        "buggy: el wreckage queda enterrado al apoyar el collider.",
+      );
+    }
+    if (spec.id === "rebelCrawler") {
+      const wreckageStats = countNode(wreckage);
+      assert(
+        wreckageStats.triangles >= 3_000,
+        "rebelCrawler: el wreckage volvió a ser un blockout sin detalle.",
+      );
+      const hull = nodes.get("wreckage_crawler_hull");
+      assert(hull !== undefined, "rebelCrawler: falta wreckage_crawler_hull.");
+      assert(
+        signedVolume(hull) > 0,
+        "rebelCrawler: wreckage_crawler_hull tiene las caras hacia adentro.",
+      );
+      // El collider apoya en y = −0.025. El margen es mayor que en los otros
+      // porque la banda que envuelve la rueda tensora baja por debajo del ramal
+      // inferior —así está armada también en el modelo intacto— y una oruga
+      // descarrilada clavada en el terreno es justamente lo que se quiere ver.
+      assert(
+        minimumY(wreckage) >= -0.22,
+        "rebelCrawler: el wreckage queda enterrado al apoyar el collider.",
+      );
+    }
     if (spec.id === "airboat") {
+      const wreckageStats = countNode(wreckage);
+      assert(
+        wreckageStats.triangles >= 3_000,
+        "airboat: el wreckage volvió a ser un blockout sin detalle.",
+      );
       const hull = nodes.get("wreckage_hull");
       assert(hull !== undefined, "airboat: falta wreckage_hull.");
       assert(
         signedVolume(hull) > 0,
         "airboat: wreckage_hull tiene las caras orientadas hacia adentro.",
+      );
+      // El collider del preset apoya en y = −0.175: el casco flota sobre él
+      // mientras el motor hover lo sostiene, pero la chatarra se acuesta.
+      assert(
+        minimumY(wreckage) >= -0.225,
+        "airboat: el wreckage queda enterrado al apoyar el collider.",
       );
     }
     const lods = ([0, 1, 2] as const).map((lod) => {

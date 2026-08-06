@@ -7,6 +7,7 @@ import {
 } from '@game/gameplay/vehicles/ai/VehicleNavigationPlanClient';
 import type { VehicleNavigationBake } from '@game/gameplay/vehicles/ai/VehicleAiTypes';
 import { navigationProfileFromPreset } from '@game/gameplay/vehicles/ai/VehicleAiTypes';
+import { emptyVehicleNavGrid } from '@game/gameplay/vehicles/ai/VehicleNavGridIndex';
 import { VehicleNavigationPlanner } from '@game/gameplay/vehicles/ai/VehicleNavigationPlanner';
 
 let lastWorker: FakeWorker | null = null;
@@ -83,9 +84,9 @@ class FakeWorker {
 
 function emptyNavigation(profileId: string): VehicleNavigationBake {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     hash: 'worker-client-test',
-    grids: [{ profileId, cellSize: 1, origin: [0, 0], cells: [] }],
+    grids: [emptyVehicleNavGrid(profileId, 1, 'ground')],
     laneGraph: { nodes: [], edges: [] },
     markers: [],
   };

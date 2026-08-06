@@ -51,6 +51,11 @@ describe('VehicleAiSystem', () => {
     system.clearGoal('buggy-ai');
     expect(system.restoreSnapshot(snapshot!)).toBe(true);
     expect(system.snapshot('buggy-ai')?.goal).toEqual(snapshot?.goal);
+    // La intención se guarda; la ruta y sus blockers se recalculan al cargar.
+    expect(system.reservationKey('buggy-ai', [3.5, 0, 3.5])).toBeNull();
+    system.update('buggy-ai', 0.1, brainContext());
+    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
+    system.update('buggy-ai', 0.1, brainContext());
     expect(system.reservationKey('buggy-ai', [3.5, 0, 3.5])).toBe(
       reservationBeforeRestore,
     );
@@ -139,6 +144,63 @@ describe('VehicleAiSystem', () => {
     expect(system.update('commanded', 0.1, brainContext())?.decision)
       .toMatchObject({ behavior: 'hold', goal: null });
     expect(system.snapshot('commanded')?.behavior).toBe('hold');
+  });
+
+  it('descarta planes de una revisión táctica anterior sin soltar la ruta vigente', async () => {
+    const pending: Array<(route: VehiclePlannedRoute | null) => void> = [];
+    const plan = vi.fn(
+      () => new Promise<VehiclePlannedRoute | null>((resolve) => {
+        pending.push(resolve);
+      }),
+    );
+    const system = new VehicleAiSystem(
+      new MemoryVehicleNavigationCache(),
+      async () => ({ plan, dispose: vi.fn() }),
+    );
+    await system.load(navigationInput());
+    system.registerVehicle({
+      vehicleId: 'revisioned',
+      preset: VehiclePresets.buggy,
+      ai: { enabled: true, behavior: 'escort' },
+    });
+    system.setGoal('revisioned', [18, 0, 18]);
+
+    system.update('revisioned', 0.1, {
+      ...brainContext(),
+      planContextKey: 'order:1:follow:yard',
+    });
+    const initialRoute = plannedRoute([
+      [3.5, 0, 3.5],
+      [12, 0, 12],
+      [18, 0, 18],
+    ]);
+    pending.shift()?.(initialRoute);
+    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
+    system.update('revisioned', 0.1, {
+      ...brainContext(),
+      planContextKey: 'order:1:follow:yard',
+    });
+    expect(system.snapshot('revisioned')?.path).toEqual(initialRoute.path);
+
+    system.update('revisioned', 0.1, {
+      ...brainContext(),
+      planContextKey: 'order:2:recover:wall',
+    });
+    expect(plan).toHaveBeenCalledTimes(2);
+    expect(system.snapshot('revisioned')?.path).toEqual(initialRoute.path);
+
+    system.update('revisioned', 0.1, {
+      ...brainContext(),
+      planContextKey: 'order:3:follow:detour',
+    });
+    expect(plan).toHaveBeenCalledTimes(3);
+    pending.shift()?.(plannedRoute([
+      [3.5, 0, 3.5],
+      [8, 0, 15],
+      [18, 0, 18],
+    ]));
+    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
+    expect(system.snapshot('revisioned')?.path).toEqual(initialRoute.path);
   });
 });
 
@@ -233,7 +295,7 @@ function navigationInput(): VehicleNavigationBakeInput {
     }],
     lanes: [{
       id: 'test-lane',
-      points: [[2, 0, 2], [12, 0, 12], [22, 0, 22]],
+      points: [[4, 0, 4], [12, 0, 12], [20, 0, 20]],
       width: 2.5,
       direction: 'both',
       tags: ['singleLane'],
@@ -241,5 +303,22 @@ function navigationInput(): VehicleNavigationBakeInput {
     markers: [],
     profiles: [navigationProfileFromPreset(VehiclePresets.buggy)],
     options: { cellSize: 1 },
+  };
+}
+
+function plannedRoute(
+  points: readonly (readonly [number, number, number])[],
+): VehiclePlannedRoute {
+  return {
+    hash: 'test-route',
+    path: {
+      points: points.map((position) => ({
+        position,
+        direction: 'forward',
+      })),
+    },
+    laneRoute: null,
+    startManeuver: null,
+    endManeuver: null,
   };
 }

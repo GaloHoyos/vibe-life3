@@ -3,6 +3,7 @@ import type {
   VehicleNavCell,
   VehicleNavGrid,
 } from '@game/gameplay/vehicles/ai/VehicleAiTypes';
+import { buildVehicleNavGrid } from '@game/gameplay/vehicles/ai/VehicleNavGridIndex';
 
 export const groundProfile: VehicleNavigationProfile = {
   id: 'buggy',
@@ -39,10 +40,8 @@ export function rectangularGrid(
   const cells: VehicleNavCell[] = [];
   for (let ix = 0; ix < width; ix += 1) {
     for (let iz = 0; iz < depth; iz += 1) {
-      const key = `${ix}:${iz}`;
-      if (blocked.has(key)) continue;
+      if (blocked.has(`${ix}:${iz}`)) continue;
       cells.push({
-        key,
         ix,
         iz,
         position: [ix + 0.5, 0, iz + 0.5],
@@ -52,13 +51,9 @@ export function rectangularGrid(
         speedLimit: null,
         flags: [],
         tags: [],
+        componentId: 0,
       });
     }
   }
-  return {
-    profileId: groundProfile.id,
-    cellSize: 1,
-    origin: [0, 0],
-    cells,
-  };
+  return buildVehicleNavGrid(groundProfile.id, 1, [0, 0], 'ground', cells);
 }

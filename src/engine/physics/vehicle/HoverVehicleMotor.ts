@@ -40,8 +40,11 @@ export interface HoverVehicleMotorConfig {
   planingLift: number;
   maxPlaningLift: number;
   landThrustFactor: number;
+  /**
+   * Spool-up del empuje, en 1/s. A diferencia del volante esto SÍ es del
+   * vehículo: una turbina o un músculo tardan en dar todo lo que tienen.
+   */
   throttleResponse: number;
-  steeringResponse: number;
   boostMultiplier?: number;
   /**
    * Maximum thrust deflection at full rudder, in radians. An airboat steers by
@@ -89,7 +92,6 @@ export class HoverVehicleMotor implements VehicleMotor {
   private enabled = true;
   private disposed = false;
   private smoothedThrottle = 0;
-  private smoothedSteering = 0;
 
   private readonly rotation = new Quaternion();
   private readonly forward = new Vector3();
@@ -144,7 +146,6 @@ export class HoverVehicleMotor implements VehicleMotor {
     this.enabled = enabled;
     if (!enabled) {
       this.smoothedThrottle = 0;
-      this.smoothedSteering = 0;
     }
   }
 
@@ -165,12 +166,6 @@ export class HoverVehicleMotor implements VehicleMotor {
       this.smoothedThrottle,
       this.control.throttle,
       this.config.throttleResponse,
-      delta,
-    );
-    this.smoothedSteering = damp(
-      this.smoothedSteering,
-      this.control.steering,
-      this.config.steeringResponse,
       delta,
     );
 
@@ -339,7 +334,7 @@ export class HoverVehicleMotor implements VehicleMotor {
     // Empuje vectorizado: la hélice apunta a donde manda el timón. Como entra
     // por popa, el empuje se desvía hacia el MISMO lado del que se aparta la
     // proa: mandar la cola a +X hace que el morro caiga a -X, o sea a estribor.
-    const rudder = this.smoothedSteering * (this.config.rudderAngle ?? 0);
+    const rudder = this.control.steering * (this.config.rudderAngle ?? 0);
     this.thrustDirection.copy(this.forward);
     if (rudder !== 0) {
       this.thrustDirection.applyAxisAngle(this.averageNormal, rudder);
@@ -443,7 +438,7 @@ export class HoverVehicleMotor implements VehicleMotor {
     this.torque
       .copy(this.averageNormal)
       .multiplyScalar(
-        -this.smoothedSteering *
+        -this.control.steering *
           this.config.maxSteeringTorque *
           steeringAuthority *
           waterFactor,
@@ -497,7 +492,7 @@ export class HoverVehicleMotor implements VehicleMotor {
       6000,
       Math.max(speedRatio, Math.abs(this.smoothedThrottle) * 0.45),
     );
-    this.telemetry.steering = this.smoothedSteering;
+    this.telemetry.steering = this.control.steering;
     this.telemetry.contactCount = this.contactCount;
     this.telemetry.grounded = this.contactCount > 0;
     this.telemetry.submergedRatio =

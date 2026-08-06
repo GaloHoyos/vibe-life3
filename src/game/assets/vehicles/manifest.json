@@ -11,7 +11,7 @@
   "vehicles": [
     {
       "id": "buggy",
-      "glbBytes": 1113872,
+      "glbBytes": 1375908,
       "lods": [
         {
           "triangles": 17268,
@@ -64,12 +64,17 @@
         "damage_weapon",
         "damage_fuel",
         "wreckage",
-        "wreckage_chassis"
+        "wreckage_chassis",
+        "wreckage_cage",
+        "wreckage_engine",
+        "wreckage_wheels",
+        "wreckage_turret",
+        "wreckage_debris"
       ]
     },
     {
       "id": "airboat",
-      "glbBytes": 1103004,
+      "glbBytes": 1244312,
       "lods": [
         {
           "triangles": 13960,
@@ -114,7 +119,12 @@
         "damage_weapon",
         "damage_fuel",
         "wreckage",
-        "wreckage_hull"
+        "wreckage_hull",
+        "wreckage_cockpit",
+        "wreckage_bow",
+        "wreckage_fan",
+        "wreckage_engine",
+        "wreckage_debris"
       ]
     },
     {
@@ -188,7 +198,7 @@
     },
     {
       "id": "rebelCrawler",
-      "glbBytes": 1059336,
+      "glbBytes": 1222224,
       "lods": [
         {
           "triangles": 11816,
@@ -237,7 +247,13 @@
         "damage_steering",
         "damage_fuel",
         "wreckage",
-        "wreckage_crawler_hull"
+        "wreckage_crawler_hull",
+        "wreckage_cabin",
+        "wreckage_engine",
+        "wreckage_tracks",
+        "wreckage_thrown_track",
+        "wreckage_debris",
+        "wreckage_glass"
       ]
     },
     {
@@ -298,6 +314,94 @@
         "wreckage",
         "wreckage_combine_glider"
       ]
+    },
+    {
+      "id": "combineSwimmer",
+      "glbBytes": 1032344,
+      "lods": [
+        {
+          "triangles": 14532,
+          "draws": 24
+        },
+        {
+          "triangles": 5044,
+          "draws": 22
+        },
+        {
+          "triangles": 1656,
+          "draws": 7
+        }
+      ],
+      "nodeNames": [
+        "combineSwimmer_vehicle",
+        "visual_lod0",
+        "combineSwimmer_body",
+        "swimmer_head",
+        "combineSwimmer_visor",
+        "combineSwimmer_eye",
+        "swimmer_jaw",
+        "swimmer_gills",
+        "swimmer_antenna_left",
+        "swimmer_antenna_left_tip",
+        "swimmer_antenna_right",
+        "swimmer_antenna_right_tip",
+        "swimmer_oar_left_0",
+        "swimmer_oar_left_1",
+        "swimmer_oar_left_2",
+        "swimmer_oar_right_0",
+        "swimmer_oar_right_1",
+        "swimmer_oar_right_2",
+        "swimmer_tail_0",
+        "swimmer_tail_1",
+        "rudder_left",
+        "rudder_right",
+        "fan_main",
+        "stabilizer_front",
+        "stabilizer_rear_left",
+        "stabilizer_rear_right",
+        "visual_lod1",
+        "combineSwimmer_body_lod1",
+        "swimmer_head_lod1",
+        "combineSwimmer_visor_lod1",
+        "combineSwimmer_eye_lod1",
+        "swimmer_antenna_left_lod1",
+        "swimmer_antenna_left_tip_lod1",
+        "swimmer_antenna_right_lod1",
+        "swimmer_antenna_right_tip_lod1",
+        "swimmer_oar_left_0_lod1",
+        "swimmer_oar_left_1_lod1",
+        "swimmer_oar_left_2_lod1",
+        "swimmer_oar_right_0_lod1",
+        "swimmer_oar_right_1_lod1",
+        "swimmer_oar_right_2_lod1",
+        "swimmer_tail_0_lod1",
+        "swimmer_tail_1_lod1",
+        "rudder_left_lod1",
+        "rudder_right_lod1",
+        "fan_main_lod1",
+        "stabilizer_front_lod1",
+        "stabilizer_rear_left_lod1",
+        "stabilizer_rear_right_lod1",
+        "visual_lod2",
+        "combineSwimmer_body_lod2",
+        "rudder_left_lod2",
+        "rudder_right_lod2",
+        "fan_main_lod2",
+        "stabilizer_front_lod2",
+        "stabilizer_rear_left_lod2",
+        "stabilizer_rear_right_lod2",
+        "seat_driver",
+        "camera_driver",
+        "exit_left",
+        "exit_right",
+        "audio_engine",
+        "audio_hover",
+        "damage_engine",
+        "damage_hull",
+        "damage_steering",
+        "damage_fuel",
+        "wreckage"
+      ]
     }
   ],
   "audio": {
@@ -353,6 +457,21 @@
         "durationSeconds": 3
       },
       {
+        "path": "audio/combine-swimmer-breath-loop.wav",
+        "bytes": 220544,
+        "durationSeconds": 5
+      },
+      {
+        "path": "audio/combine-swimmer-graft-loop.wav",
+        "bytes": 132344,
+        "durationSeconds": 3
+      },
+      {
+        "path": "audio/combine-swimmer-strain-loop.wav",
+        "bytes": 132344,
+        "durationSeconds": 3
+      },
+      {
         "path": "audio/vehicle-alarm-loop.wav",
         "bytes": 88244,
         "durationSeconds": 2
@@ -368,6 +487,6 @@
         "durationSeconds": 3.5
       }
     ],
-    "totalBytes": 1841748
+    "totalBytes": 2326980
   }
 }

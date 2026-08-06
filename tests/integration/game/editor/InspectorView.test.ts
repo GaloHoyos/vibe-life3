@@ -89,6 +89,63 @@ describe("InspectorView entity I/O", () => {
   });
 });
 
+describe("InspectorView vehicle intelligence", () => {
+  it("permite elegir y restablecer la doctrina táctica de un vehículo con IA", () => {
+    const vehicle: Extract<EditorEntity, { kind: "vehicle" }> = {
+      eid: "vehicle-eid",
+      kind: "vehicle",
+      def: {
+        id: "hunter",
+        presetId: "buggy",
+        position: [0, 1, 0],
+        ai: {
+          enabled: true,
+          behavior: "intercept",
+          tacticalProfile: "combine",
+        },
+      },
+    };
+    const inspector = showInspector(ioDocument([vehicle]), vehicle);
+
+    const profile = fieldControl(inspector, "Doctrina táctica") as HTMLSelectElement;
+    expect(selectOptions(profile)).toEqual(["automatic", "combine", "resistance", "transport"]);
+    expect(profile.value).toBe("combine");
+
+    profile.value = "transport";
+    profile.dispatchEvent(new Event("change"));
+    expect(vehicle.def.ai?.tacticalProfile).toBe("transport");
+
+    profile.value = "automatic";
+    profile.dispatchEvent(new Event("change"));
+    expect(vehicle.def.ai?.tacticalProfile).toBeUndefined();
+  });
+
+  it("autora noLanding sin eliminar los demás tags del área", () => {
+    const area: Extract<EditorEntity, { kind: "vehicleNavArea" }> = {
+      eid: "area-eid",
+      kind: "vehicleNavArea",
+      def: {
+        id: "courtyard",
+        polygon: [[-4, 0, -4], [4, 0, -4], [4, 0, 4], [-4, 0, 4]],
+        surface: "ground",
+        tags: ["courtyard"],
+      },
+    };
+    const inspector = showInspector(ioDocument([area]), area);
+
+    const noLanding = fieldControl(inspector, "Prohibir aterrizaje") as HTMLInputElement;
+    expect(noLanding.checked).toBe(false);
+
+    noLanding.checked = true;
+    noLanding.dispatchEvent(new Event("change"));
+    expect(area.def.tags).toEqual(["courtyard", "noLanding"]);
+
+    noLanding.checked = false;
+    noLanding.dispatchEvent(new Event("change"));
+    expect(area.def.tags).toEqual(["courtyard"]);
+  });
+});
+
 function showInspector(documentValue: EditorDocument, entity: EditorEntity): InspectorView {
   const inspector = new InspectorView({
     getDocument: () => documentValue,

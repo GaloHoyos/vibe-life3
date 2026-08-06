@@ -9,6 +9,25 @@ type NpcTask = Task<NpcBrainContext>;
  * only reports arrival; VehicleSystem remains responsible for revalidating
  * speed, distance, and availability before committing the seat.
  */
+/**
+ * Reserva el asiento que el sensor eligió. Termina en el acto: el caminar lo
+ * hace `approachVehicle` cuando `VehicleSystem` concede y empuja la orden, así
+ * que este task sólo existe para que la decisión pase por el brain y quede
+ * visible en los traces de schedule.
+ */
+export function createClaimVehicleTask(): NpcTask {
+  return {
+    id: "claimVehicle",
+    init: () => {},
+    tick: (ctx) => {
+      const vehicle = ctx.vehicle;
+      if (!vehicle?.bestOffer()) return "failure";
+      return vehicle.requestSeat() ? "success" : "failure";
+    },
+    abort: () => {},
+  };
+}
+
 export function createApproachVehicleTask(): NpcTask {
   const projectedTarget = new Vector3();
   const lastRequestedTarget = new Vector3(Number.POSITIVE_INFINITY, 0, 0);

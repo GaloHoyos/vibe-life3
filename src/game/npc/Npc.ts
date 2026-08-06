@@ -30,8 +30,11 @@ import type {
   NpcPortalHandle,
   NpcSaveSnapshot,
   NpcSeatPose,
+  NpcTacticalOrder,
+  NpcTacticalOrderResult,
   NpcVehicleApproachOrder,
   NpcVehicleApproachStatus,
+  NpcThreatKnowledge,
   NpcVehicleCapability,
 } from '@game/npc/core/INpc';
 import type {
@@ -49,6 +52,11 @@ import { NO_CONDITIONS, add, has } from '@engine/ai/brain/Condition';
 import { NpcDebugFlags } from '@game/npc/core/NpcDebugFlags';
 import { NpcNoiseSensor } from '@game/npc/brain/NpcNoiseSensor';
 import { NpcCoverSensor } from '@game/npc/brain/NpcCoverSensor';
+import {
+  NpcVehicleSensor,
+  type NpcVehicleSeatBroker,
+} from '@game/npc/brain/NpcVehicleSensor';
+import type { VehicleOpportunityRegistry } from '@game/gameplay/vehicles/ai/VehicleOpportunityRegistry';
 import type { TacticalMap } from '@game/npc/ai/TacticalMap';
 import type { SquadDirector, SquadRole } from '@game/npc/ai/SquadDirector';
 import type { SquadSlotBoard } from '@game/npc/ai/SquadSlotBoard';
@@ -91,6 +99,10 @@ export interface NpcConstructionParams {
   patrolRoute?: Vector3[] | null;
   tacticalMap?: TacticalMap | null;
   squadDirector?: SquadDirector | null;
+  /** Catalogo de asientos libres; ausente = el NPC nunca busca vehiculo solo. */
+  vehicleOpportunities?: VehicleOpportunityRegistry | null;
+  /** Quien concede los asientos que el sensor pide. */
+  vehicleSeats?: NpcVehicleSeatBroker | null;
   /** Controlador especializado (Blob); ausente = brain/schedules convencional. */
   behavior?: NpcBehaviorController | null;
   /** Presente solo en criaturas/humanoides que pueden ser cazados y digeridos. */
@@ -199,6 +211,12 @@ export class Npc implements INpc {
     arriveRadius: number;
     status: Exclude<NpcVehicleApproachStatus, "none">;
   } | null = null;
+  private tacticalOrder: {
+    commandId: string;
+    target: Vector3;
+    arriveRadius: number;
+    onResult?: (result: NpcTacticalOrderResult) => void;
+  } | null = null;
   private readonly raycast: Raycast;
   private readonly losRaycast: RaycastSource;
   private readonly buildingRegistry: BuildingRegistry;
@@ -215,6 +233,7 @@ export class Npc implements INpc {
 
   private readonly noiseSensor: NpcNoiseSensor;
   private readonly coverSensor: NpcCoverSensor | null;
+  private readonly vehicleSensor: NpcVehicleSensor | null;
   private readonly squadDirector: SquadDirector | null;
   private readonly slotBoard: SquadSlotBoard | null;
   private readonly slotHandle: NpcSlotHandle | null;
@@ -335,6 +354,17 @@ export class Npc implements INpc {
       params.tacticalMap && this.preset.usesCover !== false
         ? new NpcCoverSensor(this.id, params.tacticalMap)
         : null;
+    this.vehicleSensor =
+      params.vehicleOpportunities && params.vehicleSeats && this.vehicleCapability
+        ? new NpcVehicleSensor(
+            this.id,
+            this.faction,
+            this.vehicleCapability,
+            params.vehicleOpportunities,
+            params.vehicleSeats,
+            this.preset.movement.sprintSpeed,
+          )
+        : null;
     this.squadDirector = params.squadDirector ?? null;
     const board =
       this.preset.usesSquad === false ? null : (this.squadDirector?.slots ?? null);
@@ -351,16 +381,58 @@ export class Npc implements INpc {
       : null;
   }
 
+  /**
+   * Tick de un ocupante sentado. El brain NO corre: a bordo quien decide es el
+   * cerebro del vehículo, que ve a la tripulación como una unidad. Lo que sí
+   * sigue corriendo es la percepción, porque sin ella un NPC que se baja no
+   * recuerda a quién estaba persiguiendo y arranca de cero justo cuando el
+   * combate se pone interesante.
+   *
+   * El motor está suspendido y el asiento manda la pose, así que no hay
+   * locomoción, cobertura ni slots de squad que actualizar.
+   */
+  private updateMounted(ctx: AiFrameContext): void {
+    const delta = ctx.delta;
+    this.lastViewerDistance =
+      ctx.viewerDistance ?? (ctx.aiLod === 'near' ? 0 : ctx.aiLod === 'mid' ? 30 : 65);
+    if (this.justHitTimer > 0) this.justHitTimer = Math.max(0, this.justHitTimer - delta);
+    if (this.aggroTimer > 0) this.aggroTimer = Math.max(0, this.aggroTimer - delta);
+
+    if (this.health.isAlive()) {
+      const picked = this.pickThreat(ctx);
+      if (picked?.id !== this.currentThreat?.id) this.perception.reset();
+      this.currentThreat = picked;
+      this.noiseSensor.tick(delta);
+      const noise = this.noiseSensor.snapshot();
+      this.perception.setAlert(
+        noise.combat !== null || this.justHitTimer > 0 || (this.lastPerception?.hasMemory ?? false),
+      );
+      const facing = this.computeFacing();
+      const snapshot = this.perception.update(
+        this.motor.getPosition(),
+        facing,
+        this.currentThreat
+          ? {
+              id: this.currentThreat.id,
+              position: this.currentThreat.position,
+              isAlive: this.currentThreat.isAlive,
+            }
+          : null,
+        delta,
+        this.currentThreat?.portalView ? this.losRaycast : this.raycast,
+      );
+      this.threatLastKnown = snapshot.lastKnownPosition;
+      this.lastPerception = snapshot;
+      this.reportToSquad(ctx, snapshot.visibleNow, false);
+    }
+
+    this.animation?.updateStandalone(delta, { dead: !this.health.isAlive() });
+  }
+
   update(ctx: AiFrameContext): void {
     if (this.disposed) return;
     if (this.vehicleMounted) {
-      // Sentado: el motor está suspendido y el asiento manda la pose, pero el
-      // animador sigue corriendo para que el ocupante respire y se vea vivo.
-      this.lastViewerDistance =
-        ctx.viewerDistance ?? (ctx.aiLod === 'near' ? 0 : ctx.aiLod === 'mid' ? 30 : 65);
-      this.animation?.updateStandalone(ctx.delta, {
-        dead: !this.health.isAlive(),
-      });
+      this.updateMounted(ctx);
       return;
     }
     const delta = ctx.delta;
@@ -375,6 +447,7 @@ export class Npc implements INpc {
       // La IA no vuelve a tickear schedules después de morir, por lo que la
       // secuencia debe cerrarse antes del early-return (incluye override AI).
       ctx.script?.orderFor(this.id)?.notifyDone('canceled');
+      this.finishTacticalOrder('failed');
       if (this.frozenSolid) {
         // La estatua física del ice gun es dueña del visual: no tocarlo.
         return;
@@ -464,6 +537,21 @@ export class Npc implements INpc {
       this.motor.getPosition(),
       this.currentThreat?.position ?? this.threatLastKnown,
     );
+    // Sólo lo que el NPC sabe de verdad. `currentThreat` se elige por cercanía
+    // aunque no se lo haya visto nunca —el resto del brain lo tolera porque sus
+    // condiciones exigen `SeeEnemy`/`LostEnemy`—, así que pasar su posición
+    // cruda haría que un NPC corra hacia un vehículo por un jugador que no tiene
+    // manera de saber dónde está.
+    this.vehicleSensor?.update(
+      ctx.elapsed,
+      this.motor.getPosition(),
+      perceptionSnapshot.visibleNow
+        ? this.currentThreat?.position ?? null
+        : this.threatLastKnown,
+      perceptionSnapshot.visibleNow,
+      this.navigationQueries,
+      this.navigationProfile,
+    );
     this.feedNeighbors(ctx);
     const grenadeReady = this.isGrenadeReady(ctx.elapsed, perceptionSnapshot);
     const squadOrder = this.reportToSquad(ctx, perceptionSnapshot.visibleNow, grenadeReady);
@@ -508,6 +596,12 @@ export class Npc implements INpc {
     if (this.vehicleApproach) {
       conditions = add(conditions, Cond.VehicleApproach);
     }
+    if (this.vehicleSensor?.isVehicleUseful()) {
+      conditions = add(conditions, Cond.VehicleUseful);
+    }
+    if (this.tacticalOrder) {
+      conditions = add(conditions, Cond.TacticalOrder);
+    }
     // Si el NPC ya estaba en combate/JustHit al recibir Start, el schedule
     // scripted nunca llega a activarse y por tanto no existe un task que lo
     // aborte. Cerramos la orden aquí; para una secuencia ya corriendo esto es
@@ -531,6 +625,7 @@ export class Npc implements INpc {
 
     const isSquadMember =
       this.playerSquadEligible && (ctx.playerSquad?.isMember(this.id) ?? false);
+    const tacticalOrder = this.tacticalOrder;
     const brainCtx: NpcBrainContext = {
       delta,
       elapsed: ctx.elapsed,
@@ -545,6 +640,7 @@ export class Npc implements INpc {
       patrolRoute: this.patrolRoute,
       noise,
       tactical: this.coverSensor,
+      vehicle: this.vehicleSensor,
       squad: squadOrder ? { role: squadOrder.role, flankSide: squadOrder.flankSide } : null,
       slots: this.slotHandle,
       medic: healTarget
@@ -560,6 +656,15 @@ export class Npc implements INpc {
             setStatus: (status) => {
               if (this.vehicleApproach) this.vehicleApproach.status = status;
             },
+          }
+        : null,
+      tacticalOrder: tacticalOrder
+        ? {
+            commandId: tacticalOrder.commandId,
+            target: tacticalOrder.target,
+            arriveRadius: tacticalOrder.arriveRadius,
+            complete: (result) =>
+              this.finishTacticalOrder(result, tacticalOrder.commandId),
           }
         : null,
       gesture: (id, duration) => this.animation?.playGesture?.(id, duration),
@@ -614,6 +719,10 @@ export class Npc implements INpc {
       this.locomotion.stop();
       this.coverSensor?.releaseCover();
       this.slotBoard?.unregister(this.id);
+    } else {
+      // Al bajar la reserva deja de tener sentido: si vuelve a convenirle este
+      // mismo vehículo, el sensor lo va a volver a proponer.
+      this.vehicleSensor?.releaseSeat();
     }
     if (!mounted) {
       this.animation?.setSeated?.(0, false);
@@ -683,6 +792,55 @@ export class Npc implements INpc {
 
   getVehicleApproachStatus(): NpcVehicleApproachStatus {
     return this.vehicleApproach?.status ?? "none";
+  }
+
+  setTacticalOrder(order: NpcTacticalOrder | null): void {
+    if (!order) {
+      this.finishTacticalOrder('cancelled');
+      return;
+    }
+    if (
+      this.disposed ||
+      !this.health.isAlive() ||
+      order.commandId.trim().length === 0 ||
+      !isFiniteVector(order.target)
+    ) {
+      order.onResult?.('failed');
+      return;
+    }
+    const arriveRadius =
+      order.arriveRadius !== undefined && Number.isFinite(order.arriveRadius)
+        ? Math.max(0.25, order.arriveRadius)
+        : 1.25;
+    if (this.tacticalOrder?.commandId === order.commandId) {
+      this.tacticalOrder.target.copy(order.target);
+      this.tacticalOrder.arriveRadius = arriveRadius;
+      if (order.onResult) this.tacticalOrder.onResult = order.onResult;
+      return;
+    }
+    this.finishTacticalOrder('cancelled');
+    this.tacticalOrder = {
+      commandId: order.commandId,
+      target: order.target.clone(),
+      arriveRadius,
+      ...(order.onResult ? { onResult: order.onResult } : {}),
+    };
+  }
+
+  getThreatKnowledge(): NpcThreatKnowledge | null {
+    const threat = this.currentThreat;
+    const perception = this.lastPerception;
+    if (!threat || !perception) return null;
+    const position = perception.visibleNow
+      ? threat.position
+      : perception.lastKnownPosition;
+    if (!position) return null;
+    return {
+      id: threat.id,
+      position: position.clone(),
+      visible: perception.visibleNow,
+      memoryAge: perception.memoryAge,
+    };
   }
 
   /**
@@ -932,6 +1090,7 @@ export class Npc implements INpc {
     hitPartName?: string,
     attackerId?: string,
   ): void {
+    this.finishTacticalOrder('failed');
     this.eventBus.emit('npc.killed', {
       id: this.id,
       characterId: this.preset.id,
@@ -946,6 +1105,7 @@ export class Npc implements INpc {
       );
     }
     this.coverSensor?.dispose();
+    this.vehicleSensor?.dispose();
     this.squadDirector?.unregister(this.id);
     this.locomotion.stop();
     this.motor.disable();
@@ -1084,6 +1244,7 @@ export class Npc implements INpc {
       threatId: this.currentThreat?.id ?? null,
       threatPosition: this.currentThreat?.position.clone() ?? null,
       coverId: null,
+      ...(this.vehicleSensor ? { vehicle: this.vehicleSensor.decisionTrace() } : {}),
       path: pathSnapshotFromLocomotion(locomotionDebug),
       locomotion: {
         velocity: motorSnap.velocity,
@@ -1120,10 +1281,12 @@ export class Npc implements INpc {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.finishTacticalOrder('cancelled');
     this.organicMatter?.invalidate();
     this.behavior?.dispose();
     this.noiseSensor.dispose();
     this.coverSensor?.dispose();
+    this.vehicleSensor?.dispose();
     this.squadDirector?.unregister(this.id);
     this.locomotion.dispose();
     this.combatHandle.dispose?.();
@@ -1585,6 +1748,16 @@ export class Npc implements INpc {
     const smooth = restraint * restraint * (3 - 2 * restraint);
     this.motor.setSpeedMultiplier(this.gaitMultiplier * (1 - smooth));
   }
+
+  private finishTacticalOrder(
+    result: NpcTacticalOrderResult,
+    expectedCommandId?: string,
+  ): void {
+    const order = this.tacticalOrder;
+    if (!order || (expectedCommandId && order.commandId !== expectedCommandId)) return;
+    this.tacticalOrder = null;
+    order.onResult?.(result);
+  }
 }
 
 /** Candidato con `id` dado más cercano a `position` (desambigua player vs sus ghosts). */
@@ -1617,6 +1790,14 @@ const tmpUp = new Vector3();
 function isBodyTipped(rotation: Quaternion): boolean {
   tmpUp.set(0, 1, 0).applyQuaternion(rotation);
   return tmpUp.y < 0.5;
+}
+
+function isFiniteVector(vector: Vector3): boolean {
+  return (
+    Number.isFinite(vector.x) &&
+    Number.isFinite(vector.y) &&
+    Number.isFinite(vector.z)
+  );
 }
 
 /**

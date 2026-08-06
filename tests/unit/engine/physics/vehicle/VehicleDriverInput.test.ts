@@ -126,6 +126,40 @@ describe("VehicleDriverInputModel", () => {
     expect(hold(model, IDLE, 25, 0.2).handbrake).toBe(0);
   });
 
+  it("cambiar de tope a tope es más rápido que salir del centro", () => {
+    const flicking = new VehicleDriverInputModel();
+    const turning = new VehicleDriverInputModel();
+    // A 20 m/s el volante va lento; la regla de Source es que corregir hacia el
+    // otro lado nunca puede ser más lento que centrarse solo, o el volante se
+    // arrastra por el medio cada vez que se cambia de curva.
+    hold(flicking, { ...IDLE, forward: true, right: true }, 20, 2);
+    const fromLock = hold(flicking, { ...IDLE, forward: true, left: true }, 20, 0.1);
+    const fromCentre = hold(turning, { ...IDLE, forward: true, left: true }, 20, 0.1);
+
+    expect(1 - fromLock.steering).toBeGreaterThan(Math.abs(fromCentre.steering));
+  });
+
+  it("frenar afila el volante: es lo que hace la curva de freno de mano", () => {
+    const braking = new VehicleDriverInputModel();
+    const cruising = new VehicleDriverInputModel();
+
+    const braked = hold(braking, { ...IDLE, back: true, right: true }, 20, 0.05);
+    const cruised = hold(cruising, { ...IDLE, forward: true, right: true }, 20, 0.05);
+
+    expect(braked.steering).toBeGreaterThan(cruised.steering * 2);
+  });
+
+  it("el preset puede pedir otro tacto sin tocar el modelo", () => {
+    const model = new VehicleDriverInputModel();
+    // Un casco que dobla empujando no puede permitirse el recorte de gas en
+    // curva: le sacaría justo lo que necesita para girar.
+    model.setTuning({ turnThrottleReduceSlow: 0, turnThrottleReduceFast: 0 });
+
+    const cornering = hold(model, { ...IDLE, forward: true, right: true }, 30, 2);
+
+    expect(cornering.throttle).toBeCloseTo(1, 5);
+  });
+
   it("reset descarta el estado del vehículo anterior", () => {
     const model = new VehicleDriverInputModel();
     hold(model, { ...IDLE, forward: true, right: true }, 20, 2);

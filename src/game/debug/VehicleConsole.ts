@@ -44,6 +44,16 @@ declare global {
         targetAltitude: number | null;
         targetSpeed: number | null;
         landingSpot: string | null;
+        landingSurface: string | null;
+        landingPosition: [number, number, number] | null;
+        landingRequested: [number, number, number] | null;
+        landingDeviation: number | null;
+        landingStatus: string;
+        landingOrderId: string | null;
+        landingRevision: number | null;
+        landingFailure: string | null;
+        landingPurpose: string | null;
+        landingReserved: boolean;
         routeLength: number;
         /** Ángulo de la torreta; delata si el artillero IA está siguiendo. */
         turretYaw: number | null;
@@ -52,6 +62,26 @@ declare global {
         wreckage: boolean;
         crew: string[];
       }>;
+      /** Intenciones de tripulación: quién va a qué asiento y en qué fase. */
+      crew: () => {
+        assignments: Array<{
+          actorId: string;
+          vehicleId: string;
+          seatId: string;
+          role: string;
+          phase: string;
+          approachTarget: [number, number, number] | null;
+        }>;
+        extractions: Array<{
+          faction: string;
+          vehicleId: string | null;
+          actors: string[];
+          phase: string;
+          cargo: string[];
+          delivered: string[];
+          failed: string[];
+        }>;
+      };
       /** Estado de la IA: decisión, blanco percibido y torreta. */
       ai: () => Array<{
         id: string;
@@ -63,6 +93,26 @@ declare global {
         blockedSeconds: number;
         steering: number | null;
         recovery: string | null;
+        /** Última orden a la tripulación: delata por qué nadie se baja. */
+        crewAction: string | null;
+        crewCommand: {
+          commandId: string;
+          action: string;
+          actors: string[];
+          confirmed: string[];
+          rejected: string[];
+          status: string;
+          reason: string | null;
+        } | null;
+        objective: {
+          id: string;
+          revision: number;
+          source: string;
+          kind: string;
+          status: string;
+        } | null;
+        tactic: string | null;
+        objectiveFailure: string | null;
         threat: string | null;
         threatVisible: boolean;
         threatMemoryAge: number | null;
@@ -165,6 +215,22 @@ export function installVehicleConsole(
             targetAltitude: report?.targetAltitude ?? null,
             targetSpeed: report?.targetSpeed ?? null,
             landingSpot: report?.landingSpot?.source ?? null,
+            landingSurface: report?.landingSpot
+              ? `${report.landingSpot.surfaceType ?? "unknown"}:${report.landingSpot.surfaceId ?? "world"}`
+              : null,
+            landingPosition: report?.landingSpot
+              ? [...report.landingSpot.position]
+              : null,
+            landingRequested: report?.landingRequested
+              ? [...report.landingRequested]
+              : null,
+            landingDeviation: report?.landingDeviation ?? null,
+            landingStatus: report?.landingStatus ?? "none",
+            landingOrderId: report?.landingOrderId ?? null,
+            landingRevision: report?.landingRevision ?? null,
+            landingFailure: report?.landingFailure ?? null,
+            landingPurpose: report?.landingPurpose ?? null,
+            landingReserved: report?.landingReserved ?? false,
             routeLength: report?.routeLength ?? 0,
             turretYaw: system?.getTurretYaw(vehicle.id) ?? null,
             crashing: vehicle.isCrashing(),
@@ -174,6 +240,34 @@ export function installVehicleConsole(
               .map((occupant) => `${occupant.role}:${occupant.actor}`),
           };
         });
+    },
+    crew: () => {
+      const system = getVehicles();
+      return {
+        assignments: (system?.getCrewIntents() ?? []).map((assignment) => ({
+          actorId: assignment.actorId,
+          vehicleId: assignment.vehicleId,
+          seatId: assignment.seatId,
+          role: assignment.role,
+          phase: assignment.phase,
+          approachTarget: assignment.approachTarget
+            ? ([
+                assignment.approachTarget.x,
+                assignment.approachTarget.y,
+                assignment.approachTarget.z,
+              ] as [number, number, number])
+            : null,
+        })),
+        extractions: (system?.getExtractionIntents() ?? []).map((request) => ({
+          faction: request.faction,
+          vehicleId: request.vehicleId,
+          actors: [...request.actors],
+          phase: request.phase,
+          cargo: [...request.cargo],
+          delivered: [...request.delivered],
+          failed: [...request.failed],
+        })),
+      };
     },
     ai: () => {
       const system = getVehicles();
@@ -190,6 +284,29 @@ export function installVehicleConsole(
           blockedSeconds: report?.blockedSeconds ?? 0,
           steering: vehicle.getTelemetry().steering,
           recovery: report?.recovery ?? null,
+          crewAction: report?.crewAction ?? null,
+          crewCommand: report?.crewCommand
+            ? {
+                commandId: report.crewCommand.commandId,
+                action: report.crewCommand.action,
+                actors: [...report.crewCommand.actorIds],
+                confirmed: [...report.crewCommand.confirmedActorIds],
+                rejected: [...report.crewCommand.rejectedActorIds],
+                status: report.crewCommand.status,
+                reason: report.crewCommand.reason ?? null,
+              }
+            : null,
+          objective: report?.objective
+            ? {
+                id: report.objective.id,
+                revision: report.objective.revision,
+                source: report.objective.source,
+                kind: report.objective.kind,
+                status: report.objective.status,
+              }
+            : null,
+          tactic: report?.tactic?.tactic ?? null,
+          objectiveFailure: report?.objectiveFailure?.reason ?? null,
           threat: report?.threat ?? null,
           threatVisible: report?.threatVisible ?? false,
           threatMemoryAge: report?.threatMemoryAge ?? null,

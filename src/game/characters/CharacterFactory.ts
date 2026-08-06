@@ -57,6 +57,8 @@ import type { NavigationRequestQueue } from '@engine/ai/navigation/NavigationReq
 import type { BuildingRegistry } from '@game/levels/buildings/BuildingRegistry';
 import { navigationProfileForPreset } from '@game/npc/navigation/NavAgentProfiles';
 import type { TacticalMap } from '@game/npc/ai/TacticalMap';
+import type { NpcVehicleSeatBroker } from '@game/npc/brain/NpcVehicleSensor';
+import type { VehicleOpportunityRegistry } from '@game/gameplay/vehicles/ai/VehicleOpportunityRegistry';
 import type { SquadDirector } from '@game/npc/ai/SquadDirector';
 import { getMaterial } from '@engine/render/material/Materials';
 import { CharacterPresets } from './CharacterPresets';
@@ -85,6 +87,12 @@ export interface NpcRuntimeServices {
   onFlyerPortalTeleport?: (npcId: string, exitPosition: Vector3) => void;
   tacticalMap: TacticalMap;
   squadDirector: SquadDirector;
+  /**
+   * Catálogo de asientos libres y quién los concede. Ausentes hasta que el nivel
+   * tenga vehículos: sin ellos ningún NPC evalúa subirse por su cuenta.
+   */
+  vehicleOpportunities?: VehicleOpportunityRegistry | null;
+  vehicleSeats?: NpcVehicleSeatBroker | null;
 }
 
 /**
@@ -413,6 +421,8 @@ export class CharacterFactory {
       patrolRoute: patrolPoints,
       tacticalMap: services.tacticalMap,
       squadDirector: services.squadDirector,
+      vehicleOpportunities: services.vehicleOpportunities ?? null,
+      vehicleSeats: services.vehicleSeats ?? null,
       behavior:
         blobAnimator !== null
           ? new BlobPredatorController(
