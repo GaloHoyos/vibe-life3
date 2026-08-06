@@ -3,7 +3,7 @@ import type {
   VehicleNavigationProfile,
 } from './VehicleAiTypes';
 
-const VEHICLE_NAVIGATION_FORMAT_VERSION = 1;
+const VEHICLE_NAVIGATION_FORMAT_VERSION = 2;
 
 export function vehicleNavigationHash(input: VehicleNavigationBakeInput): string {
   const canonical = {
@@ -44,6 +44,7 @@ export function vehicleNavigationHash(input: VehicleNavigationBakeInput): string
       speedLimit: area.speedLimit === undefined ? null : quantize(area.speedLimit),
       tags: [...(area.tags ?? [])].sort(),
       flags: [...(area.flags ?? [])].sort(),
+      blocked: area.blocked ?? false,
     })),
     lanes: [...input.lanes].sort(compareId).map((lane) => ({
       id: lane.id,
@@ -62,6 +63,7 @@ export function vehicleNavigationHash(input: VehicleNavigationBakeInput): string
       allowedPresets: [...(marker.allowedPresets ?? [])].sort(),
       allowRecoverySnap: marker.allowRecoverySnap ?? false,
     })),
+    seeds: [...(input.seeds ?? [])].map(quantizedPoint).sort(comparePoint),
     profiles: [...input.profiles].sort(compareId).map(canonicalProfile),
     options: {
       cellSize: input.options?.cellSize === undefined ? null : quantize(input.options.cellSize),

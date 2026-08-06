@@ -43,23 +43,30 @@ export interface VehicleDriverTuning {
   throttleSteeringRestRateFactor: number;
 }
 
+/**
+ * Calcado del `vehicle_jeep.txt` de HL2, con las velocidades pasadas de mph a
+ * m/s. Los dos números que más se sienten son `speedFast` y `throttleRate`: la
+ * banda de velocidad es baja y estrecha (6.3 a 8.9 m/s), así que el coche pasa
+ * de pivotar a ir clavado en cuanto arranca de verdad, y la mariposa abre en
+ * poco más de un décimo de segundo, no en un cuarto.
+ */
 export const DEFAULT_VEHICLE_DRIVER_TUNING: Readonly<VehicleDriverTuning> =
   Object.freeze({
     throttleAsBrakeSpeed: 1.4,
-    throttleRate: 4,
-    brakeRate: 3.6,
+    throttleRate: 9,
+    brakeRate: 6,
     brakeRateFromForward: 2,
     maxReverseThrottle: 1,
     steeringRateSlow: 4,
-    steeringRateFast: 1.8,
-    steeringRestRateSlow: 4.5,
-    steeringRestRateFast: 2.6,
-    speedSlow: 6,
-    speedFast: 26,
+    steeringRateFast: 2,
+    steeringRestRateSlow: 4,
+    steeringRestRateFast: 2,
+    speedSlow: 6.3,
+    speedFast: 8.9,
     turnThrottleReduceSlow: 0.01,
-    turnThrottleReduceFast: 0.35,
-    brakeSteeringRateFactor: 1.6,
-    throttleSteeringRestRateFactor: 1,
+    turnThrottleReduceFast: 2,
+    brakeSteeringRateFactor: 6,
+    throttleSteeringRestRateFactor: 2,
   });
 
 /**
@@ -75,9 +82,14 @@ export class VehicleDriverInputModel {
   private throttle = 0;
   private brake = 0;
   private steering = 0;
-  private readonly tuning: VehicleDriverTuning;
+  private tuning: VehicleDriverTuning;
 
   constructor(tuning: Partial<VehicleDriverTuning> = {}) {
+    this.tuning = { ...DEFAULT_VEHICLE_DRIVER_TUNING, ...tuning };
+  }
+
+  /** Un hidrodeslizador no se maneja como un buggy: el preset manda. */
+  setTuning(tuning: Partial<VehicleDriverTuning> = {}): void {
     this.tuning = { ...DEFAULT_VEHICLE_DRIVER_TUNING, ...tuning };
   }
 
@@ -180,7 +192,7 @@ export class VehicleDriverInputModel {
   ): void {
     const tuning = this.tuning;
     const turning = (intent.right ? 1 : 0) - (intent.left ? 1 : 0);
-    const restRate = remap(
+    let restRate = remap(
       speed,
       tuning.speedSlow,
       tuning.speedFast,
@@ -190,6 +202,12 @@ export class VehicleDriverInputModel {
     if (turning === 0) {
       this.steering = approach(0, this.steering, restRate * delta);
       return;
+    }
+    const braking = intent.back || intent.handbrake;
+    // El gas acelera el CENTRADO, no el ataque: entrar en curva cuesta lo mismo
+    // acelerando, pero cambiar de un tope al otro es el doble de rápido.
+    if (intent.forward && !braking) {
+      restRate *= tuning.throttleSteeringRestRateFactor;
     }
 
     let rate = remap(
@@ -204,11 +222,7 @@ export class VehicleDriverInputModel {
     if (rate < restRate && Math.sign(turning) !== Math.sign(this.steering)) {
       rate = restRate;
     }
-    if (intent.back || intent.handbrake) {
-      rate *= tuning.brakeSteeringRateFactor;
-    } else if (intent.forward) {
-      rate *= tuning.throttleSteeringRestRateFactor;
-    }
+    if (braking) rate *= tuning.brakeSteeringRateFactor;
     this.steering = approach(turning, this.steering, rate * delta);
   }
 

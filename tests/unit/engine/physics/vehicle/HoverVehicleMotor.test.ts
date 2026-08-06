@@ -155,7 +155,6 @@ function hoverConfig(
     maxPlaningLift: 3000,
     landThrustFactor: 0.12,
     throttleResponse: 8,
-    steeringResponse: 10,
     boostMultiplier: 1.25,
   };
 }

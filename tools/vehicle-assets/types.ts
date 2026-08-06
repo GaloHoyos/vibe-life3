@@ -3,7 +3,8 @@ export type VehicleAssetId =
   | "airboat"
   | "helicopter"
   | "rebelCrawler"
-  | "combineGlider";
+  | "combineGlider"
+  | "combineSwimmer";
 
 export type Vec3 = readonly [number, number, number];
 
@@ -273,6 +274,68 @@ export const VEHICLE_SPECS: readonly VehicleAssetSpec[] = [
       "stabilizer_front",
       "stabilizer_rear_left",
       "stabilizer_rear_right",
+      "seat_driver",
+      "camera_driver",
+      "exit_left",
+      "exit_right",
+      "audio_engine",
+      "audio_hover",
+      "damage_engine",
+      "damage_hull",
+      "damage_steering",
+      "damage_fuel",
+      "wreckage",
+    ],
+  },
+  {
+    id: "combineSwimmer",
+    displayName: "Nadador Combine de transporte",
+    seed: 0xbb67ae85,
+    maxTrianglesLod0: 85_000,
+    /**
+     * Más alto que el resto del parque porque acá cada apéndice que se mueve
+     * por su cuenta es una malla aparte: remos, antenas, cola y mandíbula no
+     * pueden ir horneados en la piel si tienen que animarse. Es el precio de
+     * que sea una criatura y no un casco.
+     */
+    maxDrawsPerLod: 26,
+    maxGlbBytes: 9 * 1024 * 1024,
+    // Criatura reconvertida al gusto de los Consejeros: carne pálida a la vista,
+    // suturada contra el implante. 0 piel dorsal húmeda, 1 carne expuesta,
+    // 2 placas, collares y tubos Combine, 3 correas y membranas verde oliva
+    // —el mismo verde del traje de los Consejeros—.
+    finishes: [
+      { color: [74, 82, 78], roughness: 0.38, metallic: 0.03, wear: 0.32, grain: 1.5 },
+      { color: [198, 189, 176], roughness: 0.56, metallic: 0.02, wear: 0.2, grain: 1.25 },
+      { color: [64, 68, 72], roughness: 0.34, metallic: 0.92, wear: 0.42, grain: 1.5 },
+      { color: [46, 50, 38], roughness: 0.88, metallic: 0.04, wear: 0.3, grain: 2.4 },
+    ],
+    grimeColor: [44, 52, 50],
+    requiredNodes: [
+      "visual_lod0",
+      "visual_lod1",
+      "visual_lod2",
+      "fan_main",
+      "rudder_left",
+      "rudder_right",
+      "stabilizer_front",
+      "stabilizer_rear_left",
+      "stabilizer_rear_right",
+      "swimmer_head",
+      "swimmer_jaw",
+      "swimmer_gills",
+      "swimmer_antenna_left",
+      "swimmer_antenna_left_tip",
+      "swimmer_antenna_right",
+      "swimmer_antenna_right_tip",
+      "swimmer_oar_left_0",
+      "swimmer_oar_left_1",
+      "swimmer_oar_left_2",
+      "swimmer_oar_right_0",
+      "swimmer_oar_right_1",
+      "swimmer_oar_right_2",
+      "swimmer_tail_0",
+      "swimmer_tail_1",
       "seat_driver",
       "camera_driver",
       "exit_left",

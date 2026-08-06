@@ -64,6 +64,7 @@ export class VehicleAiPerception {
   private targetId: string | null = null;
   private retargetCountdown = 0;
   private tracking = false;
+  private intel: { targetId: string; position: Vector3; age: number } | null = null;
 
   constructor(
     private readonly vehicleId: string,
@@ -78,34 +79,73 @@ export class VehicleAiPerception {
     this.perception.setAlert(alert);
   }
 
+  /** Records a heard position or allied report without turning it into LOS. */
+  rememberIntel(targetId: string, position: Vector3): void {
+    this.intel = { targetId, position: position.clone(), age: 0 };
+    if (this.targetId === null) this.targetId = targetId;
+    this.perception.setAlert(true);
+  }
+
   update(
     delta: number,
     self: Vector3,
     facing: Vector3,
     candidates: readonly PerceptionTarget[],
     raycast: RaycastSource,
+    preferredTargetId: string | null = null,
   ): VehiclePerceptionSnapshot {
+    if (this.intel) {
+      this.intel.age += delta;
+      if (this.intel.age >= this.config.memoryTime) this.intel = null;
+    }
     this.retargetCountdown -= delta;
     const current = candidates.find((entry) => entry.id === this.targetId) ?? null;
+    const preferred = preferredTargetId === null
+      ? null
+      : candidates.find(
+        (entry) => entry.id === preferredTargetId && entry.isAlive,
+      ) ?? null;
     if (
       !current ||
       !current.isAlive ||
       this.retargetCountdown <= 0 ||
-      this.targetId === null
+      this.targetId === null ||
+      (preferred !== null && preferred.id !== this.targetId)
     ) {
       this.retargetCountdown = VEHICLE_PERCEPTION.retargetSeconds;
-      this.selectTarget(self, facing, candidates, raycast, current);
+      this.selectTarget(
+        self,
+        facing,
+        candidates,
+        raycast,
+        current,
+        preferred,
+      );
     }
 
     const target = candidates.find((entry) => entry.id === this.targetId) ?? null;
     const snapshot = this.perception.update(self, facing, target, delta, raycast);
     if (snapshot.visibleNow && target) {
       this.trackPosition(target.position, delta);
+      this.intel = null;
     } else if (snapshot.lastKnownPosition) {
       this.position.copy(snapshot.lastKnownPosition);
       // Sin LOS la velocidad deja de ser información: el último-visto es un
       // punto, no una trayectoria.
       this.velocity.multiplyScalar(Math.max(0, 1 - delta * 2));
+    } else if (this.intel) {
+      this.targetId = this.intel.targetId;
+      this.position.copy(this.intel.position);
+      this.velocity.set(0, 0, 0);
+      this.tracking = true;
+      return {
+        targetId: this.targetId,
+        position: this.position.clone(),
+        velocity: this.velocity.clone(),
+        visible: false,
+        memoryAge: this.intel.age,
+        hasMemory: true,
+      };
     } else {
       this.tracking = false;
       this.targetId = null;
@@ -127,6 +167,7 @@ export class VehicleAiPerception {
     this.targetId = null;
     this.retargetCountdown = 0;
     this.tracking = false;
+    this.intel = null;
     this.velocity.set(0, 0, 0);
   }
 
@@ -156,9 +197,28 @@ export class VehicleAiPerception {
     candidates: readonly PerceptionTarget[],
     raycast: RaycastSource,
     current: PerceptionTarget | null,
+    preferred: PerceptionTarget | null,
   ): void {
+    if (
+      preferred &&
+      isTargetVisible(
+        this.config,
+        self,
+        facing,
+        preferred,
+        raycast,
+        this.vehicleId,
+        this.losFilter,
+      )
+    ) {
+      if (preferred.id !== this.targetId) {
+        this.switchTo(preferred.id, candidates);
+      }
+      return;
+    }
+
     const ranked = candidates
-      .filter((entry) => entry.isAlive)
+      .filter((entry) => entry.isAlive && entry.id !== preferred?.id)
       .map((entry) => ({
         entry,
         distanceSq: entry.position.distanceToSquared(self),
@@ -190,12 +250,13 @@ export class VehicleAiPerception {
       return;
     }
     if (best.id === this.targetId) return;
-    if (!current || !current.isAlive) {
+    const effectiveCurrent = current?.id === preferred?.id ? null : current;
+    if (!effectiveCurrent || !effectiveCurrent.isAlive) {
       this.switchTo(best.id, candidates);
       return;
     }
     // Histéresis: robar el blanco cuesta estar sensiblemente más cerca.
-    const currentDistanceSq = current.position.distanceToSquared(self);
+    const currentDistanceSq = effectiveCurrent.position.distanceToSquared(self);
     const advantage = VEHICLE_PERCEPTION.retargetAdvantage ** 2;
     if (best.distanceSq < currentDistanceSq * advantage) {
       this.switchTo(best.id, candidates);

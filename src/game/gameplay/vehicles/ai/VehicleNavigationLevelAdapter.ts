@@ -12,8 +12,10 @@ import type {
   VehicleBakeObstacle,
   VehicleNavigationBakeInput,
   VehicleNavigationBakeOptions,
+  VehicleNavPoint,
   VehicleSurfaceSample,
 } from './VehicleAiTypes';
+
 import { navigationProfileFromPreset } from './VehicleAiTypes';
 
 export interface VehicleNavigationLevelAdapterOptions {
@@ -39,19 +41,51 @@ export function vehicleNavigationInputFromLevel(
       }))
     : [];
   const presets = options.presets ?? navigationPresetsFromLevel(level);
+  const terrain = terrainSurface(level, options.terrainSampleStride);
   return {
     geometry: {
       revision: level.id,
       obstacles: [...staticBoxes, ...dynamicBoxes].map(boxObstacle),
-      surfaceSamples: terrainSamples(level, options.terrainSampleStride),
+      surfaceSamples: terrain.samples,
     },
     waterVolumes: level.waterVolumes ?? [],
     areas: level.vehicleNavAreas ?? [],
     lanes: level.vehicleNavLanes ?? [],
     markers: level.vehicleNavMarkers ?? [],
     profiles: presets.map(navigationProfileFromPreset),
-    options: options.bake,
+    seeds: navigationSeeds(level),
+    options: resolveBakeOptions(options.bake, terrain.spacing),
   };
+}
+
+/**
+ * Dónde hay vehículos de verdad: spawns, carriles y marcadores. El bake conserva
+ * sólo las islas que alcanzan alguno de estos puntos.
+ */
+function navigationSeeds(level: LevelDefinition): VehicleNavPoint[] {
+  const seeds: VehicleNavPoint[] = [];
+  for (const vehicle of level.vehicles ?? []) {
+    const preset = VehiclePresets[vehicle.presetId];
+    if (!usesGroundNavigation(preset)) continue;
+    seeds.push(vehicle.position);
+  }
+  for (const lane of level.vehicleNavLanes ?? []) seeds.push(...lane.points);
+  for (const marker of level.vehicleNavMarkers ?? []) seeds.push(marker.position);
+  return seeds;
+}
+
+/**
+ * El tope por defecto del bake se calibra contra el tamaño de celda, que puede
+ * ser bastante menor que el paso del heightfield. Sin subirlo al paso real del
+ * terreno, las celdas que caen entre dos muestras no encuentran superficie y el
+ * grid sale agujereado.
+ */
+function resolveBakeOptions(
+  bake: VehicleNavigationBakeOptions | undefined,
+  spacing: number,
+): VehicleNavigationBakeOptions | undefined {
+  if (spacing <= 0 || bake?.maxSampleDistance !== undefined) return bake;
+  return { ...bake, maxSampleDistance: spacing * 0.75 };
 }
 
 function navigationPresetsFromLevel(
@@ -117,12 +151,18 @@ function boxObstacle(box: StaticBoxDefinition): VehicleBakeObstacle {
   };
 }
 
-function terrainSamples(
+interface TerrainSurface {
+  samples: VehicleSurfaceSample[];
+  /** Distancia entre muestras vecinas en diagonal; 0 sin terreno. */
+  spacing: number;
+}
+
+function terrainSurface(
   level: LevelDefinition,
   requestedStride: number | undefined,
-): VehicleSurfaceSample[] {
+): TerrainSurface {
   const terrain = level.terrain;
-  if (!terrain) return [];
+  if (!terrain) return { samples: [], spacing: 0 };
   const field = generateHeightField({
     widthSamples: terrain.widthSamples,
     depthSamples: terrain.depthSamples,
@@ -160,7 +200,7 @@ function terrainSamples(
       });
     }
   }
-  return samples;
+  return { samples, spacing: Math.hypot(stepX * stride, stepZ * stride) };
 }
 
 function heightAt(

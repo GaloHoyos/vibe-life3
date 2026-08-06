@@ -79,6 +79,14 @@ const WATER_SURFACES = ['canal', 'river', 'industrial'] as const;
 const VEHICLE_NAV_SURFACES = ['ground', 'water', 'both'] as const;
 const VEHICLE_LANE_DIRECTIONS = ['forward', 'backward', 'both'] as const;
 const VEHICLE_CRASH_POLICIES = ['fatal', 'survivable'] as const;
+const VEHICLE_TACTICAL_PROFILES = ['automatic', 'combine', 'resistance', 'transport'] as const;
+const VEHICLE_TACTICAL_PROFILE_LABELS = {
+  automatic: 'Automática',
+  combine: 'Combine',
+  resistance: 'Resistencia',
+  transport: 'Transporte',
+} as const;
+const NO_LANDING_TAG = 'noLanding';
 const VEHICLE_MARKER_KINDS = [
   'parking',
   'boarding',
@@ -409,6 +417,21 @@ export class InspectorView implements Disposable {
           entity.def.engineOn = v || undefined;
           this.commit();
         }));
+        const vehicleAi = entity.def.ai;
+        if (vehicleAi) {
+          this.append(selectField(
+            'Doctrina táctica',
+            vehicleAi.tacticalProfile ?? 'automatic',
+            VEHICLE_TACTICAL_PROFILES,
+            (v) => {
+              vehicleAi.tacticalProfile = v === 'automatic'
+                ? undefined
+                : v as NonNullable<typeof vehicleAi.tacticalProfile>;
+              this.commit();
+            },
+            VEHICLE_TACTICAL_PROFILE_LABELS,
+          ));
+        }
         if (entity.def.presetId === 'helicopter') {
           this.append(checkboxField('Permitir bajar del helicóptero', entity.def.allowPlayerExit ?? false, (v) => {
             entity.def.allowPlayerExit = v || undefined;
@@ -467,6 +490,16 @@ export class InspectorView implements Disposable {
           entity.def.surface = v as typeof entity.def.surface;
           this.commit();
         }));
+        this.append(checkboxField(
+          'Prohibir aterrizaje',
+          entity.def.tags?.includes(NO_LANDING_TAG) ?? false,
+          (v) => {
+            const tags = (entity.def.tags ?? []).filter((tag) => tag !== NO_LANDING_TAG);
+            if (v) tags.push(NO_LANDING_TAG);
+            entity.def.tags = tags.length > 0 ? tags : undefined;
+            this.commit();
+          },
+        ));
         this.append(numberField('Costo', entity.def.cost ?? 1, (v) => {
           entity.def.cost = v > 0 ? v : undefined;
           this.commit();

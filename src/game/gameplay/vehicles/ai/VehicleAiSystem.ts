@@ -10,12 +10,14 @@ import type {
   VehicleNavigationBakeInput,
   VehicleNavigationProfile,
   VehicleNavPoint,
+  VehicleShapeCastObservation,
 } from './VehicleAiTypes';
 import {
   navigationProfileFromPreset,
   profileHasNavGrid,
 } from './VehicleAiTypes';
 import { headingBetween, planarDistance } from './VehicleAiMath';
+import type { VehiclePathProgress } from './VehiclePathFollower';
 import {
   createDefaultVehicleNavigationCache,
   type VehicleNavigationCache,
@@ -79,12 +81,40 @@ interface VehicleAiRecord {
   planPending: boolean;
   planRetrySeconds: number;
   planFailureCount: number;
+  planContextKey: string;
   pathChangedPending: boolean;
+  lastContext: VehicleBrainContext | null;
 }
+
+export interface VehicleAiFrameState {
+  readonly pose: VehicleBrainContext['pose'];
+  readonly speed: number;
+  readonly planarSpeed?: number;
+  readonly shapeCasts?: readonly VehicleShapeCastObservation[];
+}
+
+/**
+ * Planes simultáneos en vuelo hacia el worker. Cada plan corre un Hybrid A*
+ * sobre una grilla de decenas de miles de celdas: sin tope, una docena de
+ * vehículos replanificando a la vez encola trabajo que llega tarde y ya no
+ * sirve. Quien no entra reintenta al tick siguiente, que es gratis porque el
+ * cerebro sigue pidiendo plan mientras la ruta no llegue al objetivo.
+ */
+const MAX_CONCURRENT_PLANS = 3;
+/** Cupo reservado para lo que pasa cerca del jugador. */
+const MAX_DISTANT_PLANS = 2;
+const DISTANT_PLAN_METERS = 120;
 
 export class VehicleAiSystem {
   private plannerClient: VehicleNavigationPlanService | null = null;
+  /**
+   * Copia local del planificador. El worker resuelve las rutas; esta copia sólo
+   * responde consultas sincrónicas de distancia y alcanzabilidad, que la
+   * decisión de embarque necesita en el mismo frame.
+   */
+  private planner: VehicleNavigationPlanner | null = null;
   private currentNavigationHash: string | null = null;
+  private planningInFlight = 0;
   private readonly laneEdges = new Map<string, VehicleLaneEdge>();
   private readonly vehicles = new Map<string, VehicleAiRecord>();
 
@@ -100,7 +130,9 @@ export class VehicleAiSystem {
     this.plannerClient?.dispose();
     this.plannerClient = null;
     this.currentNavigationHash = null;
+    this.planningInFlight = 0;
     const result = await VehicleNavigationPlanner.create(input, this.cache);
+    this.planner = result.planner;
     this.laneEdges.clear();
     for (const edge of result.planner.navigation.laneGraph.edges) {
       this.laneEdges.set(edge.id, edge);
@@ -116,6 +148,8 @@ export class VehicleAiSystem {
       record.restoredPath = null;
       this.invalidatePendingPlan(record);
       record.pathChangedPending = false;
+      record.planContextKey = '';
+      record.lastContext = null;
       record.brain.reset();
       record.smoother.reset();
     }
@@ -124,6 +158,19 @@ export class VehicleAiSystem {
 
   navigationHash(): string | null {
     return this.currentNavigationHash;
+  }
+
+  /** Metros de recorrido manejable, o `null` si el destino está en otra isla. */
+  travelDistance(
+    profileId: string,
+    from: VehicleNavPoint,
+    to: VehicleNavPoint,
+  ): number | null {
+    return this.planner?.travelDistance(profileId, from, to) ?? null;
+  }
+
+  isReachable(profileId: string, from: VehicleNavPoint, to: VehicleNavPoint): boolean {
+    return this.planner?.isReachable(profileId, from, to) ?? false;
   }
 
   hasVehicle(vehicleId: string): boolean {
@@ -159,7 +206,9 @@ export class VehicleAiSystem {
       planPending: false,
       planRetrySeconds: 0,
       planFailureCount: 0,
+      planContextKey: '',
       pathChangedPending: false,
+      lastContext: null,
     });
     return true;
   }
@@ -174,11 +223,13 @@ export class VehicleAiSystem {
   ): boolean {
     const record = this.vehicles.get(vehicleId);
     if (!record) return false;
+    if (record.behavior === behavior) return true;
     record.behavior = behavior;
     record.brain.setBehavior(behavior);
     record.plannedRoute = null;
     record.restoredPath = null;
     record.lastDecision = null;
+    record.lastContext = null;
     this.invalidatePendingPlan(record);
     return true;
   }
@@ -212,12 +263,17 @@ export class VehicleAiSystem {
   setGoal(vehicleId: string, position: VehicleNavPoint, heading?: number): boolean {
     const record = this.vehicles.get(vehicleId);
     if (!record) return false;
+    const nextHeading = heading ?? null;
+    if (
+      record.goal &&
+      planarDistance(record.goal.position, position) < 0.5 &&
+      record.goal.heading === nextHeading
+    ) return true;
     record.goal = {
       position: [...position],
-      heading: heading ?? null,
+      heading: nextHeading,
     };
-    record.plannedRoute = null;
-    record.restoredPath = null;
+    // The current route remains usable while the replacement is computed.
     this.invalidatePendingPlan(record);
     return true;
   }
@@ -232,6 +288,7 @@ export class VehicleAiSystem {
     record.brain.reset();
     record.smoother.reset();
     record.lastDecision = null;
+    record.lastContext = null;
     return true;
   }
 
@@ -264,8 +321,61 @@ export class VehicleAiSystem {
     });
   }
 
+  /**
+   * Refreshes the path follower at physics-frame cadence. Strategic decisions,
+   * perception and replanning still run at their distance-based tick rate.
+   */
+  frameControl(
+    vehicleId: string,
+    delta: number,
+    frame: VehicleAiFrameState,
+  ): VehicleControlCommand | null {
+    const record = this.vehicles.get(vehicleId);
+    const decision = record?.lastDecision;
+    const previousContext = record?.lastContext;
+    if (!record || !decision || !previousContext) return null;
+    let desired = decision.control;
+    const path = record.plannedRoute?.path ?? record.restoredPath ?? previousContext.route;
+    if (
+      decision.recovery === 'none' &&
+      decision.goal !== null &&
+      decision.state !== 'stopped' &&
+      path
+    ) {
+      desired = record.brain.followPath(delta, {
+        ...previousContext,
+        pose: frame.pose,
+        speed: frame.speed,
+        ...(frame.planarSpeed !== undefined
+          ? { planarSpeed: frame.planarSpeed }
+          : {}),
+        ...(frame.shapeCasts !== undefined
+          ? { shapeCasts: frame.shapeCasts }
+          : {}),
+        route: path,
+      });
+      record.lastDecision = { ...decision, control: desired };
+    }
+    return record.smoother.update(delta, desired, {
+      immediate: decision.recovery !== 'none',
+    });
+  }
+
   getState(vehicleId: string): VehicleBrainDecision['state'] | null {
     return this.vehicles.get(vehicleId)?.lastDecision?.state ?? null;
+  }
+
+  getDecisionGoal(vehicleId: string): VehicleNavPoint | null {
+    const goal = this.vehicles.get(vehicleId)?.lastDecision?.goal;
+    return goal ? [...goal] : null;
+  }
+
+  getPathProgress(vehicleId: string): VehiclePathProgress | null {
+    return this.vehicles.get(vehicleId)?.brain.getPathProgress() ?? null;
+  }
+
+  getPlanFailureCount(vehicleId: string): number {
+    return this.vehicles.get(vehicleId)?.planFailureCount ?? 0;
   }
 
   update(
@@ -276,6 +386,14 @@ export class VehicleAiSystem {
     const record = this.vehicles.get(vehicleId);
     if (!record) return null;
     record.planRetrySeconds = Math.max(0, record.planRetrySeconds - Math.max(0, delta));
+    const planContextKey = context.planContextKey ?? '';
+    const planContextChanged = planContextKey !== record.planContextKey;
+    if (planContextChanged) {
+      record.planContextKey = planContextKey;
+      // Collision avoidance can brake on a newly observed blocker while the
+      // planner replaces this route; dropping it here causes a control vacuum.
+      this.invalidatePendingPlan(record);
+    }
     const activePath =
       record.plannedRoute?.path ??
       record.restoredPath ??
@@ -287,12 +405,25 @@ export class VehicleAiSystem {
       route: activePath,
     });
     if (!decision) return null;
+    record.lastContext = {
+      ...context,
+      authoredGoal,
+      ...(activePath ? { route: activePath } : {}),
+    };
 
     record.desiredPlanGoal = decision.goal ? [...decision.goal] : null;
     let pathChanged = record.pathChangedPending;
     record.pathChangedPending = false;
-    if (decision.goal && decision.requestPlan && this.plannerClient) {
-      if (!record.planPending && record.planRetrySeconds <= 0) {
+    if (
+      decision.goal &&
+      (decision.requestPlan || planContextChanged) &&
+      this.plannerClient
+    ) {
+      if (
+        !record.planPending &&
+        record.planRetrySeconds <= 0 &&
+        this.hasPlanningBudget(context.distanceToPlayer)
+      ) {
         const authoredHeading =
           record.goal &&
           record.goal.heading !== null &&
@@ -309,6 +440,8 @@ export class VehicleAiSystem {
           context.pose,
           decision.goal,
           goalHeading,
+          authoredHeading !== null,
+          context.obstacles,
         );
       }
     } else if (!decision.goal && (record.plannedRoute || record.restoredPath)) {
@@ -365,23 +498,13 @@ export class VehicleAiSystem {
           heading: snapshot.goal.heading,
         }
       : null;
-    const restoredPath = clonePath(snapshot.path);
-    const restoredLaneRoute =
-      snapshot.navigationHash === this.currentNavigationHash
-        ? cloneLaneRoute(snapshot.laneRoute ?? null)
-        : null;
-    record.plannedRoute =
-      restoredPath && restoredLaneRoute
-        ? {
-            hash: this.currentNavigationHash ?? "restored",
-            path: restoredPath,
-            laneRoute: restoredLaneRoute,
-            startManeuver: null,
-            endManeuver: null,
-          }
-        : null;
-    record.restoredPath = record.plannedRoute ? null : restoredPath;
-    record.lastDecision = snapshot.lastDecision;
+    // Paths, blockers and recovery maneuvers are transient world-state. A save
+    // restores intent and lets the current navigation bake produce a fresh plan.
+    record.plannedRoute = null;
+    record.restoredPath = null;
+    record.lastDecision = null;
+    record.lastContext = null;
+    record.planContextKey = '';
     record.behavior = snapshot.behavior;
     record.brain.setBehavior(snapshot.behavior);
     this.invalidatePendingPlan(record);
@@ -395,8 +518,16 @@ export class VehicleAiSystem {
     this.plannerClient?.dispose();
     this.plannerClient = null;
     this.currentNavigationHash = null;
+    this.planningInFlight = 0;
     this.laneEdges.clear();
     this.vehicles.clear();
+  }
+
+  private hasPlanningBudget(distanceToPlayer: number): boolean {
+    const cap = distanceToPlayer > DISTANT_PLAN_METERS
+      ? MAX_DISTANT_PLANS
+      : MAX_CONCURRENT_PLANS;
+    return this.planningInFlight < cap;
   }
 
   private requestPlan(
@@ -405,12 +536,18 @@ export class VehicleAiSystem {
     start: VehicleBrainContext['pose'],
     goal: VehicleNavPoint,
     goalHeading: number,
+    requireGoalHeading: boolean,
+    obstacles: VehicleBrainContext['obstacles'],
   ): void {
     const plannerClient = this.plannerClient;
     if (!plannerClient) return;
     const generation = record.planGeneration + 1;
     record.planGeneration = generation;
     record.planPending = true;
+    this.planningInFlight += 1;
+    const settle = (): void => {
+      this.planningInFlight = Math.max(0, this.planningInFlight - 1);
+    };
     const requestedGoal: VehicleNavPoint = [...goal];
     void plannerClient.plan(
       record.profile.id,
@@ -422,7 +559,19 @@ export class VehicleAiSystem {
         position: requestedGoal,
         heading: goalHeading,
       },
+      {
+        local: {
+          requireGoalHeading,
+          blockers: obstacles
+            ?.filter((obstacle) => obstacle.blocking !== false)
+            .map((obstacle) => ({
+              position: [...obstacle.position],
+              radius: obstacle.radius,
+            })),
+        },
+      },
     ).then((route) => {
+      settle();
       const current = this.vehicles.get(vehicleId);
       if (current !== record || current.planGeneration !== generation) return;
       current.planPending = false;
@@ -444,6 +593,7 @@ export class VehicleAiSystem {
       current.restoredPath = null;
       current.pathChangedPending = true;
     }).catch(() => {
+      settle();
       const current = this.vehicles.get(vehicleId);
       if (current !== record || current.planGeneration !== generation) return;
       current.planPending = false;

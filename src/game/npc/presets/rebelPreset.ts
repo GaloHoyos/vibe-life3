@@ -22,7 +22,9 @@ import {
   noticeSuspicionSchedule,
   reloadSchedules,
   scriptedSchedules,
+  tacticalOrderSchedule,
   vehicleApproachSchedule,
+  vehicleSeekSchedule,
 } from './commonSchedules';
 import type { NpcMedicProfile, NpcPreset, NpcPresetOptions } from './NpcPreset';
 
@@ -58,6 +60,8 @@ export function buildRebelPreset(options: RebelPresetOptions = {}): NpcPreset {
     ...scriptedSchedules(),
     hitSchedule(flinch.duration),
     vehicleApproachSchedule(),
+    tacticalOrderSchedule(),
+    vehicleSeekSchedule(),
     ...reloadSchedules(),
     {
       id: 'regroup',

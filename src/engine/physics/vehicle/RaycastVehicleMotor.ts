@@ -36,13 +36,20 @@ export interface RaycastVehicleMotorConfig {
   maxReverseForce: number;
   maxBrakeForce: number;
   maxHandbrakeForce: number;
+  /** Steering lock at or below `steeringSpeedSlow` (Source's `degreesSlow`). */
   maxSteeringAngle: number;
+  /** Steering lock at or above `steeringSpeedFast` (Source's `degreesFast`). */
+  fastSteeringAngle: number;
+  /**
+   * Speeds bracketing the steering fade, in m/s (Source's `slowcarspeed` and
+   * `fastcarspeed`). The band is narrow and low on purpose: the contrast
+   * between a car that pivots when parking and one that stays planted on a
+   * straight is most of what a vehicle feels like.
+   */
+  steeringSpeedSlow: number;
+  steeringSpeedFast: number;
   maxForwardSpeed: number;
   maxReverseSpeed: number;
-  throttleResponse: number;
-  steeringResponse: number;
-  /** Fraction of the steering angle available at maximum speed. */
-  highSpeedSteeringFactor: number;
   /** Speed above which opposite throttle brakes before changing direction. */
   directionChangeBrakeSpeed: number;
   boostMultiplier?: number;
@@ -89,7 +96,6 @@ const GRAVITY = 20.5;
  * this has to be snapped to it or the brakes are dead for good.
  */
 const ENGINE_FORCE_EPSILON = 1;
-const THROTTLE_RELEASE_FACTOR = 5;
 
 export class RaycastVehicleMotor implements VehicleMotor {
   readonly body: RAPIER.RigidBody;
@@ -104,8 +110,7 @@ export class RaycastVehicleMotor implements VehicleMotor {
     handbrake: 0,
     boost: false,
   };
-  private smoothedThrottle = 0;
-  private smoothedSteering = 0;
+  private appliedThrottle = 0;
   private enabled = true;
   private disposed = false;
 
@@ -194,8 +199,7 @@ export class RaycastVehicleMotor implements VehicleMotor {
     if (this.disposed || this.enabled === enabled) return;
     this.enabled = enabled;
     if (!enabled) {
-      this.smoothedThrottle = 0;
-      this.smoothedSteering = 0;
+      this.appliedThrottle = 0;
       this.clearWheelForces();
     }
   }
@@ -217,48 +221,35 @@ export class RaycastVehicleMotor implements VehicleMotor {
 
     // Pisar el freno cierra la mariposa: mantener acelerador y freno a la vez
     // dejaría el motor empujando contra el freno durante casi un segundo.
-    const throttleTarget =
+    //
+    // Acelerador y volante entran SIN suavizar. Quien conduce ya trae su propia
+    // rampa —`VehicleDriverInputModel` para el jugador, `VehicleControlSmoother`
+    // para la IA—, así que filtrar acá otra vez sólo agregaba retardo encima de
+    // una señal que ya estaba bien formada. El motor es la máquina, no el pie.
+    this.appliedThrottle =
       this.control.brake > 0 || this.control.handbrake > 0
         ? 0
         : this.control.throttle;
-    // Abrir gas es progresivo; cerrarlo es inmediato, como la mariposa real.
-    const throttleResponse =
-      Math.abs(throttleTarget) < Math.abs(this.smoothedThrottle)
-        ? this.config.throttleResponse * THROTTLE_RELEASE_FACTOR
-        : this.config.throttleResponse;
-    this.smoothedThrottle = damp(
-      this.smoothedThrottle,
-      throttleTarget,
-      throttleResponse,
-      delta,
-    );
-    this.smoothedSteering = damp(
-      this.smoothedSteering,
-      this.control.steering,
-      this.config.steeringResponse,
-      delta,
-    );
 
     const forwardSpeed = this.controller.currentVehicleSpeed();
-    const speedRatio = MathUtils.clamp(
-      Math.abs(forwardSpeed) / Math.max(this.config.maxForwardSpeed, 0.001),
-      0,
-      1,
-    );
-    const steeringFactor = MathUtils.lerp(
-      1,
-      MathUtils.clamp(this.config.highSpeedSteeringFactor, 0, 1),
-      speedRatio,
+    // Giro de morro por velocidad, con la banda explícita de Source
+    // (`slowcarspeed`/`fastcarspeed`) en vez de una fracción de la punta: una
+    // curva referida a la velocidad máxima nunca llega a cerrarse de verdad.
+    const steeringAngle = remap(
+      Math.abs(forwardSpeed),
+      this.config.steeringSpeedSlow,
+      this.config.steeringSpeedFast,
+      this.config.maxSteeringAngle,
+      this.config.fastSteeringAngle,
     );
     // `steering > 0` es a la derecha, y la derecha del proyecto es `forward ×
     // up` = -X con +Z adelante. El signo también va atado a
     // DEFAULT_WHEEL_AXLE: con el eje en -X, Rapier lee el ángulo al revés.
     const steering =
-      -curve(this.smoothedSteering, this.config.steeringExponent ?? 1) *
-      this.config.maxSteeringAngle *
-      steeringFactor;
+      -curve(this.control.steering, this.config.steeringExponent ?? 1) *
+      steeringAngle;
 
-    let throttle = this.smoothedThrottle;
+    let throttle = this.appliedThrottle;
     let directionBrake = 0;
     const changingDirection =
       Math.abs(forwardSpeed) > this.config.directionChangeBrakeSpeed &&
@@ -467,7 +458,7 @@ export class RaycastVehicleMotor implements VehicleMotor {
       velocity.x * this.forward.x +
       velocity.y * this.forward.y +
       velocity.z * this.forward.z;
-    this.telemetry.steering = this.smoothedSteering;
+    this.telemetry.steering = this.control.steering;
 
     let contactCount = 0;
     let drivenRadius = 0;
@@ -509,7 +500,7 @@ export class RaycastVehicleMotor implements VehicleMotor {
         Math.max(averageRadius, 0.001)) *
       (60 / (Math.PI * 2));
     const throttleRpm =
-      Math.abs(this.smoothedThrottle) * (RPM_MAX - RPM_IDLE) * 0.35;
+      Math.abs(this.appliedThrottle) * (RPM_MAX - RPM_IDLE) * 0.35;
     this.telemetry.engineRpm = MathUtils.clamp(
       RPM_IDLE + wheelRpm * 4 + throttleRpm,
       RPM_IDLE,
@@ -543,9 +534,19 @@ function copyOptionalVector(
   return (target ?? new Vector3()).set(source.x, source.y, source.z);
 }
 
-function damp(current: number, target: number, response: number, delta: number): number {
-  if (response <= 0) return target;
-  return MathUtils.lerp(current, target, 1 - Math.exp(-response * delta));
+function remap(
+  value: number,
+  fromLow: number,
+  fromHigh: number,
+  toLow: number,
+  toHigh: number,
+): number {
+  if (fromHigh <= fromLow) return toLow;
+  return MathUtils.lerp(
+    toLow,
+    toHigh,
+    MathUtils.clamp((value - fromLow) / (fromHigh - fromLow), 0, 1),
+  );
 }
 
 function curve(value: number, exponent: number): number {

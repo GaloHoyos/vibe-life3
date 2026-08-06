@@ -125,6 +125,29 @@ describe("VehicleEntity", () => {
     expect(onCrashFinished).toHaveBeenCalledWith(vehicle, false);
   });
 
+  it("avisa del paso a restos una sola vez, muera por derribo o por daño", async () => {
+    // De acá cuelga el estallido, así que el contrato es exactamente ése: nunca
+    // cero veces —un vehículo no puede aparecer como chatarra sin explotar— y
+    // nunca dos, aunque el derribo termine llamando también a la destrucción.
+    const derribado = vi.fn();
+    const { vehicle: porDerribo } = await createVehicle({
+      callbacks: { onWreckage: derribado },
+    });
+    porDerribo.beginCrash();
+    porDerribo.finishCrash();
+    expect(derribado).toHaveBeenCalledTimes(1);
+    expect(porDerribo.isWreckage()).toBe(true);
+
+    const reventado = vi.fn();
+    const { vehicle: porDanio } = await createVehicle({
+      callbacks: { onWreckage: reventado },
+    });
+    porDanio.damage.applyDamage(100_000, undefined, "hull", "test");
+    porDanio.damage.applyDamage(100_000, undefined, "hull", "test");
+    expect(reventado).toHaveBeenCalledTimes(1);
+    expect(porDanio.isWreckage()).toBe(true);
+  });
+
   it("el helicóptero con ruta de crash cae guiado antes del wreckage", async () => {
     const onCrashFinished = vi.fn();
     const { vehicle } = await createVehicle({
@@ -350,6 +373,7 @@ async function createVehicle(options?: {
       onCrashStarted: options?.callbacks?.onCrashStarted ?? vi.fn(),
       onCrashFinished: options?.callbacks?.onCrashFinished ?? vi.fn(),
       onDestroyed: options?.callbacks?.onDestroyed ?? vi.fn(),
+      onWreckage: options?.callbacks?.onWreckage ?? vi.fn(),
     },
   );
   return { vehicle, physics };

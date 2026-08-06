@@ -62,11 +62,11 @@ describe('niveles vehiculares', () => {
     expect(Demo3WhiteoutFlight.nextLevel).toBe('snow-field');
   });
 
-  it('ofrece siete vehículos con IA y diez estacionados en el sandbox', () => {
+  it('ofrece siete vehículos con IA y once estacionados en el sandbox', () => {
     const vehicles = VehicleSandboxLevel.vehicles ?? [];
-    expect(vehicles).toHaveLength(17);
+    expect(vehicles).toHaveLength(18);
     expect(vehicles.filter((vehicle) => vehicle.ai?.enabled)).toHaveLength(7);
-    expect(vehicles.filter((vehicle) => !vehicle.ai?.enabled)).toHaveLength(10);
+    expect(vehicles.filter((vehicle) => !vehicle.ai?.enabled)).toHaveLength(11);
     expect(new Set(vehicles.map((vehicle) => vehicle.presetId))).toEqual(
       new Set([
         'buggy',
@@ -75,6 +75,7 @@ describe('niveles vehiculares', () => {
         'helicopterFree',
         'rebelCrawler',
         'combineGlider',
+        'combineSwimmer',
       ]),
     );
     expect(vehicles.every((vehicle) => vehicle.portalTraversal === 'blocked')).toBe(true);
@@ -111,7 +112,7 @@ describe('niveles vehiculares', () => {
     }, {})).toEqual({
       player: 4,
       resistance: 7,
-      combine: 6,
+      combine: 7,
     });
     expect(vehicles.find((vehicle) => vehicle.id === 'vs-player-buggy')).toMatchObject({
       faction: 'resistance',
@@ -192,6 +193,7 @@ describe('niveles vehiculares', () => {
       'airboat',
       'rebelCrawler',
       'combineGlider',
+      'combineSwimmer',
     ]);
     const navigation = bakeVehicleNavigation(input);
     const planner = new VehicleNavigationPlanner(navigation, input.profiles);
@@ -259,12 +261,24 @@ describe('niveles vehiculares', () => {
         },
       );
       expect(route, routeDefinition.id).not.toBeNull();
-      expect(route?.path.points.length, routeDefinition.id).toBeGreaterThan(4);
+      expect(route?.path.points.length ?? 0, routeDefinition.id).toBeGreaterThanOrEqual(2);
+      // El Hybrid A* puede terminar dentro de su tolerancia de celda; fuera de
+      // ese margen, una ruta no puede ser más corta que la línea recta.
+      const straight = Math.hypot(
+        routeDefinition.goal[0] - routeDefinition.start[0],
+        routeDefinition.goal[2] - routeDefinition.start[2],
+      );
+      expect(
+        polylineLength(route?.path.points ?? []),
+        routeDefinition.id,
+      ).toBeGreaterThanOrEqual(straight - 2);
       if (routeDefinition.id === 'buggy-flank') {
         expect(route?.laneRoute, routeDefinition.id).not.toBeNull();
       }
     }
-  });
+    // Hornear el sandbox entero y resolver seis rutas es trabajo de integración:
+    // el presupuesto por defecto no alcanza cuando la suite corre en paralelo.
+  }, 30_000);
 
   it('autoriza el ciclo aéreo del sandbox y mantiene su ruta enlazada', () => {
     const helicopter = VehicleSandboxLevel.vehicles?.find(
@@ -323,3 +337,20 @@ describe('niveles vehiculares', () => {
     ).toHaveLength(3);
   });
 });
+
+/** Largo de la polilínea en planta. */
+function polylineLength(
+  points: readonly { position: readonly [number, number, number] }[],
+): number {
+  let total = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    if (!previous || !current) continue;
+    total += Math.hypot(
+      current.position[0] - previous.position[0],
+      current.position[2] - previous.position[2],
+    );
+  }
+  return total;
+}

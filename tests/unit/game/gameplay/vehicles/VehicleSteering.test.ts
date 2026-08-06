@@ -11,7 +11,10 @@ import type {
   VehicleDefinition,
   WaterVolumeDefinition,
 } from "@game/levels/LevelDefinition";
-import { VehicleEntity } from "@game/gameplay/vehicles/VehicleEntity";
+import {
+  localBearing,
+  VehicleEntity,
+} from "@game/gameplay/vehicles/VehicleEntity";
 import { WaterVolumeSystem } from "@game/gameplay/vehicles/water/WaterVolumeSystem";
 
 const DT = 1 / 60;
@@ -78,6 +81,42 @@ describe("convención de dirección de los vehículos", () => {
     // Y alabea hacia adentro: al ir a la derecha baja el ala derecha.
     expect(right.rightWingHeight).toBeLessThan(-0.1);
     expect(left.rightWingHeight).toBeGreaterThan(0.1);
+  });
+
+  /**
+   * El rumbo de la cabeza NO usa el signo del volante. Acá se cruzan dos
+   * convenios opuestos —la derecha del proyecto es −X, pero un `rotation.y`
+   * positivo de Three lleva el morro a +X— y seguir el equivocado hace que el
+   * bicho gire la cabeza para el lado contrario al que estás parado.
+   */
+  it("el rumbo de un observado apunta la cabeza hacia él, no al revés", () => {
+    const straight = new Quaternion();
+    const onTheRight = localBearing(
+      new Vector3(0, 0, 0).addScaledVector(rightOf(straight), 5),
+      straight,
+      { yaw: 0, pitch: 0 },
+    );
+    const yawRight = onTheRight.yaw;
+    const onTheLeft = localBearing(
+      new Vector3(0, 0, 0).addScaledVector(rightOf(straight), -5),
+      straight,
+      { yaw: 0, pitch: 0 },
+    );
+
+    // Con el morro girado por `yaw`, el +Z local tiene que caer del lado del
+    // observado: eso es "mirarlo", en cualquier convención de signos.
+    const nose = new Vector3(0, 0, 1).applyQuaternion(
+      new Quaternion().setFromAxisAngle(WORLD_UP, yawRight),
+    );
+    expect(nose.dot(rightOf(straight))).toBeGreaterThan(0.9);
+    expect(Math.sign(onTheLeft.yaw)).toBe(-Math.sign(yawRight));
+
+    // Y girado el vehículo, el rumbo es relativo a él y no al mundo: parado en
+    // el mismo sitio del mundo, media vuelta de casco invierte el lado.
+    const turned = new Quaternion().setFromAxisAngle(WORLD_UP, Math.PI);
+    const behind = localBearing(new Vector3(5, 0, 0), turned, { yaw: 0, pitch: 0 });
+    const front = localBearing(new Vector3(5, 0, 0), straight, { yaw: 0, pitch: 0 });
+    expect(Math.sign(behind.yaw)).toBe(-Math.sign(front.yaw));
   });
 });
 
@@ -203,6 +242,7 @@ async function spawn(
       onCrashStarted: vi.fn(),
       onCrashFinished: vi.fn(),
       onDestroyed: vi.fn(),
+      onWreckage: vi.fn(),
     },
   );
   physics.updateQueryPipeline();

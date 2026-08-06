@@ -167,6 +167,87 @@ export function chamferWedge(
   return finalize(new ConvexGeometry(points));
 }
 
+export interface LoftSection {
+  readonly z: number;
+  /** Semiancho de la sección. En cero la sección es una punta. */
+  readonly halfWidth: number;
+  readonly top: number;
+  readonly bottom: number;
+  /** Desplazamiento del plano medio, para lomos que suben y bajan. */
+  readonly y?: number;
+}
+
+/**
+ * Cuerpo interpolado entre secciones elípticas a lo largo de Z, con normales
+ * suavizadas. Es la única superficie de curvatura continua de este módulo:
+ * todo lo demás son cascos convexos, y en una silueta orgánica cada faceta se
+ * lee como chapa. El canto sale afilado solo, porque la altura de la sección
+ * se anula en el borde, así que sirve tanto para un cuerpo como para un ala.
+ *
+ * Las secciones con `halfWidth` en cero cierran el volumen en punta; van
+ * primera y última.
+ */
+export function loftedBody(
+  sections: readonly LoftSection[],
+  radialSegments: number,
+  shape = 0.8,
+): BufferGeometry {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const ringStarts: number[] = [];
+  const ringSizes: number[] = [];
+
+  for (const section of sections) {
+    ringStarts.push(positions.length / 3);
+    const midY = section.y ?? 0;
+    if (section.halfWidth <= 1e-5) {
+      ringSizes.push(1);
+      positions.push(0, midY, section.z);
+      continue;
+    }
+    ringSizes.push(radialSegments);
+    for (let index = 0; index < radialSegments; index += 1) {
+      const angle = (index / radialSegments) * Math.PI * 2;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const reach = sin >= 0 ? section.top : section.bottom;
+      positions.push(
+        section.halfWidth * Math.sign(cos) * Math.abs(cos) ** shape,
+        midY + reach * Math.sign(sin) * Math.abs(sin) ** shape,
+        section.z,
+      );
+    }
+  }
+
+  for (let index = 0; index + 1 < sections.length; index += 1) {
+    const startA = ringStarts[index]!;
+    const startB = ringStarts[index + 1]!;
+    const sizeA = ringSizes[index]!;
+    const sizeB = ringSizes[index + 1]!;
+    for (let step = 0; step < radialSegments; step += 1) {
+      const next = (step + 1) % radialSegments;
+      const a0 = startA + (sizeA === 1 ? 0 : step);
+      const a1 = startA + (sizeA === 1 ? 0 : next);
+      const b0 = startB + (sizeB === 1 ? 0 : step);
+      const b1 = startB + (sizeB === 1 ? 0 : next);
+      if (sizeA === 1) {
+        indices.push(a0, b1, b0);
+        continue;
+      }
+      if (sizeB === 1) {
+        indices.push(a0, a1, b0);
+        continue;
+      }
+      indices.push(a0, a1, b1, a0, b1, b0);
+    }
+  }
+
+  const geometry = new BufferGeometry();
+  geometry.setAttribute("position", new Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  return finalize(geometry);
+}
+
 /** Placa fina biselada: paneles, remiendos soldados, blindaje. */
 export function panel(
   width: number,

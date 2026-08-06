@@ -99,6 +99,52 @@ export function createMoveToPointTask(
 }
 
 /**
+ * Ejecuta una orden táctica persistente. Abort sólo frena: el dueño del NPC
+ * conserva la orden para retomarla cuando termine combate o scripting.
+ */
+export function createTacticalOrderTask(): NpcTask {
+  return {
+    id: 'tacticalOrder',
+    init: () => {},
+    tick: (ctx): TaskStatus => {
+      const order = ctx.tacticalOrder;
+      if (!order) {
+        ctx.locomotion.stop();
+        return 'success';
+      }
+      const target = ctx.navigation.projectPoint(order.target, ctx.navigationProfile);
+      if (!target) {
+        ctx.locomotion.stop();
+        order.complete('failed');
+        return 'failure';
+      }
+      const dx = target.x - ctx.self.position.x;
+      const dz = target.z - ctx.self.position.z;
+      const verticalTolerance = Math.max(
+        1.2,
+        ctx.navigationProfile.stepHeight + 0.8,
+      );
+      if (
+        dx * dx + dz * dz <= order.arriveRadius * order.arriveRadius &&
+        Math.abs(target.y - ctx.self.position.y) <= verticalTolerance
+      ) {
+        ctx.locomotion.stop();
+        order.complete('completed');
+        return 'success';
+      }
+      if (ctx.locomotion.isStuck()) {
+        ctx.locomotion.stop();
+        order.complete('failed');
+        return 'failure';
+      }
+      ctx.locomotion.moveTo(target, { gait: 'sprint' });
+      return 'running';
+    },
+    abort: (ctx) => ctx.locomotion.stop(),
+  };
+}
+
+/**
  * Apunta al threat por hasta `settle` segundos antes de devolver success.
  * Si pierde el threat o entra en cover_blown, falla.
  */

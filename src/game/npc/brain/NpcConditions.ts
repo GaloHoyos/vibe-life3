@@ -75,6 +75,13 @@ export const Cond = {
 
   /** Holds a live reservation and must walk to a vehicle entrance. */
   VehicleApproach: conditionBit(32),
+  /**
+   * Hay un vehiculo utilizable cerca que llega antes al objetivo que ir a pie,
+   * contando lo que cuesta caminar hasta el y subirse. Todavia sin reservar.
+   */
+  VehicleUseful: conditionBit(33),
+  /** Hay una orden táctica a pie pendiente; combate y scripting pueden pausarla. */
+  TacticalOrder: conditionBit(34),
 } as const;
 
 export type CondKey = keyof typeof Cond;

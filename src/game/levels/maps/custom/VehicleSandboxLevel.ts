@@ -244,6 +244,18 @@ const PARKED_VEHICLES = [
     transitionKey: 'sandbox-combine-glider',
     portalTraversal: 'blocked',
   },
+  {
+    id: 'vs-player-combine-swimmer',
+    presetId: 'combineSwimmer',
+    position: [112, 1.15, 86],
+    rotation: [0, Math.PI, 0],
+    faction: 'combine',
+    accessPolicy: 'combine',
+    weaponEnabled: false,
+    engineOn: false,
+    transitionKey: 'sandbox-combine-swimmer',
+    portalTraversal: 'blocked',
+  },
 ] as const satisfies readonly VehicleDefinition[];
 
 const HELICOPTER_WAYPOINTS = [
@@ -370,6 +382,7 @@ const NAV_MARKERS = [
   { id: 'vs-marker-player-airboat', position: [47, 0.7, 88], heading: Math.PI, kind: 'boarding', allowedPresets: ['airboat'] },
   { id: 'vs-marker-player-rebel-crawler', position: [-64, 0, 91], heading: Math.PI, kind: 'boarding', allowedPresets: ['rebelCrawler'] },
   { id: 'vs-marker-player-combine-glider', position: [96, 0, 86], heading: Math.PI, kind: 'boarding', allowedPresets: ['combineGlider'] },
+  { id: 'vs-marker-player-combine-swimmer', position: [112, 0, 86], heading: Math.PI, kind: 'boarding', allowedPresets: ['combineSwimmer'] },
   { id: 'vs-marker-heli-pad', position: [111, 0, 78], heading: Math.PI, kind: 'landingZone', allowedPresets: ['helicopter'] },
   { id: 'vs-marker-heli-free-pad', position: [128, 0, -40], heading: Math.PI, kind: 'landingZone', allowedPresets: ['helicopterFree'] },
   { id: 'vs-marker-convoy-goal', position: [-24, 0, -64], heading: Math.PI / 2, kind: 'dropZone', allowedPresets: ['buggy'] },

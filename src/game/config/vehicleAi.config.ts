@@ -167,6 +167,7 @@ const presetDriverDefaults: Readonly<Partial<Record<VehiclePresetId, VehicleDriv
   airboat: 'steady',
   rebelCrawler: 'cautious',
   combineGlider: 'aggressive',
+  combineSwimmer: 'aggressive',
 };
 
 const presetGunnerDefaults: Readonly<Partial<Record<VehiclePresetId, VehicleGunnerProfileId>>> = {
@@ -174,6 +175,7 @@ const presetGunnerDefaults: Readonly<Partial<Record<VehiclePresetId, VehicleGunn
   airboat: 'militia',
   rebelCrawler: 'militia',
   combineGlider: 'elite',
+  combineSwimmer: 'elite',
   helicopter: 'elite',
 };
 
@@ -214,8 +216,14 @@ export function defaultAllowsMissionDeviation(behavior: VehicleAiBehavior): bool
 /** Cuánto puede durar un desvío antes de que el vehículo retome su misión. */
 export const VEHICLE_DEVIATION_BUDGET_SECONDS = 12;
 
-/** Memoria del último-visto. Es el `NPC_APCDRIVER_REMEMBER_TIME` de HL2. */
-export const VEHICLE_THREAT_MEMORY_SECONDS = 4;
+/**
+ * Memoria del último-visto. Quien recuerda es la tripulación, así que no puede
+ * durar menos que la memoria del mismo soldado a pie (8 s en `combinePreset`):
+ * con los 4 s del `NPC_APCDRIVER_REMEMBER_TIME` de HL2 el vehículo olvidaba el
+ * blanco ANTES de llegar al punto donde lo perdió, y todo lo que cuelga de
+ * haber llegado —buscar, bajar infantería— no pasaba nunca.
+ */
+export const VEHICLE_THREAT_MEMORY_SECONDS = 8;
 
 export const VEHICLE_PILOT_PROFILE_IDS = ['transport', 'gunship'] as const;
 export type VehiclePilotProfileId = (typeof VEHICLE_PILOT_PROFILE_IDS)[number];
@@ -287,6 +295,59 @@ export function defaultPilotProfileId(
 export const AIR_TAKEOFF_CLEAR_ALTITUDE = 6;
 /** Radio dentro del cual una zona de aterrizaje se considera alcanzada. */
 export const AIR_LANDING_ARRIVAL_RADIUS = 4;
+
+/**
+ * Cuándo a un NPC le conviene ir en vehículo. El criterio es comparar tiempos
+ * estimados, no distancias: lo que decide es si el rodeo por la carretera llega
+ * antes que la línea recta a pie, contando lo que cuesta caminar hasta el
+ * vehículo y subirse.
+ */
+export const VEHICLE_CREW_DECISION = {
+  /** Cada cuánto un NPC reevalúa si le conviene un vehículo. */
+  evaluateSeconds: 0.5,
+  /**
+   * Una vez decidido, cuánto sostiene la decisión sin volver a compararla. Sin
+   * esto dos opciones parejas hacen que el NPC dude en la puerta del vehículo.
+   */
+  commitSeconds: 4,
+  /** Lo que se tarda en subir, de llegar a la puerta a estar a los mandos. */
+  boardingSeconds: 2.5,
+  /** El vehículo tiene que ganar por este margen para justificar el desvío. */
+  advantageMargin: 0.75,
+  /** Radio de búsqueda de vehículos utilizables alrededor del NPC. */
+  searchRadius: 45,
+  /** Con el objetivo más cerca que esto, ir a buscar un vehículo es absurdo. */
+  minGoalDistance: 25,
+  /** Fracción de la velocidad máxima que un conductor sostiene de verdad. */
+  driveSpeedFactor: 0.7,
+  /**
+   * A qué ritmo de separación (m/s) se da por perdida la persecución a pie. Con
+   * el blanco alejándose más rápido de lo que uno corre, la comparación de
+   * tiempos deja de tener sentido: a pie no se lo alcanza nunca, mida lo que
+   * mida la distancia, y cualquier vehículo que llegue es mejor que ninguno.
+   *
+   * Es lo que hace que la decisión exista en la práctica: con 32 m de visión, la
+   * banda donde un vehículo gana por tiempo puro es demasiado angosta.
+   */
+  recedingSpeed: 1.5,
+  /** Vehículos de oportunidad simultáneos por facción. */
+  maxActivePerFaction: 2,
+  /** Veda tras perder un vehículo, para que no insistan en fila. */
+  lossCooldownSeconds: 20,
+  /** Quién se sube con el que reclamó los mandos. */
+  squadBoardRadius: 18,
+  /**
+   * A qué distancia del blanco inalcanzable se baja la infantería. Más lejos el
+   * vehículo todavía puede acercarse; soltarlos a 300 m no ayuda a nadie.
+   */
+  dismountRange: 45,
+  /**
+   * Cuánto tarda en volver a ser tripulación quien acaba de bajarse a seguir a
+   * pie. Sin esto el vehículo que lo soltó lo recluta de nuevo en cuanto pierde
+   * el rastro, y el soldado pasa la pelea subiendo y bajando.
+   */
+  dismountCooldownSeconds: 25,
+} as const;
 
 export const VEHICLE_PERCEPTION = {
   /** Apertura total del cono de la tripulación: mira mucho más que un peatón. */

@@ -20,7 +20,7 @@ export class InteractSystem {
     const index = this.interactables.findIndex((it) => it.id === id);
     if (index < 0) return;
     const [removed] = this.interactables.splice(index, 1);
-    if (this.current?.id === id) this.current = null;
+    if (this.current?.id === id) this.clearFocus();
     if (this.held?.id === id) {
       removed.interactEnd?.();
       this.held = null;
@@ -32,11 +32,19 @@ export class InteractSystem {
     return this.current;
   }
 
+  /**
+   * Suelta el foco actual. Lo llama quien deja de correr `update()` (montar un
+   * vehículo, muerte): sin esto el HUD se queda con el último prompt colgado.
+   */
+  releaseFocus(): void {
+    this.endHeld();
+    this.clearFocus();
+  }
+
   /** Vacía el registro (al recargar nivel) — evita interactables huérfanos. */
   clear(): void {
-    this.endHeld();
+    this.releaseFocus();
     this.interactables.length = 0;
-    this.current = null;
   }
 
   update(delta: number, cameraPosition: Vector3, cameraDirection: Vector3, controls: Controls): void {
@@ -79,6 +87,12 @@ export class InteractSystem {
     }
     holding?.interactHeld?.(delta);
     this.held = holding;
+  }
+
+  private clearFocus(): void {
+    if (!this.current) return;
+    this.current = null;
+    this.eventBus.emit('interaction.blur', {});
   }
 
   private endHeld(): void {

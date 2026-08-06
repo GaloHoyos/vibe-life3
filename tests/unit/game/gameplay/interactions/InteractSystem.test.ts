@@ -57,6 +57,33 @@ describe("InteractSystem", () => {
     expect(interactable.interactEnd).toHaveBeenCalledTimes(1);
   });
 
+  it("releaseFocus apaga el prompt del HUD al dejar de correr update", () => {
+    const bus = new EventBus<GameEventMap>();
+    const blur = recordEvents(bus, "interaction.blur");
+    const system = new InteractSystem(bus);
+    system.register(fakeInteractable({ object: meshAt(0, 0, -2), label: "Subir a Buggy" }));
+
+    system.update(0.1, new Vector3(0, 0, 0), new Vector3(0, 0, -1), fakeControls());
+    system.releaseFocus();
+
+    expect(blur).toEqual([{}]);
+    expect(system.getFocused()).toBeNull();
+    system.releaseFocus();
+    expect(blur).toEqual([{}]);
+  });
+
+  it("unregister del interactable enfocado apaga el prompt", () => {
+    const bus = new EventBus<GameEventMap>();
+    const blur = recordEvents(bus, "interaction.blur");
+    const system = new InteractSystem(bus);
+    system.register(fakeInteractable({ id: "alyx", object: meshAt(0, 0, -2) }));
+
+    system.update(0.1, new Vector3(0, 0, 0), new Vector3(0, 0, -1), fakeControls());
+    system.unregister("alyx");
+
+    expect(blur).toEqual([{}]);
+  });
+
   it("unregister quita el interactable por id y termina su hold activo", () => {
     const system = new InteractSystem(new EventBus<GameEventMap>());
     const interactable = fakeInteractable({ id: "alyx", object: meshAt(0, 0, -2) });

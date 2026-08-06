@@ -107,11 +107,11 @@ export async function loadOrBakeVehicleNavigation(
   } catch {
     cached = null;
   }
-  if (cached?.schemaVersion === 1 && cached.hash === hash) {
+  if (cached?.schemaVersion === 2 && cached.hash === hash) {
     return { navigation: cached, cacheHit: true };
   }
   const navigation = await bake(input, hash);
-  if (navigation.schemaVersion !== 1 || navigation.hash !== hash) {
+  if (navigation.schemaVersion !== 2 || navigation.hash !== hash) {
     throw new Error('El bake vehicular devolvió una versión o hash inesperado.');
   }
   try {
@@ -153,7 +153,7 @@ function isVehicleNavigationBake(
     markers?: unknown;
   };
   return (
-    candidate.schemaVersion === 1 &&
+    candidate.schemaVersion === 2 &&
     candidate.hash === expectedHash &&
     Array.isArray(candidate.grids) &&
     typeof candidate.laneGraph === 'object' &&

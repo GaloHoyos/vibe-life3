@@ -5,6 +5,7 @@ import { condMask, type CondKey } from '@game/npc/brain/NpcConditions';
 import {
   createFaceSuspicionTask,
   createFlinchTask,
+  createTacticalOrderTask,
   createWaitTask,
   PlayDeathTask,
   ReloadWeaponTask,
@@ -16,7 +17,10 @@ import {
   createSearchSweepTask,
 } from '@game/npc/brain/tasks/TacticalTasks';
 import { createScriptMoveTask, createScriptStepsTask } from '@game/npc/brain/tasks/ScriptTasks';
-import { createApproachVehicleTask } from '@game/npc/brain/tasks/VehicleTasks';
+import {
+  createApproachVehicleTask,
+  createClaimVehicleTask,
+} from '@game/npc/brain/tasks/VehicleTasks';
 
 type NpcSchedule = ScheduleDefinition<NpcBrainContext>;
 
@@ -75,6 +79,35 @@ export function deadSchedule(): NpcSchedule {
   };
 }
 
+/**
+ * Ir a buscar un vehículo por decisión propia. Va por encima de `engage` (600)
+ * y `closeDistance` (590) —si el vehículo llega antes, perseguir a pie es
+ * perder— pero por debajo de `flank` (620), `takeCover` (640) y `retreat` (850):
+ * cruzar terreno abierto hacia un buggy bajo fuego es suicidio. Cualquier golpe
+ * o herida corta la idea.
+ *
+ * A diferencia de `vehicleApproach` (875), que es una orden empujada por el
+ * nivel o por un guion y por eso es pegajosa, ésta es una opinión del NPC y
+ * cede ante casi todo.
+ */
+export function vehicleSeekSchedule(): NpcSchedule {
+  return {
+    id: 'vehicleSeek',
+    priority: 610,
+    required: condMask('VehicleUseful'),
+    blockedBy: condMask(
+      'IsDead',
+      'ScriptActive',
+      'JustHit',
+      'LowHealth',
+      'EnemyInMeleeRange',
+      'VehicleApproach',
+    ),
+    interrupts: condMask('IsDead', 'ScriptActive', 'JustHit', 'LowHealth', 'EnemyInMeleeRange'),
+    tasks: [createClaimVehicleTask()],
+  };
+}
+
 export function vehicleApproachSchedule(): NpcSchedule {
   return {
     id: "vehicleApproach",
@@ -83,6 +116,33 @@ export function vehicleApproachSchedule(): NpcSchedule {
     blockedBy: condMask("IsDead", "ScriptActive"),
     interrupts: condMask("IsDead", "ScriptActive"),
     tasks: [createApproachVehicleTask()],
+  };
+}
+
+/**
+ * Continuación autónoma a pie: manda sobre follow/patrol, pero combate,
+ * entrada a vehículos y scripted_sequence pueden pausarla sin cancelarla.
+ */
+export function tacticalOrderSchedule(): NpcSchedule {
+  return {
+    id: 'tacticalOrder',
+    priority: 870,
+    required: condMask('TacticalOrder'),
+    blockedBy: condMask(
+      'IsDead',
+      'ScriptActive',
+      'JustHit',
+      'SeeEnemy',
+      'VehicleApproach',
+    ),
+    interrupts: condMask(
+      'IsDead',
+      'ScriptActive',
+      'JustHit',
+      'SeeEnemy',
+      'VehicleApproach',
+    ),
+    tasks: [createTacticalOrderTask()],
   };
 }
 

@@ -41,6 +41,19 @@ export interface VehiclePathFollowerTuning {
   };
 }
 
+export interface VehiclePathProgress {
+  /** Distancia recorrida sobre el path. En loops no se reinicia al completar una vuelta. */
+  distance: number;
+  /** Distancia envuelta dentro de la vuelta actual. */
+  wrappedDistance: number;
+  totalLength: number;
+  /** `null` en loops, que no tienen final. */
+  remainingDistance: number | null;
+  lateralError: number;
+  segmentIndex: number;
+  lap: number;
+}
+
 /** Margen para que el morro quede sobre la meta y no la pase de largo. */
 const ARRIVAL_MARGIN = 0.5;
 /**
@@ -89,8 +102,11 @@ export class PidController {
 
 export class VehiclePathFollower {
   private readonly speedController: PidController;
-  private pathCursor = 0;
   private previousPath: VehicleDrivingPath | null = null;
+  private geometry: PathGeometry | null = null;
+  private pathProgress = 0;
+  private lateralError = 0;
+  private segmentIndex = 0;
   private avoidanceSide: -1 | 1 = 1;
 
   constructor(
@@ -114,18 +130,45 @@ export class VehiclePathFollower {
   update(input: VehicleFollowerInput): VehicleControlCommand {
     if (input.path !== this.previousPath) {
       this.previousPath = input.path;
-      this.pathCursor = 0;
+      this.geometry = buildPathGeometry(input.path);
+      const projection = projectOntoPath(
+        this.geometry,
+        input.pose.position,
+        input.pose.heading,
+        null,
+      );
+      this.pathProgress = projection?.distance ?? 0;
+      this.lateralError = projection?.lateralError ?? 0;
+      this.segmentIndex = projection?.segmentIndex ?? 0;
       this.speedController.reset();
     }
     if (input.path.points.length === 0) return stoppedCommand();
 
-    this.advanceCursor(input.path, input.pose.position);
+    const geometry = this.geometry ?? buildPathGeometry(input.path);
+    this.geometry = geometry;
+    const projection = projectOntoPath(
+      geometry,
+      input.pose.position,
+      input.pose.heading,
+      this.pathProgress,
+    );
+    if (projection) {
+      this.pathProgress = Math.max(this.pathProgress, projection.distance);
+      this.lateralError = projection.lateralError;
+      this.segmentIndex = segmentIndexAtDistance(geometry, this.pathProgress);
+    }
     const lookAhead = Math.max(
       this.profile.halfLength,
       (this.tuning.baseLookAhead ?? this.profile.halfLength * 1.2) +
         Math.abs(input.speed) * (this.tuning.speedLookAheadGain ?? 0.22),
     );
-    const target = findLookAheadTarget(input.path, this.pathCursor, input.pose.position, lookAhead);
+    const target = findLookAheadTarget(
+      input.path,
+      geometry,
+      this.pathProgress,
+      input.pose.position,
+      lookAhead,
+    );
     const direction = target.direction ?? 'forward';
     const travelHeading = normalizeAngle(
       input.pose.heading + (direction === 'reverse' ? Math.PI : 0),
@@ -160,23 +203,38 @@ export class VehiclePathFollower {
       target.speedLimit ?? this.profile.maxSpeed,
       input.speedLimit ?? this.profile.maxSpeed,
     );
-    const curvatureSpeed = Math.max(
-      this.profile.maxSpeed * clamp(this.tuning.minimumSpeedFactor ?? 0, 0, 1),
-      curveSafeSpeed(
-        input.path,
-        this.pathCursor,
-        this.tuning.maximumLateralAcceleration ?? 5.5,
-        targetSpeedLimit,
-      ),
+    const maximumLateralAcceleration = this.tuning.maximumLateralAcceleration ?? 5.5;
+    const pathCurvatureSpeed = curveSafeSpeed(
+      input.path,
+      this.segmentIndex,
+      maximumLateralAcceleration,
+      targetSpeedLimit,
     );
-    let targetSpeed = Math.min(cruiseSpeed, targetSpeedLimit, curvatureSpeed);
+    const commandedCurvatureSpeed = safeSpeedForCurvature(
+      Math.abs(curvature),
+      maximumLateralAcceleration,
+      targetSpeedLimit,
+    );
+    // El mínimo del preset es una preferencia. Nunca puede levantar el límite
+    // físico que imponen la curva pedida o el path que viene por delante.
+    const preferredMinimum = this.profile.maxSpeed *
+      clamp(this.tuning.minimumSpeedFactor ?? 0, 0, 1);
+    const desiredCruise = Math.max(preferredMinimum, cruiseSpeed);
+    let targetSpeed = Math.min(
+      desiredCruise,
+      targetSpeedLimit,
+      pathCurvatureSpeed,
+      commandedCurvatureSpeed,
+    );
     // Frenada de llegada: sin esto el vehículo cruza la meta a velocidad de
     // crucero y sólo clava los frenos cuando el cerebro le suelta el goal.
     const arrivalDeceleration = this.tuning.arrivalDeceleration ?? 3;
     if (input.path.loop !== true) {
       const remaining = distanceToPathEnd(
         input.path,
-        this.pathCursor,
+        geometry,
+        this.pathProgress,
+        this.lateralError,
         input.pose.position,
         brakingHorizon(input.speed, arrivalDeceleration, this.profile.halfLength),
       );
@@ -188,6 +246,20 @@ export class VehiclePathFollower {
           ),
         );
       }
+    }
+    const directionChangeDistance = distanceToDirectionChange(
+      geometry,
+      this.pathProgress,
+      this.segmentIndex,
+    );
+    if (directionChangeDistance !== null) {
+      targetSpeed = Math.min(
+        targetSpeed,
+        Math.sqrt(
+          2 * arrivalDeceleration *
+          Math.max(0, directionChangeDistance - ARRIVAL_MARGIN),
+        ),
+      );
     }
     const timeToCollision = Math.abs(input.speed) > COLLISION_BRAKE_SPEED
       ? findTimeToCollision(input, this.profile, this.tuning)
@@ -226,33 +298,31 @@ export class VehiclePathFollower {
 
   reset(): void {
     this.previousPath = null;
-    this.pathCursor = 0;
+    this.geometry = null;
+    this.pathProgress = 0;
+    this.lateralError = 0;
+    this.segmentIndex = 0;
     this.avoidanceSide = 1;
     this.speedController.reset();
   }
 
-  private advanceCursor(path: VehicleDrivingPath, position: VehicleNavPoint): void {
-    const reachDistance = Math.max(
-      0.75,
-      this.tuning.waypointReachDistance ?? this.profile.halfLength * 0.7,
-    );
-    while (
-      this.pathCursor + 1 < path.points.length &&
-      planarDistance(position, path.points[this.pathCursor].position) <= reachDistance
-    ) {
-      this.pathCursor += 1;
-    }
-    let bestIndex = this.pathCursor;
-    let bestDistance = planarDistance(position, path.points[bestIndex].position);
-    const scanEnd = Math.min(path.points.length, this.pathCursor + 8);
-    for (let index = this.pathCursor + 1; index < scanEnd; index += 1) {
-      const distance = planarDistance(position, path.points[index].position);
-      if (distance < bestDistance) {
-        bestIndex = index;
-        bestDistance = distance;
-      }
-    }
-    this.pathCursor = bestIndex;
+  getProgress(): VehiclePathProgress | null {
+    const geometry = this.geometry;
+    if (!geometry || geometry.segments.length === 0) return null;
+    const wrappedDistance = wrapPathDistance(this.pathProgress, geometry.totalLength);
+    return {
+      distance: this.pathProgress,
+      wrappedDistance,
+      totalLength: geometry.totalLength,
+      remainingDistance: geometry.loop
+        ? null
+        : Math.max(0, geometry.totalLength - this.pathProgress),
+      lateralError: this.lateralError,
+      segmentIndex: this.segmentIndex,
+      lap: geometry.loop
+        ? Math.max(0, Math.floor(this.pathProgress / geometry.totalLength))
+        : 0,
+    };
   }
 }
 
@@ -399,44 +469,48 @@ function nearestPathDirection(
   path: VehicleDrivingPath,
   position: VehicleNavPoint,
 ): 'forward' | 'reverse' {
-  let direction: 'forward' | 'reverse' = 'forward';
-  let distance = Infinity;
-  for (const point of path.points) {
-    const candidate = planarDistance(position, point.position);
-    if (candidate < distance) {
-      distance = candidate;
-      direction = point.direction ?? 'forward';
+  const geometry = buildPathGeometry(path);
+  let best: { direction: 'forward' | 'reverse'; distance: number } | null = null;
+  for (const segment of geometry.segments) {
+    const projection = projectOntoSegment(position, segment);
+    if (!best || projection.lateralError < best.distance) {
+      best = { direction: segment.direction, distance: projection.lateralError };
     }
   }
-  return direction;
+  if (best) return best.direction;
+  return path.points[0]?.direction ?? 'forward';
 }
 
 function findLookAheadTarget(
   path: VehicleDrivingPath,
-  startIndex: number,
+  geometry: PathGeometry,
+  progress: number,
   position: VehicleNavPoint,
   lookAhead: number,
 ): VehicleDrivingPathPoint {
-  let remaining = lookAhead;
-  let previous = position;
-  for (let index = startIndex; index < path.points.length; index += 1) {
-    const point = path.points[index];
-    const segmentLength = planarDistance(previous, point.position);
-    if (segmentLength >= remaining && segmentLength > 1e-6) {
-      const alpha = remaining / segmentLength;
+  if (geometry.segments.length === 0) {
+    return path.points[0] ?? { position };
+  }
+  const segmentIndex = segmentIndexAtDistance(geometry, progress);
+  const directionBoundary = distanceToDirectionChange(geometry, progress, segmentIndex);
+  const boundedLookAhead = directionBoundary === null
+    ? lookAhead
+    : Math.min(lookAhead, directionBoundary);
+  const target = samplePathAt(geometry, progress + boundedLookAhead);
+  if (
+    directionBoundary !== null &&
+    boundedLookAhead >= directionBoundary - 1e-5
+  ) {
+    const current = geometry.segments[segmentIndex];
+    if (current) {
       return {
-        ...point,
-        position: [
-          previous[0] + (point.position[0] - previous[0]) * alpha,
-          previous[1] + (point.position[1] - previous[1]) * alpha,
-          previous[2] + (point.position[2] - previous[2]) * alpha,
-        ],
+        ...target,
+        direction: current.direction,
+        speedLimit: current.speedLimit,
       };
     }
-    remaining -= segmentLength;
-    previous = point.position;
   }
-  return path.points[path.points.length - 1];
+  return target;
 }
 
 function brakingHorizon(
@@ -455,30 +529,35 @@ function brakingHorizon(
  */
 function distanceToPathEnd(
   path: VehicleDrivingPath,
-  cursor: number,
+  geometry: PathGeometry,
+  progress: number,
+  lateralError: number,
   position: VehicleNavPoint,
   horizon: number,
 ): number | null {
   if (path.points.length === 0) return null;
-  let previous = position;
-  let total = 0;
-  for (let index = cursor; index < path.points.length; index += 1) {
-    total += planarDistance(previous, path.points[index].position);
-    if (total > horizon) return null;
-    previous = path.points[index].position;
-  }
-  return total;
+  const onlyPoint = path.points[0];
+  const remaining = geometry.segments.length === 0 && onlyPoint
+    ? planarDistance(position, onlyPoint.position)
+    : Math.hypot(
+      Math.max(0, geometry.totalLength - progress),
+      Math.max(0, lateralError),
+    );
+  return remaining <= horizon ? remaining : null;
 }
 
 function curveSafeSpeed(
   path: VehicleDrivingPath,
-  cursor: number,
+  segmentIndex: number,
   maximumLateralAcceleration: number,
   fallback: number,
 ): number {
   let maximumCurvature = 0;
-  const end = Math.min(path.points.length - 1, cursor + 6);
-  for (let index = Math.max(1, cursor); index < end; index += 1) {
+  const end = Math.min(path.points.length - 1, segmentIndex + 7);
+  for (let index = Math.max(1, segmentIndex + 1); index < end; index += 1) {
+    const incomingDirection = path.points[index]?.direction ?? 'forward';
+    const outgoingDirection = path.points[index + 1]?.direction ?? 'forward';
+    if (incomingDirection !== outgoingDirection) break;
     const before = path.points[index - 1].position;
     const current = path.points[index].position;
     const after = path.points[index + 1].position;
@@ -491,11 +570,223 @@ function curveSafeSpeed(
     );
     maximumCurvature = Math.max(maximumCurvature, angle / segment);
   }
-  if (maximumCurvature <= 1e-4) return fallback;
+  return safeSpeedForCurvature(maximumCurvature, maximumLateralAcceleration, fallback);
+}
+
+function safeSpeedForCurvature(
+  curvature: number,
+  maximumLateralAcceleration: number,
+  fallback: number,
+): number {
+  if (curvature <= 1e-4) return fallback;
   return Math.min(
     fallback,
-    Math.sqrt(Math.max(0.1, maximumLateralAcceleration) / maximumCurvature),
+    Math.sqrt(Math.max(0.1, maximumLateralAcceleration) / curvature),
   );
+}
+
+interface PathSegment {
+  start: VehicleNavPoint;
+  end: VehicleNavPoint;
+  startDistance: number;
+  length: number;
+  direction: 'forward' | 'reverse';
+  speedLimit?: number;
+}
+
+interface PathGeometry {
+  segments: readonly PathSegment[];
+  totalLength: number;
+  loop: boolean;
+}
+
+interface PathProjection {
+  distance: number;
+  lateralError: number;
+  segmentIndex: number;
+}
+
+function buildPathGeometry(path: VehicleDrivingPath): PathGeometry {
+  const segments: PathSegment[] = [];
+  let distance = 0;
+  const append = (
+    from: VehicleDrivingPathPoint,
+    to: VehicleDrivingPathPoint,
+  ): void => {
+    const length = planarDistance(from.position, to.position);
+    if (length <= 1e-5) return;
+    segments.push({
+      start: from.position,
+      end: to.position,
+      startDistance: distance,
+      length,
+      direction: to.direction ?? 'forward',
+      speedLimit: to.speedLimit,
+    });
+    distance += length;
+  };
+  for (let index = 1; index < path.points.length; index += 1) {
+    const from = path.points[index - 1];
+    const to = path.points[index];
+    if (from && to) append(from, to);
+  }
+  if (path.loop === true && path.points.length > 1) {
+    const last = path.points[path.points.length - 1];
+    const first = path.points[0];
+    if (last && first) append(last, first);
+  }
+  return { segments, totalLength: distance, loop: path.loop === true && distance > 1e-5 };
+}
+
+function projectOntoPath(
+  geometry: PathGeometry,
+  position: VehicleNavPoint,
+  bodyHeading: number,
+  currentProgress: number | null,
+): PathProjection | null {
+  if (geometry.segments.length === 0 || geometry.totalLength <= 1e-5) return null;
+  let best: (PathProjection & { score: number }) | null = null;
+  const currentLap = currentProgress === null
+    ? 0
+    : Math.floor(currentProgress / geometry.totalLength);
+
+  for (let index = 0; index < geometry.segments.length; index += 1) {
+    const segment = geometry.segments[index];
+    if (!segment) continue;
+    const local = projectOntoSegment(position, segment);
+    const baseDistance = segment.startDistance + local.alpha * segment.length;
+    let distance = baseDistance;
+    if (currentProgress !== null && geometry.loop) {
+      distance += currentLap * geometry.totalLength;
+      while (distance < currentProgress - 0.75) distance += geometry.totalLength;
+    }
+    if (
+      currentProgress !== null &&
+      !geometry.loop &&
+      distance < currentProgress - 0.75
+    ) {
+      continue;
+    }
+    const travelHeading = headingBetween(segment.start, segment.end);
+    const expectedBodyHeading = normalizeAngle(
+      travelHeading + (segment.direction === 'reverse' ? Math.PI : 0),
+    );
+    const headingMismatch = Math.abs(normalizeAngle(expectedBodyHeading - bodyHeading));
+    const forwardJump = currentProgress === null
+      ? 0
+      : Math.max(0, distance - currentProgress);
+    const score = local.lateralError + headingMismatch * 0.35 + forwardJump * 0.001;
+    if (!best || score < best.score - 1e-6) {
+      best = {
+        distance,
+        lateralError: local.lateralError,
+        segmentIndex: index,
+        score,
+      };
+    }
+  }
+
+  if (best) return best;
+  if (currentProgress === null) return null;
+  const sampled = samplePathAt(geometry, currentProgress);
+  return {
+    distance: currentProgress,
+    lateralError: planarDistance(position, sampled.position),
+    segmentIndex: segmentIndexAtDistance(geometry, currentProgress),
+  };
+}
+
+function projectOntoSegment(
+  position: VehicleNavPoint,
+  segment: PathSegment,
+): { alpha: number; lateralError: number } {
+  const deltaX = segment.end[0] - segment.start[0];
+  const deltaZ = segment.end[2] - segment.start[2];
+  const lengthSquared = deltaX * deltaX + deltaZ * deltaZ;
+  const alpha = lengthSquared <= 1e-8
+    ? 0
+    : clamp(
+      ((position[0] - segment.start[0]) * deltaX +
+        (position[2] - segment.start[2]) * deltaZ) / lengthSquared,
+      0,
+      1,
+    );
+  const projectedX = segment.start[0] + deltaX * alpha;
+  const projectedZ = segment.start[2] + deltaZ * alpha;
+  return {
+    alpha,
+    lateralError: Math.hypot(position[0] - projectedX, position[2] - projectedZ),
+  };
+}
+
+function samplePathAt(
+  geometry: PathGeometry,
+  distance: number,
+): VehicleDrivingPathPoint {
+  const resolvedDistance = geometry.loop
+    ? wrapPathDistance(distance, geometry.totalLength)
+    : clamp(distance, 0, geometry.totalLength);
+  const segmentIndex = segmentIndexAtDistance(geometry, resolvedDistance);
+  const segment = geometry.segments[segmentIndex];
+  if (!segment) return { position: [0, 0, 0] };
+  const alpha = clamp(
+    (resolvedDistance - segment.startDistance) / Math.max(1e-5, segment.length),
+    0,
+    1,
+  );
+  return {
+    position: [
+      segment.start[0] + (segment.end[0] - segment.start[0]) * alpha,
+      segment.start[1] + (segment.end[1] - segment.start[1]) * alpha,
+      segment.start[2] + (segment.end[2] - segment.start[2]) * alpha,
+    ],
+    direction: segment.direction,
+    speedLimit: segment.speedLimit,
+  };
+}
+
+function segmentIndexAtDistance(geometry: PathGeometry, distance: number): number {
+  if (geometry.segments.length <= 1) return 0;
+  const resolved = geometry.loop
+    ? wrapPathDistance(distance, geometry.totalLength)
+    : clamp(distance, 0, geometry.totalLength);
+  for (let index = 0; index < geometry.segments.length; index += 1) {
+    const segment = geometry.segments[index];
+    if (!segment) continue;
+    if (resolved < segment.startDistance + segment.length - 1e-5) return index;
+  }
+  return geometry.segments.length - 1;
+}
+
+function distanceToDirectionChange(
+  geometry: PathGeometry,
+  progress: number,
+  segmentIndex: number,
+): number | null {
+  const current = geometry.segments[segmentIndex];
+  if (!current || geometry.segments.length < 2) return null;
+  const wrapped = geometry.loop
+    ? wrapPathDistance(progress, geometry.totalLength)
+    : clamp(progress, 0, geometry.totalLength);
+  let distance = Math.max(
+    0,
+    current.startDistance + current.length - wrapped,
+  );
+  for (let offset = 1; offset < geometry.segments.length; offset += 1) {
+    const nextIndex = segmentIndex + offset;
+    if (!geometry.loop && nextIndex >= geometry.segments.length) return null;
+    const next = geometry.segments[nextIndex % geometry.segments.length];
+    if (!next) return null;
+    if (next.direction !== current.direction) return distance;
+    distance += next.length;
+  }
+  return null;
+}
+
+function wrapPathDistance(distance: number, totalLength: number): number {
+  if (totalLength <= 1e-5) return 0;
+  const wrapped = distance % totalLength;
+  return wrapped < 0 ? wrapped + totalLength : wrapped;
 }
 
 export function stoppedCommand(): VehicleControlCommand {

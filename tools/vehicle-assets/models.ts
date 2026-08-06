@@ -25,11 +25,13 @@ import {
   bakeVertexOcclusion,
   chamferBox,
   chamferWedge,
+  loftedBody,
   panel,
   rivetRow,
   roundedBox,
   wheel as buildWheel,
 } from "./geometry.js";
+import type { LoftSection } from "./geometry.js";
 import type {
   AtlasTile,
   Euler,
@@ -92,6 +94,22 @@ const BUGGY_GUN_Y = 1.78;
 const BUGGY_GUN_REACH = 1.32;
 
 /**
+ * Piso al que apoya la chatarra. Al pasar a wreckage el vehículo deja de rodar
+ * sobre el raycast y se acuesta sobre el collider del preset (centro 0.75, alto
+ * 1.35), así que el suelo salta del eje de ruedas a y = 0.075. Modelar los
+ * restos alrededor del cero del vehículo, como estaban antes, los dejaba
+ * enterrados hasta la mitad.
+ */
+const BUGGY_WRECK_GROUND = 0.075;
+
+/**
+ * Pose de lo que sigue soldado al bastidor. Va inclinada hacia el lado del
+ * artillero, que es de donde se arrancó la rueda delantera.
+ */
+const BUGGY_WRECK_POSITION: Vec3 = [0, 0.06, 0];
+const BUGGY_WRECK_ROTATION: Euler = [-0.04, 0.06, 0.07];
+
+/**
  * Casco del hidrodeslizador, atado al preset físico (`vehicles.config.ts`:
  * body.size [2.35, 1.45, 4.4], colliderCenter.y 0.55). El fondo de planeo va
  * al piso del collider y la cubierta a media altura; si la cubierta sube más,
@@ -134,6 +152,22 @@ const AIRBOAT_BOW_RAKE = -0.15;
 
 /** Puesto del piloto: centrado, entre el cañón de proa y la bancada del motor. */
 const AIRBOAT_DRIVER_Z = -0.52;
+
+/**
+ * Piso al que apoya la chatarra. Mientras el motor hover lo sostiene, el casco
+ * vuela por encima de su collider; al pasar a wreckage el cuerpo cae a dinámico
+ * y se acuesta sobre la caja del preset (centro 0.55, alto 1.45), así que el
+ * suelo queda 0.45 por debajo del fondo de planeo intacto.
+ */
+const AIRBOAT_WRECK_GROUND = -0.175;
+
+/**
+ * Pose del casco varado: escorado a estribor y con la popa clavada. Las piezas
+ * que siguen unidas al casco se escriben en las cotas del modelo intacto y esta
+ * transformación las baja hasta el piso.
+ */
+const AIRBOAT_WRECK_POSITION: Vec3 = [0, -0.19, 0];
+const AIRBOAT_WRECK_ROTATION: Euler = [-0.05, 0.05, 0.1];
 
 /**
  * Fuselaje del helicóptero. Las cotas salen del preset físico
@@ -196,6 +230,20 @@ const REBEL_CRAWLER_WHEEL = {
 
 const REBEL_CRAWLER_DRIVER_X = 0.48;
 
+/**
+ * Piso al que apoya la chatarra: fondo del collider del preset (centro 1, alto
+ * 2.05). Queda 0.1 por encima de donde corre la banda con el vehículo entero,
+ * así que la oruga que sobrevive termina apenas hundida en el terreno.
+ */
+const CRAWLER_WRECK_GROUND = -0.025;
+
+/**
+ * Pose del casco. Escora hacia estribor porque es el lado que perdió la banda:
+ * ahí el tren apoya sobre los rodillos pelados, un palmo más abajo.
+ */
+const CRAWLER_WRECK_POSITION: Vec3 = [0, 0.05, 0];
+const CRAWLER_WRECK_ROTATION: Euler = [0.03, 0.05, 0.06];
+
 const COMBINE_GLIDER = {
   halfWidth: 1.02,
   noseZ: 1.72,
@@ -205,60 +253,35 @@ const COMBINE_GLIDER = {
   coreZ: -0.9,
 } as const;
 
-function createHullGeometry(
-  length: number,
-  width: number,
-  height: number,
-  frontWidth: number,
-  rearWidth: number,
-): BufferGeometry {
-  const frontZ = length / 2;
-  const rearZ = -length / 2;
-  const bottomY = -height / 2;
-  const topY = height / 2;
-  const vertices = new Float32Array([
-    -rearWidth / 2,
-    bottomY,
-    rearZ,
-    rearWidth / 2,
-    bottomY,
-    rearZ,
-    -frontWidth / 2,
-    bottomY,
-    frontZ,
-    frontWidth / 2,
-    bottomY,
-    frontZ,
-    -width / 2,
-    topY,
-    rearZ,
-    width / 2,
-    topY,
-    rearZ,
-    -frontWidth / 2,
-    topY,
-    frontZ,
-    frontWidth / 2,
-    topY,
-    frontZ,
-  ]);
-  const indices = [
-    0, 1, 2, 1, 3, 2, 4, 6, 5, 5, 6, 7, 0, 2, 4, 4, 2, 6, 1, 5, 3, 5, 7,
-    3, 2, 3, 6, 3, 7, 6, 0, 4, 1, 4, 5, 1,
-  ];
-  const geometry = new BufferGeometry();
-  geometry.setAttribute("position", new Float32BufferAttribute(vertices, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  const uv = new Float32Array(8 * 2);
-  for (let index = 0; index < 8; index += 1) {
-    const vertexOffset = index * 3;
-    uv[index * 2] = vertices[vertexOffset]! / width + 0.5;
-    uv[index * 2 + 1] = vertices[vertexOffset + 2]! / length + 0.5;
-  }
-  geometry.setAttribute("uv", new Float32BufferAttribute(uv, 2));
-  return geometry;
-}
+/**
+ * Nadador Combine: criatura reconvertida sobre el casco del deslizador
+ * (`vehicles.config.ts`: body.size [2.2, 1.25, 3.5], colliderCenter.y 0.55).
+ * El disco pectoral ocupa el ancho del collider y la cola sale por detrás,
+ * donde el deslizador tiene el núcleo antigravedad.
+ *
+ * La lectura buscada es híbrida: disco de manta para la silueta de nadador y
+ * tórax de artrópodo para el eje central, que es de donde cuelgan los remos.
+ * Todo lo que se mueve vive fuera de la piel, en nodos propios, porque una
+ * malla horneada no puede animarse por más orgánico que sea su contorno.
+ */
+const COMBINE_SWIMMER = {
+  noseZ: 1.6,
+  /**
+   * Collar del injerto: el anillo antigravedad clampeado en la base de la cola.
+   * Es rígido a propósito y la cola sale ondulando de adentro. Esa es la
+   * imagen: la máquina agarra la carne y la carne se retuerce igual.
+   */
+  graftY: 0.6,
+  graftZ: -1.16,
+  /** Pivote del cuello: de acá gira la cabeza hacia donde mira el jinete. */
+  headY: 0.55,
+  headZ: 1.05,
+  /** Cota del vientre donde se atornillan las cuencas de los remos. */
+  oarY: 0.36,
+  oarX: 0.6,
+  /** Z de cada par de remos, de proa a popa. La IA de la ola los usa en orden. */
+  oarZ: [0.52, 0.04, -0.46],
+} as const;
 
 function createBladeGeometry(
   length: number,
@@ -1084,6 +1107,570 @@ function buildBuggyLod(
   }
 }
 
+/**
+ * Bastidor calcinado. Lo que hace leer la chatarra no es la deformación sino
+ * que las piezas sigan siendo reconocibles —largueros, butacas, volante— con
+ * los cortes y los desgarros a la vista.
+ */
+function wreckedBuggyChassisParts(segments: number): GeometryPart[] {
+  return [
+    // Piso: chapas sueltas plegadas sobre el travesaño central, con las juntas
+    // abiertas. Una plancha entera leía como una mesa; lo que dice "reventado"
+    // son los huecos por los que se ve el piso entre chapa y chapa.
+    {
+      geometry: chamferBox(0.62, 0.06, 1.34, 0.02),
+      position: [0.34, 0.45, 0.86],
+      rotation: [0.13, 0.05, -0.09],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.54, 0.06, 1.18, 0.02),
+      position: [-0.33, 0.42, 0.92],
+      rotation: [0.16, -0.06, 0.06],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.58, 0.06, 1.14, 0.02),
+      position: [0.33, 0.32, -0.76],
+      rotation: [-0.08, 0.06, -0.05],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.5, 0.06, 1.0, 0.02),
+      position: [-0.35, 0.28, -0.84],
+      rotation: [-0.12, -0.08, 0.09],
+      tile: 1,
+    },
+    // Chapa del túnel central, levantada entre las dos mitades.
+    {
+      geometry: chamferBox(0.28, 0.05, 0.76, 0.02),
+      position: [0.01, 0.5, 0.36],
+      rotation: [0.3, 0.14, 0.16],
+      tile: 1,
+    },
+    { geometry: rivetRow([0.34, 0.5, 0.34], [0.36, 0.52, 1.38], 7, 0.014), tile: 2 },
+    { geometry: rivetRow([-0.33, 0.47, 0.44], [-0.34, 0.49, 1.36], 6, 0.014), tile: 2 },
+    // Cresta del pliegue: es lo que dice "se dobló" y no "está inclinado".
+    {
+      geometry: chamferBox(1.24, 0.28, 0.1, 0.03),
+      position: [0, 0.5, 0.08],
+      rotation: [0.38, 0.04, -0.06],
+      tile: 1,
+    },
+    // Largueros: el izquierdo aguantó pandeado; el derecho se partió y se
+    // levantó en la punta, que es por donde salió la rueda delantera.
+    {
+      geometry: chamferBox(0.13, 0.2, 1.66, 0.03),
+      position: [0.71, 0.48, 0.86],
+      rotation: [0.11, 0.02, -0.04],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.13, 0.19, 1.62, 0.03),
+      position: [0.67, 0.36, -0.84],
+      rotation: [-0.07, 0.06, 0.05],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.13, 0.19, 1.5, 0.03),
+      position: [-0.69, 0.34, -0.78],
+      rotation: [-0.05, -0.04, 0.03],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.13, 0.18, 0.86, 0.03),
+      position: [-0.7, 0.42, 0.42],
+      rotation: [0.06, -0.03, 0.02],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.12, 0.17, 0.94, 0.03),
+      position: [-0.66, 0.66, 1.24],
+      rotation: [-0.52, -0.14, 0.09],
+      tile: 2,
+    },
+    // Travesaños: el de proa quedó torcido y del de popa sobrevive medio.
+    {
+      geometry: chamferBox(1.5, 0.11, 0.13, 0.03),
+      position: [0.03, 0.5, 1.46],
+      rotation: [0.12, 0.1, -0.16],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.84, 0.1, 0.13, 0.03),
+      position: [0.34, 0.32, -1.5],
+      rotation: [0.04, 0.18, -0.09],
+      tile: 2,
+    },
+    // Mamparo trasero vencido hacia adentro.
+    {
+      geometry: panel(1.24, 0.44, 0.07),
+      position: [-0.04, 0.56, -1.06],
+      rotation: [-0.52, 0.05, 0.07],
+      tile: 1,
+    },
+    // Único panel pintado que sobrevivió: sin algo del color original la
+    // chatarra deja de leerse como este vehículo.
+    {
+      geometry: panel(0.06, 0.4, 0.86),
+      position: [0.79, 0.68, 0.76],
+      rotation: [0.08, 0.04, -0.14],
+      tile: 0,
+    },
+    { geometry: rivetRow([-0.46, 0.52, 1.2], [0.5, 0.53, 1.18], 8, 0.015), tile: 2 },
+    // Butaca del conductor: queda el esqueleto con el respaldo vencido.
+    {
+      geometry: chamferBox(0.44, 0.12, 0.5, 0.03),
+      position: [0.38, 0.56, -0.2],
+      rotation: [0.08, 0.05, -0.07],
+      tile: 3,
+    },
+    {
+      geometry: chamferBox(0.42, 0.56, 0.11, 0.03),
+      position: [0.35, 0.7, -0.52],
+      rotation: [-0.72, 0.06, -0.1],
+      tile: 3,
+    },
+    {
+      geometry: chamferBox(0.3, 0.18, 0.12, 0.03),
+      position: [0.33, 0.62, -0.86],
+      rotation: [-0.92, 0.04, -0.12],
+      tile: 3,
+    },
+    // Del lado del artillero sólo quedó el bastidor atornillado al piso.
+    {
+      geometry: chamferBox(0.42, 0.09, 0.46, 0.03),
+      position: [-0.4, 0.4, -0.26],
+      rotation: [0.06, -0.12, 0.14],
+      tile: 3,
+    },
+    createTubePart([-0.58, 0.44, -0.46], [-0.26, 0.82, -0.56], 0.026, 8, 2),
+    createTubePart([-0.26, 0.82, -0.56], [-0.34, 0.56, -0.22], 0.026, 8, 2),
+    // Columna de dirección arrancada, con el volante torcido todavía puesto.
+    createTubePart([0.4, 0.52, 0.52], [0.52, 0.94, 0.3], 0.03, 8, 2),
+    ...groupParts(steeringWheelParts([0, 0, 0], 0.17, segments, 2), {
+      position: [0.53, 0.97, 0.26],
+      rotation: [1.2, 0.22, 0.44],
+    }),
+    // Chapa desgarrada en los bordes del pliegue y del larguero partido.
+    {
+      geometry: chamferBox(0.3, 0.05, 0.26, 0.015),
+      position: [0.5, 0.58, 0.3],
+      rotation: [0.62, 0.2, -0.3],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.24, 0.05, 0.2, 0.015),
+      position: [-0.44, 0.54, 0.26],
+      rotation: [-0.74, -0.3, 0.42],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.22, 0.04, 0.3, 0.012),
+      position: [-0.7, 0.5, 0.88],
+      rotation: [0.36, 0.5, 0.85],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.26, 0.05, 0.22, 0.014),
+      position: [-0.16, 0.34, -1.32],
+      rotation: [0.5, -0.4, 0.3],
+      tile: 1,
+    },
+  ];
+}
+
+/**
+ * Jaula antivuelco aplastada. Los anillos en las puntas son la mitad del
+ * efecto: sin ellos un tubo cortado se ve macizo y el arco parece doblado en
+ * vez de partido.
+ */
+function wreckedBuggyCageParts(segments: number): GeometryPart[] {
+  return [
+    // Montante izquierdo: se plegó en tres tramos hacia el centro.
+    createTubePart([0.71, 0.44, -0.62], [0.69, 0.9, -0.66], 0.052, segments, 1),
+    createTubePart([0.69, 0.9, -0.66], [0.54, 1.2, -0.54], 0.052, segments, 1),
+    createTubePart([0.54, 1.2, -0.54], [0.14, 1.29, -0.46], 0.052, segments, 1),
+    // Travesaño superior: cae hacia el lado del artillero y termina al aire.
+    createTubePart([0.14, 1.29, -0.46], [-0.5, 1.12, -0.5], 0.05, segments, 1),
+    {
+      geometry: new TorusGeometry(0.05, 0.015, 5, segments),
+      position: [-0.51, 1.11, -0.5],
+      rotation: [1.32, 0.24, 0],
+      tile: 2,
+    },
+    // Montante derecho: cortado a media altura, con la boca del caño a la vista.
+    createTubePart([-0.69, 0.36, -0.6], [-0.66, 0.72, -0.63], 0.052, segments, 1),
+    {
+      geometry: new TorusGeometry(0.052, 0.015, 5, segments),
+      position: [-0.66, 0.73, -0.63],
+      rotation: [Math.PI / 2 + 0.08, 0, 0.06],
+      tile: 2,
+    },
+    // Montante hacia el cortaviento: el izquierdo se acostó sobre el capó y del
+    // derecho quedó el tocón.
+    createTubePart([0.62, 1.24, -0.48], [0.74, 0.94, 0.32], 0.046, segments, 1),
+    createTubePart([0.74, 0.94, 0.32], [0.68, 0.66, 0.9], 0.046, segments, 1),
+    createTubePart([-0.74, 0.44, 0.74], [-0.71, 0.66, 0.44], 0.044, segments, 1),
+    {
+      geometry: new TorusGeometry(0.044, 0.013, 5, segments),
+      position: [-0.71, 0.67, 0.43],
+      rotation: [Math.PI / 2 - 0.66, 0.1, 0],
+      tile: 2,
+    },
+    // Tirantes traseros: uno aguantó y el otro quedó colgando del nudo.
+    createTubePart([0.67, 1.22, -0.54], [0.69, 0.48, -1.5], 0.048, segments, 1),
+    createTubePart([-0.48, 1.08, -0.54], [-0.32, 0.74, -1.14], 0.046, segments, 1),
+    {
+      geometry: new TorusGeometry(0.046, 0.013, 5, segments),
+      position: [-0.315, 0.73, -1.15],
+      rotation: [1.05, 0.2, 0],
+      tile: 2,
+    },
+    // Barras laterales anti-intrusión abiertas hacia afuera.
+    createTubePart([0.78, 0.6, 0.64], [0.88, 0.5, -0.58], 0.044, segments, 1),
+    createTubePart([-0.78, 0.44, 0.46], [-0.92, 0.38, -0.5], 0.044, segments, 1),
+    // Cruz de refuerzo: se partió y quedó la mitad colgando del arco.
+    createTubePart([0.66, 1.16, -0.7], [0.04, 0.78, -0.74], 0.036, 8, 1),
+    createTubePart([-0.46, 1.04, -0.72], [-0.2, 0.88, -0.72], 0.034, 8, 1),
+    gusset([0.7, 0.9, -0.66], 0.13, 2),
+    gusset([0.54, 1.2, -0.54], 0.12, 2),
+    gusset([-0.68, 0.4, -0.6], 0.12, 2),
+    gusset([0.68, 0.5, -1.46], 0.11, 2),
+  ];
+}
+
+/** Motor trasero al descubierto: la tapa y los soportes ya no están. */
+function wreckedBuggyEngineParts(segments: number): GeometryPart[] {
+  return [
+    // El bloque es lo más macizo del buggy: sobrevive entero y torcido.
+    {
+      geometry: chamferBox(0.82, 0.4, 0.6, 0.04),
+      position: [0.04, 0.62, -1.3],
+      rotation: [0.12, 0.07, -0.1],
+      tile: 2,
+    },
+    ...ribParts([0.04, 0.84, -1.28], [1, 0, 0], 4, 0.18, [0.09, 0.06, 0.46], 2),
+    // Tapa de balancines volada: los tubos de admisión quedan al aire.
+    ...[-0.26, -0.09, 0.09, 0.26].map((x) => ({
+      geometry: new CylinderGeometry(0.05, 0.062, 0.16, 10),
+      position: [0.04 + x, 0.92, -1.18] as Vec3,
+      rotation: [0.14, 0, -0.08] as Euler,
+      tile: 2 as AtlasTile,
+    })),
+    // Escapes: uno retorcido hacia arriba, el otro cortado al ras.
+    createTubePart([-0.3, 0.48, -1.5], [-0.44, 0.86, -1.86], 0.05, segments, 1),
+    createTubePart([-0.44, 0.86, -1.86], [-0.22, 1.0, -2.02], 0.048, segments, 1),
+    {
+      geometry: new TorusGeometry(0.048, 0.014, 5, segments),
+      position: [-0.21, 1.01, -2.03],
+      rotation: [1.14, 0.34, 0],
+      tile: 2,
+    },
+    createTubePart([0.3, 0.48, -1.5], [0.4, 0.6, -1.74], 0.05, segments, 1),
+    {
+      geometry: new TorusGeometry(0.05, 0.014, 5, segments),
+      position: [0.41, 0.61, -1.76],
+      rotation: [1.0, 0, 0],
+      tile: 2,
+    },
+    // Tanque auxiliar rajado, volcado sobre la cubierta.
+    {
+      geometry: new CylinderGeometry(0.15, 0.15, 0.42, 12),
+      position: [-0.52, 0.5, -1.72],
+      rotation: [1.4, 0.2, 0.35],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.2, 0.05, 0.26, 0.015),
+      position: [-0.5, 0.64, -1.68],
+      rotation: [1.2, 0.4, 0.5],
+      tile: 1,
+    },
+    // Bidón reventado contra el mamparo.
+    {
+      geometry: chamferBox(0.32, 0.38, 0.18, 0.03),
+      position: [0.56, 0.44, -1.62],
+      rotation: [0.5, 0.3, 1.25],
+      scale: [1, 0.68, 1],
+      tile: 1,
+    },
+    // Mangueras y cables colgando del bloque.
+    createTubePart([-0.2, 0.68, -1.06], [0.3, 0.5, -0.92], 0.022, 6, 1),
+    createTubePart([0.24, 0.8, -1.1], [-0.36, 0.54, -0.9], 0.02, 6, 1),
+    createTubePart([0.44, 0.7, -1.34], [0.66, 0.42, -1.5], 0.024, 6, 1),
+    // Polea y correa a la vista.
+    {
+      geometry: new CylinderGeometry(0.16, 0.16, 0.06, segments),
+      position: [0.44, 0.68, -1.02],
+      rotation: [0, 0, Math.PI / 2],
+      tile: 2,
+    },
+    {
+      geometry: new TorusGeometry(0.17, 0.02, 5, segments),
+      position: [0.44, 0.68, -1.02],
+      rotation: [0, Math.PI / 2, 0],
+      tile: 3,
+    },
+  ];
+}
+
+/**
+ * Ruedas: tres reventadas en su puesto y la delantera derecha arrancada. El
+ * aplastado vertical es lo que las separa de una rueda sana puesta más abajo.
+ */
+function wreckedBuggyWheelParts(segments: number): GeometryPart[] {
+  const built = buildWheel({
+    radius: BUGGY_WHEEL.radius,
+    width: 0.38,
+    segments,
+    treadCount: 16,
+  });
+  const { halfLength } = BUGGY_WHEEL;
+  const stations: readonly {
+    readonly x: number;
+    readonly z: number;
+    readonly rotation: Euler;
+    readonly squash: number;
+  }[] = [
+    { x: 0.93, z: -halfLength, rotation: [0.05, 0.1, 0.26], squash: 0.74 },
+    { x: -0.91, z: -halfLength + 0.05, rotation: [-0.04, -0.08, -0.32], squash: 0.71 },
+    { x: 0.97, z: halfLength - 0.07, rotation: [0.09, 0.22, 0.42], squash: 0.78 },
+  ];
+  const parts: GeometryPart[] = [];
+  for (const station of stations) {
+    const position: Vec3 = [
+      station.x,
+      BUGGY_WRECK_GROUND + BUGGY_WHEEL.radius * station.squash,
+      station.z,
+    ];
+    const scale: Vec3 = [1, station.squash, 1];
+    parts.push(
+      { geometry: built.tire, position, rotation: station.rotation, scale, tile: 3 },
+      { geometry: built.rim, position, rotation: station.rotation, scale, tile: 2 },
+      // Amortiguador plegado hasta el tope: la espiral comprimida es lo que
+      // explica por qué el bastidor quedó apoyado tan abajo.
+      ...coilOverParts(
+        [station.x * 0.74, 0.68, station.z * 0.82],
+        [station.x * 0.92, 0.42, station.z],
+        { radius: 0.075, coils: 6, segments: 10, springTile: 1, bodyTile: 2 },
+      ),
+      createTubePart(
+        [station.x * 0.5, 0.42, station.z],
+        [station.x * 0.9, BUGGY_WRECK_GROUND + 0.24, station.z],
+        0.05,
+        8,
+        2,
+      ),
+    );
+  }
+
+  // Rueda delantera derecha: rodó hasta el flanco y quedó tumbada de plano.
+  const looseWheel: Vec3 = [-1.44, BUGGY_WRECK_GROUND + 0.19, -0.4];
+  const looseRotation: Euler = [0.06, 0.2, Math.PI / 2 - 0.09];
+  parts.push(
+    { geometry: built.tire, position: looseWheel, rotation: looseRotation, tile: 3 },
+    { geometry: built.rim, position: looseWheel, rotation: looseRotation, tile: 2 },
+    // Muñón pelado en su lugar: sin el buje la esquina se lee como si nunca
+    // hubiera tenido rueda.
+    {
+      geometry: new CylinderGeometry(0.09, 0.09, 0.16, 10),
+      position: [-0.84, 0.46, halfLength - 0.12],
+      rotation: [0, 0, Math.PI / 2 + 0.34],
+      tile: 2,
+    },
+    {
+      geometry: new CylinderGeometry(0.045, 0.045, 0.22, 8),
+      position: [-0.93, 0.49, halfLength - 0.12],
+      rotation: [0, 0, Math.PI / 2 + 0.34],
+      tile: 2,
+    },
+    createTubePart(
+      [-0.5, 0.44, halfLength - 0.02],
+      [-0.82, 0.46, halfLength - 0.12],
+      0.048,
+      8,
+      2,
+    ),
+    // Brazo de suspensión partido, colgando del larguero.
+    createTubePart([-0.66, 0.62, 1.02], [-0.78, 0.24, 1.32], 0.042, 8, 2),
+    {
+      geometry: new TorusGeometry(0.042, 0.012, 5, 8),
+      position: [-0.785, 0.23, 1.33],
+      rotation: [0.9, 0.3, 0],
+      tile: 2,
+    },
+  );
+  return parts;
+}
+
+/** Cañón de inducción caído del pedestal, cruzado sobre el capó plegado. */
+function wreckedBuggyTurretParts(segments: number): GeometryPart[] {
+  return [
+    // Recámara, camisa y freno de boca, con el caño combado.
+    { geometry: chamferBox(0.28, 0.26, 0.44, 0.035), position: [0, 0, 0.1], tile: 2 },
+    {
+      geometry: new CylinderGeometry(0.062, 0.075, 0.92, segments),
+      position: [0, -0.03, 0.68],
+      rotation: [Math.PI / 2 + 0.07, 0, 0],
+      tile: 2,
+    },
+    {
+      geometry: new CylinderGeometry(0.088, 0.1, 0.16, segments),
+      position: [0.01, -0.11, 1.19],
+      rotation: [Math.PI / 2 + 0.07, 0, 0.06],
+      tile: 2,
+    },
+    // Bobinas: dos siguen en el caño y la tercera saltó al lado.
+    {
+      geometry: new TorusGeometry(0.09, 0.026, 6, segments),
+      position: [0, -0.05, 0.8],
+      rotation: [0.07, 0, 0],
+      tile: 1,
+    },
+    {
+      geometry: new TorusGeometry(0.09, 0.026, 6, segments),
+      position: [0, -0.06, 0.93],
+      rotation: [0.07, 0, 0],
+      tile: 1,
+    },
+    {
+      geometry: new TorusGeometry(0.09, 0.03, 6, segments),
+      position: [0.34, -0.24, 0.6],
+      rotation: [1.2, 0.4, 0.3],
+      tile: 1,
+    },
+    { geometry: chamferBox(0.16, 0.2, 0.28, 0.03), position: [-0.19, -0.04, 0.04], tile: 1 },
+    // Cuna y pedestal: el caño de montaje se partió al ras del larguero.
+    {
+      geometry: new CylinderGeometry(0.15, 0.19, 0.11, segments),
+      position: [0, -0.17, -0.06],
+      rotation: [0.28, 0, 0.18],
+      tile: 2,
+    },
+    createTubePart([0, -0.22, -0.1], [0.09, -0.5, -0.32], 0.055, segments, 2),
+    {
+      geometry: new TorusGeometry(0.055, 0.015, 5, segments),
+      position: [0.095, -0.52, -0.33],
+      rotation: [1.0, 0.2, 0],
+      tile: 2,
+    },
+    createTubePart([-0.16, -0.06, -0.06], [-0.4, -0.3, -0.48], 0.03, 8, 1),
+  ];
+}
+
+/**
+ * Piezas que salieron despedidas. Todas apoyan en el piso, así que la altura
+ * sale de su propio espesor y de cuánto las inclina la pose: centrarlas en el
+ * suelo las hunde hasta la mitad.
+ */
+function wreckedBuggyDebrisParts(segments: number): GeometryPart[] {
+  return [
+    // Capó arrancado: chapa fina con el pliegue del golpe. Como cuña maciza
+    // —que es la forma que tiene cerrado sobre el motor— leía como un bloque.
+    {
+      geometry: chamferBox(1.22, 0.07, 0.92, 0.03),
+      position: [0.34, BUGGY_WRECK_GROUND + 0.14, 1.92],
+      rotation: [0.1, 0.46, 0.09],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(1.04, 0.06, 0.42, 0.025),
+      position: [0.16, BUGGY_WRECK_GROUND + 0.19, 2.34],
+      rotation: [-0.34, 0.46, 0.12],
+      tile: 0,
+    },
+    // Tapa del motor, volada hacia atrás. Va oxidada y no pintada: es la chapa
+    // que estuvo sobre el fuego.
+    {
+      geometry: chamferBox(1.2, 0.09, 0.86, 0.04),
+      position: [-0.28, BUGGY_WRECK_GROUND + 0.21, -2.1],
+      rotation: [0.22, 0.24, 0.12],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.48, 0.07, 0.34, 0.025),
+      position: [-0.74, BUGGY_WRECK_GROUND + 0.26, -2.34],
+      rotation: [0.5, 0.3, 0.34],
+      tile: 1,
+    },
+    // Guardabarros suelto, apoyado sobre sus dos extremos.
+    ...groupParts(fenderParts([0, 0, 0], 0.62, 0.44, 5, 1, [0.4, Math.PI - 0.4]), {
+      position: [1.3, -0.05, -0.1],
+      rotation: [0.12, 0.35, 0.16],
+    }),
+    // Faro reventado: quedan el aro y el reflector partido.
+    {
+      geometry: new CylinderGeometry(0.11, 0.11, 0.18, 12),
+      position: [-1.12, BUGGY_WRECK_GROUND + 0.11, -0.3],
+      rotation: [1.42, 0.2, 0.3],
+      tile: 2,
+    },
+    {
+      geometry: new CylinderGeometry(0.085, 0.085, 0.04, 12),
+      position: [-1.3, BUGGY_WRECK_GROUND + 0.09, -0.58],
+      rotation: [1.24, -0.4, 0.5],
+      tile: 0,
+    },
+    // Chapas de flanco arrancadas, todavía con la hilera de remaches.
+    {
+      geometry: panel(0.06, 0.4, 0.8),
+      position: [1.32, BUGGY_WRECK_GROUND + 0.09, -1.35],
+      rotation: [0.14, 0.4, 1.55],
+      tile: 0,
+    },
+    {
+      geometry: panel(0.05, 0.34, 0.62),
+      position: [-1.24, BUGGY_WRECK_GROUND + 0.08, -1.38],
+      rotation: [0.1, -0.5, 1.6],
+      tile: 1,
+    },
+    { geometry: rivetRow([-1.38, 0.19, -1.52], [-1.1, 0.19, -1.24], 6, 0.015), tile: 2 },
+    // Barras del arco que se soltaron enteras.
+    createTubePart(
+      [0.88, BUGGY_WRECK_GROUND + 0.06, -2.0],
+      [1.42, BUGGY_WRECK_GROUND + 0.08, -1.6],
+      0.05,
+      segments,
+      1,
+    ),
+    createTubePart(
+      [-1.3, BUGGY_WRECK_GROUND + 0.05, -1.92],
+      [-0.78, BUGGY_WRECK_GROUND + 0.07, -2.24],
+      0.044,
+      segments,
+      1,
+    ),
+    createTubePart(
+      [0.38, BUGGY_WRECK_GROUND + 0.04, 2.12],
+      [0.98, BUGGY_WRECK_GROUND + 0.05, 1.82],
+      0.038,
+      8,
+      2,
+    ),
+    // Silenciador arrancado y recortes de chapa: restos chicos que ensucian el
+    // contorno para que la chatarra no termine en un borde limpio.
+    {
+      geometry: new CylinderGeometry(0.09, 0.09, 0.5, segments),
+      position: [-0.88, BUGGY_WRECK_GROUND + 0.11, -2.18],
+      rotation: [0.1, 0.5, Math.PI / 2],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.22, 0.05, 0.28, 0.014),
+      position: [-0.55, BUGGY_WRECK_GROUND + 0.03, 2.18],
+      rotation: [0.08, 0.6, 0.06],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.18, 0.05, 0.2, 0.012),
+      position: [1.08, BUGGY_WRECK_GROUND + 0.03, 1.32],
+      rotation: [0.06, -0.5, 0.1],
+      tile: 1,
+    },
+  ];
+}
+
 function buildBuggy(context: BuildContext): void {
   for (const lod of [0, 1, 2] as const) {
     const root = createNode(context, context.sceneRoot, `visual_lod${lod}`, {
@@ -1167,14 +1754,26 @@ function buildBuggy(context: BuildContext): void {
   const wreckage = createNode(context, context.sceneRoot, "wreckage", {
     extras: { kind: "wreckage", hiddenByDefault: true },
   });
-  createVisualNode(context, wreckage, "wreckage_chassis", [
-    {
-      geometry: new BoxGeometry(1.7, 0.3, 2.2),
-      rotation: [0.18, 0.08, -0.12],
-      tile: 3,
-    },
-    createTubePart([-0.75, 0.1, -1], [0.55, 0.65, 0.9], 0.07, 8, 1),
-  ]);
+  createVisualNode(context, wreckage, "wreckage_chassis", wreckedBuggyChassisParts(12), {
+    position: BUGGY_WRECK_POSITION,
+    rotation: BUGGY_WRECK_ROTATION,
+  });
+  createVisualNode(context, wreckage, "wreckage_cage", wreckedBuggyCageParts(10), {
+    position: BUGGY_WRECK_POSITION,
+    rotation: BUGGY_WRECK_ROTATION,
+  });
+  createVisualNode(context, wreckage, "wreckage_engine", wreckedBuggyEngineParts(12), {
+    position: BUGGY_WRECK_POSITION,
+    rotation: BUGGY_WRECK_ROTATION,
+  });
+  // Las ruedas y la chatarra suelta apoyan en el piso, así que quedan fuera de
+  // la inclinación del bastidor.
+  createVisualNode(context, wreckage, "wreckage_wheels", wreckedBuggyWheelParts(14));
+  createVisualNode(context, wreckage, "wreckage_turret", wreckedBuggyTurretParts(12), {
+    position: [-0.62, 0.72, 0.74],
+    rotation: [0.42, -0.62, 0.34],
+  });
+  createVisualNode(context, wreckage, "wreckage_debris", wreckedBuggyDebrisParts(10));
 }
 
 function buildRebelCrawlerLod(
@@ -1448,6 +2047,535 @@ function buildRebelCrawlerLod(
   }
 }
 
+/** Bañera reventada: el volumen que sostiene todo lo demás. */
+function wreckedCrawlerHullParts(segments: number): GeometryPart[] {
+  return [
+    // La bañera se pandeó a la altura del motor y quedó en dos tramos.
+    {
+      geometry: chamferBox(2.14, 0.6, 2.16, 0.09),
+      position: [0.03, 0.74, 1.02],
+      rotation: [0.05, 0.02, -0.04],
+      tile: 0,
+    },
+    // La cuba de popa quedó abierta: piso, mamparo y la banda de babor. La de
+    // estribor se desprendió, y ese hueco es lo que deja ver adentro. Como caja
+    // cerrada el transporte se leía apenas abollado.
+    {
+      geometry: chamferBox(2.0, 0.14, 1.92, 0.05),
+      position: [-0.04, 0.44, -1.08],
+      rotation: [-0.06, -0.03, 0.06],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(0.16, 0.54, 1.92, 0.05),
+      position: [0.88, 0.7, -1.08],
+      rotation: [-0.06, -0.03, 0.06],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(0.16, 0.46, 0.78, 0.05),
+      position: [-0.98, 0.64, -1.62],
+      rotation: [-0.08, -0.06, 0.1],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(1.96, 0.5, 0.16, 0.05),
+      position: [-0.05, 0.68, -1.98],
+      rotation: [-0.12, -0.03, 0.06],
+      tile: 0,
+    },
+    // Costura del pliegue, con la chapa levantada.
+    {
+      geometry: chamferBox(2.0, 0.24, 0.12, 0.03),
+      position: [0, 0.88, -0.02],
+      rotation: [0.34, 0.02, 0.02],
+      tile: 1,
+    },
+    // Trompa hundida: la cuña de proa se comió el golpe.
+    {
+      geometry: chamferWedge({
+        length: 0.86,
+        height: 0.5,
+        frontWidth: 1.66,
+        rearWidth: 2.02,
+        topFrontWidth: 1.32,
+        topRearWidth: 1.78,
+        chamfer: 0.06,
+      }),
+      position: [0.05, 1.02, 1.78],
+      rotation: [-0.26, 0.04, -0.08],
+      tile: 0,
+    },
+    // Guardas: la de babor doblada hacia afuera, la de estribor arrancada salvo
+    // el tramo de popa.
+    {
+      geometry: chamferBox(0.28, 0.32, 4.2, 0.05),
+      position: [1.15, 0.78, 0],
+      rotation: [0.02, 0.02, -0.1],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.28, 0.3, 1.5, 0.05),
+      position: [-1.14, 0.72, -1.32],
+      rotation: [-0.04, -0.04, 0.12],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.26, 0.26, 0.34, 0.05),
+      position: [-1.1, 0.8, 1.5],
+      rotation: [0.3, -0.24, 0.36],
+      tile: 1,
+    },
+    // Piso de cabina partido y cubierta de carga desfondada.
+    {
+      geometry: chamferBox(1.8, 0.14, 0.86, 0.04),
+      position: [0.04, 1.02, 1.1],
+      rotation: [0.06, 0.04, -0.07],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.82, 0.13, 0.6, 0.04),
+      position: [0.5, 0.96, 0.34],
+      rotation: [-0.16, 0.14, -0.12],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(1.0, 0.13, 0.66, 0.035),
+      position: [0.42, 1.02, -1.74],
+      rotation: [-0.14, -0.08, 0.12],
+      tile: 1,
+    },
+    // Cuadernas de la bañera, a la vista donde faltó el piso.
+    ...ribParts([0, 0.86, -0.6], [0, 0, 1], 4, 0.62, [1.9, 0.09, 0.07], 2),
+    { geometry: rivetRow([1.14, 0.86, -0.7], [1.14, 1.16, 0.2], 8, 0.017, "x"), tile: 2 },
+    // Chapa desgarrada en el flanco abierto.
+    {
+      geometry: chamferBox(0.3, 0.05, 0.32, 0.014),
+      position: [-1.02, 1.0, 0.5],
+      rotation: [0.5, -0.4, 0.6],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(0.26, 0.05, 0.28, 0.014),
+      position: [0.4, 1.12, -0.9],
+      rotation: [-0.6, 0.3, 0.4],
+      tile: 0,
+    },
+    createTubePart([-0.9, 0.94, -1.9], [0.5, 1.0, -1.6], 0.035, segments, 1),
+  ];
+}
+
+/**
+ * Tren de rodaje que sigue montado. Va en cotas del modelo intacto porque
+ * acompaña la escora del casco: es la banda de babor la que sostiene ese lado.
+ */
+function wreckedCrawlerRunningGearParts(segments: number): GeometryPart[] {
+  const { restY, radius } = REBEL_CRAWLER_WHEEL;
+  const parts: GeometryPart[] = [];
+  const shoeCount = 12;
+  const shoeLength = 3.76 / shoeCount;
+
+  // Banda de babor: sigue puesta pero descarrilada, con el ramal superior
+  // descolgado entre los rodillos y dos zapatas de menos.
+  for (let index = 0; index < shoeCount; index += 1) {
+    const t = (index + 0.5) / shoeCount;
+    const z = -1.88 + shoeLength * (index + 0.5);
+    parts.push({
+      geometry: chamferBox(0.42, 0.11, shoeLength * 0.9, 0.018),
+      position: [1.25, restY - radius + 0.03, z],
+      tile: 3,
+    });
+    if (index === 4 || index === 5) continue;
+    const sag = Math.sin(t * Math.PI) * 0.17;
+    parts.push({
+      geometry: chamferBox(0.42, 0.11, shoeLength * 0.9, 0.018),
+      position: [1.25, restY + radius - 0.02 - sag, z],
+      rotation: [Math.cos(t * Math.PI) * 0.16, 0, 0],
+      tile: 3,
+    });
+  }
+  for (const end of [-1, 1] as const) {
+    for (let index = 0; index < 4; index += 1) {
+      const angle = -Math.PI / 2 + ((index + 0.5) / 4) * Math.PI;
+      parts.push({
+        geometry: chamferBox(0.42, 0.11, 0.3, 0.018),
+        position: [
+          1.25,
+          restY + Math.sin(angle) * radius,
+          end * (1.88 + Math.cos(angle) * radius * 0.46),
+        ],
+        rotation: [end * angle, 0, 0],
+        tile: 3,
+      });
+    }
+  }
+
+  // Rodillos: los de babor siguen bajo la banda, los de estribor quedaron
+  // pelados y uno se salió del eje.
+  for (const z of [-0.88, 0, 0.88]) {
+    parts.push(
+      {
+        geometry: new CylinderGeometry(0.36, 0.36, 0.3, segments),
+        position: [1.25, restY, z],
+        rotation: [0, 0, Math.PI / 2],
+        tile: 2,
+      },
+      {
+        geometry: new CylinderGeometry(0.16, 0.16, 0.32, segments),
+        position: [1.25, restY, z],
+        rotation: [0, 0, Math.PI / 2],
+        tile: 1,
+      },
+      {
+        geometry: new CylinderGeometry(0.36, 0.36, 0.3, segments),
+        position: [-1.25, restY - 0.04, z],
+        rotation: [0.06, 0, Math.PI / 2 + (z === 0 ? 0.22 : 0.04)],
+        tile: 2,
+      },
+      {
+        geometry: new CylinderGeometry(0.16, 0.16, 0.34, segments),
+        position: [-1.25, restY - 0.04, z],
+        rotation: [0.06, 0, Math.PI / 2 + (z === 0 ? 0.22 : 0.04)],
+        tile: 1,
+      },
+    );
+  }
+  // Brazo tensor de estribor, doblado y sin rueda.
+  parts.push(createTubePart([-1.2, 0.5, 1.7], [-1.5, 0.26, 1.74], 0.05, segments, 2));
+  return parts;
+}
+
+/**
+ * Banda de estribor desenrollada sobre el terreno. Es lo que identifica a la
+ * chatarra de un vehículo de orugas: sin ella el casco podría ser el de
+ * cualquier transporte volcado. Va en cotas del piso, no del casco.
+ */
+function wreckedCrawlerThrownTrackParts(segments: number): GeometryPart[] {
+  const parts: GeometryPart[] = [
+    // Rueda tensora que se fue con la banda. Va de canto y volcada contra el
+    // terreno: tumbada de plano leía como una tapa de alcantarilla.
+    {
+      geometry: new CylinderGeometry(0.36, 0.36, 0.3, segments),
+      position: [-1.66, CRAWLER_WRECK_GROUND + 0.34, 1.72],
+      rotation: [1.18, 0.24, 0.16],
+      tile: 2,
+    },
+    {
+      geometry: new CylinderGeometry(0.16, 0.16, 0.34, segments),
+      position: [-1.66, CRAWLER_WRECK_GROUND + 0.34, 1.72],
+      rotation: [1.18, 0.24, 0.16],
+      tile: 1,
+    },
+  ];
+  const thrown = 17;
+  for (let index = 0; index < thrown; index += 1) {
+    const t = index / (thrown - 1);
+    const wave = t * 2.9;
+    const x = -1.74 - Math.sin(wave) * 0.44;
+    const z = 2.0 - t * 4.3;
+    const yaw = Math.atan2(-Math.cos(wave) * 2.9 * 0.44, -4.3);
+    parts.push({
+      geometry: chamferBox(0.42, 0.1, 0.3, 0.018),
+      position: [x, CRAWLER_WRECK_GROUND + 0.05, z],
+      rotation: [0, yaw, Math.sin(t * 8) * 0.1],
+      tile: 3,
+    });
+    if (index % 4 === 0) {
+      parts.push({
+        geometry: new CylinderGeometry(0.03, 0.03, 0.44, 8),
+        position: [x, CRAWLER_WRECK_GROUND + 0.09, z + 0.15],
+        rotation: [0, yaw, Math.PI / 2],
+        tile: 2,
+      });
+    }
+  }
+  // Cola amontonada: la banda no termina, se apila.
+  for (let index = 0; index < 5; index += 1) {
+    const t = index / 4;
+    parts.push({
+      geometry: chamferBox(0.42, 0.1, 0.3, 0.018),
+      position: [
+        -1.42 + t * 0.34,
+        CRAWLER_WRECK_GROUND + 0.06 + t * 0.13,
+        -2.36 - t * 0.16,
+      ],
+      rotation: [0.5 + t * 0.5, 0.3 - t * 0.2, 0.24],
+      tile: 3,
+    });
+  }
+  return parts;
+}
+
+/** Cabina aplastada: el techo se corrió y los montantes se doblaron. */
+function wreckedCrawlerCabinParts(segments: number): GeometryPart[] {
+  const driverX = REBEL_CRAWLER_DRIVER_X;
+  return [
+    // Techo partido y volcado hacia estribor. Entero y horizontal quedaba como
+    // una tapa sana: además de no leerse roto, tapaba la cabina entera.
+    {
+      geometry: chamferBox(1.28, 0.12, 1.5, 0.045),
+      position: [-0.52, 1.76, 0.86],
+      rotation: [0.16, 0.08, 0.52],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(0.66, 0.11, 1.34, 0.04),
+      position: [0.42, 1.98, 0.92],
+      rotation: [0.1, 0.06, -0.34],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(0.72, 0.1, 0.6, 0.035),
+      position: [-1.16, 1.28, 1.5],
+      rotation: [0.34, 0.28, 0.86],
+      tile: 0,
+    },
+    // Montantes: los de babor doblados, los de estribor cortados al ras.
+    createTubePart([0.83, 1.14, 1.58], [0.72, 1.72, 1.5], 0.07, segments, 2),
+    createTubePart([0.88, 1.12, 0.18], [0.7, 1.78, 0.26], 0.07, segments, 2),
+    createTubePart([-0.83, 1.14, 1.56], [-0.86, 1.4, 1.54], 0.07, segments, 2),
+    {
+      geometry: new TorusGeometry(0.068, 0.018, 5, segments),
+      position: [-0.86, 1.41, 1.54],
+      rotation: [Math.PI / 2 + 0.1, 0, 0],
+      tile: 2,
+    },
+    createTubePart([-0.88, 1.12, 0.18], [-0.9, 1.46, 0.22], 0.07, segments, 2),
+    {
+      geometry: new TorusGeometry(0.068, 0.018, 5, segments),
+      position: [-0.9, 1.47, 0.22],
+      rotation: [Math.PI / 2 - 0.08, 0, 0],
+      tile: 2,
+    },
+    // Arco de supervivencia aplastado hacia proa.
+    createTubePart([0.88, 1.08, 0.08], [0.84, 1.86, 0.2], 0.05, segments, 2),
+    createTubePart([0.84, 1.86, 0.2], [-0.2, 1.98, 0.36], 0.05, segments, 2),
+    createTubePart([-0.2, 1.98, 0.36], [-0.86, 1.7, 0.3], 0.05, segments, 2),
+    // Media puerta: una colgando de la bisagra y la otra arrancada.
+    {
+      geometry: chamferBox(0.08, 0.56, 1.06, 0.02),
+      position: [0.96, 1.24, 0.94],
+      rotation: [0.04, 0.16, -0.3],
+      tile: 0,
+    },
+    // Tablero volcado y volante torcido.
+    {
+      geometry: chamferBox(1.44, 0.19, 0.22, 0.04),
+      position: [0.04, 1.44, 1.4],
+      rotation: [-0.5, 0.04, -0.08],
+      tile: 2,
+    },
+    ...groupParts(steeringWheelParts([0, 0, 0], 0.19, segments, 2), {
+      position: [driverX, 1.44, 1.12],
+      rotation: [1.02, 0.2, 0.36],
+    }),
+    // Butacas: la del conductor con el respaldo vencido, la del acompañante
+    // arrancada del piso.
+    {
+      geometry: chamferBox(0.5, 0.16, 0.55, 0.035),
+      position: [driverX, 1.16, 0.72],
+      rotation: [0.06, 0.04, -0.06],
+      tile: 3,
+    },
+    {
+      geometry: chamferBox(0.5, 0.64, 0.13, 0.035),
+      position: [driverX - 0.02, 1.32, 0.36],
+      rotation: [-0.78, 0.05, -0.08],
+      tile: 3,
+    },
+    {
+      geometry: chamferBox(0.5, 0.15, 0.54, 0.035),
+      position: [-0.62, 1.14, 0.5],
+      rotation: [0.24, -0.36, 0.3],
+      tile: 3,
+    },
+    {
+      geometry: chamferBox(0.48, 0.6, 0.13, 0.035),
+      position: [-0.68, 1.32, 0.16],
+      rotation: [-0.5, -0.3, 0.42],
+      tile: 3,
+    },
+  ];
+}
+
+/** Diésel al descubierto entre la cabina y la plataforma. */
+function wreckedCrawlerEngineParts(segments: number): GeometryPart[] {
+  return [
+    {
+      geometry: roundedBox(1.22, 0.6, 0.9, 0.08, 2),
+      position: [0.02, 1.38, -0.58],
+      rotation: [0.1, 0.05, -0.09],
+      tile: 2,
+    },
+    ...ribParts([0.02, 1.7, -0.58], [1, 0, 0], 5, 0.21, [0.11, 0.07, 0.7], 2),
+    ...[-0.36, -0.12, 0.12, 0.36].map((x) => ({
+      geometry: new CylinderGeometry(0.055, 0.07, 0.18, 10),
+      position: [0.02 + x, 1.8, -0.42] as Vec3,
+      rotation: [0.12, 0, -0.06] as Euler,
+      tile: 1 as AtlasTile,
+    })),
+    // Escape partido, con la boca del caño a la vista.
+    createTubePart([0.46, 1.3, -0.74], [0.66, 1.82, -1.0], 0.055, segments, 2),
+    {
+      geometry: new TorusGeometry(0.055, 0.015, 5, segments),
+      position: [0.665, 1.83, -1.01],
+      rotation: [1.1, 0.3, 0],
+      tile: 2,
+    },
+    // Radiador reventado y mangueras sueltas.
+    {
+      geometry: chamferBox(0.66, 0.5, 0.1, 0.03),
+      position: [-0.02, 1.42, 0.02],
+      rotation: [0.3, 0.06, 0.12],
+      tile: 1,
+    },
+    createTubePart([-0.4, 1.28, -0.3], [0.2, 1.1, -0.06], 0.026, 6, 1),
+    createTubePart([0.34, 1.24, -0.2], [-0.3, 1.02, 0.02], 0.024, 6, 1),
+  ];
+}
+
+/** Carga y herrajes que salieron despedidos. */
+function wreckedCrawlerDebrisParts(segments: number): GeometryPart[] {
+  const ground = CRAWLER_WRECK_GROUND;
+  return [
+    // Defensa y cabrestante arrancados de la trompa.
+    createTubePart(
+      [-0.6, ground + 0.07, 2.86],
+      [1.32, ground + 0.09, 2.46],
+      0.065,
+      12,
+      2,
+    ),
+    {
+      geometry: new CylinderGeometry(0.18, 0.18, 0.5, 14),
+      position: [0.42, ground + 0.19, 2.62],
+      rotation: [0.1, 0.22, Math.PI / 2 - 0.12],
+      tile: 2,
+    },
+    // Cable desenrollado del tambor.
+    createTubePart(
+      [0.2, ground + 0.05, 2.5],
+      [-0.68, ground + 0.06, 2.18],
+      0.022,
+      6,
+      1,
+    ),
+    // Bidón, batería y caja de herramientas volcados desde la plataforma.
+    {
+      geometry: chamferBox(0.48, 0.42, 0.34, 0.035),
+      position: [-1.28, ground + 0.2, -2.02],
+      rotation: [0.34, 0.4, 1.28],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.52, 0.34, 0.4, 0.035),
+      position: [1.36, ground + 0.19, -2.24],
+      rotation: [1.32, 0.2, 0.24],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(0.26, 0.24, 0.22, 0.025),
+      position: [0.62, ground + 0.13, -2.72],
+      rotation: [0.2, -0.4, 0.3],
+      tile: 2,
+    },
+    // Barras del rack de carga, sueltas sobre el terreno.
+    createTubePart(
+      [-0.86, ground + 0.05, -2.56],
+      [0.9, ground + 0.06, -2.9],
+      0.045,
+      segments,
+      2,
+    ),
+    createTubePart(
+      [1.62, ground + 0.05, -0.9],
+      [1.9, ground + 0.06, 0.72],
+      0.045,
+      segments,
+      2,
+    ),
+    // Faros reventados, silenciador arrancado y chapa de reparación suelta.
+    {
+      geometry: new CylinderGeometry(0.12, 0.12, 0.12, 14),
+      position: [0.92, ground + 0.12, 2.14],
+      rotation: [1.4, 0.3, 0.2],
+      tile: 2,
+    },
+    {
+      geometry: new CylinderGeometry(0.09, 0.12, 0.34, 10),
+      position: [1.26, ground + 0.12, -1.42],
+      rotation: [1.36, 0.4, 0.2],
+      tile: 3,
+    },
+    {
+      geometry: panel(0.06, 0.5, 0.9),
+      position: [-1.86, ground + 0.14, 0.6],
+      rotation: [0.16, 0.3, 1.5],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.8, 0.07, 0.72, 0.03),
+      position: [1.62, ground + 0.13, 1.5],
+      rotation: [0.14, -0.44, 0.16],
+      tile: 0,
+    },
+    // Zapatas sueltas de la banda que se salió.
+    ...[
+      [0.9, 2.9, 0.4],
+      [-2.16, 0.34, 1.1],
+      [1.86, -1.86, 2.2],
+    ].map(([x, z, yaw]) => ({
+      geometry: chamferBox(0.42, 0.1, 0.3, 0.018),
+      position: [x!, ground + 0.05, z!] as Vec3,
+      rotation: [0.06, yaw!, 0.1] as Euler,
+      tile: 3 as AtlasTile,
+    })),
+  ];
+}
+
+/** Parabrisas reventado: astillas en el marco y en el piso. */
+function wreckedCrawlerGlassParts(): GeometryPart[] {
+  return [
+    {
+      geometry: chamferWedge({
+        length: 0.62,
+        height: 0.02,
+        frontWidth: 0.1,
+        rearWidth: 0.46,
+        chamfer: 0.006,
+      }),
+      position: [0.42, 1.6, 1.5],
+      rotation: [-0.42, 0.18, 0.26],
+      tile: 0,
+    },
+    {
+      geometry: chamferWedge({
+        length: 0.46,
+        height: 0.02,
+        frontWidth: 0.08,
+        rearWidth: 0.34,
+        chamfer: 0.006,
+      }),
+      position: [-0.5, 1.5, 1.56],
+      rotation: [-0.3, -0.36, -0.2],
+      tile: 0,
+    },
+    // Astilla caída sobre la trompa hundida.
+    {
+      geometry: chamferWedge({
+        length: 0.4,
+        height: 0.018,
+        frontWidth: 0.07,
+        rearWidth: 0.3,
+        chamfer: 0.006,
+      }),
+      position: [0.62, 1.24, 1.86],
+      rotation: [-0.24, 0.7, 0.12],
+      tile: 0,
+    },
+  ];
+}
+
 function buildRebelCrawler(context: BuildContext): void {
   const glassMaterial = createGlassMaterial(context.document, context.spec);
   for (const lod of [0, 1, 2] as const) {
@@ -1518,20 +2646,43 @@ function buildRebelCrawler(context: BuildContext): void {
   const wreckage = createNode(context, context.sceneRoot, "wreckage", {
     extras: { kind: "wreckage", hiddenByDefault: true },
   });
-  createVisualNode(context, wreckage, "wreckage_crawler_hull", [
-    {
-      geometry: chamferBox(2.2, 0.55, 3.7, 0.08),
-      rotation: [0.12, 0.06, -0.11],
-      tile: 3,
-    },
-    createTubePart([-0.9, 0.25, -1.5], [0.76, 0.9, 1.18], 0.07, 8, 1),
-    {
-      geometry: new BoxGeometry(0.42, 0.12, 2.8),
-      position: [1.18, -0.22, 0],
-      rotation: [0.08, 0.16, 0.24],
-      tile: 3,
-    },
-  ]);
+  createVisualNode(
+    context,
+    wreckage,
+    "wreckage_crawler_hull",
+    wreckedCrawlerHullParts(12),
+    { position: CRAWLER_WRECK_POSITION, rotation: CRAWLER_WRECK_ROTATION },
+  );
+  createVisualNode(context, wreckage, "wreckage_cabin", wreckedCrawlerCabinParts(12), {
+    position: CRAWLER_WRECK_POSITION,
+    rotation: CRAWLER_WRECK_ROTATION,
+  });
+  createVisualNode(context, wreckage, "wreckage_engine", wreckedCrawlerEngineParts(12), {
+    position: CRAWLER_WRECK_POSITION,
+    rotation: CRAWLER_WRECK_ROTATION,
+  });
+  createVisualNode(
+    context,
+    wreckage,
+    "wreckage_tracks",
+    wreckedCrawlerRunningGearParts(12),
+    { position: CRAWLER_WRECK_POSITION, rotation: CRAWLER_WRECK_ROTATION },
+  );
+  // La banda desenrollada apoya en el terreno, así que queda fuera de la escora.
+  createVisualNode(
+    context,
+    wreckage,
+    "wreckage_thrown_track",
+    wreckedCrawlerThrownTrackParts(10),
+  );
+  createVisualNode(context, wreckage, "wreckage_debris", wreckedCrawlerDebrisParts(10));
+  createVisualNode(context, wreckage, "wreckage_glass", wreckedCrawlerGlassParts(), {
+    position: CRAWLER_WRECK_POSITION,
+    rotation: CRAWLER_WRECK_ROTATION,
+    material: glassMaterial,
+    bakeOcclusion: false,
+    extras: { kind: "glazing" },
+  });
 }
 
 function buildCombineGliderLod(
@@ -1834,6 +2985,888 @@ function buildCombineGlider(context: BuildContext): void {
       tile: 2,
     },
   ]);
+}
+
+/**
+ * Contorno del cuerpo: secciones de popa a proa. El rombo de la manta sale de
+ * cómo crece y decrece el semiancho, y el canto afilado del ala sale solo,
+ * porque la altura de cada sección se anula en el borde.
+ *
+ * Termina en punta en −1.5 en vez de seguir hasta la cola: de ahí para atrás la
+ * cola es articulada y vive en sus propios nodos. Si la piel llegara hasta el
+ * final, la parte que más tiene que ondular sería justo la que no puede.
+ */
+const COMBINE_SWIMMER_SECTIONS: readonly LoftSection[] = [
+  // La popa cierra en 8 cm, casi a tope plano: el afinado largo dejaba un
+  // cuello de lápiz del que la cola articulada salía como un remolque
+  // enganchado. Con la raíz gorda, el primer tramo de cola nace de adentro de
+  // la piel y la junta desaparece.
+  { z: -1.4, halfWidth: 0, top: 0, bottom: 0 },
+  { z: -1.32, halfWidth: 0.21, top: 0.15, bottom: 0.12, y: 0.6 },
+  { z: -1.14, halfWidth: 0.33, top: 0.18, bottom: 0.14, y: 0.59 },
+  { z: -0.9, halfWidth: 0.5, top: 0.21, bottom: 0.16, y: 0.58 },
+  { z: -0.58, halfWidth: 0.73, top: 0.24, bottom: 0.18, y: 0.57 },
+  { z: -0.24, halfWidth: 0.93, top: 0.27, bottom: 0.2, y: 0.56 },
+  { z: 0.12, halfWidth: 1.05, top: 0.28, bottom: 0.2, y: 0.55 },
+  // Envergadura máxima al 40 % de la eslora contando desde la proa: es donde
+  // la tiene una manta, y es lo que hace que el borde de ataque salga flechado
+  // en vez de dejar el rombo simétrico que leía como pastilla.
+  { z: 0.44, halfWidth: 1.08, top: 0.27, bottom: 0.19, y: 0.55 },
+  { z: 0.78, halfWidth: 0.96, top: 0.25, bottom: 0.17, y: 0.55 },
+  // El disco cierra en el cuello y la cabeza sale por delante en su propio
+  // nodo. Llevando la piel hasta la punta, al girar la cabeza el cráneo salía
+  // del morro y dejaba una cuña de piel apuntando al frente. Es además la
+  // planta correcta de una manta: los lóbulos van por delante del ala.
+  { z: 1.04, halfWidth: 0.73, top: 0.22, bottom: 0.14, y: 0.54 },
+  { z: 1.22, halfWidth: 0.45, top: 0.17, bottom: 0.1, y: 0.53 },
+  { z: 1.34, halfWidth: 0, top: 0, bottom: 0 },
+];
+
+/**
+ * Exponente de la sección. En 1 es una elipse limpia, que es lo que hace que el
+ * canto del ala termine en filo; por debajo se llena hacia el rectángulo y el
+ * bicho entero se lee como un tubo.
+ */
+const COMBINE_SWIMMER_SECTION_SHAPE = 1.05;
+
+/**
+ * Cabeza, en su propio espacio con el origen en el cuello. `noseReach` es lo
+ * que sobresale hacia proa desde el pivote: la geometría se escribe relativa
+ * para que mover el pivote no obligue a reescribir cada pieza.
+ */
+function swimmerHeadParts(
+  segments: number,
+  detailed: boolean,
+  noseReach: number,
+): GeometryPart[] {
+  const parts: GeometryPart[] = [
+    // Cráneo entre los lóbulos.
+    {
+      geometry: new SphereGeometry(0.5, segments, Math.max(6, segments / 2)),
+      position: [0, -0.05, 0.31],
+      scale: [0.74, 0.3, 0.62],
+      rotation: [0.14, 0, 0],
+      tile: 0,
+    },
+    // Lóbulos cefálicos: los dos cuernos de la raya, separados por el vano de
+    // la boca. Sin ellos el frente es un borde de ataque y la criatura se lee
+    // como un ala suelta.
+    ...[-1, 1].map((side) => ({
+      geometry: new SphereGeometry(0.5, segments, Math.max(6, segments / 2)),
+      position: [side * 0.27, -0.01, noseReach - 0.04] as Vec3,
+      scale: [0.19, 0.16, 0.44],
+      rotation: [0.26, side * 0.34, 0] as Euler,
+      tile: 0 as AtlasTile,
+    })),
+    // Paladar: el techo de la boca, contra el que se recorta la mandíbula.
+    { geometry: chamferBox(0.86, 0.09, 0.26, 0.03), position: [0, -0.13, 0.27], rotation: [0.1, 0, 0], tile: 1 },
+    // Visera del sensor: la placa encajada sobre la frente, con el hueco oscuro
+    // del que sale la ranura luminosa. Baja y angosta: a 0.94 de ancho tapaba
+    // la cabeza entera y desde arriba el bicho era una caja negra con antenas.
+    {
+      geometry: chamferWedge({
+        length: 0.34,
+        height: 0.09,
+        frontWidth: 0.62,
+        rearWidth: 0.48,
+        chamfer: 0.02,
+      }),
+      position: [0, 0.24, 0.25],
+      rotation: [-0.42, 0, 0],
+      tile: 2,
+    },
+    { geometry: chamferBox(0.58, 0.09, 0.13, 0.02), position: [0, 0.17, 0.29], rotation: [-0.46, 0, 0], tile: 3 },
+  ];
+  if (detailed) {
+    parts.push(
+      // Collar del cuello: la abrazadera sobre la que pivotea la cabeza. Tapa
+      // la junta con el cuerpo cuando gira.
+      swimmerClampPart([0, -0.02, 0.02], 0.34, 0.24, 0.03, segments, 2),
+      { geometry: rivetRow([-0.24, 0.2, 0.34], [0.24, 0.2, 0.34], 5, 0.014), tile: 2 },
+    );
+  }
+  return parts;
+}
+
+/**
+ * Remo ventral: cuenca metálica atornillada al vientre, brazo quitinoso y
+ * paleta membranosa. El codo va horneado en la pose porque el nodo gira sólo
+ * desde el hombro; un remo recto se lee como varilla, y con el quiebre ya lee
+ * como pata aunque el runtime le mueva un único eje.
+ */
+function swimmerOarParts(
+  segments: number,
+  detailed: boolean,
+): GeometryPart[] {
+  const parts: GeometryPart[] = [
+    // Cuenca del injerto: el punto donde la pata sale de la carne.
+    {
+      geometry: new CylinderGeometry(0.105, 0.082, 0.15, segments),
+      position: [0, -0.05, 0],
+      tile: 2,
+    },
+    // Fémur: baja hacia popa. Grueso a propósito —el primer intento salió de
+    // 5 cm y a distancia de juego leía como alambre, no como pata—.
+    {
+      geometry: new CylinderGeometry(0.078, 0.055, 0.28, segments),
+      position: [0, -0.22, -0.04],
+      rotation: [0.22, 0, 0],
+      tile: 0,
+    },
+    // Articulación del codo: sin un bulto en el quiebre, los dos tramos leen
+    // como un solo caño doblado.
+    {
+      geometry: new SphereGeometry(0.068, segments, Math.max(4, segments / 2)),
+      position: [0, -0.35, -0.09],
+      tile: 2,
+    },
+    // Paleta: ancha, aplanada y quebrada hacia atrás. Es lo que empuja y lo
+    // único del remo que se ve de lejos.
+    {
+      geometry: chamferWedge({
+        length: 0.34,
+        height: 0.055,
+        frontWidth: 0.26,
+        rearWidth: 0.12,
+        chamfer: 0.018,
+      }),
+      position: [0, -0.46, -0.19],
+      rotation: [1.05, 0, 0],
+      tile: 3,
+    },
+  ];
+  if (detailed) {
+    parts.push(
+      // Anillo de sutura: la costura donde el implante muerde la carne.
+      {
+        geometry: new TorusGeometry(0.11, 0.019, 5, segments),
+        position: [0, 0.015, 0],
+        rotation: [Math.PI / 2, 0, 0],
+        tile: 3,
+      },
+      // Nervadura central de la paleta.
+      {
+        geometry: new CylinderGeometry(0.02, 0.012, 0.3, 5),
+        position: [0, -0.46, -0.19],
+        rotation: [1.05, 0, 0],
+        tile: 0,
+      },
+    );
+  }
+  return parts;
+}
+
+/**
+ * Segmento de antena: tubo cónico sobre +Z con anillos quitinosos. El eje +Z
+ * importa porque la cadena se encastra tip sobre base, así que cada nodo hijo
+ * arranca donde termina la geometría del padre.
+ */
+function swimmerAntennaParts(
+  length: number,
+  radius: number,
+  segments: number,
+  rings: number,
+  tipBulb: boolean,
+): GeometryPart[] {
+  const parts: GeometryPart[] = [
+    {
+      geometry: new CylinderGeometry(radius * 0.7, radius, length, segments),
+      position: [0, 0, length / 2],
+      rotation: [Math.PI / 2, 0, 0],
+      tile: 0,
+    },
+  ];
+  for (let index = 0; index < rings; index += 1) {
+    const t = (index + 0.7) / (rings + 0.4);
+    parts.push({
+      geometry: new TorusGeometry(radius * 0.95, radius * 0.3, 4, segments),
+      position: [0, 0, length * t],
+      tile: 3,
+    });
+  }
+  if (tipBulb) {
+    // Bulbo sensor en la punta: es lo que hace que la antena lea como órgano y
+    // no como cable suelto, y le da masa visible al latigazo.
+    parts.push({
+      geometry: new SphereGeometry(radius * 1.5, segments, Math.max(4, segments / 2)),
+      position: [0, 0, length],
+      scale: [0.8, 0.8, 1.5],
+      tile: 1,
+    });
+  } else {
+    // Nudillo donde encastra el segmento siguiente. Sin él las dos varillas se
+    // encuentran en un punto y cualquier quiebre abre una cuña: la antena se ve
+    // partida en dos. Es además lo que hace que la junta lea como articulación.
+    parts.push({
+      geometry: new SphereGeometry(
+        radius * 1.45,
+        segments,
+        Math.max(4, Math.floor(segments / 2)),
+      ),
+      position: [0, 0, length],
+      tile: 3,
+    });
+  }
+  return parts;
+}
+
+/**
+ * Abrazadera: anillo elíptico que envuelve la sección del cuerpo a esa altura.
+ *
+ * Reemplaza a las placas planas apoyadas sobre el lomo. Una chapa apoyada se
+ * lee como carrocería por más remaches que tenga; un aro que sigue la curva se
+ * lee como algo que aprieta a un ser vivo, que es la diferencia entre montar
+ * blindaje y hacer una conversión Combine.
+ */
+function swimmerClampPart(
+  position: Vec3,
+  halfWidth: number,
+  halfHeight: number,
+  thickness: number,
+  segments: number,
+  tile: AtlasTile,
+): GeometryPart {
+  const radius = 1;
+  return {
+    geometry: new TorusGeometry(radius, thickness, 5, Math.max(8, segments)),
+    position,
+    scale: [halfWidth, halfHeight, 1],
+    tile,
+  };
+}
+
+/**
+ * Segmento de cola sobre −Z. Interpolado como el cuerpo y no como cuña: una
+ * cuña chaflanada colgando de la popa leía como un cajón remolcado, mientras
+ * que la superficie continua se afina igual que la piel de la que sale.
+ */
+function swimmerTailParts(
+  length: number,
+  frontHalfWidth: number,
+  rearHalfWidth: number,
+  segments: number,
+  band: boolean,
+): GeometryPart[] {
+  const steps = 4;
+  // Secciones en Z creciente: `loftedBody` deriva las normales del orden de los
+  // anillos, y al revés el tramo sale con las caras invertidas (invisible).
+  const sections: LoftSection[] = [{ z: -length - 0.02, halfWidth: 0, top: 0, bottom: 0 }];
+  for (let index = 0; index <= steps; index += 1) {
+    const t = index / steps;
+    const halfWidth = rearHalfWidth + (frontHalfWidth - rearHalfWidth) * t;
+    sections.push({
+      z: -length * (1 - t),
+      halfWidth,
+      top: halfWidth * 0.9,
+      bottom: halfWidth * 0.72,
+    });
+  }
+  const parts: GeometryPart[] = [
+    {
+      geometry: loftedBody(sections, Math.max(8, segments * 2), 1),
+      tile: 0,
+    },
+  ];
+  if (band) {
+    const bandHalfWidth = frontHalfWidth * 0.72 + rearHalfWidth * 0.28;
+    parts.push(
+      swimmerClampPart(
+        [0, 0, -length * 0.3],
+        bandHalfWidth * 1.12,
+        bandHalfWidth * 1.02,
+        0.026,
+        segments,
+        2,
+      ),
+    );
+  }
+  return parts;
+}
+
+function buildCombineSwimmerLod(
+  context: BuildContext,
+  root: Node,
+  lod: 0 | 1 | 2,
+  energyMaterial: Material,
+  glassMaterial: Material,
+): void {
+  const suffix = lod === 0 ? "" : `_lod${lod}`;
+  const detailed = lod === 0;
+  const segments = lod === 0 ? 18 : lod === 1 ? 10 : 6;
+  const articulated = lod < 2;
+  const { noseZ, graftY, graftZ, oarY, oarX, oarZ } = COMBINE_SWIMMER;
+  const bodyParts: GeometryPart[] = [
+    // Piel en una sola superficie interpolada: disco pectoral, lomo y tórax
+    // salen de la misma malla, sin juntas ni facetas. Armado con cuñas y cajas
+    // —aunque el contorno en planta fuera el correcto— el bicho se leía siempre
+    // como un casco facetado.
+    {
+      geometry: loftedBody(
+        COMBINE_SWIMMER_SECTIONS,
+        detailed ? 26 : lod === 1 ? 16 : 10,
+        COMBINE_SWIMMER_SECTION_SHAPE,
+      ),
+      tile: 0,
+    },
+    // Tórax de artrópodo: el lomo que se levanta sobre el eje del disco. Es lo
+    // que separa el híbrido de una manta pura y de donde cuelgan los remos.
+    {
+      geometry: new SphereGeometry(0.5, segments, Math.max(6, segments / 2)),
+      position: [0, 0.64, 0.12],
+      scale: [0.8, 0.4, 1.66],
+      tile: 0,
+    },
+    // Carne expuesta del vientre: piel encogida y hundida, pálida como la de un
+    // Consejero. Es la mitad viva del contraste contra el implante.
+    {
+      geometry: loftedBody(
+        COMBINE_SWIMMER_SECTIONS.map((section) => ({
+          ...section,
+          halfWidth: section.halfWidth * 0.96,
+          top: section.top * 0.12,
+          bottom: section.bottom * 0.99,
+          y: (section.y ?? 0) - 0.012,
+        })),
+        detailed ? 26 : lod === 1 ? 16 : 10,
+        COMBINE_SWIMMER_SECTION_SHAPE,
+      ),
+      tile: 1,
+    },
+    // Cuello: el tramo de carne que queda entre el disco y la cabeza móvil.
+    // Sin él, girar la cabeza abre un hueco en la unión.
+    {
+      geometry: new SphereGeometry(0.5, segments, Math.max(6, segments / 2)),
+      position: [0, 0.52, 1.06],
+      scale: [0.62, 0.34, 0.46],
+      tile: 0,
+    },
+    // Collar del injerto: la abrazadera que agarra la raíz de la cola. Rígida a
+    // propósito, porque de acá para atrás la carne se mueve sola.
+    { geometry: new TorusGeometry(0.3, 0.065, 7, segments), position: [0, graftY, graftZ], tile: 2 },
+    { geometry: new CylinderGeometry(0.27, 0.32, 0.18, segments), position: [0, graftY, graftZ + 0.14], rotation: [Math.PI / 2, 0, 0], tile: 2 },
+  ];
+
+  if (!articulated) {
+    // Sin nodos articulados, cabeza y cola van horneadas en la piel o la
+    // silueta lejana queda cortada al ras del disco por los dos extremos.
+    bodyParts.push(
+      ...groupParts(swimmerHeadParts(segments, false, noseZ - COMBINE_SWIMMER.headZ), {
+        position: [0, COMBINE_SWIMMER.headY, COMBINE_SWIMMER.headZ],
+      }),
+      {
+        geometry: chamferWedge({
+          length: 0.9,
+          height: 0.3,
+          frontWidth: 0.32,
+          rearWidth: 0.44,
+          topFrontWidth: 0.24,
+          topRearWidth: 0.38,
+          chamfer: 0.04,
+        }),
+        position: [0, 0.58, -1.84],
+        tile: 0,
+      },
+      {
+        geometry: new CylinderGeometry(0.06, 0.02, 0.44, 6),
+        position: [0, 0.57, -2.42],
+        rotation: [Math.PI / 2, 0, 0],
+        tile: 0,
+      },
+    );
+  }
+
+  if (articulated) {
+    bodyParts.push(
+      // Costillar de abrazaderas: aros que muerden el tórax, uno por segmento.
+      // Acá es donde el implante gana su mitad de la superficie sin tapar al
+      // bicho: los aros siguen la curva en vez de aplanarla.
+      // Sólo abrazan el tórax. Con el semiancho del disco cruzaban el ala de
+      // punta a punta y desde arriba el bicho quedaba con una escalera encima.
+      ...[
+        [1.0, 0.26, 0.28],
+        [0.7, 0.32, 0.32],
+        [0.38, 0.36, 0.34],
+        [0.04, 0.37, 0.35],
+        [-0.3, 0.35, 0.33],
+        [-0.66, 0.3, 0.29],
+      ].map(([z, halfWidth, halfHeight]) =>
+        swimmerClampPart(
+          [0, 0.58, z ?? 0],
+          halfWidth ?? 0.5,
+          halfHeight ?? 0.34,
+          0.032,
+          segments,
+          2,
+        ),
+      ),
+      // Espinas dorsales entre aro y aro: el relieve que impide que el lomo
+      // quede liso entre abrazaderas.
+      ...[0.87, 0.55, 0.23, -0.12, -0.48].map((z, index) => ({
+        geometry: chamferWedge({
+          length: 0.2,
+          height: 0.12,
+          frontWidth: 0.07,
+          rearWidth: 0.12,
+          topFrontWidth: 0.03,
+          topRearWidth: 0.05,
+          chamfer: 0.012,
+        }),
+        position: [0, 0.92 - Math.abs(z) * 0.05, z] as Vec3,
+        rotation: [index % 2 === 0 ? -0.1 : -0.06, 0, 0] as Euler,
+        tile: 0 as AtlasTile,
+      })),
+      // Arnés: montura sobre el lomo, respaldo y asideros. El asiento del
+      // preset va a 0.98, así que la montura queda justo por debajo.
+      { geometry: chamferBox(0.52, 0.1, 0.56, 0.04), position: [0, 0.9, -0.08], tile: 3 },
+      { geometry: roundedBox(0.46, 0.24, 0.12, 0.05, detailed ? 2 : 1), position: [0, 0.96, -0.4], rotation: [-0.3, 0, 0], tile: 3 },
+      // Cubrevientos del jinete: el visor se apoya acá. Suelto en el aire
+      // parecía una lámina de vidrio flotando sobre el lomo.
+      { geometry: chamferBox(0.44, 0.09, 0.14, 0.03), position: [0, 1.0, 0.54], rotation: [-0.62, 0, 0], tile: 2 },
+      ...[-1, 1].map((side) => ({
+        geometry: chamferBox(0.09, 0.19, 0.5, 0.025),
+        position: [side * 0.35, 1.02, -0.02] as Vec3,
+        tile: 2 as AtlasTile,
+      })),
+      // Correas: aros de cuero que rodean el cuerpo entero y cierran bajo el
+      // vientre, por fuera de las abrazaderas metálicas.
+      swimmerClampPart([0, 0.56, -0.06], 0.46, 0.4, 0.038, segments, 3),
+      swimmerClampPart([0, 0.56, 0.62], 0.42, 0.38, 0.036, segments, 3),
+      // Conductos: bajan del sensor y recorren la columna hasta el collar.
+      createTubePart([-0.2, 0.95, 0.92], [-0.2, 0.78, graftZ + 0.3], 0.036, segments, 2),
+      createTubePart([0.2, 0.95, 0.92], [0.2, 0.78, graftZ + 0.3], 0.033, segments, 2),
+    );
+  }
+
+  if (detailed) {
+    bodyParts.push(
+      // Cuencas de los remos: los bocados metálicos del vientre. Van en la piel
+      // y no en el remo para que el nodo pueda girar sin abrir un hueco.
+      ...[-1, 1].flatMap((side) =>
+        oarZ.map((z) => ({
+          geometry: new SphereGeometry(0.13, segments, Math.max(5, segments / 2)),
+          position: [side * oarX, oarY + 0.05, z] as Vec3,
+          scale: [1, 0.72, 1],
+          tile: 2 as AtlasTile,
+        })),
+      ),
+      // Espiráculos detrás de los ojos, con casquillo metálico.
+      ...[-1, 1].flatMap((side) => [
+        {
+          geometry: new CylinderGeometry(0.07, 0.07, 0.06, 10),
+          position: [side * 0.3, 0.88, 0.74] as Vec3,
+          tile: 3 as AtlasTile,
+        },
+        {
+          geometry: new TorusGeometry(0.075, 0.015, 5, 10),
+          position: [side * 0.3, 0.9, 0.74] as Vec3,
+          rotation: [Math.PI / 2, 0, 0] as Euler,
+          tile: 2 as AtlasTile,
+        },
+      ]),
+      // Suturas: la carne que rebalsa a los lados de cada correa. Sin el
+      // rebalse la correa se apoya, y apoyada no lee como que apretó nunca.
+      ...[-1, 1].flatMap((side) =>
+        [-0.06, 0.62].flatMap((z) =>
+          [-1, 1].map((offset) => ({
+            geometry: new SphereGeometry(0.1, 8, 5),
+            position: [side * 0.46, 0.66, z + offset * 0.13] as Vec3,
+            scale: [0.5, 1.5, 0.42],
+            rotation: [0, 0, side * 0.24] as Euler,
+            tile: 1 as AtlasTile,
+          })),
+        ),
+      ),
+      // Grapas del blindaje: las que dicen que el metal está clavado en carne.
+      { geometry: rivetRow([-0.3, 0.94, 0.86], [0.3, 0.94, 0.86], 6, 0.016), tile: 2 },
+      { geometry: rivetRow([-0.28, 0.92, -0.72], [0.28, 0.92, -0.72], 6, 0.016), tile: 2 },
+      { geometry: rivetRow([-0.26, 0.9, 1.06], [0.26, 0.9, 1.06], 5, 0.014), tile: 2 },
+      // Costillas cartilaginosas marcadas bajo la piel del ala. Son las que
+      // hacen que la ondulación de la piel se lea como que tira de algo.
+      ...[-1, 1].flatMap((side) => [
+        createTubePart([side * 0.34, 0.62, 0.6], [side * 0.9, 0.51, -0.18], 0.03, 8, 0),
+        createTubePart([side * 0.32, 0.6, 0.14], [side * 0.84, 0.49, -0.46], 0.027, 8, 0),
+      ]),
+      // Cicatrices de la reconversión: chapas desparejas remachadas sobre la
+      // carne, de las que salen los tubos que se hunden en el ala.
+      { geometry: panel(0.34, 0.28, 0.04), position: [-0.6, 0.67, 0.44], rotation: [0.1, 0.3, -0.14], tile: 2 },
+      { geometry: panel(0.28, 0.24, 0.04), position: [0.66, 0.63, -0.3], rotation: [0.08, -0.24, 0.1], tile: 2 },
+      ...[-1, 1].map((side) => ({
+        geometry: new TorusGeometry(0.05, 0.018, 5, 8),
+        position: [side * 0.72, 0.6, side > 0 ? -0.3 : 0.44] as Vec3,
+        rotation: [Math.PI / 2, 0, 0] as Euler,
+        tile: 2 as AtlasTile,
+      })),
+    );
+  }
+
+  createVisualNode(context, root, `combineSwimmer_body${suffix}`, bodyParts);
+
+  // Cabeza en nodo propio, con el pivote en el cuello: gira hacia donde mira el
+  // jinete. Todo lo que vive en la cara —ojo, mandíbula, antenas— cuelga de acá
+  // o se quedaría flotando en el aire cuando la cabeza gire.
+  const head = articulated
+    ? createVisualNode(
+        context,
+        root,
+        `swimmer_head${suffix}`,
+        swimmerHeadParts(segments, detailed, noseZ - COMBINE_SWIMMER.headZ),
+        {
+          position: [0, COMBINE_SWIMMER.headY, COMBINE_SWIMMER.headZ],
+          extras: { kind: "head" },
+        },
+      )
+    : root;
+
+  if (articulated) {
+    createVisualNode(
+      context,
+      root,
+      `combineSwimmer_visor${suffix}`,
+      [
+        // Bien tumbado hacia proa: casi vertical leía como una pantalla de
+        // notebook parada sobre el lomo.
+        {
+          geometry: new BoxGeometry(0.56, 0.24, 0.03),
+          position: [0, 1.13, 0.6],
+          rotation: [-0.72, 0, 0],
+          tile: 0,
+        },
+      ],
+      { material: glassMaterial, bakeOcclusion: false },
+    );
+    // Ojo Combine: una ranura ancha cruzada en la frente, no un punto. Es la
+    // única fuente de luz del bicho y lo que lo marca como reconvertido en vez
+    // de como fauna, así que tiene que leerse de lejos.
+    createVisualNode(
+      context,
+      head,
+      `combineSwimmer_eye${suffix}`,
+      [
+        {
+          geometry: new SphereGeometry(0.1, segments, Math.max(5, segments / 2)),
+          scale: [3, 0.55, 0.7],
+          tile: 0,
+        },
+      ],
+      {
+        position: [0, 0.17, 0.29],
+        rotation: [-0.46, 0, 0],
+        material: energyMaterial,
+        bakeOcclusion: false,
+        extras: { kind: "sensor-eye" },
+      },
+    );
+  }
+
+  if (detailed) {
+    // Mandíbulas: el nodo gira sobre X y la boca se abre. Sin una boca que se
+    // mueva la cabeza es una carcasa, por más branquias que tenga al costado.
+    createVisualNode(
+      context,
+      head,
+      `swimmer_jaw${suffix}`,
+      [
+        { geometry: chamferBox(0.82, 0.1, 0.3, 0.03), position: [0, -0.04, 0.1], tile: 1 },
+        // Placas laterales quitinosas, abiertas como pinzas.
+        ...[-1, 1].map((side) => ({
+          geometry: chamferWedge({
+            length: 0.34,
+            height: 0.1,
+            frontWidth: 0.1,
+            rearWidth: 0.2,
+            chamfer: 0.02,
+          }),
+          position: [side * 0.34, -0.02, 0.18] as Vec3,
+          rotation: [0, side * -0.3, 0] as Euler,
+          tile: 0 as AtlasTile,
+        })),
+        // Dentículos: la hilera que se ve cuando abre.
+        {
+          geometry: rivetRow([-0.3, 0.03, 0.24], [0.3, 0.03, 0.24], 7, 0.02),
+          tile: 2,
+        },
+      ],
+      { position: [0, -0.17, 0.19], extras: { kind: "jaw" } },
+    );
+
+    // Branquias: un solo nodo con los dos costados, porque respiran en fase.
+    createVisualNode(
+      context,
+      root,
+      `swimmer_gills${suffix}`,
+      [-1, 1].flatMap((side) => [
+        ...ribParts(
+          [side * 0.5, 0.06, 0.42],
+          [0, 0, 1],
+          5,
+          0.17,
+          [0.24, 0.14, 0.05],
+          3,
+        ),
+        // Marco metálico que las mantiene abiertas a la fuerza.
+        {
+          geometry: chamferBox(0.28, 0.02, 0.78, 0.01),
+          position: [side * 0.5, 0.14, 0.42] as Vec3,
+          tile: 2 as AtlasTile,
+        },
+      ]),
+      { position: [0, 0.38, 0], extras: { kind: "gill" } },
+    );
+  }
+
+  if (articulated) {
+    // Antenas: cadena de dos segmentos por lado, encastrados punta contra base.
+    // El runtime les mete inercia, así que el largo es lo que después se ve
+    // como latigazo al frenar.
+    for (const [name, side] of [
+      ["swimmer_antenna_left", -1],
+      ["swimmer_antenna_right", 1],
+    ] as const) {
+      const base = createVisualNode(
+        context,
+        head,
+        `${name}${suffix}`,
+        swimmerAntennaParts(0.44, 0.036, Math.max(6, segments / 2), detailed ? 2 : 0, false),
+        {
+          position: [side * 0.24, 0.29, 0.19],
+          rotation: [-0.5, side * 0.3, 0],
+          extras: { kind: "antenna", side: side < 0 ? "left" : "right" },
+        },
+      );
+      createVisualNode(
+        context,
+        base,
+        `${name}_tip${suffix}`,
+        swimmerAntennaParts(0.38, 0.026, Math.max(6, segments / 2), detailed ? 2 : 0, true),
+        {
+          position: [0, 0, 0.44],
+          rotation: [-0.24, 0, 0],
+          extras: { kind: "antenna-tip", side: side < 0 ? "left" : "right" },
+        },
+      );
+    }
+
+    // Remos ventrales: tres pares que baten en ola metacrónica. Son el
+    // vocabulario artrópodo del híbrido y lo que hace que, parado, el bicho
+    // siga teniendo algo en movimiento.
+    for (const [prefix, side] of [
+      ["swimmer_oar_left", -1],
+      ["swimmer_oar_right", 1],
+    ] as const) {
+      oarZ.forEach((z, index) => {
+        createVisualNode(
+          context,
+          root,
+          `${prefix}_${index}${suffix}`,
+          swimmerOarParts(Math.max(6, segments / 2), detailed),
+          {
+            position: [side * oarX, oarY, z],
+            rotation: [0, 0, side * 0.34],
+            extras: { kind: "oar", side: side < 0 ? "left" : "right", index },
+          },
+        );
+      });
+    }
+
+    // Cola articulada: dos tramos encastrados, y las aletas caudales cuelgan
+    // del último. Así el timón hereda la ondulación en vez de quedar fijo
+    // mientras la cola se mueve alrededor.
+    // La raíz arranca DENTRO de la piel (que cierra en −1.4) para que no se vea
+    // la junta: el primer tramo emerge del cuerpo en vez de colgar detrás.
+    const tailBase = createVisualNode(
+      context,
+      root,
+      `swimmer_tail_0${suffix}`,
+      swimmerTailParts(0.5, 0.25, 0.16, Math.max(6, segments / 2), detailed),
+      {
+        position: [0, graftY - 0.01, -1.2],
+        extras: { kind: "tail", index: 0 },
+      },
+    );
+    const tailTip = createVisualNode(
+      context,
+      tailBase,
+      `swimmer_tail_1${suffix}`,
+      [
+        ...swimmerTailParts(0.44, 0.16, 0.07, Math.max(6, segments / 2), detailed),
+        // Látigo terminal.
+        {
+          geometry: new CylinderGeometry(0.035, 0.011, 0.34, Math.max(5, segments / 2)),
+          position: [0, 0, -0.6],
+          rotation: [Math.PI / 2, 0, 0],
+          tile: 0,
+        },
+      ],
+      {
+        position: [0, 0, -0.5],
+        rotation: [0.06, 0, 0],
+        extras: { kind: "tail", index: 1 },
+      },
+    );
+    createSwimmerRudders(context, tailTip, suffix, [0, 0, -0.34]);
+  } else {
+    createSwimmerRudders(context, root, suffix, [0, 0.58, -1.72]);
+  }
+
+  // Injerto de propulsión: ocupa el lugar del núcleo antigravedad del
+  // deslizador y gira igual, porque el runtime anima este nodo por nombre.
+  const graftParts: GeometryPart[] = [
+    { geometry: new TorusGeometry(0.3, 0.05, 7, segments), tile: 0 },
+    { geometry: new SphereGeometry(0.11, segments, Math.max(6, segments / 2)), tile: 0 },
+  ];
+  for (let index = 0; index < 3; index += 1) {
+    const angle = (index / 3) * Math.PI * 2;
+    graftParts.push({
+      geometry: chamferBox(0.06, 0.4, 0.03, 0.01),
+      position: [Math.cos(angle) * 0.12, Math.sin(angle) * 0.12, 0],
+      rotation: [0, 0, angle],
+      tile: 0,
+    });
+  }
+  createVisualNode(context, root, `fan_main${suffix}`, graftParts, {
+    position: [0, graftY + 0.02, graftZ + 0.16],
+    material: energyMaterial,
+    bakeOcclusion: false,
+    extras: { kind: "antigravity-core" },
+  });
+
+  // Emisores de sustentación: mismas posiciones que en el deslizador, porque
+  // salen de las sondas del motor. Acá van grapados al vientre.
+  const stabilizers = [
+    ["stabilizer_front", [0, 0.24, 1.35]],
+    ["stabilizer_rear_left", [-0.78, 0.24, -0.92]],
+    ["stabilizer_rear_right", [0.78, 0.24, -0.92]],
+  ] as const;
+  for (const [name, position] of stabilizers) {
+    createVisualNode(
+      context,
+      root,
+      `${name}${suffix}`,
+      [
+        { geometry: new TorusGeometry(0.2, 0.042, 6, segments), rotation: [Math.PI / 2, 0, 0], tile: 0 },
+        { geometry: new CylinderGeometry(0.07, 0.11, 0.08, segments), tile: 0 },
+      ],
+      {
+        position,
+        material: energyMaterial,
+        bakeOcclusion: false,
+        extras: { kind: "hover-stabilizer" },
+      },
+    );
+  }
+}
+
+/**
+ * Aletas caudales: son los timones del preset, así que guiñan con la dirección.
+ * Cuelgan de la cola cuando hay cola articulada y del root cuando no la hay,
+ * pero el runtime las busca por nombre, así que el padre le da lo mismo.
+ */
+function createSwimmerRudders(
+  context: BuildContext,
+  parent: Node,
+  suffix: string,
+  origin: Vec3,
+): void {
+  for (const [name, side] of [["rudder_left", -1], ["rudder_right", 1]] as const) {
+    createVisualNode(
+      context,
+      parent,
+      `${name}${suffix}`,
+      [
+        // Aleta triangular que se afina hacia la punta. `chamferWedge` sólo
+        // sabe estrechar en X, así que se arma acostada y se para con el giro
+        // de π/2 en Z: la caída de ancho pasa a ser caída de altura y el timón
+        // deja de ser el rectángulo que era.
+        {
+          geometry: chamferWedge({
+            length: 0.44,
+            height: 0.045,
+            frontWidth: 0.36,
+            rearWidth: 0.07,
+            topFrontWidth: 0.3,
+            topRearWidth: 0.05,
+            chamfer: 0.012,
+          }),
+          rotation: [0.12, 0, Math.PI / 2 + side * 0.26],
+          tile: 0,
+        },
+      ],
+      {
+        position: [origin[0] + side * 0.09, origin[1], origin[2]],
+        extras: { kind: "control-fin" },
+      },
+    );
+  }
+}
+
+function buildCombineSwimmer(context: BuildContext): void {
+  const energyMaterial = createCombineEnergyMaterial(
+    context.document,
+    context.spec,
+  );
+  const glassMaterial = createGlassMaterial(context.document, context.spec);
+  for (const lod of [0, 1, 2] as const) {
+    const root = createNode(context, context.sceneRoot, `visual_lod${lod}`, {
+      extras: {
+        kind: "vehicle-lod",
+        lod,
+        hiddenByDefault: lod !== 0,
+        screenCoverage: lod === 0 ? 0.3 : lod === 1 ? 0.1 : 0,
+      },
+    });
+    buildCombineSwimmerLod(context, root, lod, energyMaterial, glassMaterial);
+  }
+
+  // Anclas idénticas a las del deslizador: comparten preset, así que el asiento,
+  // la cámara y las salidas tienen que caer en el mismo lugar.
+  createAnchor(context, "seat_driver", [0, 0.98, -0.08], "seat", {
+    role: "driver",
+  });
+  createAnchor(
+    context,
+    "camera_driver",
+    [0, 1.5, 0.02],
+    "camera",
+    { role: "driver", fov: 78 },
+    true,
+  );
+  createAnchor(context, "exit_left", [-1.48, 0.52, -0.05], "exit", {
+    seat: "seat_driver",
+  });
+  createAnchor(context, "exit_right", [1.48, 0.52, -0.05], "exit", {
+    seat: "seat_driver",
+  });
+  createAnchor(context, "audio_engine", [0, COMBINE_SWIMMER.graftY, -1.08], "audio", {
+    layer: "engine",
+  });
+  createAnchor(context, "audio_hover", [0, 0.24, 0], "audio", {
+    layer: "hover",
+  });
+  createAnchor(context, "damage_engine", [0, 0.9, -1.05], "damage", {
+    component: "engine",
+    halfExtents: [0.64, 0.36, 0.46],
+  });
+  createAnchor(context, "damage_hull", [0, 0.52, 0.12], "damage", {
+    component: "hull",
+    halfExtents: [1.05, 0.4, 1.55],
+  });
+  createAnchor(context, "damage_steering", [0, 1.08, 0.5], "damage", {
+    component: "steering",
+    halfExtents: [0.42, 0.3, 0.34],
+  });
+  createAnchor(context, "damage_fuel", [0, 0.72, -0.72], "damage", {
+    component: "fuel",
+    halfExtents: [0.38, 0.28, 0.36],
+  });
+
+  // Nodo de restos vacío, y a propósito. Un cadáver autorado aparte nunca se
+  // parece al bicho vivo —era una carcasa distinta que aparecía de golpe—, así
+  // que acá el muerto ES el mismo modelo con los apéndices sueltos y el casco
+  // entregado a la física. El nodo se conserva porque el contrato del formato
+  // lo pide y porque `setWreckage` necesita a quién preguntarle.
+  createNode(context, context.sceneRoot, "wreckage", {
+    extras: { kind: "wreckage", hiddenByDefault: true, mode: "ragdoll" },
+  });
 }
 
 /**
@@ -2451,6 +4484,601 @@ function buildAirboatLod(
   }
 }
 
+/**
+ * Casco varado y abierto por la quilla. El fondo de planeo se parte en dos
+ * mitades: es lo que separa un casco reventado de uno simplemente inclinado, y
+ * la abertura es la que deja ver las cuadernas de adentro.
+ */
+function wreckedAirboatHullParts(): GeometryPart[] {
+  const { bottomY, deckY, halfWidth, sternZ } = AIRBOAT_HULL;
+  return [
+    // Fondo de planeo entero. Partirlo en dos mitades separadas destruía la
+    // silueta: sin un casco continuo la chatarra deja de leerse como bote y
+    // pasa a ser una pila de chapas.
+    {
+      geometry: chamferWedge({
+        length: 3.34,
+        height: 0.34,
+        frontWidth: 1.34,
+        rearWidth: 1.2,
+        topFrontWidth: 2.06,
+        topRearWidth: 1.92,
+        chamfer: 0.05,
+      }),
+      position: [0, bottomY + 0.17, -0.47],
+      rotation: [0, 0.02, -0.03],
+      tile: 0,
+    },
+    // Obra muerta: la banda de babor aguantó entera y la de estribor se abrió.
+    // El tramo que falta es la ventana por la que se ve el interior.
+    {
+      geometry: chamferBox(0.3, 0.36, 3.2, 0.05),
+      position: [0.86, 0.79, -0.5],
+      rotation: [0.02, 0.02, -0.05],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(0.3, 0.34, 1.24, 0.05),
+      position: [-0.86, 0.76, -1.4],
+      rotation: [-0.02, -0.03, 0.07],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(0.28, 0.3, 0.66, 0.05),
+      position: [-0.83, 0.73, 1.02],
+      rotation: [-0.03, -0.07, 0.14],
+      tile: 0,
+    },
+    // Labios desgarrados a los dos lados del hueco.
+    {
+      geometry: chamferBox(0.26, 0.22, 0.16, 0.03),
+      position: [-0.84, 0.74, -0.72],
+      rotation: [0.34, -0.2, 0.28],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(0.24, 0.2, 0.14, 0.03),
+      position: [-0.82, 0.7, 0.62],
+      rotation: [-0.4, 0.24, 0.2],
+      tile: 0,
+    },
+    // Espejo de popa con su galón: el naranja de rescate es lo que identifica
+    // al casco cuando ya no queda silueta.
+    {
+      geometry: chamferBox(1.96, 0.62, 0.16, 0.05),
+      position: [0, 0.6, sternZ + 0.04],
+      rotation: [0.22, 0.06, 0.08],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(1.84, 0.13, 0.06, 0.02),
+      position: [0, 0.82, sternZ - 0.06],
+      rotation: [0.22, 0.06, 0.08],
+      tile: 1,
+    },
+    // Cuadernas al aire: sin cubierta son lo único que hay dentro del casco, y
+    // un interior vacío se ve como una batea.
+    ...ribParts([0.02, 0.68, -0.5], [0, 0, 1], 7, 0.46, [1.66, 0.09, 0.07], 2),
+    // Varengas y un puntal caído en el fondo de la sentina.
+    ...ribParts([0.02, 0.5, -0.5], [0, 0, 1], 4, 0.8, [0.9, 0.07, 0.06], 2),
+    createTubePart([-0.62, 0.56, -1.5], [0.5, 0.62, 0.3], 0.035, 8, 1),
+    // Chapas de cubierta que aguantaron, con las juntas abiertas.
+    {
+      geometry: chamferBox(0.78, 0.07, 1.46, 0.025),
+      position: [0.5, deckY - 0.05, -1.12],
+      rotation: [0.04, 0.05, -0.09],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.7, 0.07, 1.12, 0.025),
+      position: [-0.54, deckY - 0.12, -1.24],
+      rotation: [-0.06, -0.06, 0.12],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.84, 0.07, 0.96, 0.025),
+      position: [0.44, deckY + 0.02, 0.52],
+      rotation: [0.06, 0.04, -0.11],
+      tile: 2,
+    },
+    // Regala doblada: entera a babor, arrancada a estribor.
+    {
+      geometry: chamferBox(0.12, 0.15, 2.2, 0.04),
+      position: [halfWidth - 0.02, deckY + 0.06, -0.8],
+      rotation: [0.03, 0.03, -0.12],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.12, 0.14, 1.06, 0.04),
+      position: [-(halfWidth - 0.08), deckY - 0.02, 0.24],
+      rotation: [-0.06, -0.12, 0.2],
+      tile: 1,
+    },
+    // Bandas de rescate sobre la obra muerta que sobrevivió.
+    {
+      geometry: chamferBox(0.06, 0.16, 1.7, 0.02),
+      position: [1.08, 0.82, -0.72],
+      rotation: [0.02, 0.06, -0.24],
+      tile: 1,
+    },
+    // Patines de hielo: el de babor sigue atornillado, del de estribor quedó
+    // el tocón y la quilla central se partió a la mitad.
+    {
+      geometry: chamferBox(0.17, 0.13, 2.32, 0.04),
+      position: [0.46, bottomY - 0.05, -0.6],
+      rotation: [0.02, 0.03, -0.04],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.17, 0.12, 0.62, 0.04),
+      position: [-0.44, bottomY - 0.04, -1.5],
+      rotation: [0.04, -0.03, 0.05],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.22, 0.12, 1.54, 0.035),
+      position: [0.02, bottomY - 0.02, -1.3],
+      rotation: [0.02, 0.02, -0.03],
+      tile: 2,
+    },
+    { geometry: rivetRow([1.06, deckY - 0.12, -1.8], [1.06, deckY - 0.12, 0.3], 10, 0.018, "x"), tile: 1 },
+    // Chapa desgarrada en el borde de la abertura.
+    {
+      geometry: chamferBox(0.24, 0.05, 0.34, 0.014),
+      position: [0.16, 0.66, 0.86],
+      rotation: [0.5, 0.4, -0.6],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(0.3, 0.05, 0.26, 0.014),
+      position: [-0.2, 0.6, -1.72],
+      rotation: [-0.55, -0.3, 0.5],
+      tile: 0,
+    },
+  ];
+}
+
+/**
+ * Castillo de proa doblado hacia arriba en la línea de rotura. El nodo se
+ * cuelga del quiebre, así que la rotación es literalmente el pliegue.
+ */
+function wreckedAirboatBowParts(segments: number): GeometryPart[] {
+  return [
+    {
+      geometry: chamferWedge({
+        length: 1.24,
+        height: 0.6,
+        frontWidth: 0.34,
+        rearWidth: 1.3,
+        topFrontWidth: 0.98,
+        topRearWidth: 2.1,
+        chamfer: 0.05,
+      }),
+      position: [0, 0.02, 0.6],
+      tile: 0,
+    },
+    // Roda abollada y sus nervios. Va más baja que en el modelo intacto: a la
+    // altura original, con la proa clavada, la chapa quedaba de pie tapando el
+    // castillo entero de frente.
+    {
+      geometry: chamferWedge({
+        length: 0.3,
+        height: 0.5,
+        frontWidth: 0.4,
+        rearWidth: 0.58,
+        topFrontWidth: 0.96,
+        topRearWidth: 1.24,
+        chamfer: 0.022,
+      }),
+      position: [0.05, 0.06, 1.24],
+      rotation: [0.12, 0.08, 0.12],
+      tile: 2,
+    },
+    ...ribParts([0.04, 0.12, 1.36], [1, 0, 0], 5, 0.16, [0.06, 0.2, 0.07], 2),
+    // Candeleros de proa: uno doblado sobre la cubierta y el otro cortado.
+    createTubePart([0.62, 0.42, 0.16], [0.5, 0.62, 0.8], 0.038, segments, 2),
+    createTubePart([0.5, 0.62, 0.8], [0.16, 0.5, 1.14], 0.038, segments, 2),
+    createTubePart([-0.6, 0.4, 0.2], [-0.66, 0.6, 0.5], 0.036, segments, 2),
+    {
+      geometry: new TorusGeometry(0.036, 0.011, 5, segments),
+      position: [-0.66, 0.61, 0.51],
+      rotation: [1.3, 0.2, 0],
+      tile: 2,
+    },
+    // Faro reventado: queda el aro y el cable colgando.
+    {
+      geometry: new CylinderGeometry(0.115, 0.115, 0.16, 12),
+      position: [0.5, 0.44, 0.86],
+      rotation: [Math.PI / 2 + 0.4, 0.2, 0],
+      tile: 2,
+    },
+    createTubePart([0.46, 0.36, 0.82], [0.28, 0.16, 0.5], 0.018, 6, 1),
+    // Pedestal del cañón, arrancado de la cubierta.
+    {
+      geometry: chamferBox(0.34, 0.09, 0.36, 0.03),
+      position: [0.04, 0.36, 0.54],
+      rotation: [0.14, 0.1, 0.22],
+      tile: 1,
+    },
+    createTubePart([0.04, 0.4, 0.54], [0.2, 0.62, 0.4], 0.075, segments, 2),
+    {
+      geometry: new TorusGeometry(0.075, 0.018, 5, segments),
+      position: [0.21, 0.63, 0.39],
+      rotation: [1.0, 0.4, 0],
+      tile: 2,
+    },
+  ];
+}
+
+/**
+ * Ventilador y su jaula, caídos sobre la popa. Los aros van como arcos y no
+ * como circunferencias: un toro entero lee como jaula sana apenas torcida.
+ */
+function wreckedAirboatFanParts(segments: number): GeometryPart[] {
+  const { cageRadius, radius } = AIRBOAT_FAN;
+  const parts: GeometryPart[] = [
+    // Los tres aros de guardia siguen siendo aros: ovalados, con un sector
+    // arrancado distinto cada uno. Cortados en arcos cortos la jaula deja de
+    // leerse como jaula, y es la firma de la silueta del hidrodeslizador.
+    {
+      geometry: new TorusGeometry(cageRadius, 0.042, 6, segments * 2, Math.PI * 1.78),
+      position: [0, 0, 0.28],
+      rotation: [0, 0, 0.5],
+      scale: [1, 0.88, 1],
+      tile: 2,
+    },
+    {
+      geometry: new TorusGeometry(cageRadius, 0.042, 6, segments * 2, Math.PI * 1.46),
+      position: [0.05, -0.03, 0.02],
+      rotation: [0.04, 0.06, 1.25],
+      scale: [0.94, 0.9, 1],
+      tile: 2,
+    },
+    {
+      geometry: new TorusGeometry(cageRadius, 0.04, 6, segments * 2, Math.PI * 0.92),
+      position: [0.03, -0.01, -0.24],
+      rotation: [0.02, 0.04, 2.45],
+      scale: [1, 0.86, 1],
+      tile: 2,
+    },
+    {
+      geometry: new TorusGeometry(cageRadius * 0.54, 0.03, 5, segments * 2, Math.PI * 1.55),
+      position: [0.02, 0.02, 0.26],
+      rotation: [0, 0, 1.15],
+      scale: [0.9, 1, 1],
+      tile: 2,
+    },
+    // Buje y plato de bridas: la pieza que sobrevive siempre.
+    {
+      geometry: new CylinderGeometry(0.19, 0.156, 0.36, segments),
+      rotation: [Math.PI / 2, 0, 0],
+      tile: 2,
+    },
+    {
+      geometry: new CylinderGeometry(0.3, 0.3, 0.055, segments),
+      position: [0, 0, -0.13],
+      rotation: [Math.PI / 2, 0, 0],
+      tile: 1,
+    },
+  ];
+  // Palas partidas a distinta altura: lo que queda del disco son muñones.
+  const stumps: readonly (readonly [number, number])[] = [
+    [0.2, 0.72],
+    [1.35, 0.28],
+    [2.5, 0.5],
+    [3.6, 0.16],
+    [4.7, 0.34],
+  ];
+  for (const [angle, span] of stumps) {
+    const length = (radius - 0.19) * span;
+    const reach = 0.19 + length / 2;
+    parts.push({
+      geometry: chamferWedge({
+        length,
+        height: 0.055,
+        frontWidth: 0.3,
+        rearWidth: 0.3 - 0.13 * span,
+        chamfer: 0.014,
+      }),
+      position: [
+        Math.cos(angle + Math.PI / 2) * reach,
+        Math.sin(angle + Math.PI / 2) * reach,
+        0,
+      ],
+      rotation: [Math.PI / 2, 0, angle + 0.3],
+      tile: 2,
+    });
+  }
+  // Radios: los que aguantaron cruzan el disco; los sueltos cuelgan del aro.
+  parts.push(
+    createTubePart([-0.62, 0.78, 0.28], [0.72, -0.68, 0.3], 0.03, segments, 2),
+    createTubePart([0.86, 0.5, 0.28], [-0.44, -0.82, 0.26], 0.03, segments, 2),
+    createTubePart([0.98, -0.16, 0.26], [-0.9, 0.34, 0.28], 0.03, segments, 2),
+    createTubePart([-0.28, 0.94, 0.26], [0.4, -0.86, 0.3], 0.028, segments, 2),
+    createTubePart([0.2, 0.98, 0.02], [0.16, 0.24, -0.02], 0.028, 8, 2),
+    createTubePart([-0.9, -0.42, 0.0], [-1.42, -1.06, -0.22], 0.05, segments, 2),
+    {
+      geometry: new TorusGeometry(0.05, 0.014, 5, segments),
+      position: [-1.44, -1.09, -0.23],
+      rotation: [1.0, 0.5, 0],
+      tile: 2,
+    },
+    createTubePart([0.78, -0.6, 0.02], [1.18, -1.16, -0.3], 0.05, segments, 2),
+    gusset([0.8, -0.62, 0.02], 0.14, 1),
+  );
+  return parts;
+}
+
+/** Bancada del motor a la vista, con el eje de transmisión cortado. */
+function wreckedAirboatEngineParts(segments: number): GeometryPart[] {
+  return [
+    {
+      geometry: chamferBox(0.8, 0.44, 0.72, 0.05),
+      position: [0, 0, 0],
+      rotation: [0.12, 0.06, -0.1],
+      tile: 2,
+    },
+    ...ribParts([0, 0.26, 0.02], [1, 0, 0], 4, 0.19, [0.11, 0.08, 0.56], 2),
+    // Tapa del bloque arrancada: rompe la silueta de cajón limpio, que es lo
+    // único que se veía de la bancada desde popa. Va tumbada y en acero; de
+    // canto y en naranja quedaba como un cartel en medio del casco.
+    {
+      geometry: chamferBox(0.62, 0.07, 0.52, 0.03),
+      position: [-0.36, 0.16, 0.34],
+      rotation: [0.3, 0.24, 0.52],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.24, 0.05, 0.3, 0.014),
+      position: [0.36, 0.24, -0.3],
+      rotation: [0.6, -0.4, 0.5],
+      tile: 2,
+    },
+    // Escape retorcido y su pantalla térmica.
+    createTubePart([0.3, 0.22, 0.1], [0.44, 0.72, 0.24], 0.058, 10, 1),
+    createTubePart([0.44, 0.72, 0.24], [0.72, 0.86, 0.02], 0.054, 10, 1),
+    {
+      geometry: new TorusGeometry(0.054, 0.015, 5, segments),
+      position: [0.73, 0.87, 0.01],
+      rotation: [1.2, 0.6, 0],
+      tile: 2,
+    },
+    // Carcasa de transmisión, cortada al ras del bloque.
+    createTubePart([0, 0.16, -0.24], [-0.1, 0.5, -0.72], 0.15, segments, 2),
+    {
+      geometry: new TorusGeometry(0.15, 0.02, 5, segments),
+      position: [-0.105, 0.52, -0.74],
+      rotation: [0.95, 0.2, 0],
+      tile: 2,
+    },
+    // Bidón de reserva reventado contra la bancada.
+    {
+      geometry: new CylinderGeometry(0.19, 0.19, 0.5, 12),
+      position: [-0.66, -0.1, -0.34],
+      rotation: [0.3, 0.2, Math.PI / 2 - 0.4],
+      scale: [1, 1, 0.72],
+      tile: 1,
+    },
+    createTubePart([-0.3, 0.24, 0.2], [-0.66, -0.02, -0.1], 0.022, 6, 1),
+    createTubePart([0.24, 0.3, 0.24], [0.5, -0.04, 0.36], 0.02, 6, 1),
+  ];
+}
+
+/** Puesto de mando aplastado bajo la jaula que se le vino encima. */
+function wreckedAirboatCockpitParts(segments: number): GeometryPart[] {
+  const { deckY } = AIRBOAT_HULL;
+  return [
+    // Consola partida: el frente se abrió y el tablero quedó colgando.
+    {
+      geometry: chamferWedge({
+        length: 0.5,
+        height: 0.44,
+        frontWidth: 0.96,
+        rearWidth: 1.18,
+        topFrontWidth: 0.82,
+        topRearWidth: 1.06,
+        chamfer: 0.045,
+      }),
+      position: [0.06, deckY + 0.2, 0.44],
+      rotation: [0.16, 0.08, -0.14],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(1.1, 0.08, 0.46, 0.03),
+      position: [0.1, deckY + 0.44, 0.28],
+      rotation: [-0.62, 0.1, -0.2],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.86, 0.28, 0.06, 0.025),
+      position: [0.02, deckY + 0.4, 0.72],
+      rotation: [0.68, 0.14, -0.12],
+      tile: 2,
+    },
+    // Relojes reventados sobre el tablero volcado.
+    {
+      geometry: new CylinderGeometry(0.062, 0.062, 0.04, 12),
+      position: [-0.05, deckY + 0.5, 0.24],
+      rotation: [Math.PI / 2 - 0.62, 0, 0],
+      tile: 3,
+    },
+    {
+      geometry: new CylinderGeometry(0.062, 0.062, 0.04, 12),
+      position: [0.22, deckY + 0.49, 0.22],
+      rotation: [Math.PI / 2 - 0.62, 0, 0],
+      tile: 3,
+    },
+    // Butaca: el cajón sigue amarrado, el respaldo se dobló hacia atrás.
+    {
+      geometry: chamferBox(0.46, 0.2, 0.48, 0.035),
+      position: [0.04, deckY, AIRBOAT_DRIVER_Z],
+      rotation: [0.06, 0.04, -0.08],
+      tile: 2,
+    },
+    {
+      geometry: chamferBox(0.54, 0.15, 0.56, 0.04),
+      position: [0.04, deckY + 0.13, AIRBOAT_DRIVER_Z],
+      rotation: [0.06, 0.04, -0.08],
+      tile: 3,
+    },
+    {
+      geometry: chamferBox(0.54, 0.56, 0.15, 0.04),
+      position: [0.02, deckY + 0.36, AIRBOAT_DRIVER_Z - 0.52],
+      rotation: [-0.92, 0.06, -0.1],
+      tile: 3,
+    },
+    // Arco antivuelco de la butaca, aplastado hacia proa.
+    createTubePart([0.36, deckY + 0.08, AIRBOAT_DRIVER_Z - 0.42], [0.34, deckY + 0.62, AIRBOAT_DRIVER_Z - 0.3], 0.03, segments, 2),
+    createTubePart([0.34, deckY + 0.62, AIRBOAT_DRIVER_Z - 0.3], [0.02, deckY + 0.74, AIRBOAT_DRIVER_Z - 0.22], 0.03, segments, 1),
+    createTubePart([-0.28, deckY + 0.1, AIRBOAT_DRIVER_Z - 0.44], [-0.3, deckY + 0.4, AIRBOAT_DRIVER_Z - 0.4], 0.03, segments, 2),
+    {
+      geometry: new TorusGeometry(0.03, 0.009, 5, segments),
+      position: [-0.3, deckY + 0.41, AIRBOAT_DRIVER_Z - 0.4],
+      rotation: [Math.PI / 2 + 0.1, 0, 0],
+      tile: 2,
+    },
+    // Caña de timón doblada: el mando del casco es una barra, no un volante.
+    createTubePart([0.06, deckY + 0.24, 0.02], [0.16, deckY + 0.42, 0.16], 0.04, 10, 2),
+    {
+      geometry: new CylinderGeometry(0.03, 0.03, 0.64, 10),
+      position: [0.16, deckY + 0.43, 0.17],
+      rotation: [0, 0.3, Math.PI / 2 - 0.4],
+      tile: 2,
+    },
+    // Brazola del puesto, partida en el costado que se abrió.
+    {
+      geometry: chamferBox(0.11, 0.2, 1.4, 0.03),
+      position: [0.67, deckY + 0.12, -0.3],
+      rotation: [0.04, 0.04, -0.12],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(0.11, 0.18, 0.6, 0.03),
+      position: [-0.66, deckY + 0.06, -0.8],
+      rotation: [-0.08, -0.14, 0.22],
+      tile: 0,
+    },
+  ];
+}
+
+/** Lo que salió despedido y quedó sobre el hielo alrededor del casco. */
+function wreckedAirboatDebrisParts(segments: number): GeometryPart[] {
+  const ground = AIRBOAT_WRECK_GROUND;
+  return [
+    // Cañón de pulsos, arrancado del pintle y clavado de bocacha.
+    {
+      geometry: chamferBox(0.34, 0.3, 0.46, 0.04),
+      position: [-1.42, ground + 0.28, 1.66],
+      rotation: [0.42, -0.5, 0.24],
+      tile: 2,
+    },
+    {
+      geometry: new CylinderGeometry(0.072, 0.088, 0.82, segments),
+      position: [-1.66, ground + 0.24, 2.16],
+      rotation: [Math.PI / 2 - 0.42, -0.5, 0],
+      tile: 2,
+    },
+    {
+      geometry: new CylinderGeometry(0.105, 0.12, 0.17, segments),
+      position: [-1.78, ground + 0.15, 2.5],
+      rotation: [Math.PI / 2 - 0.42, -0.5, 0],
+      tile: 2,
+    },
+    ...[2.0, 2.16, 2.32].map((z) => ({
+      geometry: new TorusGeometry(0.082, 0.024, 6, segments),
+      position: [-1.72, ground + 0.15, z] as Vec3,
+      rotation: [-0.42, -0.5, 0] as Euler,
+      tile: 1 as AtlasTile,
+    })),
+    // Timones arrancados del bastidor.
+    {
+      geometry: chamferWedge({
+        length: 0.94,
+        height: 0.44,
+        frontWidth: 0.085,
+        rearWidth: 0.028,
+        chamfer: 0.014,
+      }),
+      position: [1.34, ground + 0.09, -1.86],
+      rotation: [0.06, 0.34, Math.PI / 2 - 0.18],
+      tile: 2,
+    },
+    {
+      geometry: chamferWedge({
+        length: 0.9,
+        height: 0.42,
+        frontWidth: 0.08,
+        rearWidth: 0.026,
+        chamfer: 0.014,
+      }),
+      position: [-0.62, ground + 0.08, -2.86],
+      rotation: [0.12, -0.5, Math.PI / 2 + 0.24],
+      tile: 2,
+    },
+    // Pala entera del ventilador, clavada de punta en el hielo.
+    {
+      geometry: chamferWedge({
+        length: 0.86,
+        height: 0.06,
+        frontWidth: 0.3,
+        rearWidth: 0.18,
+        chamfer: 0.014,
+      }),
+      position: [1.7, ground + 0.41, 0.62],
+      rotation: [1.05, 0.4, 0.3],
+      tile: 2,
+    },
+    // Patín de hielo del fondo que se abrió.
+    {
+      geometry: chamferBox(0.17, 0.13, 1.9, 0.04),
+      position: [-1.62, ground + 0.08, -0.42],
+      rotation: [0.04, -0.32, 0.1],
+      tile: 2,
+    },
+    // Chapas de casco: la banda naranja es lo que las ata a este vehículo.
+    {
+      geometry: chamferBox(0.9, 0.07, 1.1, 0.03),
+      position: [1.5, ground + 0.18, 1.28],
+      rotation: [0.12, 0.5, 0.14],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(0.72, 0.06, 0.16, 0.02),
+      position: [1.44, ground + 0.23, 1.34],
+      rotation: [0.12, 0.5, 0.14],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(0.66, 0.06, 0.8, 0.025),
+      position: [0.32, ground + 0.09, -2.92],
+      rotation: [0.1, -0.4, 0.12],
+      tile: 0,
+    },
+    // Bichero, antena y rollo de cabo sobre el hielo.
+    createTubePart([0.9, ground + 0.04, 1.9], [1.86, ground + 0.05, 0.98], 0.032, 8, 2),
+    createTubePart([-1.16, ground + 0.03, -1.5], [-1.72, ground + 0.04, -2.24], 0.017, 6, 2),
+    ...[0, 1, 2].map((ring) => ({
+      geometry: new TorusGeometry(0.19 - ring * 0.028, 0.036, 5, 12),
+      position: [-1.28, ground + 0.09 + ring * 0.06, 0.92] as Vec3,
+      rotation: [Math.PI / 2 + 0.12, 0.2, 0] as Euler,
+      tile: 3 as AtlasTile,
+    })),
+    // Recortes chicos para que el contorno no termine en un borde limpio.
+    {
+      geometry: chamferBox(0.24, 0.05, 0.3, 0.014),
+      position: [-0.96, ground + 0.03, 2.62],
+      rotation: [0.08, 0.6, 0.06],
+      tile: 0,
+    },
+    {
+      geometry: chamferBox(0.2, 0.05, 0.22, 0.012),
+      position: [1.9, ground + 0.03, -0.7],
+      rotation: [0.06, -0.5, 0.1],
+      tile: 1,
+    },
+  ];
+}
+
 function buildAirboat(context: BuildContext): void {
   for (const lod of [0, 1, 2] as const) {
     const root = createNode(context, context.sceneRoot, `visual_lod${lod}`, {
@@ -2523,19 +5151,29 @@ function buildAirboat(context: BuildContext): void {
   const wreckage = createNode(context, context.sceneRoot, "wreckage", {
     extras: { kind: "wreckage", hiddenByDefault: true },
   });
-  createVisualNode(context, wreckage, "wreckage_hull", [
-    {
-      geometry: createHullGeometry(3.8, 2.2, 0.65, 0.6, 1.9),
-      rotation: [-0.14, 0.05, 0.1],
-      tile: 3,
-    },
-    {
-      geometry: new TorusGeometry(0.86, 0.06, 6, 14),
-      position: [0.44, 0.72, -1.5],
-      rotation: [0.16, 0.32, 0.28],
-      tile: 2,
-    },
-  ]);
+  createVisualNode(context, wreckage, "wreckage_hull", wreckedAirboatHullParts(), {
+    position: AIRBOAT_WRECK_POSITION,
+    rotation: AIRBOAT_WRECK_ROTATION,
+  });
+  createVisualNode(context, wreckage, "wreckage_cockpit", wreckedAirboatCockpitParts(12), {
+    position: AIRBOAT_WRECK_POSITION,
+    rotation: AIRBOAT_WRECK_ROTATION,
+  });
+  // El nodo se cuelga de la línea de rotura, así que su rotación es el pliegue
+  // del castillo sumado a la escora del casco.
+  createVisualNode(context, wreckage, "wreckage_bow", wreckedAirboatBowParts(12), {
+    position: [0.02, 0.58, 1.18],
+    rotation: [0.16, 0.12, 0.12],
+  });
+  createVisualNode(context, wreckage, "wreckage_fan", wreckedAirboatFanParts(12), {
+    position: [0.22, 1.24, -1.94],
+    rotation: [0.48, 0.12, 0.22],
+  });
+  createVisualNode(context, wreckage, "wreckage_engine", wreckedAirboatEngineParts(12), {
+    position: [0.06, 0.8, -1.16],
+    rotation: [0.22, 0.12, 0.18],
+  });
+  createVisualNode(context, wreckage, "wreckage_debris", wreckedAirboatDebrisParts(10));
 }
 
 /**
@@ -4236,6 +6874,9 @@ export function createVehicleDocument(
       break;
     case "combineGlider":
       buildCombineGlider(context);
+      break;
+    case "combineSwimmer":
+      buildCombineSwimmer(context);
       break;
   }
 
