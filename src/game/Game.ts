@@ -2828,6 +2828,8 @@ export class Game {
         camera.getForwardDirection(),
         controls,
       );
+    } else {
+      interactSystem.releaseFocus();
     }
     triggerSystem.update(playerPosition, time.delta);
     this.companionSystem?.update(time.elapsed);
