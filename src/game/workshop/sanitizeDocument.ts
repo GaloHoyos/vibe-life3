@@ -1,6 +1,7 @@
 import type { EditorDocument } from "@game/editor/EditorDocument";
 import { migrateDocument } from "@game/editor/migrateDocument";
 import { isEditorDocument } from "@game/editor/persistence";
+import { AudioClipCatalog } from "@engine/audio/AudioManifest";
 import { Soundscapes } from "@game/config/audio.config";
 import { isVehiclePresetId } from "@game/config/vehicles.config";
 import { isVehicleAccessPolicy } from "@game/levels/LevelDefinition";
@@ -93,6 +94,7 @@ const LOGIC_KINDS = new Set([
   "message",
   "objective",
   "soundscape",
+  "ambientSound",
   "npcSpawner",
   "levelAction",
   "changelevel",
@@ -751,6 +753,23 @@ function validateLogicShape(def: Record<string, unknown>, label: string): Valida
       return typeof def.soundscape === "string"
         ? { ok: true }
         : invalid(`${label}: soundscape inválido.`);
+    case "ambientSound": {
+      if (typeof def.sound !== "string" || def.sound.length === 0) {
+        return invalid(`${label}: sound inválido.`);
+      }
+      // El servidor es la autoridad: un clip fuera del catálogo built-in sería
+      // una referencia a un asset que el cliente no tiene.
+      if (!AudioClipCatalog[def.sound]) {
+        return invalid(`${label}: el clip '${def.sound}' no existe.`);
+      }
+      const position = validateVector(def.position, `${label}: position`);
+      if (!position.ok) return position;
+      const radius = optionalNumber(def.radius, `${label}: radius`);
+      if (!radius.ok) return radius;
+      const loop = optionalBoolean(def.loop, `${label}: loop`);
+      if (!loop.ok) return loop;
+      return optionalBoolean(def.startDisabled, `${label}: startDisabled`);
+    }
     case "npcSpawner":
       return Array.isArray(def.npcs)
         ? { ok: true }
@@ -936,6 +955,12 @@ function validateStringArray(value: unknown, label: string): ValidationResult {
   return Array.isArray(value) && value.every((item) => typeof item === "string")
     ? { ok: true }
     : invalid(`${label} debe ser una lista de textos.`);
+}
+
+function optionalNumber(value: unknown, label: string): ValidationResult {
+  return value === undefined || (typeof value === "number" && Number.isFinite(value))
+    ? { ok: true }
+    : invalid(`${label} debe ser un número finito.`);
 }
 
 function optionalBoolean(value: unknown, label: string): ValidationResult {

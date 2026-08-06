@@ -1,13 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { AudioSystem, AudioEnvironmentPreset } from "@engine/audio/core/AudioSystem";
+import type { ReverbSpace } from "@engine/audio/dsp/ReverbRack";
+import type { AcousticSpaceSystem } from "@engine/audio/spatial/AcousticSpaceSystem";
 import type { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
 import { SoundscapeSystem } from "@game/audio/SoundscapeSystem";
-import { AudioDspPresets, Soundscapes } from "@game/config/audio.config";
-
-interface EnvironmentCall {
-  preset: AudioEnvironmentPreset;
-  fadeSeconds: number | undefined;
-}
+import { Soundscapes } from "@game/config/audio.config";
 
 interface AmbienceCall {
   ids: readonly string[];
@@ -15,17 +11,12 @@ interface AmbienceCall {
 }
 
 describe("SoundscapeSystem", () => {
-  it("applies the configured DSP preset and ambience set", () => {
-    const { audio, ambience, system } = createSystem();
+  it("aplica el override de reverb y los ambientes del soundscape", () => {
+    const { acoustics, ambience, system } = createSystem();
 
     system.activate("metalTunnel", ["background.wind"]);
 
-    expect(audio.environments).toEqual([
-      {
-        preset: AudioDspPresets.metalTunnel,
-        fadeSeconds: Soundscapes.metalTunnel.fadeSeconds,
-      },
-    ]);
+    expect(acoustics.overrides).toEqual([Soundscapes.metalTunnel.reverb]);
     expect(ambience.replacements).toEqual([
       {
         ids: Soundscapes.metalTunnel.ambiences,
@@ -34,46 +25,55 @@ describe("SoundscapeSystem", () => {
     ]);
   });
 
-  it("does not reapply DSP when the active soundscape is unchanged", () => {
-    const { audio, ambience, system } = createSystem();
+  it("un soundscape sin override deja mandar a la sonda acustica", () => {
+    const { acoustics, system } = createSystem();
+
+    system.activate("outdoor", ["background.wind"]);
+
+    expect(acoustics.overrides).toEqual([null]);
+  });
+
+  it("no reaplica el override si el soundscape no cambio", () => {
+    const { acoustics, ambience, system } = createSystem();
 
     system.activate("outdoor", ["background.wind"]);
     system.activate("outdoor", ["background.hl2.wind.med1"]);
 
-    expect(audio.environments).toHaveLength(1);
-    expect(audio.environments[0]).toEqual({
-      preset: AudioDspPresets.outdoor,
-      fadeSeconds: Soundscapes.outdoor.fadeSeconds,
-    });
+    expect(acoustics.overrides).toHaveLength(1);
+    // Los ambientes si se reemplazan: cambio la lista del nivel.
     expect(ambience.replacements).toEqual([
       { ids: ["background.wind"], fadeSeconds: Soundscapes.outdoor.fadeSeconds },
-      { ids: ["background.hl2.wind.med1"], fadeSeconds: Soundscapes.outdoor.fadeSeconds },
+      {
+        ids: ["background.hl2.wind.med1"],
+        fadeSeconds: Soundscapes.outdoor.fadeSeconds,
+      },
     ]);
   });
 
-  it("clears ambience and returns to the dry preset", () => {
-    const { audio, ambience, system } = createSystem();
+  it("clear apaga ambientes y acustica", () => {
+    const { acoustics, ambience, system } = createSystem();
 
     system.activate("lab");
     system.clear();
 
-    expect(audio.environments.at(-1)).toEqual({
-      preset: AudioDspPresets.none,
-      fadeSeconds: 0.5,
-    });
+    expect(acoustics.clears).toBe(1);
     expect(ambience.stops).toBe(1);
   });
 });
 
 function createSystem(): {
-  audio: { environments: EnvironmentCall[] };
+  acoustics: { overrides: Array<Partial<ReverbSpace> | null>; clears: number };
   ambience: { replacements: AmbienceCall[]; stops: number };
   system: SoundscapeSystem;
 } {
-  const audio = {
-    environments: [] as EnvironmentCall[],
-    setAudioEnvironment(preset: AudioEnvironmentPreset, fadeSeconds?: number): void {
-      this.environments.push({ preset, fadeSeconds });
+  const acoustics = {
+    overrides: [] as Array<Partial<ReverbSpace> | null>,
+    clears: 0,
+    setOverride(override: Partial<ReverbSpace> | null): void {
+      this.overrides.push(override);
+    },
+    clear(): void {
+      this.clears += 1;
     },
   };
   const ambience = {
@@ -88,10 +88,10 @@ function createSystem(): {
   };
 
   return {
-    audio,
+    acoustics,
     ambience,
     system: new SoundscapeSystem(
-      audio as unknown as AudioSystem,
+      acoustics as unknown as AcousticSpaceSystem,
       ambience as unknown as BackgroundAmbienceSystem,
     ),
   };

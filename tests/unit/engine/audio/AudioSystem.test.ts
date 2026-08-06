@@ -1,155 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AudioSystem } from "@engine/audio/core/AudioSystem";
 import { SoundManager } from "@engine/audio/core/SoundManager";
-
-interface AudioHarness {
-  readonly activation: { isActive: boolean; hasBeenActive: boolean };
-  readonly contexts: FakeAudioContext[];
-  readonly listeners: Map<string, EventListener[]>;
-}
-
-class FakeAudioContext {
-  state: AudioContextState = "suspended";
-  readonly currentTime = 0;
-  readonly destination = fakeNode();
-  readonly sampleRate = 48_000;
-  readonly sources: Array<ReturnType<typeof fakeBufferSource>> = [];
-  readonly resume = vi.fn(async () => {
-    this.state = "running";
-  });
-  readonly suspend = vi.fn(async () => {
-    this.state = "suspended";
-  });
-  readonly close = vi.fn(async () => {
-    this.state = "closed";
-  });
-  readonly decodeAudioData = vi.fn(async () => ({} as AudioBuffer));
-
-  createGain(): GainNode {
-    return fakeGainNode() as unknown as GainNode;
-  }
-
-  createDynamicsCompressor(): DynamicsCompressorNode {
-    return {
-      ...fakeNode(),
-      threshold: fakeParam(),
-      knee: fakeParam(),
-      ratio: fakeParam(),
-      attack: fakeParam(),
-      release: fakeParam(),
-    } as unknown as DynamicsCompressorNode;
-  }
-
-  createDelay(): DelayNode {
-    return {
-      ...fakeNode(),
-      delayTime: fakeParam(),
-    } as unknown as DelayNode;
-  }
-
-  createConvolver(): ConvolverNode {
-    return {
-      ...fakeNode(),
-      buffer: null,
-    } as unknown as ConvolverNode;
-  }
-
-  createBiquadFilter(): BiquadFilterNode {
-    return {
-      ...fakeNode(),
-      type: "lowpass",
-      frequency: fakeParam(),
-    } as unknown as BiquadFilterNode;
-  }
-
-  createBufferSource(): AudioBufferSourceNode {
-    const source = fakeBufferSource();
-    this.sources.push(source);
-    return source as unknown as AudioBufferSourceNode;
-  }
-}
-
-function fakeParam(): AudioParam {
-  return {
-    value: 0,
-    cancelScheduledValues: vi.fn(),
-    setValueAtTime: vi.fn(),
-    linearRampToValueAtTime: vi.fn(),
-  } as unknown as AudioParam;
-}
-
-function fakeNode(): AudioNode {
-  return {
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-  } as unknown as AudioNode;
-}
-
-function fakeGainNode(): GainNode {
-  return {
-    ...fakeNode(),
-    gain: fakeParam(),
-  } as unknown as GainNode;
-}
-
-function fakeBufferSource() {
-  return {
-    buffer: null as AudioBuffer | null,
-    loop: false,
-    detune: fakeParam(),
-    playbackRate: fakeParam(),
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-    start: vi.fn(),
-    stop: vi.fn(),
-    addEventListener: vi.fn(),
-  };
-}
-
-function installAudioHarness(): AudioHarness {
-  const contexts: FakeAudioContext[] = [];
-  const listeners = new Map<string, EventListener[]>();
-  const activation = { isActive: false, hasBeenActive: false };
-
-  class HarnessAudioContext extends FakeAudioContext {
-    constructor() {
-      super();
-      contexts.push(this);
-    }
-  }
-
-  const windowStub = {
-    AudioContext: HarnessAudioContext,
-    navigator: { userActivation: activation },
-    localStorage: {
-      getItem: vi.fn(() => null),
-      setItem: vi.fn(),
-      removeItem: vi.fn(),
-    },
-    addEventListener: vi.fn(
-      (eventName: string, listener: EventListenerOrEventListenerObject) => {
-        if (typeof listener !== "function") {
-          return;
-        }
-        const entries = listeners.get(eventName) ?? [];
-        entries.push(listener);
-        listeners.set(eventName, entries);
-      },
-    ),
-    removeEventListener: vi.fn(
-      (eventName: string, listener: EventListenerOrEventListenerObject) => {
-        const entries = listeners.get(eventName) ?? [];
-        listeners.set(
-          eventName,
-          entries.filter((entry) => entry !== listener),
-        );
-      },
-    ),
-  };
-
-  vi.stubGlobal("window", windowStub);
-  return { activation, contexts, listeners };
-}
+import {
+  installWebAudioHarness,
+  isConnected,
+  nodesOfKind,
+  pathExists,
+  paramValue,
+} from "@tests/support/fakes/webaudio";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -157,7 +15,7 @@ afterEach(() => {
 
 describe("AudioSystem autoplay unlock", () => {
   it("no crea AudioContext durante bootstrap ni desde llamadas programaticas", () => {
-    const { contexts } = installAudioHarness();
+    const { contexts } = installWebAudioHarness();
     const audio = new AudioSystem();
 
     expect(audio.getContext()).toBeNull();
@@ -169,7 +27,7 @@ describe("AudioSystem autoplay unlock", () => {
   });
 
   it("crea y reanuda el contexto dentro de un gesto confiable", async () => {
-    const { contexts, listeners } = installAudioHarness();
+    const { contexts, listeners } = installWebAudioHarness();
     const audio = new AudioSystem();
     const ready = audio.getContextWhenReady();
 
@@ -186,7 +44,7 @@ describe("AudioSystem autoplay unlock", () => {
   });
 
   it("ignora eventos sinteticos pero permite unlock con activacion vigente", async () => {
-    const { activation, contexts, listeners } = installAudioHarness();
+    const { activation, contexts, listeners } = installWebAudioHarness();
     const audio = new AudioSystem();
 
     listeners.get("click")?.[0]?.({ isTrusted: false } as Event);
@@ -202,7 +60,7 @@ describe("AudioSystem autoplay unlock", () => {
   });
 
   it("conserva un loop pedido antes del gesto y lo inicia despues del unlock", async () => {
-    const { contexts, listeners } = installAudioHarness();
+    const { contexts, gesture } = installWebAudioHarness();
     const fetchMock = vi.fn(async () => ({
       arrayBuffer: async () => new ArrayBuffer(1),
     }));
@@ -215,7 +73,7 @@ describe("AudioSystem autoplay unlock", () => {
     expect(contexts).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
 
-    listeners.get("click")?.[0]?.({ isTrusted: true } as Event);
+    gesture("click");
 
     await vi.waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -226,7 +84,7 @@ describe("AudioSystem autoplay unlock", () => {
   });
 
   it("dispose limpia listeners, waiters y el contexto", async () => {
-    const { activation, contexts, listeners } = installAudioHarness();
+    const { activation, contexts, listeners } = installWebAudioHarness();
     const audio = new AudioSystem();
     const pendingContext = audio.getContextWhenReady();
 
@@ -250,5 +108,106 @@ describe("AudioSystem autoplay unlock", () => {
     await Promise.resolve();
     expect(contexts[0]?.close).toHaveBeenCalledTimes(1);
     expect(contexts[0]?.state).toBe("closed");
+  });
+});
+
+describe("AudioSystem mixer", () => {
+  function unlockedSystem() {
+    const harness = installWebAudioHarness();
+    const audio = new AudioSystem();
+    harness.gesture();
+    const context = harness.contexts[0];
+    if (!context) {
+      throw new Error("El gesto no creó el contexto");
+    }
+    return { audio, context, harness };
+  }
+
+  it("agrupa las hojas del mundo bajo sfx y sfx bajo master", () => {
+    const { audio, context } = unlockedSystem();
+
+    const master = audio.getBus("master");
+    const sfx = audio.getBus("sfx");
+    const weapons = audio.getBus("weapons");
+
+    const limiter = nodesOfKind(context, "compressor")[0];
+    expect(limiter).toBeDefined();
+    expect(isConnected(weapons?.gain, sfx?.gain)).toBe(true);
+    expect(isConnected(sfx?.gain, master?.gain)).toBe(true);
+    expect(isConnected(master?.gain, limiter)).toBe(true);
+    expect(isConnected(limiter, context.destination)).toBe(true);
+    // La musica cuelga del master, no de sfx: bajar "efectos" no la toca.
+    expect(isConnected(audio.getBus("music")?.gain, master?.gain)).toBe(true);
+    expect(pathExists(weapons?.gain, context.destination)).toBe(true);
+  });
+
+  it("el camino aux replica el arbol de faders", () => {
+    const { audio } = unlockedSystem();
+
+    expect(
+      isConnected(audio.getBus("weapons")?.auxGain, audio.getBus("sfx")?.auxGain),
+    ).toBe(true);
+    expect(
+      isConnected(audio.getBus("sfx")?.auxGain, audio.getBus("master")?.auxGain),
+    ).toBe(true);
+  });
+
+  it("aplica la curva perceptual y persiste la posicion del fader", () => {
+    const { audio, harness } = unlockedSystem();
+
+    audio.setVolume("music", 0.5);
+
+    // Se guarda la posicion (0.5), suena a la ganancia de la curva (0.25).
+    expect(paramValue(audio.getBus("music")?.gain, "gain")).toBeCloseTo(0.25);
+    expect(audio.getVolume("music")).toBeCloseTo(0.5);
+    const saved = harness.storage.get("hl3.audio.mix.v2");
+    expect(JSON.parse(saved ?? "{}")).toMatchObject({ music: 0.5 });
+  });
+
+  it("el aux sigue al fader (si no, bajar el bus no bajaria su reverb)", () => {
+    const { audio } = unlockedSystem();
+
+    audio.setVolume("weapons", 0.5);
+
+    const weapons = audio.getBus("weapons");
+    expect(paramValue(weapons?.auxGain, "gain")).toBeCloseTo(
+      paramValue(weapons?.gain, "gain"),
+    );
+  });
+
+  it("el ducking atenua sin pisar el volumen del usuario", () => {
+    const { audio } = unlockedSystem();
+    audio.setVolume("ambience", 1);
+
+    audio.duck(["ambience"], 0.5, 0);
+    expect(paramValue(audio.getBus("ambience")?.gain, "gain")).toBeCloseTo(0.5);
+    expect(paramValue(audio.getBus("ambience")?.auxGain, "gain")).toBeCloseTo(0.5);
+
+    audio.unduck(["ambience"], 0);
+    expect(paramValue(audio.getBus("ambience")?.gain, "gain")).toBeCloseTo(1);
+    expect(audio.getVolume("ambience")).toBeCloseTo(1);
+  });
+
+  it("carga los volumenes guardados al construir", () => {
+    installWebAudioHarness({
+      "hl3.audio.mix.v2": JSON.stringify({ weapons: 0.3 }),
+    });
+    const audio = new AudioSystem();
+
+    expect(audio.getVolume("weapons")).toBeCloseTo(0.3);
+  });
+
+  it("migra el esquema viejo de ganancia lineal a posicion de fader", () => {
+    const harness = installWebAudioHarness({
+      "hl3.audio.volumes": JSON.stringify({ master: 0.64, dialogue: 0.81 }),
+    });
+    const audio = new AudioSystem();
+
+    // El jugador conserva su volumen: sqrt revierte la curva nueva.
+    expect(audio.getVolume("master")).toBeCloseTo(0.8);
+    // `dialogue` se fusiono con la voz del traje HEV.
+    expect(audio.getVolume("voice")).toBeCloseTo(0.9);
+    expect(harness.storage.has("hl3.audio.volumes")).toBe(false);
+    expect(harness.storage.has("hl3.audio.mix.v2")).toBe(true);
   });
 });

@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "nav:bake": "tsx scripts/nav-bake.ts",
+    "audio:levels": "tsx scripts/audio-loudness.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

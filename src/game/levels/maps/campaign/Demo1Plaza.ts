@@ -1,4 +1,5 @@
 import type { StaticBoxDefinition } from '@game/levels/LevelDefinition';
+import { MusicTracks } from '@game/config/audio.config';
 import { createMap } from '@game/levels/builders/MapCreator';
 import {
   cargoContainer,
@@ -73,6 +74,7 @@ const map = createMap({
       'footsteps.hl2.concrete4',
     ],
     soundscape: 'outdoor',
+    music: MusicTracks.cityAmbient,
   },
 })
   .ground({ size: [220, 320], material: 'asphalt', boundary: { height: 12, material: 'wall' } })

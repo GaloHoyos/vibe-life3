@@ -9,6 +9,7 @@ import type { NpcCalloutKind, UiSoundCue } from "@game/config/audio.config";
 import type { ChargerKind } from "@game/config/items.config";
 import type { DifficultyLevel } from "@game/config/difficulty.config";
 import type { DamageType } from "@shared/types/lifecycle";
+import type { SurfaceType } from "@shared/types/Surface";
 import type { ActivatorRef } from "@game/script/ActivatorRef";
 import type {
   VehicleArchetypeId,
@@ -136,6 +137,12 @@ export interface GameEventMap {
       | "player"
       | "ragdoll"
       | "weaponPickup";
+    /**
+     * Material físico del blanco, tomado del collider. Es lo que hace que una
+     * bala contra chapa no suene igual que contra hormigón; sin esto el audio
+     * sólo sabe *qué clase* de cosa golpeó, no de qué está hecha.
+     */
+    surface?: SurfaceType;
     point: Vector3;
     normal?: Vector3;
     damage: number;

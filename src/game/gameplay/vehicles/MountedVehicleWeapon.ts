@@ -125,6 +125,7 @@ export class MountedVehicleWeapon {
       weaponName,
       targetId: hit.metadata?.ownerId ?? hit.metadata?.id,
       surfaceKind: hit.metadata?.kind,
+      surface: hit.metadata?.surface,
       point: hit.point.clone(),
       normal: hit.normal?.clone(),
       damage: damageable ? this.preset.damage : 0,

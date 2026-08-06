@@ -1,18 +1,25 @@
-import type { AudioSystem } from "@engine/audio/core/AudioSystem";
 import type { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
+import type { AcousticSpaceSystem } from "@engine/audio/spatial/AcousticSpaceSystem";
 import {
-  AudioDspPresets,
   DefaultSoundscapeId,
   Soundscapes,
   type SoundscapeId,
 } from "@game/config/audio.config";
 
+/**
+ * Ata un soundscape del nivel a sus dos efectos: los lechos de ambiente y el
+ * override de reverb.
+ *
+ * El override es opcional a propósito: la reverb la deriva la sonda acústica de
+ * la geometría real, y el soundscape solo corrige donde la medición se queda
+ * corta.
+ */
 export class SoundscapeSystem {
   private activeId: SoundscapeId | null = null;
   private fallbackAmbiences: readonly string[] = [];
 
   constructor(
-    private readonly audio: AudioSystem,
+    private readonly acoustics: AcousticSpaceSystem,
     private readonly ambience: BackgroundAmbienceSystem,
   ) {}
 
@@ -32,7 +39,9 @@ export class SoundscapeSystem {
       "ambiences" in definition ? definition.ambiences : this.fallbackAmbiences;
 
     if (this.activeId !== soundscapeId) {
-      this.audio.setAudioEnvironment(AudioDspPresets[definition.dsp], fadeSeconds);
+      this.acoustics.setOverride(
+        "reverb" in definition ? definition.reverb : null,
+      );
       this.activeId = soundscapeId;
     }
     this.ambience.replace(ambiences, fadeSeconds);
@@ -41,7 +50,7 @@ export class SoundscapeSystem {
   clear(): void {
     this.activeId = null;
     this.fallbackAmbiences = [];
-    this.audio.setAudioEnvironment(AudioDspPresets.none, 0.5);
+    this.acoustics.clear();
     this.ambience.stop();
   }
 }
