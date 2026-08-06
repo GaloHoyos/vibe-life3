@@ -27,7 +27,7 @@ export class UISoundSystem {
 
     eventBus.on("player.pickup.weapon", () => {
       if (this.sounds.hasSound("weapons.pickup")) {
-        this.sounds.play("weapons.pickup", { bus: "sfx" });
+        this.sounds.play("weapons.pickup", { bus: "world" });
       }
     });
 

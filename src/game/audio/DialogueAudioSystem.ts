@@ -19,7 +19,7 @@ export class DialogueAudioSystem implements Disposable {
   ) {
     this.disposeShow = eventBus.on("dialogue.show", ({ duration }) => {
       if (this.sounds.hasSound("dialogue.line")) {
-        this.sounds.play("dialogue.line", { bus: "dialogue" });
+        this.sounds.play("dialogue.line", { bus: "voice" });
       }
       this.duckFor(duration);
     });

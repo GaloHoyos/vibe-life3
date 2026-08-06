@@ -2,6 +2,7 @@
 import { AudioSystem } from "@engine/audio/core/AudioSystem";
 import { PositionalSoundManager } from "@engine/audio/core/PositionalSoundManager";
 import { SoundManager } from "@engine/audio/core/SoundManager";
+import { SpatialAudioSystem } from "@engine/audio/spatial/SpatialAudioSystem";
 import { Gizmos } from "@engine/debug/Gizmos";
 import { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import { Raycast } from "@engine/physics/Raycast";
@@ -95,14 +96,19 @@ export class Engine {
     c.register(EngineTokens.Environment, new EnvironmentSystem(renderer.renderer));
 
     const physics = c.register(EngineTokens.Physics, new PhysicsWorld());
-    c.register(EngineTokens.Raycast, new Raycast(physics));
+    const raycast = c.register(EngineTokens.Raycast, new Raycast(physics));
     c.register(EngineTokens.Input, new Input(renderer.canvas));
 
     const audio = c.register(EngineTokens.Audio, new AudioSystem());
     const sound = c.register(EngineTokens.Sound, new SoundManager(audio));
+    const spatial = c.register(
+      EngineTokens.SpatialAudio,
+      new SpatialAudioSystem(audio, sound, camera.camera),
+    );
+    spatial.setRaycast(raycast);
     c.register(
       EngineTokens.PositionalSound,
-      new PositionalSoundManager(audio, sound, scene.scene, camera.camera),
+      new PositionalSoundManager(spatial),
     );
 
     c.register(EngineTokens.Gizmos, new Gizmos(scene.scene));

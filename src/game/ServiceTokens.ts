@@ -1,6 +1,8 @@
 import type { EventBus } from "@engine/core/EventBus";
 import { ServiceToken } from "@engine/core/ServiceContainer";
 import type { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
+import type { AcousticSpaceSystem } from "@engine/audio/spatial/AcousticSpaceSystem";
+import type { AmbientSoundSystem } from "@game/audio/AmbientSoundSystem";
 import type { FootstepSoundSystem } from "@engine/audio/systems/FootstepSoundSystem";
 import type { MusicManager } from "@engine/audio/core/MusicManager";
 import type { CharacterFactory } from "@game/characters/CharacterFactory";
@@ -90,6 +92,8 @@ export const GameTokens = {
     "BackgroundAmbienceSystem",
   ),
   Soundscapes: new ServiceToken<SoundscapeSystem>("SoundscapeSystem"),
+  Acoustics: new ServiceToken<AcousticSpaceSystem>("AcousticSpaceSystem"),
+  AmbientSounds: new ServiceToken<AmbientSoundSystem>("AmbientSoundSystem"),
   Music: new ServiceToken<MusicManager>("MusicManager"),
   Footsteps: new ServiceToken<FootstepSoundSystem>("FootstepSoundSystem"),
   WeaponSounds: new ServiceToken<WeaponSoundSystem>("WeaponSoundSystem"),

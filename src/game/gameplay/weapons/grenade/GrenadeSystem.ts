@@ -507,7 +507,6 @@ export class GrenadeSystem implements Disposable {
       refDistance: 6,
       maxDistance: params.soundMaxDistance ?? 60,
       rolloffFactor: 1.1,
-      volume: 1,
       bus: "weapons",
     });
     this.vfx.explosion(point, { scale: params.radius, color: params.color });

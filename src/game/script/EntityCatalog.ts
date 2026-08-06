@@ -199,6 +199,14 @@ export const EntityCatalog: Record<EntityClassId, EntityIODescriptor> = {
     outputs: [],
     inputs: [{ id: 'Activate', label: 'Activar' }],
   },
+  ambientSound: {
+    outputs: [],
+    inputs: [
+      { id: 'PlaySound', label: 'Reproducir' },
+      { id: 'StopSound', label: 'Detener' },
+      { id: 'Toggle', label: 'Alternar' },
+    ],
+  },
   npcSpawner: {
     outputs: [
       { id: 'OnSpawned', label: 'Al spawnear' },

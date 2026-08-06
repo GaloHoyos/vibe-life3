@@ -7,7 +7,8 @@
  */
 
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
-import type { AudioEnvironmentPreset } from "@engine/audio/core/AudioSystem";
+import type { ReverbSpace } from "@engine/audio/dsp/ReverbRack";
+import type { AcousticResponseTuning } from "@engine/audio/spatial/AcousticResponse";
 import type { SurfaceType } from "@shared/types/Surface";
 
 export type SoundRef = string | readonly string[];
@@ -32,15 +33,6 @@ export type HevSuitSoundCue =
   | "hazardVoid"
   | "flatline";
 
-export type AudioDspPresetId =
-  | "none"
-  | "outdoor"
-  | "smallRoom"
-  | "concreteRoom"
-  | "metalTunnel"
-  | "warehouse"
-  | "citadelChamber";
-
 export type SoundscapeId =
   | "outdoor"
   | "wasteland"
@@ -52,95 +44,84 @@ export type SoundscapeId =
   | "citadelChamber";
 
 export interface SoundscapeDefinition {
-  readonly dsp: AudioDspPresetId;
   readonly ambiences?: readonly string[];
   readonly fadeSeconds?: number;
+  /**
+   * Override sobre lo que mide la sonda acústica. Solo para cuando la
+   * geometría no cuenta toda la historia (una cámara de la Ciudadela es más
+   * grande de lo que alcanza a medir un rayo). Omitirlo es lo normal.
+   */
+  readonly reverb?: Partial<ReverbSpace>;
 }
 
-const reflectiveSends = {
-  weapons: 1,
-  enemies: 0.9,
-  sfx: 0.85,
-  footsteps: 0.65,
-  ambience: 0.08,
-} as const;
+/**
+ * Cuánto absorbe cada superficie, 0 = espejo acústico, 1 = anecoico. Alimenta
+ * el tono y la duración del retorno según contra qué rebota el sonido.
+ */
+export const SurfaceAbsorption: Readonly<Record<SurfaceType, number>> = {
+  metal: 0.05,
+  tile: 0.08,
+  concrete: 0.12,
+  wood: 0.22,
+  gravel: 0.4,
+  sand: 0.5,
+  dirt: 0.5,
+  mud: 0.6,
+  grass: 0.65,
+  snow: 0.8,
+};
 
-export const AudioDspPresets = {
-  none: {
-    reverb: { duration: 0.05, decay: 1, wet: 0 },
-    echo: { delay: 0, feedback: 0, wet: 0 },
-    sends: {},
-  },
-  outdoor: {
-    reverb: { duration: 0.35, decay: 3.8, wet: 0.035, preDelay: 0.01, tone: 8500 },
-    echo: { delay: 0, feedback: 0, wet: 0 },
-    sends: { weapons: 0.25, enemies: 0.2, sfx: 0.18, footsteps: 0.1, ambience: 0.02 },
-  },
-  smallRoom: {
-    reverb: { duration: 0.45, decay: 2.2, wet: 0.18, preDelay: 0.012, tone: 9500 },
-    echo: { delay: 0.055, feedback: 0.16, wet: 0.045, tone: 5200 },
-    sends: reflectiveSends,
-  },
-  concreteRoom: {
-    reverb: { duration: 0.9, decay: 2.6, wet: 0.24, preDelay: 0.018, tone: 7200 },
-    echo: { delay: 0.09, feedback: 0.22, wet: 0.075, tone: 4300 },
-    sends: reflectiveSends,
-  },
-  metalTunnel: {
-    reverb: { duration: 1.35, decay: 2.9, wet: 0.28, preDelay: 0.025, tone: 6200 },
-    echo: { delay: 0.145, feedback: 0.42, wet: 0.18, tone: 3200 },
-    sends: { ...reflectiveSends, ambience: 0.12, footsteps: 0.75 },
-  },
-  warehouse: {
-    reverb: { duration: 2.1, decay: 3.3, wet: 0.26, preDelay: 0.035, tone: 6800 },
-    echo: { delay: 0.12, feedback: 0.24, wet: 0.08, tone: 3900 },
-    sends: { ...reflectiveSends, ambience: 0.1 },
-  },
-  citadelChamber: {
-    reverb: { duration: 2.8, decay: 3.9, wet: 0.34, preDelay: 0.045, tone: 5200 },
-    echo: { delay: 0.18, feedback: 0.36, wet: 0.14, tone: 2400 },
-    sends: { ...reflectiveSends, ambience: 0.14, footsteps: 0.7 },
-  },
-} as const satisfies Record<AudioDspPresetId, AudioEnvironmentPreset>;
+/**
+ * Rango del estimador: de un baño a un hangar. Fuera de estos límites la
+ * respuesta satura en vez de extrapolar.
+ */
+export const AcousticResponse: AcousticResponseTuning = {
+  minVolume: 30,
+  maxVolume: 60_000,
+  minDuration: 0.35,
+  maxDuration: 2.8,
+  minWet: 0.1,
+  maxWet: 0.42,
+  absorbentToneHz: 4_200,
+  reflectiveToneHz: 9_500,
+  maxEchoFeedback: 0.42,
+  maxEchoWet: 0.16,
+};
 
 export const Soundscapes = {
   outdoor: {
-    dsp: "outdoor",
     fadeSeconds: 2,
   },
   wasteland: {
-    dsp: "outdoor",
     ambiences: ["background.hl2.wind.wasteland", "background.hl2.wind.med1"],
     fadeSeconds: 2.5,
   },
   lab: {
-    dsp: "smallRoom",
     ambiences: ["background.hl2.labs.machineMoving", "background.hl2.machines.labLoop"],
     fadeSeconds: 1.5,
   },
   factory: {
-    dsp: "warehouse",
     ambiences: ["background.hl2.atmosphere.cityRumble", "background.hl2.machines.wallAmbient"],
     fadeSeconds: 2,
   },
   metalTunnel: {
-    dsp: "metalTunnel",
     ambiences: ["background.hl2.canals.tunnelWind", "background.hl2.canals.generator"],
     fadeSeconds: 1.2,
+    // Chapa sobre chapa: el eco del túnel es más largo de lo que da su volumen.
+    reverb: { echoFeedback: 0.5, toneHz: 6_200 },
   },
   smallInterior: {
-    dsp: "smallRoom",
     fadeSeconds: 1,
   },
   warehouse: {
-    dsp: "warehouse",
     ambiences: ["background.hl2.atmosphere.undergroundHall"],
     fadeSeconds: 2,
   },
   citadelChamber: {
-    dsp: "citadelChamber",
     ambiences: ["background.hl2.machines.combineTerminal", "background.hl2.atmosphere.undercity"],
     fadeSeconds: 2.5,
+    // La cámara sigue más allá de lo que alcanza a medir la sonda.
+    reverb: { duration: 3.4, decay: 1.6, wet: 0.4, toneHz: 5_200 },
   },
 } as const satisfies Record<SoundscapeId, SoundscapeDefinition>;
 

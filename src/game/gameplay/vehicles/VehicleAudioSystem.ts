@@ -20,22 +20,23 @@ const audioUrl = (file: string): string =>
   new URL(`../../assets/vehicles/audio/${file}`, import.meta.url).href;
 
 const VehicleClips: readonly AudioClipDefinition[] = [
-  clip("vehicles.buggy.engine", "buggy-engine-loop.wav", true, 0.8),
-  clip("vehicles.buggy.transmission", "buggy-transmission-loop.wav", true, 0.52),
-  clip("vehicles.buggy.skid", "buggy-skid-loop.wav", true, 0.48),
-  clip("vehicles.airboat.engine", "airboat-engine-loop.wav", true, 0.72),
-  clip("vehicles.airboat.fan", "airboat-fan-loop.wav", true, 0.74),
-  clip("vehicles.airboat.water", "airboat-water-loop.wav", true, 0.58),
-  clip("vehicles.helicopter.rotor", "helicopter-rotor-loop.wav", true, 0.86),
-  clip("vehicles.helicopter.cabin", "helicopter-cabin-loop.wav", true, 0.46),
-  clip("vehicles.combineGlider.engine", "combine-glider-engine-loop.wav", true, 0.72),
-  clip("vehicles.combineGlider.hover", "combine-glider-hover-loop.wav", true, 0.62),
-  clip("vehicles.combineSwimmer.breath", "combine-swimmer-breath-loop.wav", true, 0.78),
-  clip("vehicles.combineSwimmer.graft", "combine-swimmer-graft-loop.wav", true, 0.6),
-  clip("vehicles.combineSwimmer.strain", "combine-swimmer-strain-loop.wav", true, 0.66),
-  clip("vehicles.alarm", "vehicle-alarm-loop.wav", true, 0.55),
-  clip("vehicles.crash", "vehicle-crash.wav", false, 0.95),
-  clip("vehicles.damage", "vehicle-damage-hit.wav", false, 0.72),
+  clip("vehicles.buggy.engine", "buggy-engine-loop.wav", true),
+  clip("vehicles.buggy.transmission", "buggy-transmission-loop.wav", true),
+  clip("vehicles.buggy.skid", "buggy-skid-loop.wav", true),
+  clip("vehicles.airboat.engine", "airboat-engine-loop.wav", true),
+  clip("vehicles.airboat.fan", "airboat-fan-loop.wav", true),
+  clip("vehicles.airboat.water", "airboat-water-loop.wav", true),
+  clip("vehicles.helicopter.rotor", "helicopter-rotor-loop.wav", true),
+  // La cabina es la capa interior: acompaña al rotor, no compite con él.
+  clip("vehicles.helicopter.cabin", "helicopter-cabin-loop.wav", true, -6),
+  clip("vehicles.combineGlider.engine", "combine-glider-engine-loop.wav", true),
+  clip("vehicles.combineGlider.hover", "combine-glider-hover-loop.wav", true),
+  clip("vehicles.combineSwimmer.breath", "combine-swimmer-breath-loop.wav", true),
+  clip("vehicles.combineSwimmer.graft", "combine-swimmer-graft-loop.wav", true),
+  clip("vehicles.combineSwimmer.strain", "combine-swimmer-strain-loop.wav", true),
+  clip("vehicles.alarm", "vehicle-alarm-loop.wav", true),
+  clip("vehicles.crash", "vehicle-crash.wav", false, 3),
+  clip("vehicles.damage", "vehicle-damage-hit.wav", false),
 ];
 
 /**
@@ -245,15 +246,16 @@ function clip(
   id: string,
   file: string,
   loop: boolean,
-  volume: number,
+  trimDb?: number,
 ): AudioClipDefinition {
   return {
     id,
     path: audioUrl(file),
+    source: `vehicles/${file}`,
     loop,
-    volume,
     bus: "vehicles",
-    category: "vehicles",
+    role: loop ? "engineLoop" : "impact",
+    trimDb,
   };
 }
 

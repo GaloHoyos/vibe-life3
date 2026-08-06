@@ -83,8 +83,18 @@ export function fakeSoundManager(soundIds: Iterable<string> = []): FakeSoundMana
     fadeOut: (id: string, duration?: number) => {
       fadedOut.push({ id, duration: duration ?? 1 });
     },
-    stopAllByCategory: () => undefined,
     setBusVolume: () => undefined,
+    getClip: (id: string) =>
+      available.has(id)
+        ? {
+            id,
+            path: `${id}.wav`,
+            source: `${id}.wav`,
+            loop: false,
+            bus: "world" as const,
+            role: "impact" as const,
+          }
+        : null,
     getBuffer: async () => null,
   } as unknown as FakeSoundManager;
 }

@@ -1,6 +1,7 @@
 ﻿import { Color, Vector3 } from "three";
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
+import { AcousticSpaceSystem } from "@engine/audio/spatial/AcousticSpaceSystem";
 import { FootstepSoundSystem } from "@engine/audio/systems/FootstepSoundSystem";
 import { MusicManager } from "@engine/audio/core/MusicManager";
 import type { Engine } from "@engine/core/Engine";
@@ -12,11 +13,18 @@ import { Raycast } from "@engine/physics/Raycast";
 import { CharacterFactory } from "@game/characters/CharacterFactory";
 import type { NpcRuntimeServices } from "@game/characters/CharacterFactory";
 import { CharacterPresets, isFlyingCharacter } from "@game/characters/CharacterPresets";
-import { FootstepsConfig, SurfaceFootsteps } from "@game/config/audio.config";
+import {
+  AcousticResponse,
+  FootstepsConfig,
+  SurfaceAbsorption,
+  SurfaceFootsteps,
+} from "@game/config/audio.config";
 import { Dialogue, MenuStrings } from "@game/config/strings";
 import { DialogueAudioSystem } from "@game/audio/DialogueAudioSystem";
 import { EnemySoundSystem } from "@game/audio/EnemySoundSystem";
 import { HevSuitSoundSystem } from "@game/audio/HevSuitSoundSystem";
+import { AmbientSoundSystem } from "@game/audio/AmbientSoundSystem";
+import { BuildingAcousticSpaces } from "@game/audio/BuildingAcousticSpaces";
 import { SoundscapeSystem } from "@game/audio/SoundscapeSystem";
 import { UISoundSystem } from "@game/audio/UISoundSystem";
 import { WeaponSoundSystem } from "@game/audio/WeaponSoundSystem";
@@ -34,6 +42,7 @@ import { AiTraceModule } from "@game/ui/overlay/debug/modules/AiTraceModule";
 import { AiViewModule } from "@game/ui/overlay/debug/modules/AiViewModule";
 import { NpcsModule } from "@game/ui/overlay/debug/modules/NpcsModule";
 import { PlayerModule } from "@game/ui/overlay/debug/modules/PlayerModule";
+import { AudioModule } from "@game/ui/overlay/debug/modules/AudioModule";
 import { SceneModule } from "@game/ui/overlay/debug/modules/SceneModule";
 import { StatsModule } from "@game/ui/overlay/debug/modules/StatsModule";
 import { WeaponsModule } from "@game/ui/overlay/debug/modules/WeaponsModule";
@@ -515,8 +524,20 @@ export class Game {
     const positionalSound = s.resolve(EngineTokens.PositionalSound);
     const ambience = new BackgroundAmbienceSystem(sound);
 
+    const acoustics = new AcousticSpaceSystem(
+      audio,
+      s.resolve(EngineTokens.SpatialAudio),
+      { absorption: SurfaceAbsorption, response: AcousticResponse },
+    );
+    acoustics.setRaycast(s.resolve(EngineTokens.Raycast));
+    s.register(GameTokens.Acoustics, acoustics);
+
     s.register(GameTokens.BackgroundAmbience, ambience);
-    s.register(GameTokens.Soundscapes, new SoundscapeSystem(audio, ambience));
+    s.register(GameTokens.Soundscapes, new SoundscapeSystem(acoustics, ambience));
+    s.register(
+      GameTokens.AmbientSounds,
+      new AmbientSoundSystem(sound, positionalSound),
+    );
     s.register(GameTokens.Music, new MusicManager(sound));
     s.register(GameTokens.Footsteps, new FootstepSoundSystem(sound));
     s.register(GameTokens.WeaponSounds, new WeaponSoundSystem(eventBus, sound));
@@ -900,6 +921,15 @@ export class Game {
           .resolve(GameTokens.Soundscapes)
           .activate(id, this.currentLevel.audio.ambiences);
       },
+      playAmbientSound: (id) => {
+        this.engine.services.resolve(GameTokens.AmbientSounds).play(id);
+      },
+      stopAmbientSound: (id) => {
+        this.engine.services.resolve(GameTokens.AmbientSounds).stop(id);
+      },
+      toggleAmbientSound: (id) => {
+        this.engine.services.resolve(GameTokens.AmbientSounds).toggle(id);
+      },
       endLevel: (landmark) => {
         void this.goToNextLevel(landmark, this.playerActionOrigin());
       },
@@ -941,6 +971,10 @@ export class Game {
       { logic, doors: level.doors, triggers: level.triggers },
       this.buildWorldEntityHooks(),
     );
+
+    this.engine.services
+      .resolve(GameTokens.AmbientSounds)
+      .load(logic.filter((def) => def.kind === "ambientSound"));
 
     const companion = new CompanionSystem(entityIO, this.npcDirectory, eventBus);
     this.companionSystem = companion;
@@ -2424,6 +2458,12 @@ export class Game {
     debugMenu.register(new AiViewModule(scene.scene, raycast));
     debugMenu.register(new AiTraceModule(eventBus));
     debugMenu.register(new SceneModule(scene.scene));
+    debugMenu.register(
+      new AudioModule(
+        s.resolve(EngineTokens.Audio),
+        s.resolve(GameTokens.Acoustics),
+      ),
+    );
     s.register(GameTokens.DebugMenu, debugMenu);
 
     s.register(
@@ -2836,6 +2876,10 @@ export class Game {
     entityIO.update(time.delta);
     checkpointSystem.update(playerPosition);
     hazardVolumes.update(playerPosition, time.delta);
+    // Después de que la cámara quedó en su pose del frame: el listener y el
+    // paneo de cada voz salen de ahí.
+    s.resolve(EngineTokens.SpatialAudio).update();
+    s.resolve(GameTokens.Acoustics).update(time.delta, camera.camera.position);
     s.resolve(GameTokens.HUD).updateObjective(camera.camera);
     subtitles.update(time.delta);
     weaponEffects.update(time.delta);
@@ -3310,6 +3354,7 @@ export class Game {
     services.resolve(GameTokens.Portals).clear();
     explosiveBarrels.clear();
     vfx.clear();
+    services.resolve(GameTokens.AmbientSounds).clear();
     services.resolve(EngineTokens.PositionalSound).clear();
     services.resolve(GameTokens.EnemySounds).clearActors();
     interactSystem.clear();
@@ -3351,6 +3396,16 @@ export class Game {
     this.buildingRegistry = loaded.buildingRegistry;
     this.navigation = loaded.navigation;
     this.navigationRequests = loaded.navigationRequests;
+    // Los edificios aportan la noción de "otro cuarto", que un rayo no
+    // distingue de "detrás de una columna". Sin edificios manda la sonda sola.
+    services.resolve(GameTokens.Acoustics).setSpaceProvider(
+      this.buildingRegistry
+        ? new BuildingAcousticSpaces(this.buildingRegistry, {
+            isOpen: (doorId) =>
+              this.doors.find((door) => door.id === doorId)?.isOpen() ?? true,
+          })
+        : null,
+    );
 
     this.setupEntityIO(level, entityIO, eventBus);
 

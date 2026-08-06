@@ -26,17 +26,36 @@ export interface OptionsMenuCallbacks {
 interface VolumeRow {
   bus: AudioBusName;
   label: string;
-  defaultValue: number;
 }
 
+/** Faders principales: los cinco grupos del mixer. */
 const AUDIO_BUSES: VolumeRow[] = [
-  { bus: "master", label: "Volumen general", defaultValue: 100 },
-  { bus: "music", label: "Volumen musica", defaultValue: 65 },
-  { bus: "ambience", label: "Volumen ambiente", defaultValue: 75 },
-  { bus: "sfx", label: "Volumen efectos", defaultValue: 85 },
-  { bus: "vehicles", label: "Volumen vehículos", defaultValue: 82 },
-  { bus: "dialogue", label: "Volumen dialogo", defaultValue: 80 },
+  { bus: "master", label: "Volumen general" },
+  { bus: "music", label: "Musica" },
+  { bus: "sfx", label: "Efectos" },
+  { bus: "voice", label: "Voces" },
+  { bus: "ambience", label: "Ambiente" },
 ];
+
+/** Submix dentro de "Efectos", plegado: control fino para quien lo busque. */
+const AUDIO_SUBMIX: VolumeRow[] = [
+  { bus: "weapons", label: "Armas" },
+  { bus: "enemies", label: "Enemigos" },
+  { bus: "vehicles", label: "Vehículos" },
+  { bus: "footsteps", label: "Pasos" },
+  { bus: "world", label: "Objetos y entorno" },
+  { bus: "ui", label: "Interfaz" },
+];
+
+function volumeRow(row: VolumeRow): string {
+  return `
+    <label class="hl2-option">
+      <span>${row.label}</span>
+      <input type="range" min="0" max="100" value="0" data-bus="${row.bus}" />
+      <strong class="hl2-option__value" data-value="${row.bus}">0</strong>
+    </label>
+  `;
+}
 
 export class OptionsMenu implements Disposable {
   readonly element = document.createElement("section");
@@ -62,15 +81,11 @@ export class OptionsMenu implements Disposable {
         <button class="hl2-tab" data-tab="game" type="button">JUEGO</button>
       </div>
       <div class="hl2-options" data-panel="audio">
-        ${AUDIO_BUSES.map(
-          (row) => `
-            <label class="hl2-option">
-              <span>${row.label}</span>
-              <input type="range" min="0" max="100" value="${row.defaultValue}" data-bus="${row.bus}" />
-              <strong class="hl2-option__value" data-value="${row.bus}">${row.defaultValue}</strong>
-            </label>
-          `,
-        ).join("")}
+        ${AUDIO_BUSES.map(volumeRow).join("")}
+        <details class="hl2-option__group">
+          <summary>Mezcla avanzada</summary>
+          ${AUDIO_SUBMIX.map(volumeRow).join("")}
+        </details>
       </div>
       <div class="hl2-options is-hidden" data-panel="video">
         <label class="hl2-option">
@@ -309,6 +324,8 @@ export class OptionsMenu implements Disposable {
       const label = this.element.querySelector(
         `.hl2-option__value[data-value="${bus}"]`,
       ) as HTMLElement;
+      // El slider guarda posición de fader, no ganancia: `AudioSystem` aplica
+      // la curva perceptual, así que acá el porcentaje es directo.
       const currentValue = Math.round(callbacks.getVolume(bus) * 100);
       input.value = String(currentValue);
       label.textContent = String(currentValue);

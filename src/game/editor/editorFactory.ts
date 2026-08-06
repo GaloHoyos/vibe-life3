@@ -168,6 +168,15 @@ function defaultLogicDef(kind: LogicEntityKind, id: string, at: VectorTuple): Lo
       return { kind, id, name: id, text: 'Objetivo', connections: [] };
     case 'soundscape':
       return { kind, id, name: id, soundscape: DefaultSoundscapeId, connections: [] };
+    case 'ambientSound':
+      return {
+        kind,
+        id,
+        name: id,
+        sound: 'background.hl2.machines.labLoop',
+        position: at,
+        connections: [],
+      };
     case 'npcSpawner':
       return { kind, id, name: id, npcs: [], connections: [] };
     case 'levelAction':

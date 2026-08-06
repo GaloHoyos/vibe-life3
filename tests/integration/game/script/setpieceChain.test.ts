@@ -58,6 +58,9 @@ function harness() {
     runLevelAction: () => {},
     updateObjective: (text) => calls.objectives.push(text),
     activateSoundscape: () => {},
+    playAmbientSound: () => {},
+    stopAmbientSound: () => {},
+    toggleAmbientSound: () => {},
     endLevel: () => {
       calls.endLevel += 1;
     },
