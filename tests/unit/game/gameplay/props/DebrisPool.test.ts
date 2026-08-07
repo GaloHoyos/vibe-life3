@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import RAPIER from "@dimforge/rapier3d-compat";
 import { BoxGeometry, MeshStandardMaterial, Quaternion, Scene, Vector3 } from "three";
 import type { PropChunkSource } from "@game/assets/props/PropAssetRegistry";
 
@@ -163,6 +164,33 @@ describe("DebrisPool", () => {
     // No aparecen en el centro: cada uno nace en su sitio original.
     expect(xs[0]).toBeCloseTo(ORIGIN.x - 0.4, 4);
     expect(xs[1]).toBeCloseTo(ORIGIN.x + 0.4, 4);
+  });
+
+  it("los fragmentos autorados acompañan la escala de la instancia", async () => {
+    const { physics, pool } = await makePool();
+    // La geometría de los fragmentos es compartida por el pack, siempre en
+    // tamaño base: un prop escalado tiene que escalarla al romperse.
+    const chunks = [makeChunk([0.4, 0, 0], [1, 0, 0], 1)];
+
+    pool.spawn({
+      count: 1,
+      origin: ORIGIN,
+      rotation: new Quaternion(),
+      bounds: [2, 2, 2],
+      mass: 40,
+      surface: "wood",
+      inheritedVelocity: new Vector3(),
+      burstSpeed: 3,
+      seed: 3,
+      chunks,
+      scale: 2,
+    });
+
+    const body = physics.getBodiesByKind("prop")[0]!;
+    expect(body.translation().x).toBeCloseTo(ORIGIN.x + 0.8, 4);
+    const shape = body.collider(0).shape;
+    expect(shape.type).toBe(RAPIER.ShapeType.Cuboid);
+    expect((shape as RAPIER.Cuboid).halfExtents.x).toBeCloseTo(0.2, 4);
   });
 
   it("con coreSurvives el pedazo mas grande se queda en el lugar", async () => {

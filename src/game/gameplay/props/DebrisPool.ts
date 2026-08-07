@@ -53,6 +53,12 @@ export interface DebrisSpawnRequest {
   readonly seed: number;
   /** Fragmentos autorados del asset. Vacío = cajas de reserva. */
   readonly chunks?: readonly PropChunkSource[];
+  /**
+   * Escala de la instancia que se rompió. Los fragmentos son geometría
+   * compartida del pack, siempre en tamaño base, así que sin esto un barril
+   * gigante suelta pedazos de barril normal.
+   */
+  readonly scale?: number;
   /** El pedazo más grande se queda en el lugar en vez de salir despedido. */
   readonly coreSurvives?: boolean;
 }
@@ -143,6 +149,7 @@ export class DebrisPool implements Disposable {
     chunks: readonly PropChunkSource[],
   ): number {
     const impactLocal = this.impactDirection(request);
+    const scale = request.scale ?? 1;
     // Los pedazos del lado golpeado se sueltan primero: si el pool recorta, se
     // recorta lo que el jugador no está mirando.
     const ordered = [...chunks].sort(
@@ -156,6 +163,7 @@ export class DebrisPool implements Disposable {
 
       tmpOffset
         .set(chunk.center[0], chunk.center[1], chunk.center[2])
+        .multiplyScalar(scale)
         .applyQuaternion(request.rotation);
       const isCore = index === coreIndex;
       if (isCore) {
@@ -178,6 +186,7 @@ export class DebrisPool implements Disposable {
       this.slots.push(
         this.acquireChunk(
           chunk,
+          scale,
           tmpOffset.clone().add(request.origin),
           request.rotation,
           Math.max(0.15, request.mass * chunk.massFraction),
@@ -258,6 +267,7 @@ export class DebrisPool implements Disposable {
   /** Fragmento con la malla autorada del asset (geometría compartida). */
   private acquireChunk(
     chunk: PropChunkSource,
+    scale: number,
     position: Vector3,
     rotation: Quaternion,
     mass: number,
@@ -268,11 +278,12 @@ export class DebrisPool implements Disposable {
     const material = chunk.material.clone();
     material.transparent = true;
     const mesh = new Mesh(chunk.geometry, material);
+    if (scale !== 1) mesh.scale.setScalar(scale);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     return this.attach(
       mesh,
-      new Vector3(chunk.size[0], chunk.size[1], chunk.size[2]),
+      new Vector3(chunk.size[0], chunk.size[1], chunk.size[2]).multiplyScalar(scale),
       position,
       rotation,
       mass,

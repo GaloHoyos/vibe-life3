@@ -279,24 +279,49 @@ export class PropAssetRegistry implements Disposable {
 }
 
 /**
+ * `GLTFLoader` hace únicos los nombres del archivo: si un pack trae cuatro
+ * nodos `chunks`, el segundo entra como `chunks_1`. Como los props comparten
+ * GLB de a cuatro, sólo el primero de cada pack conserva sus nombres autorados
+ * y el resto llega sufijado, así que buscarlos por igualdad exacta encuentra
+ * un único prop por pack y deja a los otros tres sin visual, sin casco y con
+ * sus fragmentos a la vista.
+ */
+function isAuthoredNode(name: string, authored: string): boolean {
+  if (name === authored) return true;
+  if (!name.startsWith(`${authored}_`)) return false;
+  return /^\d+$/.test(name.slice(authored.length + 1));
+}
+
+function findAuthoredChild(root: Object3D, authored: string): Object3D | undefined {
+  return root.children.find((child) => isAuthoredNode(child.name, authored));
+}
+
+/**
  * Lee los cascos horneados del pack. El nodo `collider_*` es una malla sin
  * material cuyas posiciones son la nube de puntos del casco convexo; Rapier
  * recalcula el casco a partir de ellas.
  */
 export function readPackColliders(scene: Object3D): Map<PropArchetypeId, ColliderSpec> {
   const result = new Map<PropArchetypeId, ColliderSpec>();
+  const point = new Vector3();
   for (const id of Object.keys(PropArchetypes) as PropArchetypeId[]) {
     const root = scene.getObjectByName(PropArchetypes[id].asset.node);
     if (!root) continue;
+    root.updateWorldMatrix(false, true);
     const parts: ColliderSpec = root.children
       .filter((child): child is Mesh => child instanceof Mesh && child.name.startsWith("collider_"))
       .map((mesh) => {
         const attribute = mesh.geometry.getAttribute("position");
+        // Misma trampa que en los fragmentos: `meshopt` cuantiza las posiciones
+        // y deja la desnormalización en la matriz del nodo. La nube cruda daría
+        // un casco de hasta siete veces el tamaño del prop.
+        const matrix = relativeMatrix(mesh, root);
         const points = new Float32Array(attribute.count * 3);
         for (let index = 0; index < attribute.count; index += 1) {
-          points[index * 3] = attribute.getX(index);
-          points[index * 3 + 1] = attribute.getY(index);
-          points[index * 3 + 2] = attribute.getZ(index);
+          point.fromBufferAttribute(attribute, index).applyMatrix4(matrix);
+          points[index * 3] = point.x;
+          points[index * 3 + 1] = point.y;
+          points[index * 3 + 2] = point.z;
         }
         return { shape: { kind: "hull" as const, points } };
       });
@@ -310,9 +335,9 @@ export function readPackChunks(scene: Object3D): Map<PropArchetypeId, PropChunkS
   const result = new Map<PropArchetypeId, PropChunkSource[]>();
   for (const id of Object.keys(PropArchetypes) as PropArchetypeId[]) {
     const root = scene.getObjectByName(PropArchetypes[id].asset.node);
-    const chunksRoot = root?.getObjectByName("chunks");
-    if (!chunksRoot) continue;
-    root!.updateWorldMatrix(false, true);
+    const chunksRoot = root ? findAuthoredChild(root, "chunks") : undefined;
+    if (!root || !chunksRoot) continue;
+    root.updateWorldMatrix(false, true);
     const chunks: PropChunkSource[] = [];
     for (const child of chunksRoot.children) {
       const mesh = child instanceof Mesh ? child : findFirstMesh(child);
@@ -320,12 +345,11 @@ export function readPackChunks(scene: Object3D): Map<PropArchetypeId, PropChunkS
       const extras = (child.userData ?? {}) as { sector?: number[]; massFraction?: number };
       if (!Array.isArray(extras.sector) || typeof extras.massFraction !== "number") continue;
 
-      // `meshopt` cuantiza las posiciones y deja la desnormalización en la
-      // matriz del nodo: leer la geometría cruda daría coordenadas inventadas.
-      // Se hornea una vez por pack y queda centrada en su propio origen, que es
-      // como la necesita un cuerpo rígido.
+      // La geometría cruda tiene el mismo problema que el casco. Se hornea una
+      // vez por pack y queda centrada en su propio origen, que es como la
+      // necesita un cuerpo rígido.
       const geometry = mesh.geometry.clone();
-      geometry.applyMatrix4(relativeMatrix(mesh, root!));
+      geometry.applyMatrix4(relativeMatrix(mesh, root));
       geometry.computeBoundingBox();
       const box = geometry.boundingBox;
       if (!box) continue;
@@ -371,7 +395,7 @@ function selectVariant(root: Object3D, variant: number, total: number): void {
   for (const lodRoot of root.children) {
     if (!lodRoot.name.startsWith("visual_lod")) continue;
     for (const variantNode of [...lodRoot.children]) {
-      if (variantNode.name === `variant_${chosen}`) continue;
+      if (isAuthoredNode(variantNode.name, `variant_${chosen}`)) continue;
       lodRoot.remove(variantNode);
     }
   }
@@ -380,9 +404,7 @@ function selectVariant(root: Object3D, variant: number, total: number): void {
 /** Arma el `THREE.LOD` a partir de `visual_lod0/1`. */
 function installLod(root: Object3D): void {
   if (root.getObjectByName("runtime_visual_lods") instanceof LOD) return;
-  const levels = [0, 1].map((level) =>
-    root.children.find((child) => child.name === `visual_lod${level}`),
-  );
+  const levels = [0, 1].map((level) => findAuthoredChild(root, `visual_lod${level}`));
   if (levels.some((level) => level === undefined)) return;
 
   const lod = new LOD();
@@ -396,7 +418,9 @@ function installLod(root: Object3D): void {
   });
   // Los cascos y fragmentos no se dibujan: viven en el árbol sólo como datos.
   for (const child of [...root.children]) {
-    if (child.name.startsWith("collider_") || child.name === "chunks") child.visible = false;
+    if (child.name.startsWith("collider_") || isAuthoredNode(child.name, "chunks")) {
+      child.visible = false;
+    }
   }
   root.add(lod);
 }

@@ -123,6 +123,7 @@ export class PropBreakSystem implements Disposable {
           burstSpeed: archetype.gibs.burstSpeed,
           seed: (this.breakCounter += 1),
           chunks,
+          scale: prop.scale,
           coreSurvives: archetype.gibs.coreSurvives,
         })
       : 0;
