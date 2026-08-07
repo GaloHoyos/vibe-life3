@@ -104,6 +104,8 @@ export class PropBreakSystem implements Disposable {
     const bounds = propBoundsForScale(archetype, prop.scale);
     const mass = body?.mass() ?? archetype.physics.mass;
     const attacker = prop.lastAttackerId;
+    // Los fragmentos se leen ANTES de remover el prop: el lease muere con él.
+    const chunks = this.props.chunksOf(prop.id);
 
     prop.pendingBreak = false;
     this.props.remove(prop);
@@ -120,6 +122,8 @@ export class PropBreakSystem implements Disposable {
           ...(prop.breakPoint ? { impactPoint: prop.breakPoint } : {}),
           burstSpeed: archetype.gibs.burstSpeed,
           seed: (this.breakCounter += 1),
+          chunks,
+          coreSurvives: archetype.gibs.coreSurvives,
         })
       : 0;
 

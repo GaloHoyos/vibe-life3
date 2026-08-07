@@ -37,6 +37,7 @@ import type { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarr
 import type { PropSystem } from "@game/gameplay/props/PropSystem";
 import type { PropAssetRegistry } from "@game/assets/props/PropAssetRegistry";
 import type { PropContactMonitor } from "@game/gameplay/props/PropContactMonitor";
+import type { PropScrapeSystem } from "@game/audio/PropScrapeSystem";
 import type { PropBreakSystem } from "@game/gameplay/props/PropBreakSystem";
 import type { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 import type { PlayerSquadService } from "@game/gameplay/squad/PlayerSquadService";
@@ -80,6 +81,7 @@ export const GameTokens = {
   Props: new ServiceToken<PropSystem>("PropSystem"),
   PropAssets: new ServiceToken<PropAssetRegistry>("PropAssetRegistry"),
   PropContacts: new ServiceToken<PropContactMonitor>("PropContactMonitor"),
+  PropScrapeSounds: new ServiceToken<PropScrapeSystem>("PropScrapeSystem"),
   PropBreaks: new ServiceToken<PropBreakSystem>("PropBreakSystem"),
   PropImpacts: new ServiceToken<PropImpactSystem>("PropImpactSystem"),
   PlayerSquad: new ServiceToken<PlayerSquadService>("PlayerSquadService"),

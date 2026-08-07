@@ -29,6 +29,7 @@ import { HevSuitSoundSystem } from "@game/audio/HevSuitSoundSystem";
 import { ImpactSoundSystem } from "@game/audio/ImpactSoundSystem";
 import { PlayerSoundSystem } from "@game/audio/PlayerSoundSystem";
 import { PropCollisionSoundSystem } from "@game/audio/PropCollisionSoundSystem";
+import { PropScrapeSystem } from "@game/audio/PropScrapeSystem";
 import { AmbientSoundSystem } from "@game/audio/AmbientSoundSystem";
 import { BuildingAcousticSpaces } from "@game/audio/BuildingAcousticSpaces";
 import { SoundscapeSystem } from "@game/audio/SoundscapeSystem";
@@ -583,6 +584,15 @@ export class Game {
       GameTokens.PropCollisionSounds,
       new PropCollisionSoundSystem(
         s.resolve(GameTokens.PropContacts),
+        sound,
+        positionalSound,
+      ),
+    );
+    s.register(
+      GameTokens.PropScrapeSounds,
+      new PropScrapeSystem(
+        s.resolve(EngineTokens.Physics),
+        new Raycast(s.resolve(EngineTokens.Physics)),
         sound,
         positionalSound,
       ),
@@ -2902,6 +2912,7 @@ export class Game {
     // El monitor publica los choques del frame; audio y rotura los consumen.
     s.resolve(GameTokens.PropContacts).update(time.elapsed);
     s.resolve(GameTokens.PropCollisionSounds).update();
+    s.resolve(GameTokens.PropScrapeSounds).update(time.delta, time.elapsed, playerPosition);
     s.resolve(GameTokens.PropBreaks).update(time.delta, time.elapsed, player.getPosition());
     s.resolve(GameTokens.PlayerSounds).update(time.delta);
     this.updateGunshipCrashes(time.elapsed, raycast, grenades);
@@ -3442,6 +3453,7 @@ export class Game {
     // La rotura antes que los props: suelta el debris que todavía apunta a
     // cuerpos del mundo viejo.
     services.resolve(GameTokens.PropBreaks).clear();
+    services.resolve(GameTokens.PropScrapeSounds).clear();
     services.resolve(GameTokens.PropContacts).clear();
     services.resolve(GameTokens.Props).clear();
     vfx.clear();

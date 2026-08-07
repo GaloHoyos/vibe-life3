@@ -3,6 +3,7 @@ import { getMaterial } from "@engine/render/material/Materials";
 import { boxColliderSpec, type ColliderSpec } from "@engine/physics/ColliderSpec";
 import type {
   PropAssetRegistry,
+  PropChunkSource,
   PropModelLease,
 } from "@game/assets/props/PropAssetRegistry";
 import { DEBRIS_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
@@ -175,6 +176,11 @@ export class PropSystem implements Disposable {
 
   get(id: string): PropInstance | undefined {
     return this.byId.get(id);
+  }
+
+  /** Fragmentos autorados del prop, si su asset los trae. */
+  chunksOf(id: string): readonly PropChunkSource[] {
+    return this.leases.get(id)?.chunks ?? [];
   }
 
   all(): readonly PropInstance[] {

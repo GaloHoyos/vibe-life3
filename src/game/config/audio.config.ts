@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Tablas declarativas que mapean *quÃ©* evento del juego dispara *quÃ©*
  * sonido del catÃ¡logo. Los sistemas reactivos (`WeaponSoundSystem`,
  * `EnemySoundSystem`, etc.) consultan estas tablas; agregar un sonido
@@ -506,6 +506,18 @@ export const MaterialImpacts: Record<ImpactMaterial, ImpactSoundMap> = {
 export interface PropBreakAudio {
   readonly break: readonly string[];
   readonly debris: readonly string[];
+  /**
+   * Loops de arrastre y crujidos de tensión que consume `PropScrapeSystem`.
+   *
+   * Están vacíos a propósito: los wavs viven en `hl2sound/sound/physics/`
+   * (`*_scrape_rough_loop*`, `*_scrape_smooth_loop*`, `*_strain*`) pero medirlos
+   * necesita ffmpeg para `npm run audio:levels`, y un contract test —con razón—
+   * no deja referenciar clips sin medir. Con las pools vacías `pickSound`
+   * devuelve null y el sistema queda mudo en vez de romper.
+   */
+  readonly scrapeRough?: readonly string[];
+  readonly scrapeSmooth?: readonly string[];
+  readonly strain?: readonly string[];
 }
 
 export const PropMaterialAudio: Record<ImpactMaterial, PropBreakAudio> = {
@@ -571,6 +583,46 @@ export const PropBreakAudioConfig = {
   debrisDelay: 0.28,
   refDistance: 4,
   maxDistance: 55,
+} as const;
+
+/**
+ * Arrastre continuo. Las voces son caras (un loop posicional cada una) y el
+ * impulso tangencial se consulta con una llamada a WASM por candidato, así que
+ * sólo suenan los pocos props que el jugador puede efectivamente oír.
+ */
+export const PropScrapeConfig = {
+  /** Loops simultáneos. Cuatro alcanzan para una pila derrumbándose. */
+  maxVoices: 4,
+  /** Fuera de esta banda el prop está quieto o volando, no arrastrándose. */
+  minSpeed: 0.6,
+  maxSpeed: 6,
+  /** Si cae o sube rápido no está raspando el piso. */
+  maxVerticalSpeed: 1.5,
+  /** Impulso tangencial acumulado que ya da volumen pleno. */
+  fullScrapeImpulse: 2.5,
+  /** Segundos que la condición debe fallar antes de soltar la voz. */
+  releaseDelay: 0.2,
+  /** Cada cuánto (s) se vuelve a mirar contra qué superficie roza. */
+  surfaceProbeInterval: 1,
+  refDistance: 2.5,
+  maxDistance: 30,
+} as const;
+
+/** Superficies que suenan a raspón áspero; el resto, a liso. */
+export const RoughScrapeSurfaces: ReadonlySet<SurfaceType> = new Set<SurfaceType>([
+  "concrete",
+  "gravel",
+  "sand",
+  "dirt",
+  "mud",
+  "cardboard",
+]);
+
+export const PropStrainConfig = {
+  /** Silencio (s) entre crujidos del mismo prop. */
+  cooldown: 0.9,
+  /** Fracción del umbral de rotura de una junta a partir de la cual cruje. */
+  jointDriftRatio: 0.4,
 } as const;
 
 /**

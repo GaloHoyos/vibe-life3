@@ -14,6 +14,7 @@ import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import { makeSeededRandom } from "@shared/math/Random";
 import type { Disposable } from "@shared/types/lifecycle";
 import type { SurfaceType } from "@shared/types/Surface";
+import type { PropChunkSource } from "@game/assets/props/PropAssetRegistry";
 import { PropSurfaceMaterials } from "./propMaterials";
 
 export const DebrisConfig = {
@@ -38,7 +39,7 @@ export interface DebrisSpawnRequest {
   /** Centro del prop que cedió. */
   readonly origin: Vector3;
   readonly rotation: Quaternion;
-  /** Extensiones completas del prop, para dimensionar los pedazos. */
+  /** Extensiones completas del prop, para dimensionar los pedazos de reserva. */
   readonly bounds: readonly [number, number, number];
   readonly mass: number;
   readonly surface: SurfaceType;
@@ -50,6 +51,10 @@ export interface DebrisSpawnRequest {
   readonly burstSpeed: number;
   /** Semilla del reparto, para que una misma rotura sea reproducible. */
   readonly seed: number;
+  /** Fragmentos autorados del asset. Vacío = cajas de reserva. */
+  readonly chunks?: readonly PropChunkSource[];
+  /** El pedazo más grande se queda en el lugar en vez de salir despedido. */
+  readonly coreSurvives?: boolean;
 }
 
 interface DebrisSlot {
@@ -65,6 +70,29 @@ interface DebrisSlot {
 const tmpOffset = new Vector3();
 const tmpVelocity = new Vector3();
 const tmpSpin = new Vector3();
+const tmpSector = new Vector3();
+
+/**
+ * Cuánto mira un fragmento hacia el golpe, en [0,1]. Sin punto de impacto todos
+ * valen 0.5 y el estallido queda simétrico.
+ */
+function alignment(
+  sector: readonly [number, number, number],
+  impact: Vector3 | null,
+): number {
+  if (!impact) return 0.5;
+  tmpSector.set(sector[0], sector[1], sector[2]);
+  if (tmpSector.lengthSq() < 1e-8) return 0.5;
+  return Math.max(0, tmpSector.normalize().dot(impact));
+}
+
+function indexOfLargest(chunks: readonly PropChunkSource[]): number {
+  let best = 0;
+  for (let index = 1; index < chunks.length; index += 1) {
+    if (chunks[index]!.massFraction > chunks[best]!.massFraction) best = index;
+  }
+  return best;
+}
 
 /**
  * Pool de fragmentos físicos. Los pedazos de un prop roto son cuerpos de Rapier
@@ -98,7 +126,79 @@ export class DebrisPool implements Disposable {
   spawn(request: DebrisSpawnRequest): number {
     const count = Math.max(0, Math.min(request.count, DebrisConfig.perBreakMax));
     if (count === 0) return 0;
+    if (request.chunks && request.chunks.length > 0) {
+      return this.spawnAuthored(request, count, request.chunks);
+    }
+    return this.spawnBoxes(request, count);
+  }
 
+  /**
+   * Fragmentos autorados: cada pedazo aparece exactamente donde estaba en el
+   * prop, con su propia malla. Es lo que separa una rotura de un montón de
+   * cajas genéricas apareciendo en el centro.
+   */
+  private spawnAuthored(
+    request: DebrisSpawnRequest,
+    count: number,
+    chunks: readonly PropChunkSource[],
+  ): number {
+    const impactLocal = this.impactDirection(request);
+    // Los pedazos del lado golpeado se sueltan primero: si el pool recorta, se
+    // recorta lo que el jugador no está mirando.
+    const ordered = [...chunks].sort(
+      (a, b) => alignment(b.sector, impactLocal) - alignment(a.sector, impactLocal),
+    );
+    const taken = ordered.slice(0, Math.min(count, ordered.length));
+    const coreIndex = request.coreSurvives ? indexOfLargest(taken) : -1;
+
+    taken.forEach((chunk, index) => {
+      if (this.slots.length >= DebrisConfig.capacity) this.release(this.slots[0]!);
+
+      tmpOffset
+        .set(chunk.center[0], chunk.center[1], chunk.center[2])
+        .applyQuaternion(request.rotation);
+      const isCore = index === coreIndex;
+      if (isCore) {
+        // El chasis no sale despedido: se queda donde estaba mientras los
+        // cajones vuelan. Un archivero reventado sigue leyéndose como archivero.
+        tmpVelocity.copy(request.inheritedVelocity);
+      } else {
+        tmpVelocity
+          .set(chunk.sector[0], chunk.sector[1], chunk.sector[2])
+          .applyQuaternion(request.rotation);
+        if (tmpVelocity.lengthSq() < 1e-6) tmpVelocity.set(0, 1, 0);
+        tmpVelocity
+          .normalize()
+          .multiplyScalar(request.burstSpeed * (0.35 + alignment(chunk.sector, impactLocal)))
+          .add(request.inheritedVelocity);
+      }
+      const spin = isCore ? 0 : 10;
+      tmpSpin.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(spin);
+
+      this.slots.push(
+        this.acquireChunk(
+          chunk,
+          tmpOffset.clone().add(request.origin),
+          request.rotation,
+          Math.max(0.15, request.mass * chunk.massFraction),
+          request.surface,
+          tmpVelocity,
+          tmpSpin,
+        ),
+      );
+    });
+    return taken.length;
+  }
+
+  /** Dirección del golpe en espacio del prop, para el campo de impulso. */
+  private impactDirection(request: DebrisSpawnRequest): Vector3 | null {
+    if (!request.impactPoint) return null;
+    const local = request.impactPoint.clone().sub(request.origin);
+    if (local.lengthSq() <= 1e-6) return null;
+    return local.normalize().applyQuaternion(request.rotation.clone().invert());
+  }
+
+  private spawnBoxes(request: DebrisSpawnRequest, count: number): number {
     const random = makeSeededRandom(request.seed);
     const materialKey = PropSurfaceMaterials[request.surface];
     const chunkMass = Math.max(0.15, request.mass / count);
@@ -155,6 +255,33 @@ export class DebrisPool implements Disposable {
     return count;
   }
 
+  /** Fragmento con la malla autorada del asset (geometría compartida). */
+  private acquireChunk(
+    chunk: PropChunkSource,
+    position: Vector3,
+    rotation: Quaternion,
+    mass: number,
+    surface: SurfaceType,
+    velocity: Vector3,
+    spin: Vector3,
+  ): DebrisSlot {
+    const material = chunk.material.clone();
+    material.transparent = true;
+    const mesh = new Mesh(chunk.geometry, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return this.attach(
+      mesh,
+      new Vector3(chunk.size[0], chunk.size[1], chunk.size[2]),
+      position,
+      rotation,
+      mass,
+      surface,
+      velocity,
+      spin,
+    );
+  }
+
   private acquire(
     size: Vector3,
     position: Vector3,
@@ -171,10 +298,24 @@ export class DebrisPool implements Disposable {
     if (material instanceof MeshStandardMaterial) material.transparent = true;
     const mesh = new Mesh(this.unitBox, material);
     mesh.scale.copy(size);
-    mesh.position.copy(position);
-    mesh.quaternion.copy(rotation);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    return this.attach(mesh, size, position, rotation, mass, surface, velocity, spin);
+  }
+
+  private attach(
+    mesh: Mesh,
+    size: Vector3,
+    position: Vector3,
+    rotation: Quaternion,
+    mass: number,
+    surface: SurfaceType,
+    velocity: Vector3,
+    spin: Vector3,
+  ): DebrisSlot {
+    const material = Array.isArray(mesh.material) ? mesh.material[0]! : mesh.material;
+    mesh.position.copy(position);
+    mesh.quaternion.copy(rotation);
     this.scene.add(mesh);
 
     const body = this.physics.createDynamicCompound(

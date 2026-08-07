@@ -1,4 +1,4 @@
-import { BufferGeometry, LOD, Material, Mesh, Object3D, Texture } from "three";
+import { BufferGeometry, LOD, Material, Matrix4, Mesh, Object3D, Texture, Vector3 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "meshoptimizer";
 import type { ColliderSpec } from "@engine/physics/ColliderSpec";
@@ -16,13 +16,19 @@ export interface PropModelLoader {
 
 /** Un fragmento autorado del prop, listo para que el pool lo instancie. */
 export interface PropChunkSource {
-  /** Geometría COMPARTIDA del pack: el debris nunca la deforma. */
+  /**
+   * Geometría COMPARTIDA del pack, ya en metros y centrada en su propio
+   * origen. El debris nunca la deforma, así que N fragmentos = 0 geometrías
+   * nuevas.
+   */
   readonly geometry: BufferGeometry;
   readonly material: Material;
   /** Dirección del fragmento desde el centro del prop. */
   readonly sector: readonly [number, number, number];
   readonly massFraction: number;
   readonly size: readonly [number, number, number];
+  /** Dónde estaba el fragmento dentro del prop, en espacio del prop. */
+  readonly center: readonly [number, number, number];
 }
 
 export interface PropModelLease extends Disposable {
@@ -262,6 +268,11 @@ export class PropAssetRegistry implements Disposable {
       entry.releaseWhenLoaded = true;
       return;
     }
+    // Las geometrías de fragmentos son clones horneados que no cuelgan de la
+    // escena, así que `disposeModelSource` no las alcanza.
+    for (const chunks of entry.loaded.chunks.values()) {
+      for (const chunk of chunks) chunk.geometry.dispose();
+    }
     disposeModelSource(entry.loaded.scene);
     this.cache.delete(pack);
   }
@@ -301,27 +312,49 @@ export function readPackChunks(scene: Object3D): Map<PropArchetypeId, PropChunkS
     const root = scene.getObjectByName(PropArchetypes[id].asset.node);
     const chunksRoot = root?.getObjectByName("chunks");
     if (!chunksRoot) continue;
+    root!.updateWorldMatrix(false, true);
     const chunks: PropChunkSource[] = [];
     for (const child of chunksRoot.children) {
       const mesh = child instanceof Mesh ? child : findFirstMesh(child);
       if (!mesh) continue;
-      const extras = (child.userData ?? {}) as {
-        sector?: number[];
-        massFraction?: number;
-        size?: number[];
-      };
+      const extras = (child.userData ?? {}) as { sector?: number[]; massFraction?: number };
       if (!Array.isArray(extras.sector) || typeof extras.massFraction !== "number") continue;
+
+      // `meshopt` cuantiza las posiciones y deja la desnormalización en la
+      // matriz del nodo: leer la geometría cruda daría coordenadas inventadas.
+      // Se hornea una vez por pack y queda centrada en su propio origen, que es
+      // como la necesita un cuerpo rígido.
+      const geometry = mesh.geometry.clone();
+      geometry.applyMatrix4(relativeMatrix(mesh, root!));
+      geometry.computeBoundingBox();
+      const box = geometry.boundingBox;
+      if (!box) continue;
+      const center = new Vector3();
+      const size = new Vector3();
+      box.getCenter(center);
+      box.getSize(size);
+      geometry.translate(-center.x, -center.y, -center.z);
+
       chunks.push({
-        geometry: mesh.geometry,
+        geometry,
         material: Array.isArray(mesh.material) ? mesh.material[0]! : mesh.material,
         sector: [extras.sector[0] ?? 0, extras.sector[1] ?? 1, extras.sector[2] ?? 0],
         massFraction: extras.massFraction,
-        size: [extras.size?.[0] ?? 0.1, extras.size?.[1] ?? 0.1, extras.size?.[2] ?? 0.1],
+        size: [Math.max(size.x, 0.02), Math.max(size.y, 0.02), Math.max(size.z, 0.02)],
+        center: [center.x, center.y, center.z],
       });
     }
     if (chunks.length > 0) result.set(id, chunks);
   }
   return result;
+}
+
+/** Matriz de `node` en el espacio de `ancestor`. */
+function relativeMatrix(node: Object3D, ancestor: Object3D): Matrix4 {
+  return new Matrix4()
+    .copy(ancestor.matrixWorld)
+    .invert()
+    .multiply(node.matrixWorld);
 }
 
 function findFirstMesh(root: Object3D): Mesh | null {
