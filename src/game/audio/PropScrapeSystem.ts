@@ -66,7 +66,8 @@ export class PropScrapeSystem implements Disposable {
 
     for (const candidate of candidates.slice(0, PropScrapeConfig.maxVoices)) {
       const impulse = this.tangentialImpulse(candidate.body);
-      if (impulse <= 0) continue;
+      // `NaN > 0` es false, así que esto también descarta el impulso corrupto.
+      if (!(impulse > 0)) continue;
       chosen.add(candidate.body.handle);
       this.driveVoice(candidate, impulse, elapsed);
     }
@@ -132,10 +133,14 @@ export class PropScrapeSystem implements Disposable {
     this.physics.world.contactPairsWith(collider, (other) => {
       this.physics.world.contactPair(collider, other, (manifold) => {
         for (let index = 0; index < manifold.numContacts(); index += 1) {
-          total += Math.hypot(
+          // El manifold puede traer contactos que el solver todavía no resolvió,
+          // y su impulso llega sin inicializar. Se descarta el contacto, no el
+          // manifold entero: los demás sí describen el roce.
+          const magnitude = Math.hypot(
             manifold.contactTangentImpulseX(index),
             manifold.contactTangentImpulseY(index),
           );
+          if (Number.isFinite(magnitude)) total += magnitude;
         }
       });
     });
