@@ -27,9 +27,16 @@ export type PropAssetId =
 export interface PropAssetSpec {
   readonly id: PropAssetId;
   readonly displayName: string;
-  /** Variantes de malla. Cada una jitterea proporciones con su propia semilla. */
+  /**
+   * Variantes de malla. Cambian qué piezas hay y dónde van por dentro, nunca el
+   * envolvente: todas comparten un único casco de colisión y un único `bounds`.
+   */
   readonly variants: number;
-  /** Extensiones completas esperadas; el validador compara contra la malla real. */
+  /**
+   * Extensiones completas. El validador las compara contra la malla real con
+   * tolerancia de 1 cm, y un contract test las compara contra `props.config.ts`:
+   * si estos tres números se separan, el prop flota o se hunde.
+   */
   readonly bounds: readonly [number, number, number];
   /** Chunks del set de gibs. 0 = indestructible, sin nodo `chunks`. */
   readonly chunks: number;
@@ -54,6 +61,8 @@ export interface PropPackSpec {
 export interface GeneratedPropStats {
   readonly id: PropAssetId;
   readonly pack: PropPackId;
+  /** Extensiones reales de la malla, para que la config del juego las copie. */
+  readonly bounds: readonly [number, number, number];
   readonly lods: readonly [LodStats, LodStats];
   readonly colliderNodes: number;
   readonly colliderVertices: number;
@@ -120,9 +129,9 @@ export const PROP_PACK_SPECS: readonly PropPackSpec[] = [
     maxTrianglesLod0: 3500,
     maxDrawsPerLod: 3,
     props: [
-      { id: "woodenCrate", displayName: "Cajón de madera", variants: 3, bounds: [0.86, 0.86, 0.86], chunks: 8 },
-      { id: "pallet", displayName: "Pallet", variants: 2, bounds: [1.2, 0.14, 0.8], chunks: 8 },
-      { id: "chair", displayName: "Silla", variants: 2, bounds: [0.46, 0.92, 0.5], chunks: 7 },
+      { id: "woodenCrate", displayName: "Cajón de madera", variants: 3, bounds: [0.887, 0.86, 0.887], chunks: 8 },
+      { id: "pallet", displayName: "Pallet", variants: 2, bounds: [1.2, 0.141, 0.8], chunks: 8 },
+      { id: "chair", displayName: "Silla", variants: 2, bounds: [0.42, 0.92, 0.44], chunks: 7 },
       { id: "table", displayName: "Mesa", variants: 2, bounds: [1.4, 0.74, 0.8], chunks: 7 },
     ],
   },
@@ -137,10 +146,10 @@ export const PROP_PACK_SPECS: readonly PropPackSpec[] = [
     maxTrianglesLod0: 3500,
     maxDrawsPerLod: 3,
     props: [
-      { id: "metalBarrel", displayName: "Barril metálico", variants: 2, bounds: [0.56, 0.95, 0.56], chunks: 7 },
-      { id: "explosiveBarrel", displayName: "Barril explosivo", variants: 2, bounds: [0.59, 1.08, 0.59], chunks: 7 },
-      { id: "filingCabinet", displayName: "Archivero", variants: 2, bounds: [0.5, 1.32, 0.62], chunks: 5 },
-      { id: "radiator", displayName: "Radiador", variants: 1, bounds: [0.9, 0.6, 0.14], chunks: 6 },
+      { id: "metalBarrel", displayName: "Barril metálico", variants: 2, bounds: [0.585, 0.962, 0.585], chunks: 7 },
+      { id: "explosiveBarrel", displayName: "Barril explosivo", variants: 2, bounds: [0.588, 1.074, 0.588], chunks: 7 },
+      { id: "filingCabinet", displayName: "Archivero", variants: 2, bounds: [0.5, 1.32, 0.655], chunks: 5 },
+      { id: "radiator", displayName: "Radiador", variants: 1, bounds: [0.915, 0.597, 0.14], chunks: 6 },
       { id: "concreteBlock", displayName: "Bloque de hormigón", variants: 3, bounds: [0.4, 0.2, 0.2], chunks: 0 },
     ],
   },
@@ -155,9 +164,9 @@ export const PROP_PACK_SPECS: readonly PropPackSpec[] = [
     maxTrianglesLod0: 3500,
     maxDrawsPerLod: 3,
     props: [
-      { id: "plasticDrum", displayName: "Bidón plástico", variants: 2, bounds: [0.6, 0.9, 0.6], chunks: 7 },
-      { id: "crtTelevision", displayName: "Televisor", variants: 2, bounds: [0.52, 0.44, 0.48], chunks: 8, hasGlass: true },
-      { id: "glassBottle", displayName: "Botella", variants: 3, bounds: [0.08, 0.29, 0.08], chunks: 8, hasGlass: true },
+      { id: "plasticDrum", displayName: "Bidón plástico", variants: 2, bounds: [0.609, 0.89, 0.618], chunks: 7 },
+      { id: "crtTelevision", displayName: "Televisor", variants: 2, bounds: [0.52, 0.44, 0.492], chunks: 8, hasGlass: true },
+      { id: "glassBottle", displayName: "Botella", variants: 3, bounds: [0.075, 0.29, 0.075], chunks: 8, hasGlass: true },
       { id: "trafficCone", displayName: "Cono de tránsito", variants: 1, bounds: [0.36, 0.72, 0.36], chunks: 0 },
     ],
   },

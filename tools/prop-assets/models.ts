@@ -41,10 +41,15 @@ export function variantRandom(id: string, variant: number): () => number {
   };
 }
 
-/** Jitter simétrico: `±amount` alrededor de 1. */
-function jitter(random: () => number, amount: number): number {
-  return 1 + (random() - 0.5) * 2 * amount;
-}
+/**
+ * REGLA DE LAS VARIANTES: pueden cambiar qué piezas hay y dónde van por dentro,
+ * nunca el envolvente del prop.
+ *
+ * Todas las variantes comparten un único casco de colisión (el de la variante
+ * 0) y un único `bounds` en la config, que es con el que `PropSystem` apoya el
+ * prop sobre el piso. Una variante 2% más alta ya no calza con su collider y
+ * queda flotando o hundida.
+ */
 
 // ---------------------------------------------------------------------------
 // Madera
@@ -56,7 +61,7 @@ function jitter(random: () => number, amount: number): number {
  */
 const woodenCrate: PropBuilder = (variant, lod) => {
   const random = variantRandom("woodenCrate", variant);
-  const side = 0.86 * jitter(random, 0.04);
+  const side = 0.86;
   const half = side / 2;
   const thickness = 0.045;
   const inset = half - thickness / 2;
@@ -88,12 +93,15 @@ const woodenCrate: PropBuilder = (variant, lod) => {
         });
       }
     }
-    // Fleje metálico de refuerzo en una cara.
-    parts.push({
-      geometry: chamferBox(side * 0.96, 0.035, 0.012, 0.004),
-      position: [0, half * 0.45, inset + thickness / 2],
-      tile: 2,
-    });
+    // Flejes metálicos de refuerzo: uno o dos, a distinta altura por variante.
+    const straps = random() > 0.45 ? 2 : 1;
+    for (let index = 0; index < straps; index += 1) {
+      parts.push({
+        geometry: chamferBox(side * 0.96, 0.035, 0.012, 0.004),
+        position: [0, half * (straps === 1 ? 0.45 : index === 0 ? 0.55 : -0.35), inset + thickness / 2],
+        tile: 2,
+      });
+    }
   }
   return { parts };
 };
@@ -102,7 +110,7 @@ const woodenCrate: PropBuilder = (variant, lod) => {
 const pallet: PropBuilder = (variant, lod) => {
   const random = variantRandom("pallet", variant);
   const width = 1.2;
-  const depth = 0.8 * jitter(random, 0.03);
+  const depth = 0.8;
   const height = 0.14;
   const plankCount: number = lod === 0 ? (random() > 0.5 ? 6 : 5) : 3;
   const parts: GeometryPart[] = [];
@@ -135,7 +143,7 @@ const pallet: PropBuilder = (variant, lod) => {
 /** Silla: asiento, cuatro patas y respaldo con travesaños. */
 const chair: PropBuilder = (variant, lod) => {
   const random = variantRandom("chair", variant);
-  const seatY = -0.92 / 2 + 0.45 * jitter(random, 0.05);
+  const seatY = -0.92 / 2 + 0.45 + (random() - 0.5) * 0.04;
   const seatWidth = 0.42;
   const seatDepth = 0.44;
   const parts: GeometryPart[] = [
@@ -179,7 +187,7 @@ const chair: PropBuilder = (variant, lod) => {
 /** Mesa: tabla, faldón y cuatro patas. */
 const table: PropBuilder = (variant, lod) => {
   const random = variantRandom("table", variant);
-  const width = 1.4 * jitter(random, 0.03);
+  const width = 1.4;
   const depth = 0.8;
   const height = 0.74;
   const topThickness = 0.045;
@@ -204,10 +212,22 @@ const table: PropBuilder = (variant, lod) => {
     }
   }
   if (lod === 0) {
-    for (const sz of [-1, 1]) {
+    // El faldón corre en dos lados o en los cuatro, según la variante.
+    const skirted: readonly (readonly [number, number])[] =
+      random() > 0.5
+        ? [[0, -1], [0, 1]]
+        : [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    for (const [sx, sz] of skirted) {
+      const alongX = sz !== 0;
       parts.push({
-        geometry: chamferBox(width - 0.2, 0.07, 0.02, 0.005),
-        position: [0, height / 2 - topThickness - 0.06, sz * (depth / 2 - 0.06)],
+        geometry: alongX
+          ? chamferBox(width - 0.2, 0.07, 0.02, 0.005)
+          : chamferBox(0.02, 0.07, depth - 0.2, 0.005),
+        position: [
+          sx * (width / 2 - 0.06),
+          height / 2 - topThickness - 0.06,
+          sz * (depth / 2 - 0.06),
+        ],
         tile: 0,
       });
     }
@@ -223,7 +243,7 @@ const table: PropBuilder = (variant, lod) => {
 const metalBarrel: PropBuilder = (variant, lod) => {
   const random = variantRandom("metalBarrel", variant);
   const radius = 0.28;
-  const height = 0.95 * jitter(random, 0.02);
+  const height = 0.95;
   const segments = lod === 0 ? 20 : 10;
   const parts: GeometryPart[] = [
     {
@@ -266,7 +286,7 @@ const metalBarrel: PropBuilder = (variant, lod) => {
 const explosiveBarrel: PropBuilder = (variant, lod) => {
   const random = variantRandom("explosiveBarrel", variant);
   const radius = 0.28;
-  const height = 0.95 * jitter(random, 0.015);
+  const height = 0.95;
   const segments = lod === 0 ? 20 : 10;
   const parts: GeometryPart[] = [
     {
@@ -274,11 +294,13 @@ const explosiveBarrel: PropBuilder = (variant, lod) => {
       tile: 0,
     },
   ];
-  // Dos bandas anchas: es la marca que se lee de lejos.
-  for (const y of [-0.2, 0.2]) {
+  // Dos bandas anchas: es la marca que se lee de lejos. La variante las corre
+  // sin tocar el envolvente.
+  const bandOffset = 0.18 + random() * 0.06;
+  for (const y of [-bandOffset, bandOffset]) {
     parts.push({
       geometry: new CylinderGeometry(radius * 1.02, radius * 1.02, 0.16, segments, 1),
-      position: [0, y * (height / 0.95), 0],
+      position: [0, y, 0],
       tile: 3,
     });
   }
@@ -317,8 +339,8 @@ const filingCabinet: PropBuilder = (variant, lod) => {
   const random = variantRandom("filingCabinet", variant);
   const width = 0.5;
   const height = 1.32;
-  const depth = 0.62 * jitter(random, 0.02);
-  const drawers = lod === 0 ? 4 : 2;
+  const depth = 0.62;
+  const drawers: number = lod === 0 ? (random() > 0.5 ? 4 : 3) : 2;
   const parts: GeometryPart[] = [
     { geometry: chamferBox(width, height, depth, 0.012), position: [0, 0, 0], tile: 0 },
     {
@@ -385,7 +407,7 @@ const concreteBlock: PropBuilder = (variant, lod) => {
   const random = variantRandom("concreteBlock", variant);
   const width = 0.4;
   const height = 0.2;
-  const depth = 0.2 * jitter(random, 0.04);
+  const depth = 0.2;
   const wall = 0.032;
   if (lod === 1) {
     return { parts: [{ geometry: chamferBox(width, height, depth, 0.006), tile: 2 }] };
@@ -406,9 +428,10 @@ const concreteBlock: PropBuilder = (variant, lod) => {
       tile: 2,
     });
   }
+  // El tabique central corrido: dos celdas desiguales, como un bloque real.
   parts.push({
     geometry: chamferBox(wall, height, depth - wall * 2, 0.005),
-    position: [0, 0, 0],
+    position: [(random() - 0.5) * 0.06, 0, 0],
     tile: 2,
   });
   return { parts };
@@ -422,7 +445,7 @@ const concreteBlock: PropBuilder = (variant, lod) => {
 const plasticDrum: PropBuilder = (variant, lod) => {
   const random = variantRandom("plasticDrum", variant);
   const radius = 0.3;
-  const height = 0.9 * jitter(random, 0.02);
+  const height = 0.9;
   const segments = lod === 0 ? 18 : 9;
   const parts: GeometryPart[] = [
     {
@@ -460,7 +483,7 @@ const crtTelevision: PropBuilder = (variant, lod) => {
   const random = variantRandom("crtTelevision", variant);
   const width = 0.52;
   const height = 0.44;
-  const depth = 0.48 * jitter(random, 0.03);
+  const depth = 0.48;
   const parts: GeometryPart[] = [
     {
       geometry: chamferWedge({
@@ -480,7 +503,8 @@ const crtTelevision: PropBuilder = (variant, lod) => {
     },
   ];
   if (lod === 0) {
-    for (let index = 0; index < 2; index += 1) {
+    const knobs = random() > 0.5 ? 3 : 2;
+    for (let index = 0; index < knobs; index += 1) {
       parts.push({
         geometry: new CylinderGeometry(0.022, 0.022, 0.02, 10, 1),
         position: [width / 2 - 0.05, -height / 2 + 0.07 + index * 0.06, depth / 2],
@@ -504,10 +528,12 @@ const crtTelevision: PropBuilder = (variant, lod) => {
 /** Botella: cuerpo, hombro cónico, cuello y tapa. */
 const glassBottle: PropBuilder = (variant, lod) => {
   const random = variantRandom("glassBottle", variant);
-  const height = 0.29 * jitter(random, 0.05);
+  const height = 0.29;
   const radius = 0.037;
   const segments = lod === 0 ? 12 : 7;
-  const bodyHeight = height * 0.58;
+  // Cuerpo más o menos alto contra el hombro: cambia la silueta sin cambiar el
+  // alto total, que es lo que el casco y el `bounds` dan por sentado.
+  const bodyHeight = height * (0.52 + random() * 0.12);
   const glass: GeometryPart[] = [
     {
       geometry: new CylinderGeometry(radius, radius, bodyHeight, segments, 1),
@@ -626,6 +652,34 @@ function partPoints(part: GeometryPart): Vector3[] {
 export interface Bounds {
   readonly min: Vector3;
   readonly max: Vector3;
+}
+
+/**
+ * Corre las piezas para que el AABB del prop quede centrado en el origen.
+ *
+ * Es la convención que declara el manifiesto (`origin: "aabb-center"`) y de la
+ * que depende `PropSystem` para apoyar el prop: coloca el cuerpo en
+ * `base + altura/2` y da por hecho que la malla y el casco están centrados ahí.
+ * Un detalle asimétrico —el racimo de válvulas del barril explosivo, los
+ * tiradores del archivero— rompe esa suposición y el prop queda flotando.
+ */
+export function centerParts(parts: readonly GeometryPart[], offset: Vector3): GeometryPart[] {
+  return parts.map((part) => {
+    const position = part.position ?? [0, 0, 0];
+    return {
+      ...part,
+      position: [
+        position[0] + offset.x,
+        position[1] + offset.y,
+        position[2] + offset.z,
+      ] as Vec3,
+    };
+  });
+}
+
+/** Desplazamiento que lleva el centro del AABB al origen. */
+export function centeringOffset(bounds: Bounds): Vector3 {
+  return new Vector3().addVectors(bounds.min, bounds.max).multiplyScalar(-0.5);
 }
 
 export function boundsOf(parts: readonly GeometryPart[]): Bounds {

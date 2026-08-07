@@ -165,7 +165,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: SHATTER,
     gibs: { minChunks: 5, maxChunks: 8, coreSurvives: false, burstSpeed: 3.4 },
-    bounds: [0.86, 0.86, 0.86],
+    bounds: [0.887, 0.86, 0.887],
   },
 
   metalBarrel: {
@@ -192,7 +192,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     breakReaction: SHATTER,
     gibs: { minChunks: 4, maxChunks: 7, coreSurvives: false, burstSpeed: 3 },
     deform: metalDeform(0.22, 0.02),
-    bounds: [0.56, 0.95, 0.56],
+    bounds: [0.585, 0.962, 0.585],
   },
 
   /**
@@ -224,7 +224,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: { kind: "explode", damage: 90, radius: 4.5, impulse: 14 },
     gibs: { minChunks: 4, maxChunks: 7, coreSurvives: false, burstSpeed: 4.5 },
-    bounds: [0.59, 1.08, 0.59],
+    bounds: [0.588, 1.074, 0.588],
   },
 
   plasticDrum: {
@@ -250,7 +250,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: SHATTER,
     gibs: { minChunks: 4, maxChunks: 6, coreSurvives: false, burstSpeed: 3.2 },
-    bounds: [0.6, 0.9, 0.6],
+    bounds: [0.609, 0.89, 0.618],
   },
 
   pallet: {
@@ -276,7 +276,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: SHATTER,
     gibs: { minChunks: 5, maxChunks: 8, coreSurvives: false, burstSpeed: 3.8 },
-    bounds: [1.2, 0.14, 0.8],
+    bounds: [1.2, 0.141, 0.8],
   },
 
   filingCabinet: {
@@ -305,7 +305,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     // una oficina reventada siga leyéndose como oficina.
     gibs: { minChunks: 3, maxChunks: 5, coreSurvives: true, burstSpeed: 2.6 },
     deform: metalDeform(0.26, 0.025),
-    bounds: [0.5, 1.32, 0.62],
+    bounds: [0.5, 1.32, 0.655],
   },
 
   radiator: {
@@ -332,7 +332,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     breakReaction: SHATTER,
     gibs: { minChunks: 4, maxChunks: 6, coreSurvives: false, burstSpeed: 2.8 },
     deform: metalDeform(0.18, 0.018),
-    bounds: [0.9, 0.6, 0.14],
+    bounds: [0.915, 0.597, 0.14],
   },
 
   chair: {
@@ -358,7 +358,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: SHATTER,
     gibs: { minChunks: 4, maxChunks: 7, coreSurvives: false, burstSpeed: 4 },
-    bounds: [0.46, 0.92, 0.5],
+    bounds: [0.42, 0.92, 0.44],
   },
 
   table: {
@@ -412,7 +412,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     breakReaction: SHATTER,
     gibs: { minChunks: 3, maxChunks: 5, coreSurvives: false, burstSpeed: 3.6 },
     deform: metalDeform(0.14, 0.012),
-    bounds: [0.52, 0.44, 0.48],
+    bounds: [0.52, 0.44, 0.492],
   },
 
   glassBottle: {
@@ -439,7 +439,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: SHATTER,
     gibs: { minChunks: 3, maxChunks: 5, coreSurvives: false, burstSpeed: 2.2 },
-    bounds: [0.08, 0.29, 0.08],
+    bounds: [0.075, 0.29, 0.075],
   },
 
   trafficCone: {
@@ -494,10 +494,16 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
 
 export const PropTuning = {
   /**
-   * Los props anclados sólo bloquean el bake de navegación si su huella llega a
-   * este lado; una silla no debe abrir un agujero en el navmesh.
+   * Huella mínima para que un prop anclado entre al bake de navegación.
+   *
+   * Es deliberadamente chica. Un cajón estático mide 0.89 m y hoy vive en
+   * `staticBoxes`, o sea DENTRO del navmesh horneado: si al migrarlo quedara
+   * fuera, los NPCs lo atravesarían. Quién puede rodear qué ya lo decide Recast
+   * con el radio de agente y el tamaño de celda, que es mucho mejor filtro que
+   * un umbral inventado acá; esto sólo saca del bake lo que el navmesh no
+   * podría representar igual (una botella, un cono).
    */
-  navBlockerMinFootprint: 1,
+  navBlockerMinFootprint: 0.3,
   /** Escala mínima admitida en una instancia, para que la masa no se anule. */
   minScale: 0.25,
   maxScale: 4,

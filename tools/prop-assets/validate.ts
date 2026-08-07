@@ -125,7 +125,7 @@ function positionsOf(node: Node): [number, number, number][] {
   return points;
 }
 
-function extentsOf(node: Node): [number, number, number] {
+function boxOf(node: Node): { min: number[]; max: number[] } {
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
   const visit = (current: Node): void => {
@@ -138,7 +138,22 @@ function extentsOf(node: Node): [number, number, number] {
     for (const child of current.listChildren()) visit(child);
   };
   visit(node);
+  return { min, max };
+}
+
+function extentsOf(node: Node): [number, number, number] {
+  const { min, max } = boxOf(node);
   return [max[0]! - min[0]!, max[1]! - min[1]!, max[2]! - min[2]!];
+}
+
+/** Cuánto se corre el centro del AABB respecto del origen, por eje. */
+function centerOffsetOf(node: Node): [number, number, number] {
+  const { min, max } = boxOf(node);
+  return [
+    (min[0]! + max[0]!) / 2,
+    (min[1]! + max[1]!) / 2,
+    (min[2]! + max[2]!) / 2,
+  ];
 }
 
 function findChild(parent: Node, name: string): Node | undefined {
@@ -216,9 +231,50 @@ async function validatePack(
     for (let axis = 0; axis < 3; axis += 1) {
       const declared = prop.bounds[axis]!;
       const actual = extents[axis]!;
+      // Tolerancia estrecha a propósito: `PropSystem` apoya el prop en
+      // `base + bounds.y/2`, así que cualquier diferencia acá es un prop
+      // flotando o hundido esa misma cantidad.
       assert(
-        Math.abs(actual - declared) <= declared * 0.12 + 0.02,
+        Math.abs(actual - declared) <= 0.01,
         `${prop.id}: el eje ${axis} mide ${actual.toFixed(3)} y la config declara ${declared}.`,
+      );
+    }
+
+    // Cada variante y cada LOD tienen que estar centrados en el origen: es la
+    // convención `aabb-center` del manifiesto, y `PropSystem` apoya el prop
+    // dando por hecho que se cumple. Un detalle asimétrico que corra el centro
+    // deja el prop flotando o hundido, sin que nada más falle.
+    // El LOD0 manda: fija el marco y de él salen `bounds` y el casco. Todas sus
+    // variantes tienen que estar centradas en el origen y medir lo mismo, porque
+    // comparten un único collider y un único `bounds`.
+    for (const variantNode of lod0.listChildren()) {
+      const center = centerOffsetOf(variantNode);
+      const variantExtents = extentsOf(variantNode);
+      for (let axis = 0; axis < 3; axis += 1) {
+        assert(
+          Math.abs(center[axis]!) <= 0.005,
+          `${prop.id}/${variantNode.getName()}: el centro está a ` +
+            `${center[axis]!.toFixed(3)} m del origen en el eje ${axis}; debe estar centrado.`,
+        );
+        assert(
+          Math.abs(variantExtents[axis]! - extents[axis]!) <= 0.01,
+          `${prop.id}/${variantNode.getName()}: mide distinto que la variante 0 en el eje ` +
+            `${axis}; todas comparten collider y bounds, así que el envolvente no puede cambiar.`,
+        );
+      }
+    }
+
+    // El LOD1 tira detalle, así que su AABB propio es más chico y puede quedar
+    // descentrado: lo que importa es que no se salga del volumen del LOD0, que
+    // es lo que delataría geometría desplazada en vez de simplificada.
+    const lod0Box = boxOf(lod0);
+    const lod1Box = boxOf(lod1);
+    for (let axis = 0; axis < 3; axis += 1) {
+      assert(
+        lod1Box.min[axis]! >= lod0Box.min[axis]! - 0.01 &&
+          lod1Box.max[axis]! <= lod0Box.max[axis]! + 0.01,
+        `${prop.id}: el LOD1 se sale del volumen del LOD0 en el eje ${axis}; ` +
+          `su geometría está desplazada, no simplificada.`,
       );
     }
 

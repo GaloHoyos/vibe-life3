@@ -2,19 +2,19 @@
   "packs": [
     {
       "id": "propsWood",
-      "bytes": 491288,
+      "bytes": 458952,
       "budgetBytes": 716800,
       "props": [
         {
           "id": "woodenCrate",
-          "lod0Triangles": 1452,
+          "lod0Triangles": 1496,
           "lod1Triangles": 792,
           "colliderVertices": 8,
           "chunks": 8
         },
         {
           "id": "pallet",
-          "lod0Triangles": 1056,
+          "lod0Triangles": 1012,
           "lod1Triangles": 792,
           "colliderVertices": 8,
           "chunks": 8
@@ -28,7 +28,7 @@
         },
         {
           "id": "table",
-          "lod0Triangles": 616,
+          "lod0Triangles": 704,
           "lod1Triangles": 440,
           "colliderVertices": 8,
           "chunks": 7
@@ -41,7 +41,7 @@
     },
     {
       "id": "propsMetal",
-      "bytes": 448776,
+      "bytes": 428432,
       "budgetBytes": 716800,
       "props": [
         {
@@ -60,7 +60,7 @@
         },
         {
           "id": "filingCabinet",
-          "lod0Triangles": 880,
+          "lod0Triangles": 792,
           "lod1Triangles": 352,
           "colliderVertices": 8,
           "chunks": 5
@@ -87,7 +87,7 @@
     },
     {
       "id": "propsSynthetic",
-      "bytes": 402700,
+      "bytes": 380208,
       "budgetBytes": 716800,
       "props": [
         {
@@ -99,7 +99,7 @@
         },
         {
           "id": "crtTelevision",
-          "lod0Triangles": 424,
+          "lod0Triangles": 464,
           "lod1Triangles": 264,
           "colliderVertices": 8,
           "chunks": 5

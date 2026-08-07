@@ -15,6 +15,8 @@ import type { BuildContext, GeneratedTextureSet, LodStats } from "../shared/gltf
 import {
   PROP_BUILDERS,
   boundsOf,
+  centerParts,
+  centeringOffset,
   colliderPoints,
   deriveChunks,
   mergeRaw,
@@ -109,6 +111,11 @@ export function createPropPackDocument(
     context.nodeNames.push(`prop_${prop.id}`);
     context.sceneRoot.addChild(propRoot);
 
+    // Todas las variantes y LODs comparten el marco de la variante 0: si cada
+    // una se centrara sola, cambiar de variante o de LOD movería el prop.
+    const probe = build(0, 0);
+    const offset = centeringOffset(boundsOf([...probe.parts, ...(probe.glass ?? [])]));
+
     const lods: LodStats[] = [];
     for (const lod of [0, 1] as PropLod[]) {
       const lodRoot = document.createNode(`visual_lod${lod}`);
@@ -123,7 +130,7 @@ export function createPropPackDocument(
           context,
           variantRoot,
           `${prop.id}_lod${lod}_v${variant}`,
-          geometry.parts,
+          centerParts(geometry.parts, offset),
           { occlusionStrength: 0.7 },
         );
         if (geometry.glass && geometry.glass.length > 0) {
@@ -131,7 +138,7 @@ export function createPropPackDocument(
             context,
             variantRoot,
             `${prop.id}_lod${lod}_v${variant}_glass`,
-            geometry.glass,
+            centerParts(geometry.glass, offset),
             { material: glassMaterial, bakeOcclusion: false },
           );
         }
@@ -142,8 +149,7 @@ export function createPropPackDocument(
     // El casco y los fragmentos salen de la variante 0: todas comparten
     // proporciones dentro del jitter, y un casco por variante multiplicaría el
     // costo físico sin que nadie note la diferencia de dos centímetros.
-    const base = build(0, 0);
-    const solidParts = [...base.parts, ...(base.glass ?? [])];
+    const solidParts = centerParts([...probe.parts, ...(probe.glass ?? [])], offset);
     const bounds = boundsOf(solidParts);
     const points = colliderPoints(bounds, CYLINDRICAL.has(prop.id));
     if (points.length / 3 > MAX_COLLIDER_VERTICES) {
@@ -178,6 +184,13 @@ export function createPropPackDocument(
     stats.push({
       id: prop.id,
       pack: spec.id,
+      // Extensiones REALES de la malla. La config del juego apoya el prop con
+      // este número; si difiere del asset, el prop flota o se hunde.
+      bounds: [
+        round(bounds.max.x - bounds.min.x),
+        round(bounds.max.y - bounds.min.y),
+        round(bounds.max.z - bounds.min.z),
+      ],
       lods: [lods[0]!, lods[1]!],
       colliderNodes: 1,
       colliderVertices: points.length / 3,
@@ -190,6 +203,10 @@ export function createPropPackDocument(
 
   cleanupUnusedMaterial(glassMaterial);
   return { document, props: stats, nodeNames: context.nodeNames };
+}
+
+function round(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }
 
 /** Un pack sin vidrio no debe arrastrar un material que nadie usa. */

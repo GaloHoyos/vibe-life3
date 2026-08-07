@@ -17,6 +17,7 @@ interface PropManifest {
     props: {
       id: string;
       pack: string;
+      bounds: [number, number, number];
       variants: number;
       chunkNodes: number;
       colliderVertices: number;
@@ -74,6 +75,22 @@ describe("assets de props contra props.config", () => {
         asset.chunkNodes,
       );
       expect(gibs.minChunks).toBeLessThanOrEqual(gibs.maxChunks);
+    }
+  });
+
+  it("los bounds de la config son los del asset, al milimetro", () => {
+    for (const id of PROP_ARCHETYPE_IDS) {
+      const declared = PropArchetypes[id].bounds;
+      const actual = generated.get(id)!.bounds;
+      for (let axis = 0; axis < 3; axis += 1) {
+        // `PropSystem` apoya el prop en `base + bounds.y/2` y le pega el casco
+        // del asset: si estos dos números no coinciden, el prop flota o se hunde
+        // exactamente esa diferencia. Es el bug que dejaba los props en el aire.
+        expect(
+          Math.abs(declared[axis]! - actual[axis]!),
+          `${id} eje ${axis}: config ${declared[axis]} vs asset ${actual[axis]}`,
+        ).toBeLessThanOrEqual(0.002);
+      }
     }
   });
 

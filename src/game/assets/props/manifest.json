@@ -10,14 +10,19 @@
   "packs": [
     {
       "id": "propsWood",
-      "glbBytes": 491288,
+      "glbBytes": 458952,
       "props": [
         {
           "id": "woodenCrate",
           "pack": "propsWood",
+          "bounds": [
+            0.887,
+            0.86,
+            0.887
+          ],
           "lods": [
             {
-              "triangles": 1452,
+              "triangles": 1496,
               "draws": 3
             },
             {
@@ -33,9 +38,14 @@
         {
           "id": "pallet",
           "pack": "propsWood",
+          "bounds": [
+            1.2,
+            0.141,
+            0.8
+          ],
           "lods": [
             {
-              "triangles": 1056,
+              "triangles": 1012,
               "draws": 2
             },
             {
@@ -51,6 +61,11 @@
         {
           "id": "chair",
           "pack": "propsWood",
+          "bounds": [
+            0.42,
+            0.92,
+            0.44
+          ],
           "lods": [
             {
               "triangles": 704,
@@ -69,9 +84,14 @@
         {
           "id": "table",
           "pack": "propsWood",
+          "bounds": [
+            1.4,
+            0.74,
+            0.8
+          ],
           "lods": [
             {
-              "triangles": 616,
+              "triangles": 704,
               "draws": 2
             },
             {
@@ -177,11 +197,16 @@
     },
     {
       "id": "propsMetal",
-      "glbBytes": 448776,
+      "glbBytes": 428432,
       "props": [
         {
           "id": "metalBarrel",
           "pack": "propsMetal",
+          "bounds": [
+            0.585,
+            0.962,
+            0.585
+          ],
           "lods": [
             {
               "triangles": 1024,
@@ -200,6 +225,11 @@
         {
           "id": "explosiveBarrel",
           "pack": "propsMetal",
+          "bounds": [
+            0.588,
+            1.074,
+            0.588
+          ],
           "lods": [
             {
               "triangles": 1176,
@@ -218,9 +248,14 @@
         {
           "id": "filingCabinet",
           "pack": "propsMetal",
+          "bounds": [
+            0.5,
+            1.32,
+            0.655
+          ],
           "lods": [
             {
-              "triangles": 880,
+              "triangles": 792,
               "draws": 2
             },
             {
@@ -236,6 +271,11 @@
         {
           "id": "radiator",
           "pack": "propsMetal",
+          "bounds": [
+            0.915,
+            0.597,
+            0.14
+          ],
           "lods": [
             {
               "triangles": 596,
@@ -254,6 +294,11 @@
         {
           "id": "concreteBlock",
           "pack": "propsMetal",
+          "bounds": [
+            0.4,
+            0.2,
+            0.2
+          ],
           "lods": [
             {
               "triangles": 660,
@@ -365,11 +410,16 @@
     },
     {
       "id": "propsSynthetic",
-      "glbBytes": 402700,
+      "glbBytes": 380208,
       "props": [
         {
           "id": "plasticDrum",
           "pack": "propsSynthetic",
+          "bounds": [
+            0.609,
+            0.89,
+            0.618
+          ],
           "lods": [
             {
               "triangles": 800,
@@ -388,9 +438,14 @@
         {
           "id": "crtTelevision",
           "pack": "propsSynthetic",
+          "bounds": [
+            0.52,
+            0.44,
+            0.492
+          ],
           "lods": [
             {
-              "triangles": 424,
+              "triangles": 464,
               "draws": 4
             },
             {
@@ -406,6 +461,11 @@
         {
           "id": "glassBottle",
           "pack": "propsSynthetic",
+          "bounds": [
+            0.075,
+            0.29,
+            0.075
+          ],
           "lods": [
             {
               "triangles": 720,
@@ -424,6 +484,11 @@
         {
           "id": "trafficCone",
           "pack": "propsSynthetic",
+          "bounds": [
+            0.36,
+            0.72,
+            0.36
+          ],
           "lods": [
             {
               "triangles": 212,
