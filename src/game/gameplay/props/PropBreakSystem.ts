@@ -143,6 +143,7 @@ export class PropBreakSystem implements Disposable {
       position: position.clone(),
       surface: archetype.surface,
       debrisCount,
+      reaction: prop.breakReaction.kind,
       ...(attacker === undefined ? {} : { sourceId: attacker }),
     });
   }
@@ -169,7 +170,9 @@ export class PropBreakSystem implements Disposable {
         });
         return;
       case "collapse":
-        // Las juntas las suelta `PropStructureSystem`, que escucha `prop.broken`.
+        // Las juntas las suelta `PropStructureSystem` al ver `prop.broken` con
+        // esta reacción: derribar la estructura desde acá exigiría quitar
+        // joints mientras se resuelve una rotura, que es donde vive el peligro.
         return;
     }
   }

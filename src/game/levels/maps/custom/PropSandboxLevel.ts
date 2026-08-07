@@ -1,4 +1,9 @@
 import { PROP_ARCHETYPE_IDS, PropArchetypes } from "@game/config/props.config";
+import {
+  crateStackStructure,
+  scaffoldTowerStructure,
+  shelfUnitStructure,
+} from "@game/levels/builders/PropStructureBuilder";
 import type { LevelDefinition, PropDefinition } from "@game/levels/LevelDefinition";
 
 /**
@@ -25,6 +30,33 @@ const crateStack: PropDefinition[] = [
   { id: "stack-c", archetypeId: "woodenCrate", position: [-5.1, 0, 3] },
   { id: "pallet-base", archetypeId: "pallet", position: [-6, 0, 5] },
 ];
+
+/**
+ * Estructuras articuladas. La pila de la izquierda aguanta como una sola pieza
+ * hasta que le vuelan la base; la estantería de la derecha va atornillada y
+ * cede de a un estante.
+ */
+const jointedStack = crateStackStructure({
+  id: "sandbox-stack",
+  at: [-11, -2],
+  perLayer: 2,
+  layers: 3,
+});
+
+const jointedShelf = shelfUnitStructure({
+  id: "sandbox-shelf",
+  at: [11, -12],
+  shelves: 4,
+  spacing: 0.95,
+  archetypeId: "metalBarrel",
+  cascade: false,
+});
+
+const scaffold = scaffoldTowerStructure({
+  id: "sandbox-scaffold",
+  at: [17, 6],
+  levels: 4,
+});
 
 /** Frágiles agrupados: es donde más se nota el material al romperse. */
 const fragileShelf: PropDefinition[] = [
@@ -99,7 +131,17 @@ export const PropSandboxLevel: LevelDefinition = {
     { id: "sandbox-weapon-bench", position: [0, 0.4, 9], size: [12, 0.8, 1.2], material: "trim" },
   ],
   dynamicBoxes: [],
-  props: [...catalogRow, ...crateStack, ...fragileShelf, ...anchored, ...scaled],
+  props: [
+    ...catalogRow,
+    ...crateStack,
+    ...fragileShelf,
+    ...anchored,
+    ...scaled,
+    ...jointedStack.props,
+    ...jointedShelf.props,
+    ...scaffold.props,
+  ],
+  propStructures: [jointedStack.structure, jointedShelf.structure, scaffold.structure],
   navBlockers: [
     {
       id: "anchored-block-nav",

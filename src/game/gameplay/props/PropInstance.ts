@@ -26,13 +26,21 @@ export interface DestroyedPropSaveSnapshot {
 
 export type PropSaveSnapshot = ActivePropSaveSnapshot | DestroyedPropSaveSnapshot;
 
+/** El golpe que acaba de recibir un prop, ya con su multiplicador aplicado. */
+export interface PropDamageHit {
+  readonly damage: number;
+  readonly attackerId?: string;
+  readonly point?: Vector3;
+  readonly direction?: Vector3;
+}
+
 export interface PropInstanceOptions {
   /** Vida inicial; si se omite, la del arquetipo. */
   readonly health?: number | false;
   /** Escala uniforme aplicada al spawnear. Default 1. */
   readonly scale?: number;
   /** Aviso de daño que NO fue letal (el letal lo anuncia la rotura). */
-  readonly onDamaged?: (prop: PropInstance, attackerId: string | undefined) => void;
+  readonly onDamaged?: (prop: PropInstance, hit: PropDamageHit) => void;
 }
 
 /**
@@ -113,7 +121,12 @@ export class PropInstance implements Damageable {
     if (attackerId) this.lastAttackerId = attackerId;
     this.health -= effective;
     if (this.health > 0) {
-      this.onDamaged?.(this, attackerId);
+      this.onDamaged?.(this, {
+        damage: effective,
+        ...(attackerId === undefined ? {} : { attackerId }),
+        ...(hitPoint ? { point: hitPoint } : {}),
+        ...(hitDirection ? { direction: hitDirection } : {}),
+      });
       return;
     }
 

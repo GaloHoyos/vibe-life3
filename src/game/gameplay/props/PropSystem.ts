@@ -96,13 +96,16 @@ export class PropSystem implements Disposable {
       {
         health: definition.health,
         scale,
-        onDamaged: (damaged, attackerId) =>
+        onDamaged: (damaged, hit) =>
           this.eventBus.emit("prop.damaged", {
             propId: damaged.id,
             archetypeId: damaged.archetype.id,
             health: damaged.currentHealth(),
             maxHealth: damaged.totalHealth,
-            ...(attackerId === undefined ? {} : { sourceId: attackerId }),
+            damage: hit.damage,
+            ...(hit.point ? { point: hit.point } : {}),
+            ...(hit.direction ? { direction: hit.direction } : {}),
+            ...(hit.attackerId === undefined ? {} : { sourceId: hit.attackerId }),
           }),
       },
     );

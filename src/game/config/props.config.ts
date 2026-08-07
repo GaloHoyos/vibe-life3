@@ -492,6 +492,18 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
   },
 };
 
+/**
+ * Abollar exige clonar la geometría del prop (la del GLB es compartida por
+ * todas sus instancias), así que el techo es duro: son 12 mallas vivas, no 12
+ * "aproximadamente". Sin él, cada barril que el jugador balea en una partida
+ * larga deja una geometría en memoria para siempre.
+ */
+export const PropDeformConfig = {
+  maxDeformedProps: 12,
+  /** Daño mínimo para que un golpe deje marca. Un rasguño no abolla. */
+  minDamage: 4,
+} as const;
+
 export const PropTuning = {
   /**
    * Huella mínima para que un prop anclado entre al bake de navegación.

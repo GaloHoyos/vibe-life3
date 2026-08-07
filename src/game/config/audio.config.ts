@@ -507,13 +507,9 @@ export interface PropBreakAudio {
   readonly break: readonly string[];
   readonly debris: readonly string[];
   /**
-   * Loops de arrastre y crujidos de tensión que consume `PropScrapeSystem`.
-   *
-   * Están vacíos a propósito: los wavs viven en `hl2sound/sound/physics/`
-   * (`*_scrape_rough_loop*`, `*_scrape_smooth_loop*`, `*_strain*`) pero medirlos
-   * necesita ffmpeg para `npm run audio:levels`, y un contract test —con razón—
-   * no deja referenciar clips sin medir. Con las pools vacías `pickSound`
-   * devuelve null y el sistema queda mudo en vez de romper.
+   * Arrastre continuo y crujido bajo carga, que consume `PropScrapeSystem`.
+   * Los materiales sin pool (vidrio, cartón, carne) quedan mudos al rozar:
+   * `pickSound` devuelve null y el sistema no arma la voz.
    */
   readonly scrapeRough?: readonly string[];
   readonly scrapeSmooth?: readonly string[];
@@ -524,10 +520,25 @@ export const PropMaterialAudio: Record<ImpactMaterial, PropBreakAudio> = {
   concrete: {
     break: ["physics.hl2.concrete.break1", "physics.hl2.concrete.break2"],
     debris: ["physics.hl2.concrete.rock1", "physics.hl2.concrete.rock2"],
+    scrapeRough: ["physics.hl2.concrete.scrapeRough1", "physics.hl2.concrete.scrapeRough2"],
+    scrapeSmooth: ["physics.hl2.concrete.scrapeSmooth1"],
   },
   metal: {
     break: ["physics.hl2.metal.break1", "physics.hl2.metal.break2"],
     debris: ["physics.hl2.metal.debris1", "physics.hl2.metal.debris2"],
+    scrapeRough: [
+      "physics.hl2.metal.scrapeRough1",
+      "physics.hl2.metal.scrapeRough2",
+      "physics.hl2.metal.scrapeRough3",
+    ],
+    scrapeSmooth: ["physics.hl2.metal.scrapeSmooth1", "physics.hl2.metal.scrapeSmooth2"],
+    strain: [
+      "physics.hl2.metal.strain1",
+      "physics.hl2.metal.strain2",
+      "physics.hl2.metal.strain3",
+      "physics.hl2.metal.strain4",
+      "physics.hl2.metal.strain5",
+    ],
   },
   wood: {
     break: [
@@ -535,16 +546,28 @@ export const PropMaterialAudio: Record<ImpactMaterial, PropBreakAudio> = {
       "physics.hl2.wood.break2",
       "physics.hl2.wood.break3",
       "physics.hl2.wood.break4",
+      "physics.hl2.wood.break5",
+      "physics.hl2.wood.break6",
+      "physics.hl2.wood.break7",
     ],
     debris: ["physics.hl2.wood.soft1", "physics.hl2.wood.soft2", "physics.hl2.wood.soft3"],
+    scrapeRough: ["physics.hl2.wood.scrapeRough1", "physics.hl2.wood.scrapeRough2"],
+    scrapeSmooth: ["physics.hl2.wood.scrapeSmooth1", "physics.hl2.wood.scrapeSmooth2"],
+    strain: ["physics.hl2.wood.strain1", "physics.hl2.wood.strain2", "physics.hl2.wood.strain3"],
   },
   glass: {
     break: [
       "physics.hl2.glass.break1",
       "physics.hl2.glass.break2",
       "physics.hl2.glass.break3",
+      "physics.hl2.glass.break4",
+      "physics.hl2.glass.break5",
+      "physics.hl2.glass.break6",
+      "physics.hl2.glass.break7",
+      "physics.hl2.glass.break8",
     ],
     debris: ["physics.hl2.glass.soft1", "physics.hl2.glass.soft2"],
+    // El vidrio no se arrastra: se astilla. Sin pool de scrape queda mudo.
   },
   flesh: {
     break: ["physics.hl2.flesh.break1"],
@@ -555,8 +578,19 @@ export const PropMaterialAudio: Record<ImpactMaterial, PropBreakAudio> = {
     debris: ["physics.hl2.body.soft1", "physics.hl2.body.soft2"],
   },
   plastic: {
-    break: ["physics.hl2.plastic.break1"],
+    break: [
+      "physics.hl2.plastic.break1",
+      "physics.hl2.plastic.break2",
+      "physics.hl2.plastic.break3",
+      "physics.hl2.plastic.break4",
+    ],
     debris: ["physics.hl2.plastic.soft1", "physics.hl2.plastic.soft2"],
+    scrapeRough: ["physics.hl2.plastic.scrapeRough1"],
+    scrapeSmooth: [
+      "physics.hl2.plastic.scrapeSmooth1",
+      "physics.hl2.plastic.scrapeSmooth2",
+      "physics.hl2.plastic.scrapeSmooth3",
+    ],
   },
   tile: {
     // La cerámica estalla como el hormigón; su propio clip de rotura no existe.

@@ -16,6 +16,7 @@ import type {
   NPCDefinition,
   ObjectiveDefinition,
   PropDefinition,
+  PropStructureDefinition,
   StaticBoxDefinition,
   TerrainDefinition,
   TriggerDefinition,
@@ -38,6 +39,7 @@ import { buildBuilding, type BuildingSpec } from './BuildingBuilder';
 import { buildHouse, type HouseSpec } from './HouseBuilder';
 import { buildRamp, type RampSpec } from './RampBuilder';
 import type { PropArtifact } from './PropBuilder';
+import type { PropStructureArtifact } from './PropStructureBuilder';
 import { PropArchetypes, PropTuning } from '@game/config/props.config';
 import { propBoundsForScale } from '@game/gameplay/props/propDamage';
 import type { LandmarkReference } from '@game/levels/LevelTransition';
@@ -102,6 +104,7 @@ export class MapBuilder {
   private readonly staticBoxList: StaticBoxDefinition[] = [];
   private readonly dynamicBoxList: DynamicBoxDefinition[] = [];
   private readonly propList: PropDefinition[] = [];
+  private readonly propStructureList: PropStructureDefinition[] = [];
   private readonly navBlockerList: StaticBoxDefinition[] = [];
   private readonly buildingList: BuildingArtifact[] = [];
   private readonly doorList: DoorDefinition[] = [];
@@ -418,6 +421,8 @@ export class MapBuilder {
       buildings: this.buildingList,
       dynamicBoxes: this.dynamicBoxList,
       props: this.propList.length > 0 ? this.propList : undefined,
+      propStructures:
+        this.propStructureList.length > 0 ? this.propStructureList : undefined,
       navBlockers: this.navBlockerList.length > 0 ? this.navBlockerList : undefined,
       doors: this.doorList,
       actionButtons: this.actionButtonList.length > 0 ? this.actionButtonList : undefined,
@@ -441,6 +446,15 @@ export class MapBuilder {
     };
   }
 
+  /** Estructura articulada: sus props mas sus uniones. */
+  propStructure(...artifacts: PropStructureArtifact[]): this {
+    for (const artifact of artifacts) {
+      this.propEntity(...artifact.props);
+      this.propStructureList.push(artifact.structure);
+    }
+    return this;
+  }
+
   /** Props del catalogo ya instanciados (para validaciones cruzadas). */
   get props(): readonly PropDefinition[] {
     return this.propList;
@@ -458,6 +472,7 @@ export class MapBuilder {
     this.buildingList.forEach((b) => b.boxes.forEach((box) => check(box.id)));
     this.dynamicBoxList.forEach((b) => check(b.id));
     this.propList.forEach((p) => check(p.id));
+    this.propStructureList.forEach((s) => check(s.id));
     this.navBlockerList.forEach((b) => check(b.id));
     this.doorList.forEach((d) => {
       check(d.id);

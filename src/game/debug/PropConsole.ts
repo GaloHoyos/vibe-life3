@@ -1,6 +1,8 @@
 import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import { PROP_ARCHETYPE_IDS, PropArchetypes, type PropArchetypeId } from "@game/config/props.config";
 import type { PropSystem } from "@game/gameplay/props/PropSystem";
+import type { PropStructureSystem } from "@game/gameplay/props/PropStructureSystem";
+import type { PropDeformationSystem } from "@game/gameplay/props/PropDeformationSystem";
 
 declare global {
   interface Window {
@@ -35,6 +37,12 @@ declare global {
       breakAll: () => number;
       /** Cuerpos de fragmentos vivos en el mundo. */
       debrisCount: () => number;
+      /** Estructuras articuladas todavía en pie. */
+      structureCount: () => number;
+      /** Suelta las juntas de una estructura: se viene abajo. */
+      collapse: (structureId: string) => boolean;
+      /** Props con geometría abollada viva (techo en PropDeformConfig). */
+      deformedCount: () => number;
     };
   }
 }
@@ -42,6 +50,8 @@ declare global {
 export function installPropConsole(
   getProps: () => PropSystem,
   getPhysics: () => PhysicsWorld,
+  getStructures: () => PropStructureSystem,
+  getDeformation: () => PropDeformationSystem,
 ): () => void {
   let spawned = 0;
 
@@ -100,6 +110,13 @@ export function installPropConsole(
       getPhysics()
         .getBodiesByKind("prop")
         .filter((body) => getPhysics().getBodyMetadata(body)?.propKind === "debris").length,
+    structureCount: () => getStructures().count(),
+    collapse: (structureId) => {
+      const before = getStructures().count();
+      getStructures().collapse(structureId);
+      return getStructures().count() < before;
+    },
+    deformedCount: () => getDeformation().count(),
   };
 
   window.__props = api;

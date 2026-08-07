@@ -38,6 +38,7 @@ import type { CheckpointSystem } from './CheckpointSystem';
 import type { HazardVolumeSystem } from './HazardVolumeSystem';
 import { ExplosiveBarrelSystem } from '@game/gameplay/hazards/ExplosiveBarrelSystem';
 import type { PropSystem } from '@game/gameplay/props/PropSystem';
+import type { PropStructureSystem } from '@game/gameplay/props/PropStructureSystem';
 
 /**
  * Wiring de portales para los NPCs del nivel (LOS/disparo portal-aware, cruce
@@ -83,6 +84,7 @@ export class LevelLoader {
     private readonly hazardVolumes: HazardVolumeSystem,
     private readonly explosiveBarrels: ExplosiveBarrelSystem,
     private readonly props: PropSystem,
+    private readonly propStructures: PropStructureSystem,
     private readonly characters: CharacterFactory,
     private readonly assets: AssetManager,
     private readonly npcPortalServices: NpcPortalServices,
@@ -427,6 +429,10 @@ export class LevelLoader {
       propDefinitions.forEach((definition) => {
         this.props.spawn(definition);
       });
+    }
+    // Las juntas después de spawnear: necesitan los dos cuerpos ya en el mundo.
+    if (level.propStructures && level.propStructures.length > 0) {
+      this.propStructures.build(level.propStructures);
     }
 
     (level.hazardVolumes ?? []).forEach((definition) => {

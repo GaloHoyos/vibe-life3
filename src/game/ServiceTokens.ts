@@ -38,6 +38,8 @@ import type { PropSystem } from "@game/gameplay/props/PropSystem";
 import type { PropAssetRegistry } from "@game/assets/props/PropAssetRegistry";
 import type { PropContactMonitor } from "@game/gameplay/props/PropContactMonitor";
 import type { PropScrapeSystem } from "@game/audio/PropScrapeSystem";
+import type { PropDeformationSystem } from "@game/gameplay/props/PropDeformationSystem";
+import type { PropStructureSystem } from "@game/gameplay/props/PropStructureSystem";
 import type { PropBreakSystem } from "@game/gameplay/props/PropBreakSystem";
 import type { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 import type { PlayerSquadService } from "@game/gameplay/squad/PlayerSquadService";
@@ -82,6 +84,8 @@ export const GameTokens = {
   PropAssets: new ServiceToken<PropAssetRegistry>("PropAssetRegistry"),
   PropContacts: new ServiceToken<PropContactMonitor>("PropContactMonitor"),
   PropScrapeSounds: new ServiceToken<PropScrapeSystem>("PropScrapeSystem"),
+  PropDeformation: new ServiceToken<PropDeformationSystem>("PropDeformationSystem"),
+  PropStructures: new ServiceToken<PropStructureSystem>("PropStructureSystem"),
   PropBreaks: new ServiceToken<PropBreakSystem>("PropBreakSystem"),
   PropImpacts: new ServiceToken<PropImpactSystem>("PropImpactSystem"),
   PlayerSquad: new ServiceToken<PlayerSquadService>("PlayerSquadService"),

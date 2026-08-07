@@ -11,7 +11,7 @@ import type { ChargerKind } from "@game/config/items.config";
 import type { DifficultyLevel } from "@game/config/difficulty.config";
 import type { DamageType } from "@shared/types/lifecycle";
 import type { SurfaceType } from "@shared/types/Surface";
-import type { PropArchetypeId } from "@game/config/props.config";
+import type { PropArchetypeId, PropBreakReaction } from "@game/config/props.config";
 import type { ActivatorRef } from "@game/script/ActivatorRef";
 import type {
   VehicleArchetypeId,
@@ -129,6 +129,11 @@ export interface GameEventMap {
     archetypeId: PropArchetypeId;
     health: number;
     maxHealth: number;
+    /** Daño ya efectivo (con el multiplicador del tipo de golpe aplicado). */
+    damage: number;
+    /** Dónde pegó y hacia dónde: lo consume la deformación plástica. */
+    point?: Vector3;
+    direction?: Vector3;
     sourceId?: string;
   };
   /** Un prop del catálogo cedió: su reacción de rotura ya se despachó. */
@@ -139,6 +144,8 @@ export interface GameEventMap {
     surface: SurfaceType;
     /** Fragmentos que llegaron a spawnear (el pool puede recortarlos). */
     debrisCount: number;
+    /** `collapse` derrumba la estructura entera, no sólo las uniones del muerto. */
+    reaction: PropBreakReaction["kind"];
     sourceId?: string;
   };
   /** Un NPC murió congelado (ice gun al llenar el medidor de freeze). */

@@ -140,6 +140,8 @@ import {
 } from "@game/gameplay/props/PropSystem";
 import { PropAssetRegistry } from "@game/assets/props/PropAssetRegistry";
 import { PropContactMonitor } from "@game/gameplay/props/PropContactMonitor";
+import { PropDeformationSystem } from "@game/gameplay/props/PropDeformationSystem";
+import { PropStructureSystem } from "@game/gameplay/props/PropStructureSystem";
 import { PropBreakSystem } from "@game/gameplay/props/PropBreakSystem";
 import { DebrisPool } from "@game/gameplay/props/DebrisPool";
 import { VehicleSystem } from "@game/gameplay/vehicles/VehicleSystem";
@@ -694,6 +696,16 @@ export class Game {
       new PropSystem(physics, scene.scene, eventBus, propAssets),
     );
     s.register(GameTokens.ExplosiveBarrels, new ExplosiveBarrelSystem(props));
+    s.register(GameTokens.PropDeformation, new PropDeformationSystem(eventBus, props));
+    s.register(
+      GameTokens.PropStructures,
+      new PropStructureSystem(
+        physics,
+        props,
+        eventBus,
+        s.resolve(GameTokens.PropScrapeSounds),
+      ),
+    );
     s.register(
       GameTokens.PropBreaks,
       new PropBreakSystem(
@@ -2524,6 +2536,8 @@ export class Game {
     this.uninstallPropConsole = installPropConsole(
       () => s.resolve(GameTokens.Props),
       () => s.resolve(EngineTokens.Physics),
+      () => s.resolve(GameTokens.PropStructures),
+      () => s.resolve(GameTokens.PropDeformation),
     );
     this.uninstallPlayerModelConsole = installPlayerModelConsole(
       () => this.playerModel,
@@ -2913,6 +2927,8 @@ export class Game {
     s.resolve(GameTokens.PropContacts).update(time.elapsed);
     s.resolve(GameTokens.PropCollisionSounds).update();
     s.resolve(GameTokens.PropScrapeSounds).update(time.delta, time.elapsed, playerPosition);
+    s.resolve(GameTokens.PropDeformation).update(time.elapsed);
+    s.resolve(GameTokens.PropStructures).update(time.elapsed);
     s.resolve(GameTokens.PropBreaks).update(time.delta, time.elapsed, player.getPosition());
     s.resolve(GameTokens.PlayerSounds).update(time.delta);
     this.updateGunshipCrashes(time.elapsed, raycast, grenades);
@@ -3416,6 +3432,7 @@ export class Game {
       hazardVolumes,
       explosiveBarrels,
       services.resolve(GameTokens.Props),
+      services.resolve(GameTokens.PropStructures),
       characters,
       assets,
       this.buildNpcPortalServices(),
@@ -3454,6 +3471,10 @@ export class Game {
     // cuerpos del mundo viejo.
     services.resolve(GameTokens.PropBreaks).clear();
     services.resolve(GameTokens.PropScrapeSounds).clear();
+    // Las juntas antes que los cuerpos, siempre.
+    services.resolve(GameTokens.PropStructures).clear();
+    // Antes que los props: devuelve las geometrías clonadas a sus mallas.
+    services.resolve(GameTokens.PropDeformation).clear();
     services.resolve(GameTokens.PropContacts).clear();
     services.resolve(GameTokens.Props).clear();
     vfx.clear();
