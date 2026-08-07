@@ -1,4 +1,6 @@
 import { BufferGeometry, LOD, Matrix4, Mesh, Object3D, Vector3 } from "three";
+import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
+import { TessellateModifier } from "three/addons/modifiers/TessellateModifier.js";
 import type { Disposable } from "@shared/types/lifecycle";
 import { PropDeformConfig, type PropDeformProfile } from "@game/config/props.config";
 import type { GameEventBus } from "@game/GameEvents";
@@ -23,6 +25,7 @@ const tmpInverse = new Matrix4();
 const tmpPoint = new Vector3();
 const tmpDirection = new Vector3();
 const tmpVertex = new Vector3();
+const tmpNormal = new Vector3();
 const tmpScale = new Vector3();
 
 /**
@@ -119,8 +122,10 @@ export class PropDeformationSystem implements Disposable {
     this.disposers.length = 0;
   }
 
-  /** Clona la geometría del prop para poder escribirla sin tocar a sus pares. */
+  /** Clona y densifica la geometría del prop para poder abollarla. */
   private adopt(prop: PropInstance): DeformedProp | null {
+    const profile = prop.archetype.deform;
+    if (!profile) return null;
     const meshes = collectLod0Meshes(prop.mesh);
     if (meshes.length === 0) return null;
 
@@ -134,7 +139,7 @@ export class PropDeformationSystem implements Disposable {
     const targets: DeformedMesh[] = [];
     for (const mesh of meshes) {
       const shared = mesh.geometry;
-      const clone = shared.clone();
+      const clone = densify(shared, profile.radius);
       mesh.geometry = clone;
       targets.push({
         mesh,
@@ -166,6 +171,34 @@ function collectLod0Meshes(root: Object3D): Mesh[] {
   return meshes;
 }
 
+/**
+ * Clon con suficientes vértices como para que un abollón exista.
+ *
+ * La malla del prop no los tiene: `chamferBox` es un casco convexo de 24 puntos
+ * y el cuerpo del barril un cilindro con vértices SÓLO en sus dos bordes, así
+ * que en el medio de una superficie no hay nada que hundir. Sin esto, disparar
+ * al aro de un barril hunde el aro —que sí tiene vértices ahí— y deja la chapa
+ * intacta al lado, que es exactamente como se veía roto.
+ *
+ * Se subdivide en runtime y no en el generador porque sólo lo necesitan los
+ * pocos props que llegan a abollarse: el asset se mantiene liviano y el LOD1,
+ * que nunca se abolla, no paga nada.
+ */
+function densify(shared: BufferGeometry, dentRadius: number): BufferGeometry {
+  // Media docena de vértices a lo ancho del abollón: menos se ve como un pico,
+  // más es geometría que nadie mira de cerca.
+  const maxEdge = Math.max(0.02, dentRadius / 3);
+  const dense = new TessellateModifier(maxEdge, 6).modify(shared.clone());
+  // `TessellateModifier` devuelve la malla sin índices, o sea con cada triángulo
+  // por su cuenta: sin volver a soldar, `computeVertexNormals` daría normales
+  // planas y el abollón se vería facetado en vez de hundido.
+  const welded = mergeVertices(dense);
+  dense.dispose();
+  if (welded.getAttribute("uv")) welded.computeTangents();
+  welded.computeBoundingSphere();
+  return welded;
+}
+
 function applyDent(
   target: DeformedMesh,
   worldPoint: Vector3,
@@ -187,11 +220,20 @@ function applyDent(
   const radiusSq = radius * radius;
 
   const positions = target.clone.getAttribute("position");
+  const normals = target.clone.getAttribute("normal");
   let touched = false;
   for (let index = 0; index < positions.count; index += 1) {
     tmpVertex.fromBufferAttribute(positions, index);
     const distanceSq = tmpVertex.distanceToSquared(tmpPoint);
     if (distanceSq > radiusSq) continue;
+
+    // Sólo cede la cara que recibe el golpe. Sin esto, en un prop finito —un
+    // radiador, un televisor— la cara de atrás también entra en el radio y se
+    // mueve igual: el prop se desplaza entero en vez de hundirse.
+    if (normals) {
+      tmpNormal.fromBufferAttribute(normals, index);
+      if (tmpNormal.dot(tmpDirection) > -0.05) continue;
+    }
 
     // Caída suave al borde: un cono dejaría un pico en el centro del abollón.
     const falloff = (1 - distanceSq / radiusSq) ** 2;

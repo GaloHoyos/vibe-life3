@@ -1,8 +1,9 @@
-﻿import {
+import {
   BoxGeometry,
   Group,
   Mesh,
   MeshStandardMaterial,
+  NoBlending,
   Quaternion,
   Scene,
   Vector3,
@@ -179,6 +180,14 @@ export class WeaponViewModel {
           const clone = material.clone();
           clone.depthTest = false;
           clone.depthWrite = false;
+          // Three dibuja TODA la cola transparente después de la opaca, y
+          // `renderOrder` sólo ordena dentro de cada una: un fragmento de prop
+          // en fade o el vidrio de un televisor le ganaban al arma por más
+          // renderOrder que tuviera. Entrar a la cola transparente la devuelve
+          // al frente. `NoBlending` conserva el aspecto opaco: el alfa de la
+          // textura se sigue ignorando, sólo cambia en qué pase se dibuja.
+          clone.transparent = true;
+          clone.blending = NoBlending;
           return clone;
         });
         object.material = Array.isArray(object.material)

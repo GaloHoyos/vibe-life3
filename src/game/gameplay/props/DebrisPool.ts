@@ -92,6 +92,20 @@ function alignment(
   return Math.max(0, tmpSector.normalize().dot(impact));
 }
 
+/**
+ * Un fragmento vive opaco y sólo se vuelve transparente para desvanecerse.
+ *
+ * Three dibuja toda la cola transparente después de la opaca, así que un
+ * fragmento transparente desde que nace se dibuja por encima del arma en
+ * primera persona; y como los transparentes no escriben profundidad, un montón
+ * de pedazos tampoco se ocluye bien entre sí.
+ */
+function beginFade(slot: DebrisSlot): void {
+  slot.fade = 0;
+  slot.material.transparent = true;
+  slot.material.needsUpdate = true;
+}
+
 function indexOfLargest(chunks: readonly PropChunkSource[]): number {
   let best = 0;
   for (let index = 1; index < chunks.length; index += 1) {
@@ -275,8 +289,8 @@ export class DebrisPool implements Disposable {
     velocity: Vector3,
     spin: Vector3,
   ): DebrisSlot {
+    // Opaco hasta que empiece a desvanecerse: ver `beginFade`.
     const material = chunk.material.clone();
-    material.transparent = true;
     const mesh = new Mesh(chunk.geometry, material);
     if (scale !== 1) mesh.scale.setScalar(scale);
     mesh.castShadow = true;
@@ -306,7 +320,6 @@ export class DebrisPool implements Disposable {
     // `getMaterial` ya devuelve un clon por llamada: cada fragmento necesita el
     // suyo porque el fade escribe su `opacity`.
     const material = getMaterial(materialKey);
-    if (material instanceof MeshStandardMaterial) material.transparent = true;
     const mesh = new Mesh(this.unitBox, material);
     mesh.scale.copy(size);
     mesh.castShadow = true;
@@ -393,7 +406,7 @@ export class DebrisPool implements Disposable {
 
       const expired =
         slot.age >= DebrisConfig.lifetime || slot.sleepFor >= DebrisConfig.settleFadeDelay;
-      if (slot.fade < 0 && expired) slot.fade = 0;
+      if (slot.fade < 0 && expired) beginFade(slot);
       if (slot.fade < 0) continue;
 
       slot.fade += delta;

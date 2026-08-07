@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import RAPIER from "@dimforge/rapier3d-compat";
-import { BoxGeometry, MeshStandardMaterial, Quaternion, Scene, Vector3 } from "three";
+import { BoxGeometry, Mesh, MeshStandardMaterial, Quaternion, Scene, Vector3 } from "three";
 import type { PropChunkSource } from "@game/assets/props/PropAssetRegistry";
 
 // Los materiales PBR reales cargan texturas por TextureLoader, que necesita DOM.
@@ -103,6 +103,29 @@ describe("DebrisPool", () => {
 
     expect(physics.getBodiesByKind("prop")).toContain(held);
     expect(pool.count()).toBe(1);
+  });
+
+  it("nace opaco y solo se vuelve transparente al desvanecerse", async () => {
+    const { scene, pool } = await makePool();
+    burst(pool, 3, 1);
+    const materialsOf = (): MeshStandardMaterial[] =>
+      scene.children
+        .filter((child): child is Mesh => child instanceof Mesh)
+        .map((mesh) => mesh.material as MeshStandardMaterial);
+
+    // Transparente desde el nacimiento se dibujaria por encima del arma en
+    // primera persona, y los pedazos no se ocluirian entre si.
+    expect(materialsOf().every((material) => material.transparent === false)).toBe(true);
+
+    // Se lo empuja hasta el borde del fade.
+    for (let elapsed = 0; elapsed < DebrisConfig.lifetime + 0.1; elapsed += 0.5) {
+      pool.update(0.5, ORIGIN);
+    }
+
+    const fading = materialsOf();
+    expect(fading.length).toBeGreaterThan(0);
+    expect(fading.every((material) => material.transparent === true)).toBe(true);
+    expect(fading.every((material) => material.opacity < 1)).toBe(true);
   });
 
   it("expira por vida absoluta aunque nunca llegue a dormirse", async () => {

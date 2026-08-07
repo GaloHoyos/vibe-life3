@@ -39,6 +39,18 @@ function setup() {
 const HIT = new Vector3(0, 0.3, 0.28);
 const INWARD = new Vector3(0, 0, -1);
 
+/** Copia de las posiciones, para comparar entre golpes sobre la misma malla. */
+function snapshot(mesh: Mesh): Float32Array {
+  const positions = mesh.geometry.getAttribute("position");
+  const copy = new Float32Array(positions.count * 3);
+  for (let index = 0; index < positions.count; index += 1) {
+    copy[index * 3] = positions.getX(index);
+    copy[index * 3 + 1] = positions.getY(index);
+    copy[index * 3 + 2] = positions.getZ(index);
+  }
+  return copy;
+}
+
 describe("PropDeformationSystem", () => {
   it("clona la geometria antes de escribirla: no corrompe a los demas props", () => {
     const { system } = setup();
@@ -63,17 +75,22 @@ describe("PropDeformationSystem", () => {
       "metalBarrel",
       new BoxGeometry(0.56, 0.95, 0.56, 8, 8, 8),
     );
-
-    system.dent(prop, HIT, INWARD, 20, 0);
-
-    const positions = mesh.geometry.getAttribute("position");
     const radius = PropArchetypes.metalBarrel.deform!.radius;
+    const profile = PropArchetypes.metalBarrel.deform!;
+
+    // El primer golpe densifica la malla; recién después la topología es
+    // estable y se puede comparar vértice por vértice.
+    system.dent(prop, HIT, INWARD, 20, 0);
+    const before = snapshot(mesh);
+
+    system.dent(prop, HIT, INWARD, 20, profile.cooldown * 2);
+    const positions = mesh.geometry.getAttribute("position");
+
     let moved = 0;
     let farUntouched = true;
     const vertex = new Vector3();
-    const original = new BoxGeometry(0.56, 0.95, 0.56, 8, 8, 8).getAttribute("position");
     for (let index = 0; index < positions.count; index += 1) {
-      vertex.fromBufferAttribute(original, index);
+      vertex.set(before[index * 3]!, before[index * 3 + 1]!, before[index * 3 + 2]!);
       const distance = vertex.distanceTo(HIT);
       const dz = positions.getZ(index) - vertex.z;
       if (Math.abs(dz) > 1e-6) moved += 1;
@@ -92,17 +109,22 @@ describe("PropDeformationSystem", () => {
       new BoxGeometry(0.56, 0.95, 0.56, 8, 8, 8),
     );
     const profile = PropArchetypes.metalBarrel.deform!;
-    const reference = new BoxGeometry(0.56, 0.95, 0.56, 8, 8, 8).getAttribute("position");
+
+    system.dent(prop, HIT, INWARD, 20, 0);
+    const reference = snapshot(mesh);
 
     // Muy por encima de lo que hace falta para llegar al techo.
-    for (let hit = 0; hit < 60; hit += 1) {
+    for (let hit = 1; hit < 60; hit += 1) {
       system.dent(prop, HIT, INWARD, 20, hit * (profile.cooldown + 0.01));
     }
 
     const positions = mesh.geometry.getAttribute("position");
     let deepest = 0;
     for (let index = 0; index < positions.count; index += 1) {
-      deepest = Math.max(deepest, Math.abs(positions.getZ(index) - reference.getZ(index)));
+      deepest = Math.max(
+        deepest,
+        Math.abs(positions.getZ(index) - reference[index * 3 + 2]!),
+      );
     }
     expect(deepest).toBeGreaterThan(0);
     expect(deepest).toBeLessThanOrEqual(profile.maxDepth + 1e-6);
