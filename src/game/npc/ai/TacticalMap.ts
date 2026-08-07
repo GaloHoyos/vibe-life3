@@ -1,6 +1,7 @@
 import { Vector3 } from "three";
 import type { NavigationService } from "@engine/ai/navigation/NavigationService";
 import type { Raycast } from "@engine/physics/Raycast";
+import { isSolidWorldKind } from "@engine/physics/metadataKinds";
 import { NavigationProfiles } from "@game/npc/navigation/NavAgentProfiles";
 import type {
   DynamicBoxDefinition,
@@ -272,11 +273,7 @@ export class TacticalMap {
     tmpDir.divideScalar(distance);
     const hit = TacticalMapAnalyzer.sharedRaycast?.cast(tmpEyes, tmpDir, distance);
     if (!hit) return false;
-    return (
-      hit.metadata?.kind === "static" ||
-      hit.metadata?.kind === "dynamic" ||
-      hit.metadata?.kind === "door"
-    );
+    return isSolidWorldKind(hit.metadata?.kind);
   }
 
   private hasLineOfSight(from: Vector3, to: Vector3): boolean {

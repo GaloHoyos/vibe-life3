@@ -62,6 +62,12 @@ export function createEntity(kind: PaletteKind, at: VectorTuple): EditorEntity {
       return { eid: newEid(kind), kind, def: { id: lid('trigger'), position: [x, y + 1, z], size: [3, 2, 3], once: true, connections: [] } };
     case 'explosiveBarrel':
       return { eid: newEid(kind), kind, def: { id: lid('barrel'), position: [x, y, z] } };
+    case 'propEntity':
+      return {
+        eid: newEid(kind),
+        kind,
+        def: { id: lid('prop'), archetypeId: 'woodenCrate', position: [x, y, z] },
+      };
     case 'hazardVolume':
       return { eid: newEid(kind), kind, def: { id: lid('hazard'), position: [x, y + 1, z], size: [4, 2, 4], kind: 'toxic', damagePerSecond: 15 } };
     case 'vehicle':
@@ -224,6 +230,9 @@ export function cloneEntity(entity: EditorEntity): EditorEntity {
       break;
     case 'explosiveBarrel':
       c.def.id = lid('barrel');
+      break;
+    case 'propEntity':
+      c.def.id = lid('prop');
       break;
     case 'hazardVolume':
       c.def.id = lid('hazard');

@@ -1,26 +1,12 @@
-import { CylinderGeometry, Mesh, Vector3, type Scene } from "three";
-import { getMaterial } from "@engine/render/material/Materials";
-import { applyMaterialUvsToCylinder } from "@engine/render/PrimitiveFactory";
-import type { PhysicsWorld } from "@engine/physics/PhysicsWorld";
 import type { Disposable } from "@shared/types/lifecycle";
-import { quatFromEuler } from "@game/levels/builders/transform";
-import type { GrenadeSystem } from "@game/gameplay/weapons/grenade/GrenadeSystem";
-import {
-  ExplosiveBarrel,
-  type ExplosiveBarrelSaveSnapshot,
-  type ExplosiveBarrelDefinition,
-  type ExplosiveBarrelTuning,
+import type { PropSystem } from "@game/gameplay/props/PropSystem";
+import type { PropDefinition } from "@game/levels/LevelDefinition";
+import type {
+  ExplosiveBarrelSaveSnapshot,
+  ExplosiveBarrelDefinition,
 } from "./ExplosiveBarrel";
 
-const DEFAULTS: ExplosiveBarrelTuning = {
-  health: 25,
-  damage: 90,
-  radius: 4.5,
-  impulse: 14,
-};
-const BARREL_RADIUS = 0.28;
-const BARREL_HEIGHT = 0.95;
-const BARREL_MASS = 30;
+const DEFAULTS = { health: 25, damage: 90, radius: 4.5, impulse: 14 } as const;
 
 export interface ExplosiveBarrelSystemSaveSnapshot {
   version: 1;
@@ -28,206 +14,93 @@ export interface ExplosiveBarrelSystemSaveSnapshot {
 }
 
 /**
- * Owner de los barriles explosivos del nivel. Cada barril es un `Damageable`
- * registrado en la metadata de su collider, así lo alcanzan disparos hitscan,
- * fuego de NPCs y otras explosiones (encadenado). Al morir se difiere su
- * explosión a `update`, que delega en `GrenadeSystem.detonate` la explosión
- * radial reusable.
+ * Adaptador de guardado de los barriles explosivos.
+ *
+ * El barril dejó de ser un destructible propio: ahora es el arquetipo
+ * `explosiveBarrel` del catálogo, con vida, casco cilíndrico de verdad y
+ * fragmentos como cualquier otro prop. Lo único que sobrevive de la clase vieja
+ * es este adaptador, porque borrar el id de guardado `system:explosive-barrels`
+ * haría fallar el chequeo de campos requeridos de todas las partidas guardadas.
  */
 export class ExplosiveBarrelSystem implements Disposable {
-  private readonly barrels: ExplosiveBarrel[] = [];
-  private readonly definitions = new Map<string, ExplosiveBarrelDefinition>();
+  private readonly barrelIds = new Set<string>();
 
-  constructor(
-    private readonly physics: PhysicsWorld,
-    private readonly scene: Scene,
-    private readonly grenades: GrenadeSystem,
-  ) {}
+  constructor(private readonly props: PropSystem) {}
 
-  spawn(def: ExplosiveBarrelDefinition): void {
-    this.definitions.set(def.id, cloneDefinition(def));
-    const center = new Vector3(
-      def.position[0],
-      def.position[1] + BARREL_HEIGHT / 2,
-      def.position[2],
-    );
-    const mesh = createBarrelMesh(def.id);
-    mesh.position.copy(center);
-    if (def.rotation) {
-      mesh.rotation.set(def.rotation[0], def.rotation[1], def.rotation[2]);
-    }
-    this.scene.add(mesh);
-
-    const barrel = new ExplosiveBarrel(def.id, mesh, {
-      health: def.health ?? DEFAULTS.health,
-      damage: def.damage ?? DEFAULTS.damage,
-      radius: def.radius ?? DEFAULTS.radius,
-      impulse: def.impulse ?? DEFAULTS.impulse,
-    });
-    const body = this.physics.createDynamicBox(
-      {
-        id: def.id,
-        position: center,
-        size: new Vector3(BARREL_RADIUS * 2, BARREL_HEIGHT, BARREL_RADIUS * 2),
-        rotation: def.rotation ? quatFromEuler(def.rotation) : undefined,
-        mass: BARREL_MASS,
-        metadata: { kind: "dynamic", damageable: barrel },
+  /** Traduce la definición vieja a un prop del catálogo. */
+  static toPropDefinition(definition: ExplosiveBarrelDefinition): PropDefinition {
+    return {
+      id: definition.id,
+      archetypeId: "explosiveBarrel",
+      position: [...definition.position],
+      ...(definition.rotation ? { rotation: [...definition.rotation] } : {}),
+      health: definition.health ?? DEFAULTS.health,
+      breakOverride: {
+        kind: "explode",
+        damage: definition.damage ?? DEFAULTS.damage,
+        radius: definition.radius ?? DEFAULTS.radius,
+        impulse: definition.impulse ?? DEFAULTS.impulse,
       },
-      mesh,
-    );
-    barrel.attachBody(body);
-    this.barrels.push(barrel);
+    };
   }
 
-  update(): void {
-    if (this.barrels.length === 0) {
-      return;
-    }
-    // Snapshot: solo explotan los marcados al comienzo del frame. Los barriles
-    // que una explosión de este frame encadene quedan pendientes para el
-    // siguiente → la cadena se ve escalonada en vez de instantánea.
-    const exploding = this.barrels.filter((barrel) => barrel.pendingExplosion);
-    for (const barrel of exploding) {
-      this.grenades.detonate(barrel.position(), {
-        damage: barrel.damage,
-        radius: barrel.radius,
-        impulse: barrel.impulse,
-        ownerKind: barrel.lastAttackerId === "player" ? "player" : "npc",
-        sourceId: barrel.lastAttackerId,
-        weaponName: "explosiveBarrel",
-      });
-      this.remove(barrel);
-    }
-  }
-
-  captureBarrelSaveState(
-    barrelId: string,
-  ): ExplosiveBarrelSaveSnapshot | null {
-    if (!this.definitions.has(barrelId)) {
-      return null;
-    }
-    return this.barrels.find((barrel) => barrel.id === barrelId)
-      ?.captureSaveState() ?? { id: barrelId, destroyed: true };
-  }
-
-  restoreBarrelSaveState(
-    snapshot: Readonly<ExplosiveBarrelSaveSnapshot>,
-  ): boolean {
-    const definition = this.definitions.get(snapshot.id);
-    if (!definition) {
-      return false;
-    }
-
-    let barrel = this.barrels.find((candidate) => candidate.id === snapshot.id);
-    if (snapshot.destroyed) {
-      if (barrel) {
-        this.remove(barrel);
-      }
-      return true;
-    }
-
-    if (!barrel) {
-      this.spawn(definition);
-      barrel = this.barrels.find(
-        (candidate) => candidate.id === snapshot.id,
-      );
-    }
-    if (!barrel) {
-      return false;
-    }
-    barrel.restoreSaveState(snapshot);
-    return true;
+  /** Lo llama el loader por cada barril convertido, para poder proyectarlo. */
+  track(id: string): void {
+    this.barrelIds.add(id);
   }
 
   captureSaveState(): ExplosiveBarrelSystemSaveSnapshot {
     return {
       version: 1,
-      barrels: [...this.definitions.keys()]
+      barrels: [...this.barrelIds]
         .sort((a, b) => a.localeCompare(b))
-        .map((id) => this.captureBarrelSaveState(id))
-        .filter(
-          (snapshot): snapshot is ExplosiveBarrelSaveSnapshot =>
-            snapshot !== null,
-        ),
+        .map((id): ExplosiveBarrelSaveSnapshot => {
+          const prop = this.props.get(id);
+          if (!prop) return { id, destroyed: true };
+          const snapshot = prop.captureSaveState();
+          return {
+            id,
+            destroyed: false,
+            health: snapshot.health,
+            alive: snapshot.alive,
+            pendingExplosion: snapshot.pendingBreak,
+            lastAttackerId: snapshot.lastAttackerId,
+            body: snapshot.body,
+          };
+        }),
     };
   }
 
-  restoreSaveState(
-    snapshot: Readonly<ExplosiveBarrelSystemSaveSnapshot>,
-  ): void {
-    for (const barrel of snapshot.barrels) {
-      this.restoreBarrelSaveState(barrel);
+  /**
+   * Aplica el formato v1 sobre los props migrados. Una partida vieja trae acá
+   * el estado de sus barriles y lo recupera igual, aunque su `system:props`
+   * todavía no los conociera.
+   */
+  restoreSaveState(snapshot: Readonly<ExplosiveBarrelSystemSaveSnapshot>): void {
+    for (const entry of snapshot.barrels) {
+      const prop = this.props.get(entry.id);
+      if (entry.destroyed) {
+        if (prop) this.props.remove(prop);
+        continue;
+      }
+      if (!prop) continue;
+      prop.restoreSaveState({
+        id: entry.id,
+        destroyed: false,
+        health: entry.health,
+        alive: entry.alive,
+        pendingBreak: entry.pendingExplosion,
+        lastAttackerId: entry.lastAttackerId,
+        body: entry.body,
+      });
     }
   }
 
-  /** Remueve meshes + bodies vivos. Llamar ANTES de `PhysicsWorld.reset()`. */
   clear(): void {
-    this.barrels.forEach((barrel) => this.disposeBarrel(barrel));
-    this.barrels.length = 0;
-    this.definitions.clear();
+    this.barrelIds.clear();
   }
 
   dispose(): void {
     this.clear();
   }
-
-  private remove(barrel: ExplosiveBarrel): void {
-    const index = this.barrels.indexOf(barrel);
-    if (index >= 0) {
-      this.barrels.splice(index, 1);
-    }
-    this.disposeBarrel(barrel);
-  }
-
-  private disposeBarrel(barrel: ExplosiveBarrel): void {
-    this.scene.remove(barrel.mesh);
-    barrel.mesh.traverse((object) => {
-      if (object instanceof Mesh) {
-        object.geometry.dispose?.();
-        const material = object.material;
-        if (Array.isArray(material)) {
-          material.forEach((m) => m.dispose?.());
-        } else {
-          material?.dispose?.();
-        }
-      }
-    });
-    const body = barrel.getBody();
-    if (body) {
-      this.physics.removeDynamicBody(body);
-    }
-  }
-}
-
-function cloneDefinition(
-  definition: Readonly<ExplosiveBarrelDefinition>,
-): ExplosiveBarrelDefinition {
-  return {
-    id: definition.id,
-    position: [...definition.position],
-    ...(definition.rotation
-      ? { rotation: [...definition.rotation] }
-      : {}),
-    ...(definition.health === undefined ? {} : { health: definition.health }),
-    ...(definition.damage === undefined ? {} : { damage: definition.damage }),
-    ...(definition.radius === undefined ? {} : { radius: definition.radius }),
-    ...(definition.impulse === undefined ? {} : { impulse: definition.impulse }),
-  };
-}
-
-function createBarrelMesh(id: string): Mesh {
-  const geometry = applyMaterialUvsToCylinder(
-    new CylinderGeometry(
-      BARREL_RADIUS,
-      BARREL_RADIUS,
-      BARREL_HEIGHT,
-      16,
-    ),
-    "hazard",
-  );
-  const mesh = new Mesh(geometry, getMaterial("hazard"));
-  mesh.name = id;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
 }

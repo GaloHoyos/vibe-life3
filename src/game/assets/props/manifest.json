@@ -1,0 +1,525 @@
+{
+  "schemaVersion": 1,
+  "generator": "vibe-life3-procedural-props",
+  "coordinateSystem": {
+    "units": "meters",
+    "up": "+Y",
+    "origin": "aabb-center"
+  },
+  "generatedAt": "deterministic",
+  "packs": [
+    {
+      "id": "propsWood",
+      "glbBytes": 491288,
+      "props": [
+        {
+          "id": "woodenCrate",
+          "pack": "propsWood",
+          "lods": [
+            {
+              "triangles": 1452,
+              "draws": 3
+            },
+            {
+              "triangles": 792,
+              "draws": 3
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 8,
+          "variants": 3
+        },
+        {
+          "id": "pallet",
+          "pack": "propsWood",
+          "lods": [
+            {
+              "triangles": 1056,
+              "draws": 2
+            },
+            {
+              "triangles": 792,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 8,
+          "variants": 2
+        },
+        {
+          "id": "chair",
+          "pack": "propsWood",
+          "lods": [
+            {
+              "triangles": 704,
+              "draws": 2
+            },
+            {
+              "triangles": 528,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 7,
+          "variants": 2
+        },
+        {
+          "id": "table",
+          "pack": "propsWood",
+          "lods": [
+            {
+              "triangles": 616,
+              "draws": 2
+            },
+            {
+              "triangles": 440,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 7,
+          "variants": 2
+        }
+      ],
+      "nodeNames": [
+        "propsWood_pack",
+        "prop_woodenCrate",
+        "visual_lod0",
+        "variant_0",
+        "woodenCrate_lod0_v0",
+        "variant_1",
+        "woodenCrate_lod0_v1",
+        "variant_2",
+        "woodenCrate_lod0_v2",
+        "visual_lod1",
+        "variant_0",
+        "woodenCrate_lod1_v0",
+        "variant_1",
+        "woodenCrate_lod1_v1",
+        "variant_2",
+        "woodenCrate_lod1_v2",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "chunk_6",
+        "chunk_7",
+        "prop_pallet",
+        "visual_lod0",
+        "variant_0",
+        "pallet_lod0_v0",
+        "variant_1",
+        "pallet_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "pallet_lod1_v0",
+        "variant_1",
+        "pallet_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "chunk_6",
+        "chunk_7",
+        "prop_chair",
+        "visual_lod0",
+        "variant_0",
+        "chair_lod0_v0",
+        "variant_1",
+        "chair_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "chair_lod1_v0",
+        "variant_1",
+        "chair_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "chunk_6",
+        "prop_table",
+        "visual_lod0",
+        "variant_0",
+        "table_lod0_v0",
+        "variant_1",
+        "table_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "table_lod1_v0",
+        "variant_1",
+        "table_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "chunk_6"
+      ]
+    },
+    {
+      "id": "propsMetal",
+      "glbBytes": 448776,
+      "props": [
+        {
+          "id": "metalBarrel",
+          "pack": "propsMetal",
+          "lods": [
+            {
+              "triangles": 1024,
+              "draws": 2
+            },
+            {
+              "triangles": 480,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 16,
+          "chunkNodes": 7,
+          "variants": 2
+        },
+        {
+          "id": "explosiveBarrel",
+          "pack": "propsMetal",
+          "lods": [
+            {
+              "triangles": 1176,
+              "draws": 2
+            },
+            {
+              "triangles": 400,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 7,
+          "variants": 2
+        },
+        {
+          "id": "filingCabinet",
+          "pack": "propsMetal",
+          "lods": [
+            {
+              "triangles": 880,
+              "draws": 2
+            },
+            {
+              "triangles": 352,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "radiator",
+          "pack": "propsMetal",
+          "lods": [
+            {
+              "triangles": 596,
+              "draws": 1
+            },
+            {
+              "triangles": 268,
+              "draws": 1
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 1
+        },
+        {
+          "id": "concreteBlock",
+          "pack": "propsMetal",
+          "lods": [
+            {
+              "triangles": 660,
+              "draws": 3
+            },
+            {
+              "triangles": 132,
+              "draws": 3
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 3
+        }
+      ],
+      "nodeNames": [
+        "propsMetal_pack",
+        "prop_metalBarrel",
+        "visual_lod0",
+        "variant_0",
+        "metalBarrel_lod0_v0",
+        "variant_1",
+        "metalBarrel_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "metalBarrel_lod1_v0",
+        "variant_1",
+        "metalBarrel_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "chunk_6",
+        "prop_explosiveBarrel",
+        "visual_lod0",
+        "variant_0",
+        "explosiveBarrel_lod0_v0",
+        "variant_1",
+        "explosiveBarrel_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "explosiveBarrel_lod1_v0",
+        "variant_1",
+        "explosiveBarrel_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "chunk_6",
+        "prop_filingCabinet",
+        "visual_lod0",
+        "variant_0",
+        "filingCabinet_lod0_v0",
+        "variant_1",
+        "filingCabinet_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "filingCabinet_lod1_v0",
+        "variant_1",
+        "filingCabinet_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_radiator",
+        "visual_lod0",
+        "variant_0",
+        "radiator_lod0_v0",
+        "visual_lod1",
+        "variant_0",
+        "radiator_lod1_v0",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_concreteBlock",
+        "visual_lod0",
+        "variant_0",
+        "concreteBlock_lod0_v0",
+        "variant_1",
+        "concreteBlock_lod0_v1",
+        "variant_2",
+        "concreteBlock_lod0_v2",
+        "visual_lod1",
+        "variant_0",
+        "concreteBlock_lod1_v0",
+        "variant_1",
+        "concreteBlock_lod1_v1",
+        "variant_2",
+        "concreteBlock_lod1_v2",
+        "collider_0"
+      ]
+    },
+    {
+      "id": "propsSynthetic",
+      "glbBytes": 402700,
+      "props": [
+        {
+          "id": "plasticDrum",
+          "pack": "propsSynthetic",
+          "lods": [
+            {
+              "triangles": 800,
+              "draws": 2
+            },
+            {
+              "triangles": 216,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 16,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "crtTelevision",
+          "pack": "propsSynthetic",
+          "lods": [
+            {
+              "triangles": 424,
+              "draws": 4
+            },
+            {
+              "triangles": 264,
+              "draws": 4
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "glassBottle",
+          "pack": "propsSynthetic",
+          "lods": [
+            {
+              "triangles": 720,
+              "draws": 6
+            },
+            {
+              "triangles": 336,
+              "draws": 6
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 16,
+          "chunkNodes": 5,
+          "variants": 3
+        },
+        {
+          "id": "trafficCone",
+          "pack": "propsSynthetic",
+          "lods": [
+            {
+              "triangles": 212,
+              "draws": 1
+            },
+            {
+              "triangles": 72,
+              "draws": 1
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 16,
+          "chunkNodes": 0,
+          "variants": 1
+        }
+      ],
+      "nodeNames": [
+        "propsSynthetic_pack",
+        "prop_plasticDrum",
+        "visual_lod0",
+        "variant_0",
+        "plasticDrum_lod0_v0",
+        "variant_1",
+        "plasticDrum_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "plasticDrum_lod1_v0",
+        "variant_1",
+        "plasticDrum_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_crtTelevision",
+        "visual_lod0",
+        "variant_0",
+        "crtTelevision_lod0_v0",
+        "crtTelevision_lod0_v0_glass",
+        "variant_1",
+        "crtTelevision_lod0_v1",
+        "crtTelevision_lod0_v1_glass",
+        "visual_lod1",
+        "variant_0",
+        "crtTelevision_lod1_v0",
+        "crtTelevision_lod1_v0_glass",
+        "variant_1",
+        "crtTelevision_lod1_v1",
+        "crtTelevision_lod1_v1_glass",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_glassBottle",
+        "visual_lod0",
+        "variant_0",
+        "glassBottle_lod0_v0",
+        "glassBottle_lod0_v0_glass",
+        "variant_1",
+        "glassBottle_lod0_v1",
+        "glassBottle_lod0_v1_glass",
+        "variant_2",
+        "glassBottle_lod0_v2",
+        "glassBottle_lod0_v2_glass",
+        "visual_lod1",
+        "variant_0",
+        "glassBottle_lod1_v0",
+        "glassBottle_lod1_v0_glass",
+        "variant_1",
+        "glassBottle_lod1_v1",
+        "glassBottle_lod1_v1_glass",
+        "variant_2",
+        "glassBottle_lod1_v2",
+        "glassBottle_lod1_v2_glass",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_trafficCone",
+        "visual_lod0",
+        "variant_0",
+        "trafficCone_lod0_v0",
+        "visual_lod1",
+        "variant_0",
+        "trafficCone_lod1_v0",
+        "collider_0"
+      ]
+    }
+  ]
+}

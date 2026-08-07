@@ -1,10 +1,6 @@
 import sharp from "sharp";
 
-import type {
-  AtlasFinish,
-  GeneratedTextureSet,
-  VehicleAssetSpec,
-} from "./types.js";
+import type { AtlasFinish, AtlasSpec, GeneratedTextureSet } from "./types.js";
 
 /**
  * Atlas PBR procedural de cuatro casillas. La geometría elige casilla por pieza
@@ -16,8 +12,7 @@ import type {
  * tanto el normal map como la oclusión, que es lo que hace que las tres texturas
  * describan la misma superficie en vez de tres ruidos sin relación.
  */
-const ATLAS_SIZE = 1024;
-const TILE_SIZE = ATLAS_SIZE / 2;
+const DEFAULT_ATLAS_SIZE = 1024;
 const CHANNELS = 4;
 
 /** Los tres colores a los que degrada cualquier acabado. */
@@ -94,11 +89,15 @@ function fbm(
  * línea continua que se afina en las puntas; el hash por píxel sólo produce
  * sal y pimienta, que a esta densidad de texel lee como suciedad digital.
  */
-function createScratchMask(seed: number, count: number): Float32Array {
-  const mask = new Float32Array(TILE_SIZE * TILE_SIZE);
+function createScratchMask(
+  seed: number,
+  count: number,
+  tileSize: number,
+): Float32Array {
+  const mask = new Float32Array(tileSize * tileSize);
   for (let index = 0; index < count; index += 1) {
-    const originX = unitHash(index, 11, seed) * TILE_SIZE;
-    const originY = unitHash(index, 29, seed) * TILE_SIZE;
+    const originX = unitHash(index, 11, seed) * tileSize;
+    const originY = unitHash(index, 29, seed) * tileSize;
     // Sesgo horizontal: los rayones de uso siguen la marcha del vehículo.
     const angle = (unitHash(index, 47, seed) - 0.5) * 1.1;
     const length = 24 + unitHash(index, 71, seed) ** 2 * 210;
@@ -116,7 +115,7 @@ function createScratchMask(seed: number, count: number): Float32Array {
         for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
           const px = Math.round(centerX) + offsetX;
           const py = Math.round(centerY) + offsetY;
-          if (px < 0 || py < 0 || px >= TILE_SIZE || py >= TILE_SIZE) continue;
+          if (px < 0 || py < 0 || px >= tileSize || py >= tileSize) continue;
           const distance = Math.hypot(
             px - centerX,
             py - centerY,
@@ -124,7 +123,7 @@ function createScratchMask(seed: number, count: number): Float32Array {
           const falloff = 1 - smoothstep(width * 0.35, width, distance);
           if (falloff <= 0) continue;
           const value = falloff * strength * taper;
-          const target = py * TILE_SIZE + px;
+          const target = py * tileSize + px;
           if (value > mask[target]!) mask[target] = value;
         }
       }
@@ -170,11 +169,12 @@ function sampleSurface(
 async function encodeWebp(
   data: Uint8Array,
   quality: number,
+  atlasSize: number,
 ): Promise<Uint8Array> {
   const result = await sharp(data, {
     raw: {
-      width: ATLAS_SIZE,
-      height: ATLAS_SIZE,
+      width: atlasSize,
+      height: atlasSize,
       channels: CHANNELS,
     },
   })
@@ -189,30 +189,43 @@ async function encodeWebp(
   return new Uint8Array(result);
 }
 
+export interface AtlasOptions {
+  /**
+   * Lado del atlas en píxeles. Los rayones se rasterizan en píxeles absolutos,
+   * así que a 512 salen proporcionalmente el doble de gruesos: es el tamaño
+   * adecuado para props chicos, no una versión reducida del de 1024.
+   */
+  readonly atlasSize?: number;
+}
+
 export async function createPbrAtlases(
-  spec: VehicleAssetSpec,
+  spec: AtlasSpec,
+  options: AtlasOptions = {},
 ): Promise<GeneratedTextureSet> {
-  const albedo = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE * CHANNELS);
-  const normal = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE * CHANNELS);
-  const pbr = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE * CHANNELS);
-  const height = new Float32Array(ATLAS_SIZE * ATLAS_SIZE);
+  const atlasSize = options.atlasSize ?? DEFAULT_ATLAS_SIZE;
+  const tileSize = atlasSize / 2;
+  const albedo = new Uint8Array(atlasSize * atlasSize * CHANNELS);
+  const normal = new Uint8Array(atlasSize * atlasSize * CHANNELS);
+  const pbr = new Uint8Array(atlasSize * atlasSize * CHANNELS);
+  const height = new Float32Array(atlasSize * atlasSize);
   const grimeColor = spec.grimeColor ?? DUST_COLOR;
 
   for (let tile = 0; tile < 4; tile += 1) {
     const finish = spec.finishes[tile]!;
-    const originX = (tile % 2) * TILE_SIZE;
-    const originY = tile >= 2 ? TILE_SIZE : 0;
+    const originX = (tile % 2) * tileSize;
+    const originY = tile >= 2 ? tileSize : 0;
     const seed = spec.seed + tile * 7919;
     const scratchMask = createScratchMask(
       seed ^ 0x5bf03635,
       Math.round(8 + finish.wear * 44),
+      tileSize,
     );
 
-    for (let y = 0; y < TILE_SIZE; y += 1) {
-      for (let x = 0; x < TILE_SIZE; x += 1) {
-        const scratch = scratchMask[y * TILE_SIZE + x]!;
+    for (let y = 0; y < tileSize; y += 1) {
+      for (let x = 0; x < tileSize; x += 1) {
+        const scratch = scratchMask[y * tileSize + x]!;
         const surface = sampleSurface(x, y, seed, finish, scratch);
-        const atlasIndex = (originY + y) * ATLAS_SIZE + originX + x;
+        const atlasIndex = (originY + y) * atlasSize + originX + x;
         height[atlasIndex] = surface.height;
 
         // Luz de micro-relieve: lo alto agarra luz, lo hundido la pierde.
@@ -258,25 +271,25 @@ export async function createPbrAtlases(
   // Normales por diferencias centrales, sin cruzar el borde de casilla: mezclar
   // dos acabados en el borde deja una costura visible al muestrear con mipmaps.
   for (let tile = 0; tile < 4; tile += 1) {
-    const originX = (tile % 2) * TILE_SIZE;
-    const originY = tile >= 2 ? TILE_SIZE : 0;
+    const originX = (tile % 2) * tileSize;
+    const originY = tile >= 2 ? tileSize : 0;
     const strength = 3.4 * spec.finishes[tile]!.grain;
-    for (let y = 0; y < TILE_SIZE; y += 1) {
-      for (let x = 0; x < TILE_SIZE; x += 1) {
+    for (let y = 0; y < tileSize; y += 1) {
+      for (let x = 0; x < tileSize; x += 1) {
         const left = Math.max(0, x - 1);
-        const right = Math.min(TILE_SIZE - 1, x + 1);
+        const right = Math.min(tileSize - 1, x + 1);
         const up = Math.max(0, y - 1);
-        const down = Math.min(TILE_SIZE - 1, y + 1);
-        const row = (originY + y) * ATLAS_SIZE + originX;
+        const down = Math.min(tileSize - 1, y + 1);
+        const row = (originY + y) * atlasSize + originX;
         const dx =
           height[row + right]! - height[row + left]!;
         const dy =
-          height[(originY + down) * ATLAS_SIZE + originX + x]! -
-          height[(originY + up) * ATLAS_SIZE + originX + x]!;
+          height[(originY + down) * atlasSize + originX + x]! -
+          height[(originY + up) * atlasSize + originX + x]!;
         const nx = -dx * strength;
         const ny = -dy * strength;
         const inverseLength = 1 / Math.hypot(nx, ny, 1);
-        const pixel = ((originY + y) * ATLAS_SIZE + originX + x) * CHANNELS;
+        const pixel = ((originY + y) * atlasSize + originX + x) * CHANNELS;
         normal[pixel] = clampByte((nx * inverseLength * 0.5 + 0.5) * 255);
         normal[pixel + 1] = clampByte((ny * inverseLength * 0.5 + 0.5) * 255);
         normal[pixel + 2] = clampByte(inverseLength * 255);
@@ -286,12 +299,12 @@ export async function createPbrAtlases(
   }
 
   const [encodedAlbedo, encodedNormal, encodedPbr] = await Promise.all([
-    encodeWebp(albedo, 92),
+    encodeWebp(albedo, 92, atlasSize),
     // El normal map guarda una dirección: sin pérdida pesa veinte veces más que
     // los otros dos juntos, y a 96 el error por canal queda por debajo de lo que
     // el `normalScale` del material alcanza a mostrar.
-    encodeWebp(normal, 96),
-    encodeWebp(pbr, 92),
+    encodeWebp(normal, 96, atlasSize),
+    encodeWebp(pbr, 92, atlasSize),
   ]);
 
   return {

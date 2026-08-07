@@ -2,6 +2,7 @@ import type RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3 } from "three";
 import { isHostileTo, type Faction } from "@engine/ai/Faction";
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
+import type { PhysicsMetadata } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
 import type { GameEventBus } from "@game/GameEvents";
 import type { NpcCombatHandle, NpcCombatTickArgs } from "@game/npc/brain/NpcBrainContext";
@@ -209,7 +210,7 @@ export class GunshipCannonCombat implements NpcCombatHandle {
 
   private emitHit(
     targetId: string | undefined,
-    surfaceKind: "static" | "dynamic" | "door" | "npc" | "player" | "ragdoll" | "weaponPickup" | undefined,
+    surfaceKind: PhysicsMetadata["kind"] | undefined,
     point: Vector3,
     normal: Vector3 | undefined,
     damage: number,

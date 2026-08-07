@@ -9,6 +9,7 @@
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { ReverbSpace } from "@engine/audio/dsp/ReverbRack";
 import type { AcousticResponseTuning } from "@engine/audio/spatial/AcousticResponse";
+import type { PhysicsMetadata } from "@engine/physics/PhysicsWorld";
 import type { HazardKind } from "@game/levels/HazardVolumeSystem";
 import type { DamageType } from "@shared/types/lifecycle";
 import type { SurfaceType } from "@shared/types/Surface";
@@ -71,6 +72,10 @@ export const SurfaceAbsorption: Readonly<Record<SurfaceType, number>> = {
   mud: 0.6,
   grass: 0.65,
   snow: 0.8,
+  glass: 0.03,
+  plastic: 0.06,
+  rubber: 0.3,
+  cardboard: 0.45,
 };
 
 /**
@@ -184,14 +189,7 @@ export const HevDamageDiagnosis = {
   generic: "hev.fvox.damage",
 } as const satisfies Record<string, SoundRef>;
 
-export type WeaponHitSurface =
-  | "static"
-  | "dynamic"
-  | "door"
-  | "npc"
-  | "player"
-  | "ragdoll"
-  | "weaponPickup";
+export type WeaponHitSurface = PhysicsMetadata["kind"];
 
 export interface WeaponSoundMap {
   shot?: SoundRef;
@@ -345,7 +343,9 @@ export type ImpactMaterial =
   | "sand"
   | "tile"
   | "water"
-  | "plaster";
+  | "plaster"
+  | "cardboard"
+  | "rubber";
 
 export const SurfaceBulletImpacts: Record<ImpactMaterial, readonly string[]> = {
   concrete: [
@@ -398,6 +398,8 @@ export const SurfaceBulletImpacts: Record<ImpactMaterial, readonly string[]> = {
     "physics.hl2.surfaces.waterBullet2",
   ],
   plaster: ["physics.hl2.surfaces.plasterBullet1"],
+  cardboard: ["physics.hl2.surfaces.cardboardSoft1"],
+  rubber: ["physics.hl2.surfaces.rubberSoft1"],
 };
 
 /** Golpe físico (prop lanzado, cuerpo que cae) por material y energía. */
@@ -463,6 +465,9 @@ export const MaterialImpacts: Record<ImpactMaterial, ImpactSoundMap> = {
     soft: ["physics.hl2.plastic.soft1", "physics.hl2.plastic.soft2"],
     hard: ["physics.hl2.plastic.hard1", "physics.hl2.plastic.hard2"],
   },
+  // HL2 no trae impactos físicos de arena: sus superficies blandas caen al
+  // default del motor. Estos clips de cartón son un suplente por su golpe sordo,
+  // no la respuesta correcta; un material propio necesitaría grabarlo.
   sand: {
     soft: ["physics.hl2.surfaces.cardboardSoft1"],
     hard: ["physics.hl2.surfaces.cardboardHard1"],
@@ -479,7 +484,94 @@ export const MaterialImpacts: Record<ImpactMaterial, ImpactSoundMap> = {
     soft: ["physics.hl2.surfaces.plasterSoft1"],
     hard: ["physics.hl2.surfaces.plasterHard1"],
   },
+  cardboard: {
+    soft: ["physics.hl2.surfaces.cardboardSoft1"],
+    hard: ["physics.hl2.surfaces.cardboardHard1"],
+  },
+  rubber: {
+    soft: ["physics.hl2.surfaces.rubberSoft1"],
+    hard: ["physics.hl2.surfaces.rubberHard1"],
+  },
 };
+
+/**
+ * Rotura de un prop, por material. `break` es el estallido en el momento en que
+ * cede; `debris` son los pedazos asentándose un instante después. Los dos
+ * juntos son lo que hace que romper algo se lea como un evento con duración y
+ * no como un pop.
+ *
+ * Salvo metal, HL2 no trae sonidos de debris dedicados: para el resto se usan
+ * sus impactos suaves, que es literalmente lo que son unos pedazos cayendo.
+ */
+export interface PropBreakAudio {
+  readonly break: readonly string[];
+  readonly debris: readonly string[];
+}
+
+export const PropMaterialAudio: Record<ImpactMaterial, PropBreakAudio> = {
+  concrete: {
+    break: ["physics.hl2.concrete.break1", "physics.hl2.concrete.break2"],
+    debris: ["physics.hl2.concrete.rock1", "physics.hl2.concrete.rock2"],
+  },
+  metal: {
+    break: ["physics.hl2.metal.break1", "physics.hl2.metal.break2"],
+    debris: ["physics.hl2.metal.debris1", "physics.hl2.metal.debris2"],
+  },
+  wood: {
+    break: [
+      "physics.hl2.wood.break1",
+      "physics.hl2.wood.break2",
+      "physics.hl2.wood.break3",
+      "physics.hl2.wood.break4",
+    ],
+    debris: ["physics.hl2.wood.soft1", "physics.hl2.wood.soft2", "physics.hl2.wood.soft3"],
+  },
+  glass: {
+    break: [
+      "physics.hl2.glass.break1",
+      "physics.hl2.glass.break2",
+      "physics.hl2.glass.break3",
+    ],
+    debris: ["physics.hl2.glass.soft1", "physics.hl2.glass.soft2"],
+  },
+  flesh: {
+    break: ["physics.hl2.flesh.break1"],
+    debris: ["physics.hl2.flesh.soft1", "physics.hl2.flesh.soft2"],
+  },
+  fleshArmored: {
+    break: ["physics.hl2.body.break1"],
+    debris: ["physics.hl2.body.soft1", "physics.hl2.body.soft2"],
+  },
+  plastic: {
+    break: ["physics.hl2.plastic.break1"],
+    debris: ["physics.hl2.plastic.soft1", "physics.hl2.plastic.soft2"],
+  },
+  tile: {
+    // La cerámica estalla como el hormigón; su propio clip de rotura no existe.
+    break: ["physics.hl2.concrete.break1", "physics.hl2.concrete.break2"],
+    debris: ["physics.hl2.concrete.soft1", "physics.hl2.concrete.soft2"],
+  },
+  plaster: {
+    break: ["physics.hl2.surfaces.plasterHard1"],
+    debris: ["physics.hl2.surfaces.plasterSoft1"],
+  },
+  cardboard: {
+    break: ["physics.hl2.surfaces.cardboardHard1"],
+    debris: ["physics.hl2.surfaces.cardboardSoft1"],
+  },
+  // Arena, agua y goma no se rompen: ceden. Sin pool, `pickSound` devuelve null
+  // y el sistema de rotura simplemente no suena, que es lo correcto.
+  sand: { break: [], debris: [] },
+  water: { break: [], debris: [] },
+  rubber: { break: [], debris: [] },
+};
+
+export const PropBreakAudioConfig = {
+  /** Retardo (s) entre el estallido y el ruido de los pedazos asentándose. */
+  debrisDelay: 0.28,
+  refDistance: 4,
+  maxDistance: 55,
+} as const;
 
 /**
  * Material acústico por `SurfaceType` física. La superficie del collider ya
@@ -496,6 +588,10 @@ export const SurfaceImpactMaterial: Record<SurfaceType, ImpactMaterial> = {
   sand: "sand",
   mud: "sand",
   snow: "sand",
+  glass: "glass",
+  plastic: "plastic",
+  cardboard: "cardboard",
+  rubber: "rubber",
 };
 
 export const ImpactAudioConfig = {
@@ -880,6 +976,12 @@ export const SurfaceFootsteps: Record<SurfaceType, readonly string[]> = {
   snow: FootstepPools.snow,
   tile: FootstepPools.tile,
   mud: FootstepPools.mud,
+  // Materiales de prop: nadie camina sobre ellos, pero el Record es total. Se
+  // apuntan al pool existente más cercano en vez de inventar uno.
+  glass: FootstepPools.tile,
+  plastic: FootstepPools.metal,
+  cardboard: FootstepPools.dirt,
+  rubber: FootstepPools.dirt,
 };
 
 export const FootstepsConfig = {

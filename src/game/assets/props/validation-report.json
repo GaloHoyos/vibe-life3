@@ -1,0 +1,128 @@
+{
+  "packs": [
+    {
+      "id": "propsWood",
+      "bytes": 491288,
+      "budgetBytes": 716800,
+      "props": [
+        {
+          "id": "woodenCrate",
+          "lod0Triangles": 1452,
+          "lod1Triangles": 792,
+          "colliderVertices": 8,
+          "chunks": 8
+        },
+        {
+          "id": "pallet",
+          "lod0Triangles": 1056,
+          "lod1Triangles": 792,
+          "colliderVertices": 8,
+          "chunks": 8
+        },
+        {
+          "id": "chair",
+          "lod0Triangles": 704,
+          "lod1Triangles": 528,
+          "colliderVertices": 8,
+          "chunks": 7
+        },
+        {
+          "id": "table",
+          "lod0Triangles": 616,
+          "lod1Triangles": 440,
+          "colliderVertices": 8,
+          "chunks": 7
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0
+      }
+    },
+    {
+      "id": "propsMetal",
+      "bytes": 448776,
+      "budgetBytes": 716800,
+      "props": [
+        {
+          "id": "metalBarrel",
+          "lod0Triangles": 1024,
+          "lod1Triangles": 480,
+          "colliderVertices": 16,
+          "chunks": 7
+        },
+        {
+          "id": "explosiveBarrel",
+          "lod0Triangles": 1176,
+          "lod1Triangles": 400,
+          "colliderVertices": 8,
+          "chunks": 7
+        },
+        {
+          "id": "filingCabinet",
+          "lod0Triangles": 880,
+          "lod1Triangles": 352,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "radiator",
+          "lod0Triangles": 596,
+          "lod1Triangles": 268,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "concreteBlock",
+          "lod0Triangles": 660,
+          "lod1Triangles": 132,
+          "colliderVertices": 8,
+          "chunks": 0
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0
+      }
+    },
+    {
+      "id": "propsSynthetic",
+      "bytes": 402700,
+      "budgetBytes": 716800,
+      "props": [
+        {
+          "id": "plasticDrum",
+          "lod0Triangles": 800,
+          "lod1Triangles": 216,
+          "colliderVertices": 16,
+          "chunks": 6
+        },
+        {
+          "id": "crtTelevision",
+          "lod0Triangles": 424,
+          "lod1Triangles": 264,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "glassBottle",
+          "lod0Triangles": 720,
+          "lod1Triangles": 336,
+          "colliderVertices": 16,
+          "chunks": 5
+        },
+        {
+          "id": "trafficCone",
+          "lod0Triangles": 212,
+          "lod1Triangles": 72,
+          "colliderVertices": 16,
+          "chunks": 0
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0
+      }
+    }
+  ]
+}

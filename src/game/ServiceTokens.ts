@@ -34,6 +34,10 @@ import type { EnergyBallSystem } from "@game/gameplay/weapons/energyball/EnergyB
 import type { IceGunSystem } from "@game/gameplay/weapons/ice/IceGunSystem";
 import type { PortalGunSystem } from "@game/gameplay/weapons/portal/PortalGunSystem";
 import type { ExplosiveBarrelSystem } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
+import type { PropSystem } from "@game/gameplay/props/PropSystem";
+import type { PropAssetRegistry } from "@game/assets/props/PropAssetRegistry";
+import type { PropContactMonitor } from "@game/gameplay/props/PropContactMonitor";
+import type { PropBreakSystem } from "@game/gameplay/props/PropBreakSystem";
 import type { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
 import type { PlayerSquadService } from "@game/gameplay/squad/PlayerSquadService";
 import type { ScopeOverlay } from "@game/ui/overlay/ScopeOverlay";
@@ -73,6 +77,10 @@ export const GameTokens = {
   IceGun: new ServiceToken<IceGunSystem>("IceGunSystem"),
   Portals: new ServiceToken<PortalGunSystem>("PortalGunSystem"),
   ExplosiveBarrels: new ServiceToken<ExplosiveBarrelSystem>("ExplosiveBarrelSystem"),
+  Props: new ServiceToken<PropSystem>("PropSystem"),
+  PropAssets: new ServiceToken<PropAssetRegistry>("PropAssetRegistry"),
+  PropContacts: new ServiceToken<PropContactMonitor>("PropContactMonitor"),
+  PropBreaks: new ServiceToken<PropBreakSystem>("PropBreakSystem"),
   PropImpacts: new ServiceToken<PropImpactSystem>("PropImpactSystem"),
   PlayerSquad: new ServiceToken<PlayerSquadService>("PlayerSquadService"),
   Vehicles: new ServiceToken<VehicleSystem>("VehicleSystem"),

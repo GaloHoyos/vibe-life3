@@ -13,4 +13,8 @@ export type SurfaceType =
   | "gravel"
   | "snow"
   | "tile"
-  | "mud";
+  | "mud"
+  | "glass"
+  | "plastic"
+  | "cardboard"
+  | "rubber";

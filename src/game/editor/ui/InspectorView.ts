@@ -48,9 +48,13 @@ import {
   ITEM_IDS,
   LEVEL_ACTIONS,
   MATERIAL_KEYS,
+  PROP_ARCHETYPE_OPTIONS,
+  PROP_PHYSICS_MODES,
   SOUNDSCAPE_IDS,
   WEAPON_IDS,
 } from '../editorOptions';
+import { PropArchetypes, type PropArchetypeId } from '@game/config/props.config';
+import { propMaxHealth } from '@game/gameplay/props/propDamage';
 import { normalizeLandmark } from '@game/levels/LevelTransition';
 import {
   checkboxField,
@@ -364,6 +368,54 @@ export class InspectorView implements Disposable {
           this.commit();
         }, 1));
         return;
+      case 'propEntity': {
+        const archetype = PropArchetypes[entity.def.archetypeId];
+        this.append(
+          selectField('Arquetipo', entity.def.archetypeId, PROP_ARCHETYPE_OPTIONS, (v) => {
+            entity.def.archetypeId = v as PropArchetypeId;
+            // La variante es por arquetipo: la del anterior puede no existir.
+            entity.def.variant = 0;
+            this.commit();
+          }),
+        );
+        this.append(
+          selectField(
+            'Modo físico',
+            entity.def.physicsMode ?? archetype.physicsMode,
+            PROP_PHYSICS_MODES,
+            (v) => {
+              entity.def.physicsMode = v as typeof archetype.physicsMode;
+              this.commit();
+            },
+          ),
+        );
+        this.append(
+          numberField('Variante', entity.def.variant ?? 0, (v) => {
+            const total = Math.max(1, archetype.asset.variants);
+            entity.def.variant = Math.min(total - 1, Math.max(0, Math.round(v)));
+            this.commit();
+          }, 1),
+        );
+        this.append(
+          numberField('Escala', entity.def.scale ?? 1, (v) => {
+            entity.def.scale = v;
+            this.commit();
+          }, 0.1),
+        );
+        this.append(
+          numberField(
+            'Vida',
+            entity.def.health === false ? 0 : entity.def.health ?? propMaxHealth(archetype),
+            (v) => {
+              // 0 = indestructible, que es como la tabla expresa `health: false`.
+              entity.def.health = v <= 0 ? false : v;
+              this.commit();
+            },
+            1,
+          ),
+        );
+        return;
+      }
       case 'hazardVolume':
         this.append(selectField('Tipo', entity.def.kind, HAZARD_KINDS, (v) => {
           entity.def.kind = v as typeof entity.def.kind;

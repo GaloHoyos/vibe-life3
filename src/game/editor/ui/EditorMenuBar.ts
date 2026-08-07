@@ -4,6 +4,7 @@ import { listLibraryMaps } from '../mapLibrary';
 import type { TransformMode } from '../EditorSelection';
 import type { PaletteKind } from '../editorFactory';
 import type { PropKind } from '../EditorDocument';
+import type { PropArchetypeId } from '@game/config/props.config';
 import type { LogicEntityKind } from '@game/script/EntityIOTypes';
 import { iconSpan, type EditorIconName } from './editorIcons';
 import { MenuButton, type MenuItem } from './EditorMenu';
@@ -27,6 +28,7 @@ export interface EditorMenuCallbacks {
   onFocus(): void;
   onAdd(kind: PaletteKind): void;
   onAddProp(prop: PropKind): void;
+  onAddPropEntity(archetypeId: PropArchetypeId): void;
   onAddLogic(logic: LogicEntityKind): void;
   onToggleGrid(visible: boolean): void;
   onToggleAxes(visible: boolean): void;
@@ -158,12 +160,12 @@ export class EditorMenuBar implements Disposable {
       submenu: group.items.map((item) => ({
         label: item.label,
         icon: item.icon,
-        onClick: () =>
-          'kind' in item
-            ? this.cb.onAdd(item.kind)
-            : 'logic' in item
-              ? this.cb.onAddLogic(item.logic)
-              : this.cb.onAddProp(item.prop),
+        onClick: () => {
+          if ('kind' in item) this.cb.onAdd(item.kind);
+          else if ('logic' in item) this.cb.onAddLogic(item.logic);
+          else if ('propArchetype' in item) this.cb.onAddPropEntity(item.propArchetype);
+          else this.cb.onAddProp(item.prop);
+        },
       })),
     }));
   }

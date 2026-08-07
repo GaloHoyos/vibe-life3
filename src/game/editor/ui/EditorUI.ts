@@ -5,6 +5,7 @@ import type { TransformMode } from '../EditorSelection';
 import { PLAYER_START_EID } from '../EditorScene';
 import { blankDocument, type PropKind } from '../EditorDocument';
 import { createEntity, createLogicEntity, createProp, type PaletteKind } from '../editorFactory';
+import type { PropArchetypeId } from '@game/config/props.config';
 import type { LogicEntityKind } from '@game/script/EntityIOTypes';
 import { toLevelDefinition } from '../codegen/toLevelDefinition';
 import { toTypeScript } from '../codegen/toTypeScript';
@@ -40,6 +41,7 @@ export class EditorUI implements EditorUiBridge, Disposable {
     this.palette = new PaletteView({
       onAdd: (kind) => this.addEntity(kind),
       onAddProp: (prop) => this.addProp(prop),
+      onAddPropEntity: (archetypeId) => this.addPropEntity(archetypeId),
       onAddLogic: (logic) => this.addLogic(logic),
     });
     this.outliner = new OutlinerView({
@@ -74,6 +76,7 @@ export class EditorUI implements EditorUiBridge, Disposable {
       onFocus: () => this.editor.focusSelection(),
       onAdd: (kind) => this.addEntity(kind),
       onAddProp: (prop) => this.addProp(prop),
+      onAddPropEntity: (archetypeId) => this.addPropEntity(archetypeId),
       onAddLogic: (logic) => this.addLogic(logic),
       onToggleGrid: (visible) => this.editor.setGridVisible(visible),
       onToggleAxes: (visible) => this.editor.setAxesVisible(visible),
@@ -155,6 +158,12 @@ export class EditorUI implements EditorUiBridge, Disposable {
 
   private addProp(prop: PropKind): void {
     this.editor.addEntity(createProp(prop, this.editor.getPlacement().point));
+  }
+
+  private addPropEntity(archetypeId: PropArchetypeId): void {
+    const entity = createEntity('propEntity', this.editor.getPlacement().point);
+    if (entity.kind === 'propEntity') entity.def.archetypeId = archetypeId;
+    this.editor.addEntity(entity);
   }
 
   private addLogic(logic: LogicEntityKind): void {

@@ -13,9 +13,9 @@ interface LaunchAttribution {
 
 /**
  * Daño por impacto físico de props contra NPCs, global. Cada frame, todo
- * cuerpo dinámico `kind: 'dynamic'` sobre el umbral de velocidad castea un
- * rayo corto en su dirección de vuelo; si pega a un NPC (cápsula o hitbox de
- * parte) le aplica daño escalado por velocidad y masa.
+ * cuerpo `kind: 'prop'` o `kind: 'dynamic'` sobre el umbral de velocidad
+ * castea un rayo corto en su dirección de vuelo; si pega a un NPC (cápsula o
+ * hitbox de parte) le aplica daño escalado por velocidad y masa.
  *
  * La atribución es opcional: los props lanzados por el jugador (punt/throw de
  * la gravity gun, empuje del carry) conservan `sourceId: "player"` unos
@@ -60,24 +60,26 @@ export class PropImpactSystem {
       }
     }
 
-    // Solo lecturas y raycasts dentro del forEach: crear/quitar bodies acá
-    // corrompe el iterador WASM de Rapier.
-    this.physics.world.bodies.forEach((body) => {
-      if (!body.isDynamic() || !body.isEnabled()) return;
+    // El índice devuelve una copia, así que es seguro que un impacto derive en
+    // crear o quitar cuerpos; hacerlo dentro de `world.bodies.forEach`
+    // corrompería el iterador WASM de Rapier.
+    const candidates = [
+      ...this.physics.getBodiesByKind("prop"),
+      ...this.physics.getBodiesByKind("dynamic"),
+    ];
+    for (const body of candidates) {
+      if (!body.isValid() || !body.isDynamic() || !body.isEnabled()) continue;
       // Un prop sostenido persigue al target a velocidad de shadow hold; no
       // debe moler a un NPC solo por apretarlo contra él.
-      if (this.physics.isHeldBody(body.handle)) return;
-      if (this.hitCooldowns.has(body.handle)) return;
+      if (this.physics.isHeldBody(body.handle)) continue;
+      if (this.hitCooldowns.has(body.handle)) continue;
 
-      const collider = body.numColliders() > 0 ? body.collider(0) : null;
-      const metadata = collider
-        ? this.physics.getColliderMetadata(collider)
-        : undefined;
-      if (metadata?.kind !== "dynamic" || metadata.propImpactExcluded) return;
+      const metadata = this.physics.getBodyMetadata(body);
+      if (!metadata || metadata.propImpactExcluded) continue;
 
       const v = body.linvel();
       const speed = Math.hypot(v.x, v.y, v.z);
-      if (speed < PropImpactConfig.minDangerousSpeed) return;
+      if (speed < PropImpactConfig.minDangerousSpeed) continue;
 
       this.tmpDirection.set(v.x / speed, v.y / speed, v.z / speed);
       const pos = body.translation();
@@ -90,9 +92,9 @@ export class PropImpactSystem {
         castDistance,
         body,
       );
-      if (!hit) return;
+      if (!hit) continue;
       if (hit.metadata?.kind !== "npc" && hit.metadata?.kind !== "ragdoll") {
-        return;
+        continue;
       }
       // Fragmentos desprendidos de un actor pueden nacer rozando su cuerpo.
       // impactOwnerId evita que se conviertan en proyectiles contra su propio
@@ -101,7 +103,7 @@ export class PropImpactSystem {
         metadata.impactOwnerId !== undefined &&
         metadata.impactOwnerId === (hit.metadata.ownerId ?? hit.metadata.id)
       ) {
-        return;
+        continue;
       }
 
       const damageOverride = metadata.impactDamageOverride;
@@ -117,6 +119,9 @@ export class PropImpactSystem {
         hit.metadata.bodyPart?.name,
         attribution?.sourceId,
         hit.point,
+        // Un cajón que te aplasta no es una bala: sin esto el daño por impacto
+        // entraba como 'bullet' y los multiplicadores por tipo mentían.
+        "physics",
       );
       this.hitCooldowns.set(body.handle, elapsed + PropImpactConfig.hitCooldown);
 
@@ -142,7 +147,7 @@ export class PropImpactSystem {
           sourceFaction: "player",
         });
       }
-    });
+    }
   }
 
   private computePhysicsDamage(

@@ -15,6 +15,8 @@
     "test:ci": "npm run build && npm run test",
     "vehicles:generate": "tsx tools/vehicle-assets/generate.ts",
     "vehicles:validate": "tsx tools/vehicle-assets/validate.ts",
+    "props:generate": "tsx tools/prop-assets/generate.ts",
+    "props:validate": "tsx tools/prop-assets/validate.ts",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -11,9 +11,11 @@ export interface GrabbableHit {
 
 /**
  * Clasifica un impacto de raycast como objetivo de agarre:
- * - `prop`: cuerpo dinámico común (`kind: 'dynamic'`, sin metadata, o un
- *   pickup — armas/munición/items son cuerpos dinámicos agarrables, como los
- *   suministros que se atraen con la physcannon en HL2).
+ * - `prop`: cuerpo dinámico común (`kind: 'prop'`, `kind: 'dynamic'`, sin
+ *   metadata, o un pickup — armas/munición/items son cuerpos dinámicos
+ *   agarrables, como los suministros que se atraen con la physcannon en HL2).
+ *   Un prop del sistema de props puede vetarse a sí mismo con
+ *   `grabbable: false` en su arquetipo, que se refleja en `grabExcluded`.
  * - `ragdoll`: parte de cadáver (kind `ragdoll` NO sensor; las hitboxes vivas
  *   de un NPC también son kind `ragdoll` pero sensores — usar
  *   `grabRayFilter` en el cast para que el rayo las atraviese).
@@ -26,6 +28,9 @@ export function resolveGrabbable(hit: RaycastHit): GrabbableHit | null {
     return null;
   }
   const kind = hit.metadata?.kind;
+  if (kind === "prop") {
+    return hit.metadata?.grabExcluded ? null : { body, kind: "prop" };
+  }
   if (kind === undefined || kind === "dynamic" || kind === "weaponPickup") {
     return { body, kind: "prop" };
   }
