@@ -36,7 +36,10 @@ import type { LevelDefinition } from './LevelDefinition';
 import type { TriggerSystem } from './TriggerSystem';
 import type { CheckpointSystem } from './CheckpointSystem';
 import type { HazardVolumeSystem } from './HazardVolumeSystem';
-import type { ExplosiveBarrelSystem } from '@game/gameplay/hazards/ExplosiveBarrelSystem';
+import { ExplosiveBarrelSystem } from '@game/gameplay/hazards/ExplosiveBarrelSystem';
+import type { PropSystem } from '@game/gameplay/props/PropSystem';
+import type { PropStructureSystem } from '@game/gameplay/props/PropStructureSystem';
+import type { PropDeformationSystem } from '@game/gameplay/props/PropDeformationSystem';
 
 /**
  * Wiring de portales para los NPCs del nivel (LOS/disparo portal-aware, cruce
@@ -81,6 +84,9 @@ export class LevelLoader {
     private readonly checkpointSystem: CheckpointSystem,
     private readonly hazardVolumes: HazardVolumeSystem,
     private readonly explosiveBarrels: ExplosiveBarrelSystem,
+    private readonly props: PropSystem,
+    private readonly propStructures: PropStructureSystem,
+    private readonly propDeformation: PropDeformationSystem,
     private readonly characters: CharacterFactory,
     private readonly assets: AssetManager,
     private readonly npcPortalServices: NpcPortalServices,
@@ -242,7 +248,12 @@ export class LevelLoader {
     this.physics.updateQueryPipeline();
     const spawnValidator = new SpawnValidator(new Raycast(this.physics));
 
-    const navigationGeometry = buildNavigationGeometry(allStaticBoxes, navigationTerrain);
+    // Los navBlockers no se renderizan ni existen en la física: sólo aportan
+    // volumen al bake, para los props anclados que deben cortar el pathing.
+    const navigationGeometry = buildNavigationGeometry(
+      [...allStaticBoxes, ...(level.navBlockers ?? [])],
+      navigationTerrain,
+    );
     const navigationBuildStart = performance.now();
     const navigation = await NavigationService.create({
       geometry: navigationGeometry,
@@ -404,9 +415,30 @@ export class LevelLoader {
       this.checkpointSystem.addCheckpoint(definition);
     });
 
-    (level.explosiveBarrels ?? []).forEach((definition) => {
-      this.explosiveBarrels.spawn(definition);
+    // Los barriles explosivos son props del catálogo desde la migración: la
+    // definición vieja se traduce acá y el sistema viejo queda sólo como
+    // adaptador del formato de guardado v1.
+    const barrelProps = (level.explosiveBarrels ?? []).map((definition) => {
+      this.explosiveBarrels.track(definition.id);
+      return ExplosiveBarrelSystem.toPropDefinition(definition);
     });
+
+    // Los packs se cargan ANTES de spawnear: así cada prop nace con su casco
+    // real en vez de como caja que después habría que reconstruir en caliente.
+    const propDefinitions = [...(level.props ?? []), ...barrelProps];
+    if (propDefinitions.length > 0) {
+      await this.props.preload(propDefinitions);
+      propDefinitions.forEach((definition) => {
+        this.props.spawn(definition);
+      });
+    }
+    // Las juntas después de spawnear: necesitan los dos cuerpos ya en el mundo.
+    if (level.propStructures && level.propStructures.length > 0) {
+      this.propStructures.build(level.propStructures);
+    }
+    // Subdividir las mallas abollables acá cuesta unas decenas de ms detrás de
+    // la pantalla de carga, en vez de un tirón en el primer disparo.
+    this.propDeformation.warm();
 
     (level.hazardVolumes ?? []).forEach((definition) => {
       this.hazardVolumes.addVolume(definition);

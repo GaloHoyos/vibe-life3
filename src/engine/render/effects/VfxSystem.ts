@@ -96,6 +96,15 @@ export interface BloodImpactOptions {
   variant?: "direct" | "radial";
 }
 
+export interface DebrisBurstOptions {
+  /** Radio aproximado del objeto que cedió, en metros. */
+  scale?: number;
+  /** Color del polvo. Lo elige el material del prop que se rompió. */
+  color?: Color;
+  /** Chispas además del polvo (metal contra metal, vidrio). */
+  sparks?: boolean;
+}
+
 export interface RocketTrailOptions {
   scale?: number;
 }
@@ -229,6 +238,36 @@ export class VfxSystem implements Disposable {
     this.spawnFireball(point, scale, tint);
     this.spawnSparks(point, scale, tint);
     this.spawnSmoke(point, scale);
+  }
+
+  /**
+   * Polvareda de algo que se parte. A diferencia de `explosion()` NO enciende
+   * una luz de destello: agregar o esconder una luz recompila todos los
+   * materiales lit de la escena, y romper props es algo que pasa seguido.
+   */
+  debrisBurst(point: Vector3, options: DebrisBurstOptions = {}): void {
+    const scale = Math.max(0.25, Math.min(options.scale ?? 0.6, 3));
+    const count = Math.round(10 + scale * 8);
+    const tint = options.color ?? new Color(0x6f6a60);
+    for (let i = 0; i < count; i += 1) {
+      randomUnitVector(tmpDir);
+      const speed = scale * (1.2 + Math.random() * 2.4);
+      this.smoke.spawn({
+        position: point.clone().addScaledVector(tmpDir, scale * 0.35),
+        velocity: new Vector3(
+          tmpDir.x * speed,
+          Math.abs(tmpDir.y) * speed * 0.7 + scale * 0.5,
+          tmpDir.z * speed,
+        ),
+        accel: new Vector3(0, -1.2, 0),
+        color: tint.clone(),
+        size: scale * (0.16 + Math.random() * 0.18),
+        endSize: scale * (0.5 + Math.random() * 0.5),
+        lifetime: 0.5 + Math.random() * 0.7,
+        turbulence: 0.5,
+      });
+    }
+    if (options.sparks) this.spawnSparks(point, scale * 0.5, undefined);
   }
 
   bloodImpact(point: Vector3, direction: Vector3, options: BloodImpactOptions = {}): void {

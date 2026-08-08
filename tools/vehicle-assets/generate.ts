@@ -22,7 +22,7 @@ import {
   OUTPUT_ROOT,
   TEXTURES_ROOT,
 } from "./paths.js";
-import { createPbrAtlases } from "./textures.js";
+import { createPbrAtlases } from "../shared/gltf/textures.js";
 import {
   VEHICLE_SPECS,
   type VehicleAssetManifest,

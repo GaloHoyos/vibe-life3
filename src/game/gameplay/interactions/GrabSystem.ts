@@ -173,12 +173,17 @@ export class GrabSystem {
   ): void {
     this.clear();
     if (!snapshot.heldBodyId) return;
-    let target: RAPIER.RigidBody | null = null;
-    this.physics.world.bodies.forEach((body) => {
-      if (target || !body.isDynamic() || body.numColliders() === 0) return;
-      const metadata = this.physics.getColliderMetadata(body.collider(0));
-      if (metadata?.id === snapshot.heldBodyId) target = body;
-    });
+    const candidates = [
+      ...this.physics.getBodiesByKind("prop"),
+      ...this.physics.getBodiesByKind("dynamic"),
+      ...this.physics.getBodiesByKind("weaponPickup"),
+    ];
+    const target = candidates.find(
+      (body) =>
+        body.isValid() &&
+        body.isDynamic() &&
+        this.physics.getBodyMetadata(body)?.id === snapshot.heldBodyId,
+    );
     if (target) {
       this.grab.grab(target, cameraQuaternion);
     }

@@ -1,4 +1,4 @@
-﻿import { Color, Vector3 } from "three";
+import { Color, Vector3 } from "three";
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
 import { AcousticSpaceSystem } from "@engine/audio/spatial/AcousticSpaceSystem";
@@ -10,6 +10,7 @@ import { EngineTokens } from "@engine/core/ServiceTokens";
 import type { Time } from "@engine/core/Time";
 import { SpawnValidator } from "@engine/physics/character/SpawnValidator";
 import { Raycast } from "@engine/physics/Raycast";
+import { isSolidWorldKind } from "@engine/physics/metadataKinds";
 import { CharacterFactory } from "@game/characters/CharacterFactory";
 import type { NpcRuntimeServices } from "@game/characters/CharacterFactory";
 import { CharacterPresets, isFlyingCharacter } from "@game/characters/CharacterPresets";
@@ -28,6 +29,7 @@ import { HevSuitSoundSystem } from "@game/audio/HevSuitSoundSystem";
 import { ImpactSoundSystem } from "@game/audio/ImpactSoundSystem";
 import { PlayerSoundSystem } from "@game/audio/PlayerSoundSystem";
 import { PropCollisionSoundSystem } from "@game/audio/PropCollisionSoundSystem";
+import { PropScrapeSystem } from "@game/audio/PropScrapeSystem";
 import { AmbientSoundSystem } from "@game/audio/AmbientSoundSystem";
 import { BuildingAcousticSpaces } from "@game/audio/BuildingAcousticSpaces";
 import { SoundscapeSystem } from "@game/audio/SoundscapeSystem";
@@ -37,6 +39,7 @@ import type { GameEventBus, GameEventMap } from "./GameEvents";
 import { GameTokens } from "./ServiceTokens";
 import { DebugMenu } from "@game/ui/overlay/debug/DebugMenu";
 import { installIceConsole } from "@game/debug/IceConsole";
+import { installPropConsole } from "@game/debug/PropConsole";
 import { installEntityIOConsole } from "@game/debug/EntityIOConsole";
 import { installNpcConsole } from "@game/debug/NpcConsole";
 import { installPlayerConsole } from "@game/debug/PlayerConsole";
@@ -131,6 +134,17 @@ import {
   type ExplosiveBarrelSystemSaveSnapshot,
 } from "@game/gameplay/hazards/ExplosiveBarrelSystem";
 import { PropImpactSystem } from "@game/gameplay/combat/PropImpactSystem";
+import {
+  PropSystem,
+  type PropSystemSaveSnapshot,
+} from "@game/gameplay/props/PropSystem";
+import { PropAssetRegistry } from "@game/assets/props/PropAssetRegistry";
+import type { PropDrop } from "@game/config/props.config";
+import { PropContactMonitor } from "@game/gameplay/props/PropContactMonitor";
+import { PropDeformationSystem } from "@game/gameplay/props/PropDeformationSystem";
+import { PropStructureSystem } from "@game/gameplay/props/PropStructureSystem";
+import { PropBreakSystem } from "@game/gameplay/props/PropBreakSystem";
+import { DebrisPool } from "@game/gameplay/props/DebrisPool";
 import { VehicleSystem } from "@game/gameplay/vehicles/VehicleSystem";
 import type { VehicleEntitySnapshot } from "@game/gameplay/vehicles/VehicleEntity";
 import type {
@@ -304,6 +318,7 @@ export class Game {
   private uninstallEntityIOConsole: (() => void) | null = null;
   private uninstallPlayerConsole: (() => void) | null = null;
   private uninstallIceConsole: (() => void) | null = null;
+  private uninstallPropConsole: (() => void) | null = null;
   private uninstallPlayerModelConsole: (() => void) | null = null;
   private uninstallPortalConsole: (() => void) | null = null;
   private uninstallVehicleConsole: (() => void) | null = null;
@@ -462,6 +477,8 @@ export class Game {
     this.uninstallPlayerConsole = null;
     this.uninstallIceConsole?.();
     this.uninstallIceConsole = null;
+    this.uninstallPropConsole?.();
+    this.uninstallPropConsole = null;
     this.uninstallPlayerModelConsole?.();
     this.uninstallPlayerModelConsole = null;
     this.uninstallPortalConsole?.();
@@ -525,6 +542,12 @@ export class Game {
     const s = this.engine.services;
     const eventBus = s.resolve(GameTokens.EventBus);
     const audio = s.resolve(EngineTokens.Audio);
+    // El detector de choques lo comparten el audio de impacto y la rotura, así
+    // que se registra antes que cualquiera de los dos.
+    s.register(
+      GameTokens.PropContacts,
+      new PropContactMonitor(s.resolve(EngineTokens.Physics)),
+    );
     const sound = s.resolve(EngineTokens.Sound);
     const positionalSound = s.resolve(EngineTokens.PositionalSound);
     const ambience = new BackgroundAmbienceSystem(sound);
@@ -563,7 +586,16 @@ export class Game {
     s.register(
       GameTokens.PropCollisionSounds,
       new PropCollisionSoundSystem(
+        s.resolve(GameTokens.PropContacts),
+        sound,
+        positionalSound,
+      ),
+    );
+    s.register(
+      GameTokens.PropScrapeSounds,
+      new PropScrapeSystem(
         s.resolve(EngineTokens.Physics),
+        new Raycast(s.resolve(EngineTokens.Physics)),
         sound,
         positionalSound,
       ),
@@ -659,9 +691,34 @@ export class Game {
       GameTokens.IceGun,
       new IceGunSystem(scene.scene, physics, raycast, eventBus, vfx),
     );
+    const propAssets = s.register(GameTokens.PropAssets, new PropAssetRegistry());
+    const props = s.register(
+      GameTokens.Props,
+      new PropSystem(physics, scene.scene, eventBus, propAssets),
+    );
+    s.register(GameTokens.ExplosiveBarrels, new ExplosiveBarrelSystem(props));
+    s.register(GameTokens.PropDeformation, new PropDeformationSystem(eventBus, props));
     s.register(
-      GameTokens.ExplosiveBarrels,
-      new ExplosiveBarrelSystem(physics, scene.scene, grenades),
+      GameTokens.PropStructures,
+      new PropStructureSystem(
+        physics,
+        props,
+        eventBus,
+        s.resolve(GameTokens.PropScrapeSounds),
+      ),
+    );
+    s.register(
+      GameTokens.PropBreaks,
+      new PropBreakSystem(
+        s.resolve(GameTokens.Props),
+        s.resolve(GameTokens.PropContacts),
+        new DebrisPool(physics, scene.scene),
+        grenades,
+        s.resolve(EngineTokens.Sound),
+        s.resolve(EngineTokens.PositionalSound),
+        vfx,
+        eventBus,
+      ),
     );
     const propImpacts = s.register(
       GameTokens.PropImpacts,
@@ -701,6 +758,21 @@ export class Game {
 
     eventBus.on("npc.weapon.dropped", (payload) => {
       void this.handleWeaponDrop(payload.npcId, payload.weaponId, payload.position);
+    });
+    // El mapa táctico se analiza una vez al cargar. Un prop hecho astillas
+    // seguiría figurando como parapeto, así que su cobertura se da de baja acá:
+    // lee `this.tacticalMap` en el momento del evento, que es el del nivel en
+    // curso y no el que existía al construir el juego.
+    eventBus.on("prop.broken", ({ propId }) => {
+      this.tacticalMap?.invalidateSource(propId);
+    });
+    // Y lo mismo si sigue entero pero ya no está ahí: una pila derrumbada, o un
+    // cajón que el jugador empujó, dejaban puntos de cobertura sobre el aire.
+    eventBus.on("prop.displaced", ({ propId }) => {
+      this.tacticalMap?.invalidateSource(propId);
+    });
+    eventBus.on("prop.dropped", (payload) => {
+      void this.spawnPropDrops(payload.propId, payload.position, payload.drops);
     });
     eventBus.on("npc.killed", ({ id, characterId }) => {
       if (characterId === "gunship") {
@@ -1560,6 +1632,58 @@ export class Game {
     this.refreshSaveEntityRegistry();
   }
 
+  /**
+   * Instancia lo que dejó un cajón al abrirse.
+   *
+   * Vive acá y no en `PropBreakSystem` porque los pickups necesitan el
+   * `AssetManager` y las listas de guardado, que son de `Game`. El sistema de
+   * rotura sólo avisa qué y dónde.
+   */
+  private async spawnPropDrops(
+    propId: string,
+    position: Vector3,
+    drops: readonly PropDrop[],
+  ): Promise<void> {
+    const services = this.engine.services;
+    const scene = services.resolve(EngineTokens.Scene);
+    const physics = services.resolve(EngineTokens.Physics);
+    const assets = services.resolve(EngineTokens.Assets);
+    const eventBus = services.resolve(GameTokens.EventBus);
+
+    let index = 0;
+    for (const drop of drops) {
+      const count = Math.max(1, drop.count ?? 1);
+      for (let copy = 0; copy < count; copy += 1) {
+        // Repartidos en un anillo chico: apilados en el mismo punto se empujan
+        // entre sí al despertar y salen disparados.
+        const angle = (index / 6) * Math.PI * 2;
+        const at = position
+          .clone()
+          .add(new Vector3(Math.cos(angle) * 0.22, 0.25, Math.sin(angle) * 0.22));
+        const id = `${propId}-drop-${index}`;
+        index += 1;
+        if ("item" in drop) {
+          this.itemPickups.push(
+            await ItemPickup.create(scene.scene, physics, assets, services.resolve(GameTokens.EventBus), {
+              id,
+              itemId: drop.item,
+              position: at,
+            }),
+          );
+        } else {
+          this.ammoPickups.push(
+            await AmmoPickup.create(scene.scene, physics, assets, {
+              id,
+              ammoId: drop.ammo,
+              position: at,
+            }),
+          );
+        }
+      }
+    }
+    this.refreshSaveEntityRegistry();
+  }
+
   private registerWorkshop(): void {
     const s = this.engine.services;
     const eventBus = s.resolve(GameTokens.EventBus);
@@ -1936,6 +2060,19 @@ export class Game {
             data,
             "checkpoints",
           ),
+        ),
+    });
+
+    const props = this.engine.services.resolve(GameTokens.Props);
+    registry.register({
+      id: "system:props",
+      entityType: "prop-system",
+      version: 1,
+      phases: ["physics"],
+      capture: () => toJsonObject(props.captureSaveState()),
+      restore: (data) =>
+        props.restoreSaveState(
+          readVersionedSaveState<PropSystemSaveSnapshot>(data, "props"),
         ),
     });
 
@@ -2449,6 +2586,7 @@ export class Game {
           canPublish: () =>
             this.engine.services.resolve(GameTokens.Workshop).capabilities.publish,
         },
+        s.resolve(GameTokens.PropAssets),
       ),
     );
 
@@ -2462,6 +2600,12 @@ export class Game {
     );
     this.uninstallIceConsole = installIceConsole(() =>
       s.resolve(GameTokens.IceGun),
+    );
+    this.uninstallPropConsole = installPropConsole(
+      () => s.resolve(GameTokens.Props),
+      () => s.resolve(EngineTokens.Physics),
+      () => s.resolve(GameTokens.PropStructures),
+      () => s.resolve(GameTokens.PropDeformation),
     );
     this.uninstallPlayerModelConsole = installPlayerModelConsole(
       () => this.playerModel,
@@ -2847,7 +2991,14 @@ export class Game {
     vehicles.postPhysics(time.delta, time.elapsed);
     this.npcs.forEach((npc) => npc.syncFromPhysics());
     s.resolve(GameTokens.PropImpacts).update(time.delta, time.elapsed);
-    s.resolve(GameTokens.PropCollisionSounds).update(time.elapsed);
+    // El monitor publica los choques del frame; audio y rotura los consumen.
+    s.resolve(GameTokens.PropContacts).update(time.elapsed);
+    s.resolve(GameTokens.PropCollisionSounds).update();
+    s.resolve(GameTokens.PropScrapeSounds).update(time.delta, time.elapsed, playerPosition);
+    s.resolve(GameTokens.PropDeformation).update(time.elapsed);
+    s.resolve(GameTokens.PropStructures).update(time.elapsed);
+    s.resolve(GameTokens.Props).update(time.elapsed);
+    s.resolve(GameTokens.PropBreaks).update(time.delta, time.elapsed, player.getPosition());
     s.resolve(GameTokens.PlayerSounds).update(time.delta);
     this.updateGunshipCrashes(time.elapsed, raycast, grenades);
     this.updateStriderCollapses(time.elapsed, raycast, grenades);
@@ -2876,7 +3027,6 @@ export class Game {
           .filter((handle): handle is NpcPortalHandle => handle !== null),
       );
     }
-    explosiveBarrels.update();
 
     playerPosition = player.getPosition();
     // Mientras la cámara cae (muerte) no la re-anclamos a los ojos del jugador.
@@ -2958,7 +3108,7 @@ export class Game {
       const hit = raycast.cast(probe, down, 1.3);
       const hitKind = hit?.metadata?.kind;
       const touchedGround =
-        !!hit && hit.metadata?.id !== id && (hitKind === "static" || hitKind === "door" || hitKind === "dynamic");
+        !!hit && hit.metadata?.id !== id && isSolidWorldKind(hitKind);
       const timedOut = elapsed - crash.startedAt >= 3.5;
       if (!touchedGround && !timedOut) continue;
 
@@ -2993,7 +3143,7 @@ export class Game {
       const hit = raycast.cast(probe, down, 2.2);
       const hitKind = hit?.metadata?.kind;
       const touchedGround =
-        !!hit && hit.metadata?.id !== id && (hitKind === "static" || hitKind === "door" || hitKind === "dynamic");
+        !!hit && hit.metadata?.id !== id && isSolidWorldKind(hitKind);
       const timedOut = elapsed - collapse.startedAt >= 3.2;
       if (!touchedGround && !timedOut) continue;
 
@@ -3350,6 +3500,9 @@ export class Game {
       checkpointSystem,
       hazardVolumes,
       explosiveBarrels,
+      services.resolve(GameTokens.Props),
+      services.resolve(GameTokens.PropStructures),
+      services.resolve(GameTokens.PropDeformation),
       characters,
       assets,
       this.buildNpcPortalServices(),
@@ -3384,6 +3537,16 @@ export class Game {
     services.resolve(GameTokens.IceGun).clear();
     services.resolve(GameTokens.Portals).clear();
     explosiveBarrels.clear();
+    // La rotura antes que los props: suelta el debris que todavía apunta a
+    // cuerpos del mundo viejo.
+    services.resolve(GameTokens.PropBreaks).clear();
+    services.resolve(GameTokens.PropScrapeSounds).clear();
+    // Las juntas antes que los cuerpos, siempre.
+    services.resolve(GameTokens.PropStructures).clear();
+    // Antes que los props: devuelve las geometrías clonadas a sus mallas.
+    services.resolve(GameTokens.PropDeformation).clear();
+    services.resolve(GameTokens.PropContacts).clear();
+    services.resolve(GameTokens.Props).clear();
     vfx.clear();
     services.resolve(GameTokens.AmbientSounds).clear();
     services.resolve(EngineTokens.PositionalSound).clear();
@@ -3400,7 +3563,6 @@ export class Game {
     hazardVolumes.clear();
     services.resolve(GameTokens.GrabSystem).clear();
     services.resolve(GameTokens.PropImpacts).clear();
-    services.resolve(GameTokens.PropCollisionSounds).clear();
     services.resolve(GameTokens.DoorSounds).clear();
     services.resolve(GameTokens.PlayerSquad).reset();
     this.navigation?.dispose();

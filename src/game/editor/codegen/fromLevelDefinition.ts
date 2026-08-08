@@ -55,6 +55,9 @@ export function fromLevelDefinition(level: LevelDefinition): EditorDocument {
   for (const def of level.chargers ?? []) entities.push({ eid: newEid('charger'), kind: 'charger', def: clone(def) });
   for (const def of level.triggers) entities.push({ eid: newEid('trigger'), kind: 'trigger', def: clone(def) });
   for (const def of level.explosiveBarrels ?? []) entities.push({ eid: newEid('explosiveBarrel'), kind: 'explosiveBarrel', def: clone(def) });
+  // Los props del catalogo SI sobreviven el round-trip: son datos, no un smart
+  // object que haya que reconstruir desde sus cajas aplanadas.
+  for (const def of level.props ?? []) entities.push({ eid: newEid('propEntity'), kind: 'propEntity', def: clone(def) });
   for (const def of level.hazardVolumes ?? []) entities.push({ eid: newEid('hazardVolume'), kind: 'hazardVolume', def: clone(def) });
   for (const def of level.vehicles ?? []) entities.push({ eid: newEid('vehicle'), kind: 'vehicle', def: clone(def) });
   for (const def of level.vehicleWaypoints ?? []) entities.push({ eid: newEid('vehicleWaypoint'), kind: 'vehicleWaypoint', def: clone(def) });

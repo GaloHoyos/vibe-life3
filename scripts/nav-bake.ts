@@ -34,7 +34,11 @@ const output = resolve(root, "public/navigation");
 await mkdir(output, { recursive: true });
 
 for (const level of selected) {
-  const boxes = [...level.staticBoxes, ...(level.buildings ?? []).flatMap((building) => building.boxes)];
+  const boxes = [
+    ...level.staticBoxes,
+    ...(level.buildings ?? []).flatMap((building) => building.boxes),
+    ...(level.navBlockers ?? []),
+  ];
   const terrain = level.terrain
     ? {
         field: generateHeightField({

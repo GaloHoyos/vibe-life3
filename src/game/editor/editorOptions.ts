@@ -1,4 +1,9 @@
-import type { MaterialKey } from '@engine/render/material/Materials';
+import { MaterialDefinitions, type MaterialKey } from '@engine/render/material/Materials';
+import {
+  PROP_ARCHETYPE_IDS,
+  type PropArchetypeId,
+  type PropPhysicsMode,
+} from '@game/config/props.config';
 import type { SkyboxId } from '@engine/render/environment/Skybox';
 import { SkyboxManifest } from '@engine/render/environment/Skybox';
 import { WEAPON_ORDER } from '@game/config/weapons.config';
@@ -18,11 +23,11 @@ import type { HazardKind } from '@game/levels/HazardVolumeSystem';
 import { getAllLevels } from '@game/levels/LevelRegistry';
 import type { PropKind } from './EditorDocument';
 
-export const MATERIAL_KEYS: readonly MaterialKey[] = [
-  'floor', 'asphalt', 'wall', 'trim', 'crate', 'dynamic', 'door', 'button', 'npc', 'npcDead',
-  'hazard', 'snow', 'rock', 'grass', 'sand', 'brick', 'roof', 'plaster', 'concrete', 'woodDark',
-  'metalRusted', 'lightWarm', 'signalBlue', 'signalRed',
-];
+// Derivadas de la tabla de materiales: la lista a mano se desincronizaba en
+// silencio cada vez que se agregaba un `MaterialKey`.
+export const MATERIAL_KEYS: readonly MaterialKey[] = Object.keys(
+  MaterialDefinitions,
+) as MaterialKey[];
 
 export const WEAPON_IDS: readonly WeaponId[] = [...WEAPON_ORDER];
 export const AMMO_IDS: readonly AmmoId[] = Object.keys(AmmoDefinitions) as AmmoId[];
@@ -41,3 +46,7 @@ export const LEVEL_IDS: readonly string[] = getAllLevels().map((l) => l.id);
 export const PROP_KINDS: readonly PropKind[] = [
   'crate', 'crateStack', 'sandbagLine', 'coverWall', 'pillar', 'cargoContainer', 'watchtower',
 ];
+
+/** Arquetipos del catalogo de props, derivados de su tabla. */
+export const PROP_ARCHETYPE_OPTIONS: readonly PropArchetypeId[] = [...PROP_ARCHETYPE_IDS];
+export const PROP_PHYSICS_MODES: readonly PropPhysicsMode[] = ['dynamic', 'anchored', 'debris'];

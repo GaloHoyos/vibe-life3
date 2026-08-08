@@ -1,12 +1,17 @@
 import { Vector3 } from "three";
 import type { NavigationService } from "@engine/ai/navigation/NavigationService";
 import type { Raycast } from "@engine/physics/Raycast";
+import { isSolidWorldKind } from "@engine/physics/metadataKinds";
 import { NavigationProfiles } from "@game/npc/navigation/NavAgentProfiles";
 import type {
   DynamicBoxDefinition,
   LevelDefinition,
+  PropDefinition,
   StaticBoxDefinition,
 } from "@game/levels/LevelDefinition";
+import type { VectorTuple } from "@shared/math/VectorTuple";
+import { PropArchetypes } from "@game/config/props.config";
+import { propBoundsForScale } from "@game/gameplay/props/propDamage";
 
 export interface TacticalCoverPoint {
   id: string;
@@ -31,6 +36,33 @@ export interface TacticalMapSnapshot {
   firingPositionCount: number;
   chokepointCount: number;
   roomClusterCount: number;
+}
+
+/**
+ * Caja equivalente de un prop para el analizador de cobertura, que razona en
+ * cajas. El debris no cuenta: son astillas, no parapetos.
+ *
+ * La altura minima ya la filtra `isCoverObstacle`, asi que aca no se repite.
+ */
+function coverBoxForProp(
+  def: PropDefinition,
+): { box: StaticBoxDefinition; kind: "static" | "dynamic" } | null {
+  const archetype = PropArchetypes[def.archetypeId];
+  if (!archetype) return null;
+  const mode = def.physicsMode ?? archetype.physicsMode;
+  if (mode === "debris") return null;
+  const size = propBoundsForScale(archetype, def.scale);
+  return {
+    box: {
+      id: def.id,
+      // La posicion de un prop es su apoyo; la de una caja, su centro.
+      position: [def.position[0], def.position[1] + size[1] / 2, def.position[2]],
+      size,
+      material: "crate",
+      ...(def.rotation ? { rotation: [...def.rotation] as VectorTuple } : {}),
+    },
+    kind: mode === "anchored" ? "static" : "dynamic",
+  };
 }
 
 const tmpA = new Vector3();
@@ -97,6 +129,23 @@ export class TacticalMap {
         point.occupiedBy = null;
       }
     }
+  }
+
+  /**
+   * Da de baja la cobertura que aportaba un objeto que dejó de existir.
+   *
+   * El mapa táctico se analiza una sola vez al cargar el nivel, así que sin
+   * esto un cajón hecho astillas seguiría figurando como parapeto para siempre
+   * y los NPCs se cubrirían detrás de nada. Devuelve cuántos puntos cayeron.
+   */
+  invalidateSource(sourceId: string): number {
+    let dropped = 0;
+    for (const [id, point] of this.coverPoints) {
+      if (point.sourceId !== sourceId) continue;
+      this.coverPoints.delete(id);
+      dropped += 1;
+    }
+    return dropped;
   }
 
   getCoverPosition(coverId: string): Vector3 | null {
@@ -272,11 +321,7 @@ export class TacticalMap {
     tmpDir.divideScalar(distance);
     const hit = TacticalMapAnalyzer.sharedRaycast?.cast(tmpEyes, tmpDir, distance);
     if (!hit) return false;
-    return (
-      hit.metadata?.kind === "static" ||
-      hit.metadata?.kind === "dynamic" ||
-      hit.metadata?.kind === "door"
-    );
+    return isSolidWorldKind(hit.metadata?.kind);
   }
 
   private hasLineOfSight(from: Vector3, to: Vector3): boolean {
@@ -312,6 +357,13 @@ export class TacticalMapAnalyzer {
     }
     for (const box of level.dynamicBoxes) {
       this.addCoverForBox(box, "dynamic", navigation, raycast, cover, occupied);
+    }
+    // Los props del catálogo también son cobertura. Sin esto una pila de
+    // cajones deja de existir para la IA en cuanto se la migra de `staticBoxes`
+    // a `props`, y los NPCs pelean a cielo abierto al lado de ella.
+    for (const def of level.props ?? []) {
+      const box = coverBoxForProp(def);
+      if (box) this.addCoverForBox(box.box, box.kind, navigation, raycast, cover, occupied);
     }
     console.info("[TacticalMapAnalyzer] tactical map", {
       cover: cover.length,

@@ -9,6 +9,7 @@ export const CollisionGroup = {
   Actor: 0x0002,
   Ragdoll: 0x0004,
   CharacterMedium: 0x0008,
+  Debris: 0x0010,
 } as const;
 
 const ALL_GROUPS = 0xffff;
@@ -40,5 +41,17 @@ export const RAGDOLL_COLLISION_GROUPS = interactionGroups(
  */
 export const APERTURE_COLLISION_GROUPS = interactionGroups(
   CollisionGroup.Default,
+  ALL_GROUPS & ~CollisionGroup.Actor & ~CollisionGroup.Ragdoll,
+);
+
+/**
+ * Fragmentos de props rotos: chocan contra el mundo y entre sí, nunca contra
+ * cápsulas vivas ni ragdolls. Ocho astillas saliendo de un cajón no deben
+ * empujar al jugador a través de una pared, y así "el debris no daña a nadie"
+ * queda garantizado por la estructura en vez de por un flag que hay que
+ * acordarse de poner.
+ */
+export const DEBRIS_COLLISION_GROUPS = interactionGroups(
+  CollisionGroup.Debris,
   ALL_GROUPS & ~CollisionGroup.Actor & ~CollisionGroup.Ragdoll,
 );

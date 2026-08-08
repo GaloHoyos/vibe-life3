@@ -143,6 +143,7 @@ const EDITOR_ENTITY_KINDS = new Set([
   "charger",
   "trigger",
   "explosiveBarrel",
+  "propEntity",
   "hazardVolume",
   "logic",
   "sequence",

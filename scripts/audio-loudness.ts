@@ -267,7 +267,9 @@ async function measure(file: string): Promise<LoudnessResult> {
       "-",
     ]);
 
-    let leftover = Buffer.alloc(0);
+    // `subarray` conserva el ArrayBufferLike del chunk entrante, que no es
+    // asignable al ArrayBuffer concreto que infiere `Buffer.alloc`.
+    let leftover: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let stderr = "";
 
     child.stdout.on("data", (chunk: Buffer) => {

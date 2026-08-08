@@ -3,6 +3,7 @@ import { Vector3 } from "three";
 import { isHostileTo, type Faction } from "@engine/ai/Faction";
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { PhysicsMetadata, PhysicsWorld } from "@engine/physics/PhysicsWorld";
+import { isSolidWorldKind } from "@engine/physics/metadataKinds";
 import type { Damageable } from "@shared/types/lifecycle";
 import type { GameEventBus } from "@game/GameEvents";
 import type {
@@ -27,7 +28,7 @@ export interface StriderCombatOptions {
 interface DamageTarget {
   damageable: Damageable;
   targetId: string;
-  surfaceKind: "npc" | "player" | "dynamic" | "ragdoll" | "door" | "static" | "weaponPickup";
+  surfaceKind: PhysicsMetadata["kind"];
   bodyPartName?: string;
   damage: number;
   direction: Vector3;
@@ -484,8 +485,7 @@ export class StriderCombat implements NpcCombatHandle {
     weaponName: string,
   ): void {
     if (!metadata) return;
-    const staticKind = metadata.kind === "static" || metadata.kind === "door" || metadata.kind === "dynamic";
-    if (staticKind && !metadata.damageable) {
+    if (isSolidWorldKind(metadata.kind) && !metadata.damageable) {
       this.emitWeaponHit(weaponName, metadata, point, normal, 0);
       return;
     }
