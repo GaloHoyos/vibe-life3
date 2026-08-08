@@ -200,6 +200,10 @@ export class MapBuilder {
     for (const p of props) {
       this.staticBoxList.push(...p.staticBoxes);
       this.dynamicBoxList.push(...p.dynamicBoxes);
+      // Por `propEntity` y no al array directo: es quien emite el bloqueador de
+      // navegacion, sin el cual los NPCs atraviesan un cajon anclado.
+      this.propEntity(...p.props);
+      this.propStructureList.push(...p.structures);
     }
     return this;
   }

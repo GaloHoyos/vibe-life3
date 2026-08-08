@@ -38,16 +38,20 @@ function step(physics: PhysicsWorld, frames: number): void {
   for (let i = 0; i < frames; i += 1) physics.step(1 / 60);
 }
 
-describe("PropSystem: los 12 arquetipos sobre un piso", () => {
+describe("PropSystem: todos los arquetipos sobre un piso", () => {
   it("todos se asientan, se duermen y no se hunden ni salen disparados", async () => {
     const { physics, props } = await makeWorld();
 
+    // En grilla y no en fila: el catálogo crece, y una fila de 48 props se
+    // salía del piso de 200 m por el costado. Un prop que cae al vacío se lee
+    // igual que un casco invertido, así que el test acusaba el bug equivocado.
+    const columns = 8;
     PROP_ARCHETYPE_IDS.forEach((archetypeId, index) => {
       props.spawn({
         id: `prop-${archetypeId}`,
         archetypeId,
         // Espaciados para que no se toquen entre sí.
-        position: [index * 4 - 22, 0, 0],
+        position: [(index % columns) * 5 - 18, 0, Math.floor(index / columns) * 5 - 18],
       });
     });
 

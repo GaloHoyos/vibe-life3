@@ -10,7 +10,7 @@
   "packs": [
     {
       "id": "propsWood",
-      "glbBytes": 458952,
+      "glbBytes": 566760,
       "props": [
         {
           "id": "woodenCrate",
@@ -103,6 +103,75 @@
           "colliderVertices": 8,
           "chunkNodes": 7,
           "variants": 2
+        },
+        {
+          "id": "cardboardBox",
+          "pack": "propsWood",
+          "bounds": [
+            0.45,
+            0.398,
+            0.35
+          ],
+          "lods": [
+            {
+              "triangles": 1056,
+              "draws": 3
+            },
+            {
+              "triangles": 924,
+              "draws": 3
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 3
+        },
+        {
+          "id": "milkCarton",
+          "pack": "propsWood",
+          "bounds": [
+            0.091,
+            0.249,
+            0.091
+          ],
+          "lods": [
+            {
+              "triangles": 352,
+              "draws": 2
+            },
+            {
+              "triangles": 176,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 2
+        },
+        {
+          "id": "woodPlank",
+          "pack": "propsWood",
+          "bounds": [
+            1.6,
+            0.072,
+            0.19
+          ],
+          "lods": [
+            {
+              "triangles": 232,
+              "draws": 2
+            },
+            {
+              "triangles": 184,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 2
         }
       ],
       "nodeNames": [
@@ -192,12 +261,69 @@
         "chunk_3",
         "chunk_4",
         "chunk_5",
-        "chunk_6"
+        "chunk_6",
+        "prop_cardboardBox",
+        "visual_lod0",
+        "variant_0",
+        "cardboardBox_lod0_v0",
+        "variant_1",
+        "cardboardBox_lod0_v1",
+        "variant_2",
+        "cardboardBox_lod0_v2",
+        "visual_lod1",
+        "variant_0",
+        "cardboardBox_lod1_v0",
+        "variant_1",
+        "cardboardBox_lod1_v1",
+        "variant_2",
+        "cardboardBox_lod1_v2",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_milkCarton",
+        "visual_lod0",
+        "variant_0",
+        "milkCarton_lod0_v0",
+        "variant_1",
+        "milkCarton_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "milkCarton_lod1_v0",
+        "variant_1",
+        "milkCarton_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "prop_woodPlank",
+        "visual_lod0",
+        "variant_0",
+        "woodPlank_lod0_v0",
+        "variant_1",
+        "woodPlank_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "woodPlank_lod1_v0",
+        "variant_1",
+        "woodPlank_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3"
       ]
     },
     {
       "id": "propsMetal",
-      "glbBytes": 428432,
+      "glbBytes": 617112,
       "props": [
         {
           "id": "metalBarrel",
@@ -313,6 +439,190 @@
           "colliderVertices": 8,
           "chunkNodes": 0,
           "variants": 3
+        },
+        {
+          "id": "metalBucket",
+          "pack": "propsMetal",
+          "bounds": [
+            0.284,
+            0.386,
+            0.28
+          ],
+          "lods": [
+            {
+              "triangles": 400,
+              "draws": 2
+            },
+            {
+              "triangles": 224,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "paintCan",
+          "pack": "propsMetal",
+          "bounds": [
+            0.191,
+            0.264,
+            0.196
+          ],
+          "lods": [
+            {
+              "triangles": 496,
+              "draws": 2
+            },
+            {
+              "triangles": 224,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 2
+        },
+        {
+          "id": "soupCan",
+          "pack": "propsMetal",
+          "bounds": [
+            0.075,
+            0.11,
+            0.075
+          ],
+          "lods": [
+            {
+              "triangles": 576,
+              "draws": 3
+            },
+            {
+              "triangles": 216,
+              "draws": 3
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 3
+        },
+        {
+          "id": "trashBin",
+          "pack": "propsMetal",
+          "bounds": [
+            0.445,
+            0.62,
+            0.445
+          ],
+          "lods": [
+            {
+              "triangles": 640,
+              "draws": 2
+            },
+            {
+              "triangles": 192,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "gasCan",
+          "pack": "propsMetal",
+          "bounds": [
+            0.188,
+            0.428,
+            0.32
+          ],
+          "lods": [
+            {
+              "triangles": 608,
+              "draws": 2
+            },
+            {
+              "triangles": 88,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "propaneTank",
+          "pack": "propsMetal",
+          "bounds": [
+            0.31,
+            0.58,
+            0.31
+          ],
+          "lods": [
+            {
+              "triangles": 576,
+              "draws": 2
+            },
+            {
+              "triangles": 192,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "concreteChunk",
+          "pack": "propsMetal",
+          "bounds": [
+            0.45,
+            0.22,
+            0.421
+          ],
+          "lods": [
+            {
+              "triangles": 312,
+              "draws": 3
+            },
+            {
+              "triangles": 276,
+              "draws": 3
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 3
+        },
+        {
+          "id": "metalPipe",
+          "pack": "propsMetal",
+          "bounds": [
+            1.4,
+            0.115,
+            0.115
+          ],
+          "lods": [
+            {
+              "triangles": 288,
+              "draws": 2
+            },
+            {
+              "triangles": 48,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
         }
       ],
       "nodeNames": [
@@ -405,12 +715,138 @@
         "concreteBlock_lod1_v1",
         "variant_2",
         "concreteBlock_lod1_v2",
+        "collider_0",
+        "prop_metalBucket",
+        "visual_lod0",
+        "variant_0",
+        "metalBucket_lod0_v0",
+        "variant_1",
+        "metalBucket_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "metalBucket_lod1_v0",
+        "variant_1",
+        "metalBucket_lod1_v1",
+        "collider_0",
+        "prop_paintCan",
+        "visual_lod0",
+        "variant_0",
+        "paintCan_lod0_v0",
+        "variant_1",
+        "paintCan_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "paintCan_lod1_v0",
+        "variant_1",
+        "paintCan_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "prop_soupCan",
+        "visual_lod0",
+        "variant_0",
+        "soupCan_lod0_v0",
+        "variant_1",
+        "soupCan_lod0_v1",
+        "variant_2",
+        "soupCan_lod0_v2",
+        "visual_lod1",
+        "variant_0",
+        "soupCan_lod1_v0",
+        "variant_1",
+        "soupCan_lod1_v1",
+        "variant_2",
+        "soupCan_lod1_v2",
+        "collider_0",
+        "prop_trashBin",
+        "visual_lod0",
+        "variant_0",
+        "trashBin_lod0_v0",
+        "variant_1",
+        "trashBin_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "trashBin_lod1_v0",
+        "variant_1",
+        "trashBin_lod1_v1",
+        "collider_0",
+        "prop_gasCan",
+        "visual_lod0",
+        "variant_0",
+        "gasCan_lod0_v0",
+        "variant_1",
+        "gasCan_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "gasCan_lod1_v0",
+        "variant_1",
+        "gasCan_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_propaneTank",
+        "visual_lod0",
+        "variant_0",
+        "propaneTank_lod0_v0",
+        "variant_1",
+        "propaneTank_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "propaneTank_lod1_v0",
+        "variant_1",
+        "propaneTank_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_concreteChunk",
+        "visual_lod0",
+        "variant_0",
+        "concreteChunk_lod0_v0",
+        "variant_1",
+        "concreteChunk_lod0_v1",
+        "variant_2",
+        "concreteChunk_lod0_v2",
+        "visual_lod1",
+        "variant_0",
+        "concreteChunk_lod1_v0",
+        "variant_1",
+        "concreteChunk_lod1_v1",
+        "variant_2",
+        "concreteChunk_lod1_v2",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "prop_metalPipe",
+        "visual_lod0",
+        "variant_0",
+        "metalPipe_lod0_v0",
+        "variant_1",
+        "metalPipe_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "metalPipe_lod1_v0",
+        "variant_1",
+        "metalPipe_lod1_v1",
         "collider_0"
       ]
     },
     {
       "id": "propsSynthetic",
-      "glbBytes": 380208,
+      "glbBytes": 547084,
       "props": [
         {
           "id": "plasticDrum",
@@ -503,6 +939,98 @@
           "colliderVertices": 16,
           "chunkNodes": 0,
           "variants": 1
+        },
+        {
+          "id": "plasticBottle",
+          "pack": "propsSynthetic",
+          "bounds": [
+            0.076,
+            0.24,
+            0.076
+          ],
+          "lods": [
+            {
+              "triangles": 1152,
+              "draws": 3
+            },
+            {
+              "triangles": 288,
+              "draws": 3
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 3
+        },
+        {
+          "id": "glassJar",
+          "pack": "propsSynthetic",
+          "bounds": [
+            0.111,
+            0.16,
+            0.111
+          ],
+          "lods": [
+            {
+              "triangles": 384,
+              "draws": 4
+            },
+            {
+              "triangles": 168,
+              "draws": 4
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 2
+        },
+        {
+          "id": "plasticCrate",
+          "pack": "propsSynthetic",
+          "bounds": [
+            0.6,
+            0.333,
+            0.4
+          ],
+          "lods": [
+            {
+              "triangles": 1496,
+              "draws": 2
+            },
+            {
+              "triangles": 792,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "tire",
+          "pack": "propsSynthetic",
+          "bounds": [
+            0.66,
+            0.2,
+            0.66
+          ],
+          "lods": [
+            {
+              "triangles": 812,
+              "draws": 1
+            },
+            {
+              "triangles": 54,
+              "draws": 1
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 1
         }
       ],
       "nodeNames": [
@@ -583,7 +1111,1914 @@
         "visual_lod1",
         "variant_0",
         "trafficCone_lod1_v0",
+        "collider_0",
+        "prop_plasticBottle",
+        "visual_lod0",
+        "variant_0",
+        "plasticBottle_lod0_v0",
+        "variant_1",
+        "plasticBottle_lod0_v1",
+        "variant_2",
+        "plasticBottle_lod0_v2",
+        "visual_lod1",
+        "variant_0",
+        "plasticBottle_lod1_v0",
+        "variant_1",
+        "plasticBottle_lod1_v1",
+        "variant_2",
+        "plasticBottle_lod1_v2",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "prop_glassJar",
+        "visual_lod0",
+        "variant_0",
+        "glassJar_lod0_v0",
+        "glassJar_lod0_v0_glass",
+        "variant_1",
+        "glassJar_lod0_v1",
+        "glassJar_lod0_v1_glass",
+        "visual_lod1",
+        "variant_0",
+        "glassJar_lod1_v0",
+        "glassJar_lod1_v0_glass",
+        "variant_1",
+        "glassJar_lod1_v1",
+        "glassJar_lod1_v1_glass",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "prop_plasticCrate",
+        "visual_lod0",
+        "variant_0",
+        "plasticCrate_lod0_v0",
+        "variant_1",
+        "plasticCrate_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "plasticCrate_lod1_v0",
+        "variant_1",
+        "plasticCrate_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_tire",
+        "visual_lod0",
+        "variant_0",
+        "tire_lod0_v0",
+        "visual_lod1",
+        "variant_0",
+        "tire_lod1_v0",
         "collider_0"
+      ]
+    },
+    {
+      "id": "propsInterior",
+      "glbBytes": 729980,
+      "props": [
+        {
+          "id": "couch",
+          "pack": "propsInterior",
+          "bounds": [
+            2,
+            0.833,
+            0.907
+          ],
+          "lods": [
+            {
+              "triangles": 360,
+              "draws": 1
+            },
+            {
+              "triangles": 240,
+              "draws": 1
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 1
+        },
+        {
+          "id": "armchair",
+          "pack": "propsInterior",
+          "bounds": [
+            0.95,
+            0.862,
+            0.911
+          ],
+          "lods": [
+            {
+              "triangles": 632,
+              "draws": 2
+            },
+            {
+              "triangles": 480,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "mattress",
+          "pack": "propsInterior",
+          "bounds": [
+            1.355,
+            0.22,
+            1.958
+          ],
+          "lods": [
+            {
+              "triangles": 176,
+              "draws": 2
+            },
+            {
+              "triangles": 88,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "bed",
+          "pack": "propsInterior",
+          "bounds": [
+            1.45,
+            0.72,
+            2.05
+          ],
+          "lods": [
+            {
+              "triangles": 272,
+              "draws": 1
+            },
+            {
+              "triangles": 196,
+              "draws": 1
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 1
+        },
+        {
+          "id": "dresser",
+          "pack": "propsInterior",
+          "bounds": [
+            1,
+            0.82,
+            0.577
+          ],
+          "lods": [
+            {
+              "triangles": 1144,
+              "draws": 2
+            },
+            {
+              "triangles": 792,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "wardrobe",
+          "pack": "propsInterior",
+          "bounds": [
+            1,
+            1.9,
+            0.675
+          ],
+          "lods": [
+            {
+              "triangles": 712,
+              "draws": 2
+            },
+            {
+              "triangles": 616,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "bookshelf",
+          "pack": "propsInterior",
+          "bounds": [
+            0.9,
+            1.8,
+            0.32
+          ],
+          "lods": [
+            {
+              "triangles": 1056,
+              "draws": 2
+            },
+            {
+              "triangles": 792,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "desk",
+          "pack": "propsInterior",
+          "bounds": [
+            1.3,
+            0.75,
+            0.659
+          ],
+          "lods": [
+            {
+              "triangles": 1144,
+              "draws": 2
+            },
+            {
+              "triangles": 616,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "nightstand",
+          "pack": "propsInterior",
+          "bounds": [
+            0.45,
+            0.55,
+            0.428
+          ],
+          "lods": [
+            {
+              "triangles": 704,
+              "draws": 2
+            },
+            {
+              "triangles": 528,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "stool",
+          "pack": "propsInterior",
+          "bounds": [
+            0.34,
+            0.72,
+            0.34
+          ],
+          "lods": [
+            {
+              "triangles": 336,
+              "draws": 2
+            },
+            {
+              "triangles": 144,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 2
+        },
+        {
+          "id": "bench",
+          "pack": "propsInterior",
+          "bounds": [
+            1.6,
+            0.45,
+            0.39
+          ],
+          "lods": [
+            {
+              "triangles": 616,
+              "draws": 2
+            },
+            {
+              "triangles": 352,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "officeChair",
+          "pack": "propsInterior",
+          "bounds": [
+            0.585,
+            0.952,
+            0.578
+          ],
+          "lods": [
+            {
+              "triangles": 1104,
+              "draws": 2
+            },
+            {
+              "triangles": 816,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        }
+      ],
+      "nodeNames": [
+        "propsInterior_pack",
+        "prop_couch",
+        "visual_lod0",
+        "variant_0",
+        "couch_lod0_v0",
+        "visual_lod1",
+        "variant_0",
+        "couch_lod1_v0",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_armchair",
+        "visual_lod0",
+        "variant_0",
+        "armchair_lod0_v0",
+        "variant_1",
+        "armchair_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "armchair_lod1_v0",
+        "variant_1",
+        "armchair_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_mattress",
+        "visual_lod0",
+        "variant_0",
+        "mattress_lod0_v0",
+        "variant_1",
+        "mattress_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "mattress_lod1_v0",
+        "variant_1",
+        "mattress_lod1_v1",
+        "collider_0",
+        "prop_bed",
+        "visual_lod0",
+        "variant_0",
+        "bed_lod0_v0",
+        "visual_lod1",
+        "variant_0",
+        "bed_lod1_v0",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_dresser",
+        "visual_lod0",
+        "variant_0",
+        "dresser_lod0_v0",
+        "variant_1",
+        "dresser_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "dresser_lod1_v0",
+        "variant_1",
+        "dresser_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_wardrobe",
+        "visual_lod0",
+        "variant_0",
+        "wardrobe_lod0_v0",
+        "variant_1",
+        "wardrobe_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "wardrobe_lod1_v0",
+        "variant_1",
+        "wardrobe_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_bookshelf",
+        "visual_lod0",
+        "variant_0",
+        "bookshelf_lod0_v0",
+        "variant_1",
+        "bookshelf_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "bookshelf_lod1_v0",
+        "variant_1",
+        "bookshelf_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_desk",
+        "visual_lod0",
+        "variant_0",
+        "desk_lod0_v0",
+        "variant_1",
+        "desk_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "desk_lod1_v0",
+        "variant_1",
+        "desk_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_nightstand",
+        "visual_lod0",
+        "variant_0",
+        "nightstand_lod0_v0",
+        "variant_1",
+        "nightstand_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "nightstand_lod1_v0",
+        "variant_1",
+        "nightstand_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_stool",
+        "visual_lod0",
+        "variant_0",
+        "stool_lod0_v0",
+        "variant_1",
+        "stool_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "stool_lod1_v0",
+        "variant_1",
+        "stool_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "prop_bench",
+        "visual_lod0",
+        "variant_0",
+        "bench_lod0_v0",
+        "variant_1",
+        "bench_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "bench_lod1_v0",
+        "variant_1",
+        "bench_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_officeChair",
+        "visual_lod0",
+        "variant_0",
+        "officeChair_lod0_v0",
+        "variant_1",
+        "officeChair_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "officeChair_lod1_v0",
+        "variant_1",
+        "officeChair_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4"
+      ]
+    },
+    {
+      "id": "propsAppliance",
+      "glbBytes": 422688,
+      "props": [
+        {
+          "id": "fridge",
+          "pack": "propsAppliance",
+          "bounds": [
+            0.7,
+            1.75,
+            0.725
+          ],
+          "lods": [
+            {
+              "triangles": 440,
+              "draws": 2
+            },
+            {
+              "triangles": 264,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "washingMachine",
+          "pack": "propsAppliance",
+          "bounds": [
+            0.6,
+            0.85,
+            0.631
+          ],
+          "lods": [
+            {
+              "triangles": 552,
+              "draws": 2
+            },
+            {
+              "triangles": 232,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "stove",
+          "pack": "propsAppliance",
+          "bounds": [
+            0.6,
+            0.907,
+            0.646
+          ],
+          "lods": [
+            {
+              "triangles": 928,
+              "draws": 2
+            },
+            {
+              "triangles": 352,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "kitchenCounter",
+          "pack": "propsAppliance",
+          "bounds": [
+            1.2,
+            0.9,
+            0.65
+          ],
+          "lods": [
+            {
+              "triangles": 616,
+              "draws": 2
+            },
+            {
+              "triangles": 264,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "bathtub",
+          "pack": "propsAppliance",
+          "bounds": [
+            1.7,
+            0.67,
+            0.75
+          ],
+          "lods": [
+            {
+              "triangles": 260,
+              "draws": 1
+            },
+            {
+              "triangles": 132,
+              "draws": 1
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 1
+        },
+        {
+          "id": "toilet",
+          "pack": "propsAppliance",
+          "bounds": [
+            0.4,
+            0.78,
+            0.65
+          ],
+          "lods": [
+            {
+              "triangles": 184,
+              "draws": 1
+            },
+            {
+              "triangles": 112,
+              "draws": 1
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 1
+        },
+        {
+          "id": "sink",
+          "pack": "propsAppliance",
+          "bounds": [
+            0.58,
+            0.935,
+            0.48
+          ],
+          "lods": [
+            {
+              "triangles": 328,
+              "draws": 2
+            },
+            {
+              "triangles": 176,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 2
+        },
+        {
+          "id": "lockerBank",
+          "pack": "propsAppliance",
+          "bounds": [
+            0.92,
+            1.8,
+            0.543
+          ],
+          "lods": [
+            {
+              "triangles": 1496,
+              "draws": 2
+            },
+            {
+              "triangles": 440,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        }
+      ],
+      "nodeNames": [
+        "propsAppliance_pack",
+        "prop_fridge",
+        "visual_lod0",
+        "variant_0",
+        "fridge_lod0_v0",
+        "variant_1",
+        "fridge_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "fridge_lod1_v0",
+        "variant_1",
+        "fridge_lod1_v1",
+        "collider_0",
+        "prop_washingMachine",
+        "visual_lod0",
+        "variant_0",
+        "washingMachine_lod0_v0",
+        "variant_1",
+        "washingMachine_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "washingMachine_lod1_v0",
+        "variant_1",
+        "washingMachine_lod1_v1",
+        "collider_0",
+        "prop_stove",
+        "visual_lod0",
+        "variant_0",
+        "stove_lod0_v0",
+        "variant_1",
+        "stove_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "stove_lod1_v0",
+        "variant_1",
+        "stove_lod1_v1",
+        "collider_0",
+        "prop_kitchenCounter",
+        "visual_lod0",
+        "variant_0",
+        "kitchenCounter_lod0_v0",
+        "variant_1",
+        "kitchenCounter_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "kitchenCounter_lod1_v0",
+        "variant_1",
+        "kitchenCounter_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_bathtub",
+        "visual_lod0",
+        "variant_0",
+        "bathtub_lod0_v0",
+        "visual_lod1",
+        "variant_0",
+        "bathtub_lod1_v0",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_toilet",
+        "visual_lod0",
+        "variant_0",
+        "toilet_lod0_v0",
+        "visual_lod1",
+        "variant_0",
+        "toilet_lod1_v0",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "prop_sink",
+        "visual_lod0",
+        "variant_0",
+        "sink_lod0_v0",
+        "variant_1",
+        "sink_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "sink_lod1_v0",
+        "variant_1",
+        "sink_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "prop_lockerBank",
+        "visual_lod0",
+        "variant_0",
+        "lockerBank_lod0_v0",
+        "variant_1",
+        "lockerBank_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "lockerBank_lod1_v0",
+        "variant_1",
+        "lockerBank_lod1_v1",
+        "collider_0"
+      ]
+    },
+    {
+      "id": "propsDebris",
+      "glbBytes": 673692,
+      "props": [
+        {
+          "id": "concreteSlab",
+          "pack": "propsDebris",
+          "bounds": [
+            1.25,
+            0.26,
+            1.001
+          ],
+          "lods": [
+            {
+              "triangles": 336,
+              "draws": 2
+            },
+            {
+              "triangles": 216,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "brokenPillar",
+          "pack": "propsDebris",
+          "bounds": [
+            0.44,
+            1.407,
+            0.44
+          ],
+          "lods": [
+            {
+              "triangles": 312,
+              "draws": 2
+            },
+            {
+              "triangles": 216,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "brickPile",
+          "pack": "propsDebris",
+          "bounds": [
+            0.78,
+            0.41,
+            0.6
+          ],
+          "lods": [
+            {
+              "triangles": 1056,
+              "draws": 2
+            },
+            {
+              "triangles": 792,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "rebarBundle",
+          "pack": "propsDebris",
+          "bounds": [
+            1.7,
+            0.111,
+            0.11
+          ],
+          "lods": [
+            {
+              "triangles": 552,
+              "draws": 2
+            },
+            {
+              "triangles": 192,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "iBeam",
+          "pack": "propsDebris",
+          "bounds": [
+            2.2,
+            0.24,
+            0.2
+          ],
+          "lods": [
+            {
+              "triangles": 544,
+              "draws": 2
+            },
+            {
+              "triangles": 264,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "metalPanel",
+          "pack": "propsDebris",
+          "bounds": [
+            1.101,
+            0.85,
+            0.21
+          ],
+          "lods": [
+            {
+              "triangles": 440,
+              "draws": 2
+            },
+            {
+              "triangles": 176,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "scrapHeap",
+          "pack": "propsDebris",
+          "bounds": [
+            0.95,
+            0.501,
+            0.8
+          ],
+          "lods": [
+            {
+              "triangles": 672,
+              "draws": 2
+            },
+            {
+              "triangles": 392,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "scaffoldPipe",
+          "pack": "propsDebris",
+          "bounds": [
+            1.9,
+            0.088,
+            0.104
+          ],
+          "lods": [
+            {
+              "triangles": 416,
+              "draws": 2
+            },
+            {
+              "triangles": 296,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "plasterSlab",
+          "pack": "propsDebris",
+          "bounds": [
+            1.05,
+            0.135,
+            0.72
+          ],
+          "lods": [
+            {
+              "triangles": 344,
+              "draws": 2
+            },
+            {
+              "triangles": 80,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 2
+        },
+        {
+          "id": "sandbag",
+          "pack": "propsDebris",
+          "bounds": [
+            0.52,
+            0.2,
+            0.32
+          ],
+          "lods": [
+            {
+              "triangles": 352,
+              "draws": 2
+            },
+            {
+              "triangles": 176,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "barricadeWood",
+          "pack": "propsDebris",
+          "bounds": [
+            1.503,
+            1.052,
+            0.082
+          ],
+          "lods": [
+            {
+              "triangles": 704,
+              "draws": 2
+            },
+            {
+              "triangles": 440,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        }
+      ],
+      "nodeNames": [
+        "propsDebris_pack",
+        "prop_concreteSlab",
+        "visual_lod0",
+        "variant_0",
+        "concreteSlab_lod0_v0",
+        "variant_1",
+        "concreteSlab_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "concreteSlab_lod1_v0",
+        "variant_1",
+        "concreteSlab_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_brokenPillar",
+        "visual_lod0",
+        "variant_0",
+        "brokenPillar_lod0_v0",
+        "variant_1",
+        "brokenPillar_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "brokenPillar_lod1_v0",
+        "variant_1",
+        "brokenPillar_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_brickPile",
+        "visual_lod0",
+        "variant_0",
+        "brickPile_lod0_v0",
+        "variant_1",
+        "brickPile_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "brickPile_lod1_v0",
+        "variant_1",
+        "brickPile_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_rebarBundle",
+        "visual_lod0",
+        "variant_0",
+        "rebarBundle_lod0_v0",
+        "variant_1",
+        "rebarBundle_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "rebarBundle_lod1_v0",
+        "variant_1",
+        "rebarBundle_lod1_v1",
+        "collider_0",
+        "prop_iBeam",
+        "visual_lod0",
+        "variant_0",
+        "iBeam_lod0_v0",
+        "variant_1",
+        "iBeam_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "iBeam_lod1_v0",
+        "variant_1",
+        "iBeam_lod1_v1",
+        "collider_0",
+        "prop_metalPanel",
+        "visual_lod0",
+        "variant_0",
+        "metalPanel_lod0_v0",
+        "variant_1",
+        "metalPanel_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "metalPanel_lod1_v0",
+        "variant_1",
+        "metalPanel_lod1_v1",
+        "collider_0",
+        "prop_scrapHeap",
+        "visual_lod0",
+        "variant_0",
+        "scrapHeap_lod0_v0",
+        "variant_1",
+        "scrapHeap_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "scrapHeap_lod1_v0",
+        "variant_1",
+        "scrapHeap_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_scaffoldPipe",
+        "visual_lod0",
+        "variant_0",
+        "scaffoldPipe_lod0_v0",
+        "variant_1",
+        "scaffoldPipe_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "scaffoldPipe_lod1_v0",
+        "variant_1",
+        "scaffoldPipe_lod1_v1",
+        "collider_0",
+        "prop_plasterSlab",
+        "visual_lod0",
+        "variant_0",
+        "plasterSlab_lod0_v0",
+        "variant_1",
+        "plasterSlab_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "plasterSlab_lod1_v0",
+        "variant_1",
+        "plasterSlab_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "prop_sandbag",
+        "visual_lod0",
+        "variant_0",
+        "sandbag_lod0_v0",
+        "variant_1",
+        "sandbag_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "sandbag_lod1_v0",
+        "variant_1",
+        "sandbag_lod1_v1",
+        "collider_0",
+        "prop_barricadeWood",
+        "visual_lod0",
+        "variant_0",
+        "barricadeWood_lod0_v0",
+        "variant_1",
+        "barricadeWood_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "barricadeWood_lod1_v0",
+        "variant_1",
+        "barricadeWood_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5"
+      ]
+    },
+    {
+      "id": "propsTech",
+      "glbBytes": 720068,
+      "props": [
+        {
+          "id": "monitor",
+          "pack": "propsTech",
+          "bounds": [
+            0.42,
+            0.365,
+            0.429
+          ],
+          "lods": [
+            {
+              "triangles": 512,
+              "draws": 4
+            },
+            {
+              "triangles": 352,
+              "draws": 4
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "serverRack",
+          "pack": "propsTech",
+          "bounds": [
+            0.6,
+            1.85,
+            0.825
+          ],
+          "lods": [
+            {
+              "triangles": 748,
+              "draws": 2
+            },
+            {
+              "triangles": 176,
+              "draws": 1
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 1
+        },
+        {
+          "id": "harddrive",
+          "pack": "propsTech",
+          "bounds": [
+            0.15,
+            0.033,
+            0.106
+          ],
+          "lods": [
+            {
+              "triangles": 264,
+              "draws": 2
+            },
+            {
+              "triangles": 88,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "powerBox",
+          "pack": "propsTech",
+          "bounds": [
+            0.344,
+            0.46,
+            0.197
+          ],
+          "lods": [
+            {
+              "triangles": 640,
+              "draws": 4
+            },
+            {
+              "triangles": 240,
+              "draws": 4
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "keypad",
+          "pack": "propsTech",
+          "bounds": [
+            0.128,
+            0.26,
+            0.19
+          ],
+          "lods": [
+            {
+              "triangles": 440,
+              "draws": 4
+            },
+            {
+              "triangles": 176,
+              "draws": 4
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 2
+        },
+        {
+          "id": "radio",
+          "pack": "propsTech",
+          "bounds": [
+            0.3,
+            0.253,
+            0.198
+          ],
+          "lods": [
+            {
+              "triangles": 792,
+              "draws": 4
+            },
+            {
+              "triangles": 224,
+              "draws": 4
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 2
+        },
+        {
+          "id": "vendingMachine",
+          "pack": "propsTech",
+          "bounds": [
+            0.82,
+            1.88,
+            0.783
+          ],
+          "lods": [
+            {
+              "triangles": 396,
+              "draws": 3
+            },
+            {
+              "triangles": 220,
+              "draws": 3
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 1
+        },
+        {
+          "id": "waterCooler",
+          "pack": "propsTech",
+          "bounds": [
+            0.34,
+            1.112,
+            0.353
+          ],
+          "lods": [
+            {
+              "triangles": 576,
+              "draws": 4
+            },
+            {
+              "triangles": 200,
+              "draws": 4
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "labJar",
+          "pack": "propsTech",
+          "bounds": [
+            0.146,
+            0.26,
+            0.15
+          ],
+          "lods": [
+            {
+              "triangles": 448,
+              "draws": 6
+            },
+            {
+              "triangles": 224,
+              "draws": 6
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 2
+        },
+        {
+          "id": "partsBin",
+          "pack": "propsTech",
+          "bounds": [
+            0.42,
+            0.18,
+            0.3
+          ],
+          "lods": [
+            {
+              "triangles": 880,
+              "draws": 2
+            },
+            {
+              "triangles": 440,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 2
+        },
+        {
+          "id": "combineCrate",
+          "pack": "propsTech",
+          "bounds": [
+            0.768,
+            0.696,
+            0.776
+          ],
+          "lods": [
+            {
+              "triangles": 704,
+              "draws": 4
+            },
+            {
+              "triangles": 440,
+              "draws": 4
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "combineBarrier",
+          "pack": "propsTech",
+          "bounds": [
+            1.25,
+            1.063,
+            0.429
+          ],
+          "lods": [
+            {
+              "triangles": 792,
+              "draws": 4
+            },
+            {
+              "triangles": 528,
+              "draws": 4
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "combineEmitter",
+          "pack": "propsTech",
+          "bounds": [
+            0.36,
+            0.92,
+            0.36
+          ],
+          "lods": [
+            {
+              "triangles": 728,
+              "draws": 4
+            },
+            {
+              "triangles": 232,
+              "draws": 4
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "combineLamp",
+          "pack": "propsTech",
+          "bounds": [
+            0.42,
+            0.24,
+            0.267
+          ],
+          "lods": [
+            {
+              "triangles": 528,
+              "draws": 4
+            },
+            {
+              "triangles": 176,
+              "draws": 4
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 4,
+          "variants": 2
+        }
+      ],
+      "nodeNames": [
+        "propsTech_pack",
+        "prop_monitor",
+        "visual_lod0",
+        "variant_0",
+        "monitor_lod0_v0",
+        "monitor_lod0_v0_emissive",
+        "variant_1",
+        "monitor_lod0_v1",
+        "monitor_lod0_v1_emissive",
+        "visual_lod1",
+        "variant_0",
+        "monitor_lod1_v0",
+        "monitor_lod1_v0_emissive",
+        "variant_1",
+        "monitor_lod1_v1",
+        "monitor_lod1_v1_emissive",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_serverRack",
+        "visual_lod0",
+        "variant_0",
+        "serverRack_lod0_v0",
+        "serverRack_lod0_v0_emissive",
+        "visual_lod1",
+        "variant_0",
+        "serverRack_lod1_v0",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_harddrive",
+        "visual_lod0",
+        "variant_0",
+        "harddrive_lod0_v0",
+        "variant_1",
+        "harddrive_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "harddrive_lod1_v0",
+        "variant_1",
+        "harddrive_lod1_v1",
+        "collider_0",
+        "prop_powerBox",
+        "visual_lod0",
+        "variant_0",
+        "powerBox_lod0_v0",
+        "powerBox_lod0_v0_emissive",
+        "variant_1",
+        "powerBox_lod0_v1",
+        "powerBox_lod0_v1_emissive",
+        "visual_lod1",
+        "variant_0",
+        "powerBox_lod1_v0",
+        "powerBox_lod1_v0_emissive",
+        "variant_1",
+        "powerBox_lod1_v1",
+        "powerBox_lod1_v1_emissive",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_keypad",
+        "visual_lod0",
+        "variant_0",
+        "keypad_lod0_v0",
+        "keypad_lod0_v0_emissive",
+        "variant_1",
+        "keypad_lod0_v1",
+        "keypad_lod0_v1_emissive",
+        "visual_lod1",
+        "variant_0",
+        "keypad_lod1_v0",
+        "keypad_lod1_v0_emissive",
+        "variant_1",
+        "keypad_lod1_v1",
+        "keypad_lod1_v1_emissive",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "prop_radio",
+        "visual_lod0",
+        "variant_0",
+        "radio_lod0_v0",
+        "radio_lod0_v0_emissive",
+        "variant_1",
+        "radio_lod0_v1",
+        "radio_lod0_v1_emissive",
+        "visual_lod1",
+        "variant_0",
+        "radio_lod1_v0",
+        "radio_lod1_v0_emissive",
+        "variant_1",
+        "radio_lod1_v1",
+        "radio_lod1_v1_emissive",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "prop_vendingMachine",
+        "visual_lod0",
+        "variant_0",
+        "vendingMachine_lod0_v0",
+        "vendingMachine_lod0_v0_glass",
+        "vendingMachine_lod0_v0_emissive",
+        "visual_lod1",
+        "variant_0",
+        "vendingMachine_lod1_v0",
+        "vendingMachine_lod1_v0_glass",
+        "vendingMachine_lod1_v0_emissive",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_waterCooler",
+        "visual_lod0",
+        "variant_0",
+        "waterCooler_lod0_v0",
+        "waterCooler_lod0_v0_glass",
+        "variant_1",
+        "waterCooler_lod0_v1",
+        "waterCooler_lod0_v1_glass",
+        "visual_lod1",
+        "variant_0",
+        "waterCooler_lod1_v0",
+        "waterCooler_lod1_v0_glass",
+        "variant_1",
+        "waterCooler_lod1_v1",
+        "waterCooler_lod1_v1_glass",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_labJar",
+        "visual_lod0",
+        "variant_0",
+        "labJar_lod0_v0",
+        "labJar_lod0_v0_glass",
+        "labJar_lod0_v0_emissive",
+        "variant_1",
+        "labJar_lod0_v1",
+        "labJar_lod0_v1_glass",
+        "labJar_lod0_v1_emissive",
+        "visual_lod1",
+        "variant_0",
+        "labJar_lod1_v0",
+        "labJar_lod1_v0_glass",
+        "labJar_lod1_v0_emissive",
+        "variant_1",
+        "labJar_lod1_v1",
+        "labJar_lod1_v1_glass",
+        "labJar_lod1_v1_emissive",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "prop_partsBin",
+        "visual_lod0",
+        "variant_0",
+        "partsBin_lod0_v0",
+        "variant_1",
+        "partsBin_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "partsBin_lod1_v0",
+        "variant_1",
+        "partsBin_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "prop_combineCrate",
+        "visual_lod0",
+        "variant_0",
+        "combineCrate_lod0_v0",
+        "combineCrate_lod0_v0_emissive",
+        "variant_1",
+        "combineCrate_lod0_v1",
+        "combineCrate_lod0_v1_emissive",
+        "visual_lod1",
+        "variant_0",
+        "combineCrate_lod1_v0",
+        "combineCrate_lod1_v0_emissive",
+        "variant_1",
+        "combineCrate_lod1_v1",
+        "combineCrate_lod1_v1_emissive",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_combineBarrier",
+        "visual_lod0",
+        "variant_0",
+        "combineBarrier_lod0_v0",
+        "combineBarrier_lod0_v0_emissive",
+        "variant_1",
+        "combineBarrier_lod0_v1",
+        "combineBarrier_lod0_v1_emissive",
+        "visual_lod1",
+        "variant_0",
+        "combineBarrier_lod1_v0",
+        "combineBarrier_lod1_v0_emissive",
+        "variant_1",
+        "combineBarrier_lod1_v1",
+        "combineBarrier_lod1_v1_emissive",
+        "collider_0",
+        "prop_combineEmitter",
+        "visual_lod0",
+        "variant_0",
+        "combineEmitter_lod0_v0",
+        "combineEmitter_lod0_v0_emissive",
+        "variant_1",
+        "combineEmitter_lod0_v1",
+        "combineEmitter_lod0_v1_emissive",
+        "visual_lod1",
+        "variant_0",
+        "combineEmitter_lod1_v0",
+        "combineEmitter_lod1_v0_emissive",
+        "variant_1",
+        "combineEmitter_lod1_v1",
+        "combineEmitter_lod1_v1_emissive",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_combineLamp",
+        "visual_lod0",
+        "variant_0",
+        "combineLamp_lod0_v0",
+        "combineLamp_lod0_v0_emissive",
+        "variant_1",
+        "combineLamp_lod0_v1",
+        "combineLamp_lod0_v1_emissive",
+        "visual_lod1",
+        "variant_0",
+        "combineLamp_lod1_v0",
+        "combineLamp_lod1_v0_emissive",
+        "variant_1",
+        "combineLamp_lod1_v1",
+        "combineLamp_lod1_v1_emissive",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3"
       ]
     }
   ]

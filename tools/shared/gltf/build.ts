@@ -158,6 +158,31 @@ export function createGlassMaterial(document: Document, assetId: string): Materi
     .setDoubleSided(true);
 }
 
+/**
+ * Superficie que emite: pantallas, testigos, energía Combine.
+ *
+ * Va como material aparte por el mismo motivo que el vidrio: el atlas de cuatro
+ * casillas describe superficies que reciben luz, y un emisor pintado ahí sería
+ * apenas una mancha clara. Con `emissiveFactor` la pieza se lee encendida
+ * incluso en un cuarto a oscuras, que es de lo que se trata.
+ *
+ * NO agrega una luz a la escena. Sumar o esconder una luz recompila todos los
+ * materiales y cuesta segundos de freeze; un emisor que ilumine el ambiente es
+ * trabajo del sistema de VFX, no del asset.
+ */
+export function createEmissiveMaterial(
+  document: Document,
+  assetId: string,
+  color: readonly [number, number, number],
+): Material {
+  return document
+    .createMaterial(`${assetId}_emissive`)
+    .setBaseColorFactor([color[0] * 0.3, color[1] * 0.3, color[2] * 0.3, 1])
+    .setEmissiveFactor([...color] as [number, number, number])
+    .setMetallicFactor(0.1)
+    .setRoughnessFactor(0.3);
+}
+
 /** Material PBR castigado del asset: albedo + normal + (oclusión, rugosidad, metal). */
 export function createWeatheredMaterial(
   document: Document,

@@ -65,7 +65,15 @@ function makeRegistry(scene: Object3D): PropAssetRegistry {
   const loader: PropModelLoader = { loadAsync: () => Promise.resolve({ scene }) };
   return new PropAssetRegistry({
     loader,
-    urls: { propsWood: "wood", propsMetal: "metal", propsSynthetic: "synthetic" },
+    urls: {
+      propsWood: "wood",
+      propsMetal: "metal",
+      propsSynthetic: "synthetic",
+      propsInterior: "interior",
+      propsAppliance: "appliance",
+      propsDebris: "debris",
+      propsTech: "tech",
+    },
   });
 }
 

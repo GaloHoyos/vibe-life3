@@ -12,16 +12,35 @@ import type { LevelDefinition, PropDefinition } from "@game/levels/LevelDefiniti
  * Lo que se verifica acá es lo que no se ve en un test: cómo pesan, cómo suenan
  * al chocar y cuánto aguantan antes de romperse.
  */
-const BENCH_Z = -4;
 const BENCH_TOP = 0.9;
-const SPACING = 2.2;
+/** Hay props de 2 m de largo: menos separación y se tocan al asentarse. */
+const SPACING = 2.6;
+/** Tantos por fila como entran en la sala; el resto pasa al banco de atrás. */
+const PER_ROW = 12;
+/** Fondo del banco: hay props de 2 m de largo que si no quedan en el aire. */
+const BENCH_DEPTH = 2.4;
+/**
+ * Un banco por fila. Se derivan del tamaño del catálogo en vez de listarse: la
+ * fila se pasaba de la sala cada vez que entraban props nuevos.
+ */
+const BENCH_ROWS: readonly number[] = Array.from(
+  { length: Math.ceil(PROP_ARCHETYPE_IDS.length / PER_ROW) },
+  (_, row) => -16 + row * 3.4,
+);
 
-/** Los 12 arquetipos en fila, centrados sobre el banco. */
-const catalogRow: PropDefinition[] = PROP_ARCHETYPE_IDS.map((archetypeId, index) => ({
-  id: `catalog-${archetypeId}`,
-  archetypeId,
-  position: [(index - (PROP_ARCHETYPE_IDS.length - 1) / 2) * SPACING, BENCH_TOP, BENCH_Z],
-}));
+/** El catálogo entero en fila, repartido entre los bancos. */
+const catalogRow: PropDefinition[] = PROP_ARCHETYPE_IDS.map((archetypeId, index) => {
+  const row = Math.floor(index / PER_ROW);
+  const column = index % PER_ROW;
+  const inRow = Math.min(PER_ROW, PROP_ARCHETYPE_IDS.length - row * PER_ROW);
+  return {
+    id: `catalog-${archetypeId}`,
+    archetypeId,
+    position: [(column - (inRow - 1) / 2) * SPACING, BENCH_TOP, BENCH_ROWS[row] ?? BENCH_ROWS[0]!],
+  };
+});
+
+const BENCH_Z = BENCH_ROWS[0]!;
 
 /** Pila de cajones para empujar y gravity-gunear en el piso. */
 const crateStack: PropDefinition[] = [
@@ -45,7 +64,8 @@ const jointedStack = crateStackStructure({
 
 const jointedShelf = shelfUnitStructure({
   id: "sandbox-shelf",
-  at: [11, -12],
+  // Al costado de los bancos: con el catálogo actual llegan hasta z = -17.
+  at: [19, -8],
   shelves: 4,
   spacing: 0.95,
   archetypeId: "metalBarrel",
@@ -114,13 +134,13 @@ export const PropSandboxLevel: LevelDefinition = {
     { id: "sandbox-south", position: [0, 2.5, 20], size: [46, 5, 0.5], material: "wall" },
     { id: "sandbox-west", position: [-23, 2.5, 0], size: [0.5, 5, 40], material: "wall" },
     { id: "sandbox-east", position: [23, 2.5, 0], size: [0.5, 5, 40], material: "wall" },
-    // Banco del catálogo.
-    {
-      id: "sandbox-bench",
-      position: [0, BENCH_TOP / 2, BENCH_Z],
-      size: [PROP_ARCHETYPE_IDS.length * SPACING + 1, BENCH_TOP, 1.6],
-      material: "trim",
-    },
+    // Bancos del catálogo, uno por fila.
+    ...BENCH_ROWS.map((z, row) => ({
+      id: `sandbox-bench-${row}`,
+      position: [0, BENCH_TOP / 2, z] as [number, number, number],
+      size: [PER_ROW * SPACING + 1, BENCH_TOP, BENCH_DEPTH] as [number, number, number],
+      material: "trim" as const,
+    })),
     // Balcón para tirar props desde altura y oír la diferencia por material.
     { id: "sandbox-ledge", position: [-14, 3, -8], size: [8, 0.4, 6], material: "concrete" },
     { id: "sandbox-ledge-ramp-1", position: [-14, 0.5, -3.4], size: [3, 1, 1.2], material: "concrete" },

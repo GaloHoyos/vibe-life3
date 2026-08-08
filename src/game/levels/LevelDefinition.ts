@@ -35,7 +35,7 @@ import type {
 import type { LandmarkReference } from '@game/levels/LevelTransition';
 
 /** Rotacion Euler XYZ en radianes. Omitida = alineado a los ejes. */
-type RotationTuple = VectorTuple;
+export type RotationTuple = VectorTuple;
 
 export interface StaticBoxDefinition {
   id: string;

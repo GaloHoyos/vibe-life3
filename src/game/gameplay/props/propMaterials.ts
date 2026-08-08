@@ -15,6 +15,7 @@ export const PropSurfaceMaterials: Record<SurfaceType, MaterialKey> = {
   rubber: "trim",
   cardboard: "crate",
   tile: "plaster",
+  fabric: "crate",
   dirt: "sand",
   grass: "grass",
   sand: "sand",
@@ -33,6 +34,8 @@ export const PropDustColors: Record<SurfaceType, number> = {
   rubber: 0x3a3a3a,
   cardboard: 0x9a7c56,
   tile: 0xb0aca4,
+  // Pelusa, no polvo mineral: más claro y más cálido que el resto.
+  fabric: 0xa89880,
   dirt: 0x6b5a44,
   grass: 0x5d6b45,
   sand: 0xc2ac82,

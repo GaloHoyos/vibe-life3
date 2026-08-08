@@ -7,7 +7,14 @@ export type { AtlasFinish, AtlasTile, Euler, GeometryPart, Vec3 } from "../share
  * con todos sus arquetipos colgando de la escena: tres fetches en vez de doce, y
  * un solo material por pack en vez de uno por prop.
  */
-export type PropPackId = "propsWood" | "propsMetal" | "propsSynthetic";
+export type PropPackId =
+  | "propsWood"
+  | "propsMetal"
+  | "propsSynthetic"
+  | "propsInterior"
+  | "propsAppliance"
+  | "propsDebris"
+  | "propsTech";
 
 export type PropAssetId =
   | "woodenCrate"
@@ -22,7 +29,67 @@ export type PropAssetId =
   | "crtTelevision"
   | "glassBottle"
   | "trafficCone"
-  | "concreteBlock";
+  | "concreteBlock"
+  | "cardboardBox"
+  | "milkCarton"
+  | "woodPlank"
+  | "metalBucket"
+  | "paintCan"
+  | "soupCan"
+  | "trashBin"
+  | "gasCan"
+  | "propaneTank"
+  | "concreteChunk"
+  | "metalPipe"
+  | "plasticBottle"
+  | "glassJar"
+  | "plasticCrate"
+  | "tire"
+  | "couch"
+  | "armchair"
+  | "mattress"
+  | "bed"
+  | "dresser"
+  | "wardrobe"
+  | "bookshelf"
+  | "desk"
+  | "nightstand"
+  | "stool"
+  | "bench"
+  | "officeChair"
+  | "fridge"
+  | "washingMachine"
+  | "stove"
+  | "kitchenCounter"
+  | "bathtub"
+  | "toilet"
+  | "sink"
+  | "lockerBank"
+  | "concreteSlab"
+  | "brokenPillar"
+  | "brickPile"
+  | "rebarBundle"
+  | "iBeam"
+  | "metalPanel"
+  | "scrapHeap"
+  | "scaffoldPipe"
+  | "plasterSlab"
+  | "sandbag"
+  | "barricadeWood"
+  | "monitor"
+  | "serverRack"
+  | "harddrive"
+  | "powerBox"
+  | "keypad"
+  | "radio"
+  | "vendingMachine"
+  | "waterCooler"
+  | "labJar"
+  | "partsBin"
+  | "combineCrate"
+  | "combineBarrier"
+  | "combineEmitter"
+  | "combineLamp";
 
 export interface PropAssetSpec {
   readonly id: PropAssetId;
@@ -52,6 +119,8 @@ export interface PropPackSpec {
   readonly atlasSize: number;
   readonly finishes: readonly [AtlasFinish, AtlasFinish, AtlasFinish, AtlasFinish];
   readonly grimeColor?: readonly [number, number, number];
+  /** Color de las piezas que emiten. Un pack sin emisores no lo necesita. */
+  readonly emissiveColor?: readonly [number, number, number];
   readonly maxGlbBytes: number;
   readonly maxTrianglesLod0: number;
   readonly maxDrawsPerLod: number;
@@ -117,6 +186,39 @@ const SYNTHETIC_FINISHES: readonly [AtlasFinish, AtlasFinish, AtlasFinish, Atlas
   { color: [64, 66, 70], roughness: 0.46, metallic: 0.08, wear: 0.35, grain: 2 },
 ];
 
+const INTERIOR_FINISHES: readonly [AtlasFinish, AtlasFinish, AtlasFinish, AtlasFinish] = [
+  // 0 tapizado gastado, 1 madera barnizada, 2 melamina clara, 3 herraje y patas.
+  { color: [104, 96, 78], roughness: 0.95, metallic: 0, wear: 0.6, grain: 3.8 },
+  { color: [96, 66, 42], roughness: 0.72, metallic: 0.02, wear: 0.45, grain: 2.4 },
+  { color: [176, 166, 148], roughness: 0.78, metallic: 0.01, wear: 0.4, grain: 2.2 },
+  { color: [118, 116, 112], roughness: 0.5, metallic: 0.88, wear: 0.55, grain: 1.3 },
+];
+
+const APPLIANCE_FINISHES: readonly [AtlasFinish, AtlasFinish, AtlasFinish, AtlasFinish] = [
+  // 0 esmalte blanco sucio, 1 acero, 2 porcelana, 3 goma y plástico oscuro.
+  { color: [198, 196, 186], roughness: 0.42, metallic: 0.12, wear: 0.55, grain: 1.8 },
+  { color: [156, 158, 160], roughness: 0.38, metallic: 0.92, wear: 0.4, grain: 1.2 },
+  { color: [212, 212, 206], roughness: 0.26, metallic: 0.02, wear: 0.3, grain: 1.4 },
+  { color: [54, 54, 56], roughness: 0.74, metallic: 0.05, wear: 0.35, grain: 2.6 },
+];
+
+const DEBRIS_FINISHES: readonly [AtlasFinish, AtlasFinish, AtlasFinish, AtlasFinish] = [
+  // 0 hormigón partido, 1 acero oxidado, 2 yeso, 3 madera astillada y arpillera.
+  { color: [146, 142, 134], roughness: 0.96, metallic: 0.02, wear: 0.75, grain: 3.4 },
+  { color: [132, 82, 52], roughness: 0.9, metallic: 0.4, wear: 0.95, grain: 2.2 },
+  { color: [204, 200, 192], roughness: 0.92, metallic: 0, wear: 0.6, grain: 2.8 },
+  { color: [148, 122, 84], roughness: 0.93, metallic: 0, wear: 0.7, grain: 3.2 },
+];
+
+const TECH_FINISHES: readonly [AtlasFinish, AtlasFinish, AtlasFinish, AtlasFinish] = [
+  // 0 chapa gris de gabinete, 1 acero Combine oscuro, 2 plástico beige, 3 goma
+  // y detalle negro.
+  { color: [120, 126, 130], roughness: 0.5, metallic: 0.55, wear: 0.45, grain: 1.6 },
+  { color: [58, 66, 72], roughness: 0.42, metallic: 0.8, wear: 0.4, grain: 1.4 },
+  { color: [186, 178, 156], roughness: 0.68, metallic: 0.02, wear: 0.6, grain: 2.2 },
+  { color: [42, 42, 44], roughness: 0.7, metallic: 0.1, wear: 0.3, grain: 2.4 },
+];
+
 export const PROP_PACK_SPECS: readonly PropPackSpec[] = [
   {
     id: "propsWood",
@@ -133,6 +235,9 @@ export const PROP_PACK_SPECS: readonly PropPackSpec[] = [
       { id: "pallet", displayName: "Pallet", variants: 2, bounds: [1.2, 0.141, 0.8], chunks: 8 },
       { id: "chair", displayName: "Silla", variants: 2, bounds: [0.42, 0.92, 0.44], chunks: 7 },
       { id: "table", displayName: "Mesa", variants: 2, bounds: [1.4, 0.74, 0.8], chunks: 7 },
+      { id: "cardboardBox", displayName: "Caja de cartón", variants: 3, bounds: [0.45, 0.398, 0.35], chunks: 6 },
+      { id: "milkCarton", displayName: "Cartón de leche", variants: 2, bounds: [0.091, 0.249, 0.091], chunks: 4 },
+      { id: "woodPlank", displayName: "Tabla", variants: 2, bounds: [1.6, 0.072, 0.19], chunks: 4 },
     ],
   },
   {
@@ -151,6 +256,14 @@ export const PROP_PACK_SPECS: readonly PropPackSpec[] = [
       { id: "filingCabinet", displayName: "Archivero", variants: 2, bounds: [0.5, 1.32, 0.655], chunks: 5 },
       { id: "radiator", displayName: "Radiador", variants: 1, bounds: [0.915, 0.597, 0.14], chunks: 6 },
       { id: "concreteBlock", displayName: "Bloque de hormigón", variants: 3, bounds: [0.4, 0.2, 0.2], chunks: 0 },
+      { id: "metalBucket", displayName: "Balde", variants: 2, bounds: [0.284, 0.386, 0.28], chunks: 0 },
+      { id: "paintCan", displayName: "Lata de pintura", variants: 2, bounds: [0.191, 0.264, 0.196], chunks: 4 },
+      { id: "soupCan", displayName: "Lata de conserva", variants: 3, bounds: [0.075, 0.11, 0.075], chunks: 0 },
+      { id: "trashBin", displayName: "Tacho de basura", variants: 2, bounds: [0.445, 0.62, 0.445], chunks: 0 },
+      { id: "gasCan", displayName: "Bidón de nafta", variants: 2, bounds: [0.188, 0.428, 0.32], chunks: 5 },
+      { id: "propaneTank", displayName: "Garrafa de propano", variants: 2, bounds: [0.31, 0.58, 0.31], chunks: 5 },
+      { id: "concreteChunk", displayName: "Trozo de losa", variants: 3, bounds: [0.45, 0.22, 0.421], chunks: 4 },
+      { id: "metalPipe", displayName: "Caño", variants: 2, bounds: [1.4, 0.115, 0.115], chunks: 0 },
     ],
   },
   {
@@ -168,6 +281,123 @@ export const PROP_PACK_SPECS: readonly PropPackSpec[] = [
       { id: "crtTelevision", displayName: "Televisor", variants: 2, bounds: [0.52, 0.44, 0.492], chunks: 8, hasGlass: true },
       { id: "glassBottle", displayName: "Botella", variants: 3, bounds: [0.075, 0.29, 0.075], chunks: 8, hasGlass: true },
       { id: "trafficCone", displayName: "Cono de tránsito", variants: 1, bounds: [0.36, 0.72, 0.36], chunks: 0 },
+      { id: "plasticBottle", displayName: "Botella de plástico", variants: 3, bounds: [0.076, 0.24, 0.076], chunks: 4 },
+      { id: "glassJar", displayName: "Frasco", variants: 2, bounds: [0.111, 0.16, 0.111], chunks: 4, hasGlass: true },
+      { id: "plasticCrate", displayName: "Cajón plástico", variants: 2, bounds: [0.6, 0.333, 0.4], chunks: 6 },
+      { id: "tire", displayName: "Neumático", variants: 1, bounds: [0.66, 0.2, 0.66], chunks: 0 },
+    ],
+  },
+  {
+    id: "propsInterior",
+    displayName: "Mobiliario",
+    seed: 20260810,
+    atlasSize: 512,
+    finishes: INTERIOR_FINISHES,
+    grimeColor: [60, 52, 42],
+    /**
+     * Más holgado que los demás a propósito. Los 700 KB se fijaron para packs de
+     * objetos chicos; un sillón de 2 m o una cama tienen diez veces el volumen
+     * de una botella y no hay forma de meterlos en el mismo presupuesto sin
+     * dejarlos en blockout. Bajar variantes ya se aplicó donde menos aportaban
+     * (sillón, cama y biblioteca van con una sola).
+     */
+    maxGlbBytes: 768 * 1024,
+    maxTrianglesLod0: 3500,
+    maxDrawsPerLod: 3,
+    props: [
+      { id: "couch", displayName: "Sillón de tres cuerpos", variants: 1, bounds: [2, 0.833, 0.907], chunks: 6 },
+      { id: "armchair", displayName: "Sillón", variants: 2, bounds: [0.95, 0.862, 0.911], chunks: 5 },
+      { id: "mattress", displayName: "Colchón", variants: 2, bounds: [1.355, 0.22, 1.958], chunks: 0 },
+      { id: "bed", displayName: "Cama", variants: 1, bounds: [1.45, 0.72, 2.05], chunks: 6 },
+      { id: "dresser", displayName: "Cómoda", variants: 2, bounds: [1, 0.82, 0.577], chunks: 6 },
+      { id: "wardrobe", displayName: "Ropero", variants: 2, bounds: [1, 1.9, 0.675], chunks: 6 },
+      { id: "bookshelf", displayName: "Biblioteca", variants: 2, bounds: [0.9, 1.8, 0.32], chunks: 6 },
+      { id: "desk", displayName: "Escritorio", variants: 2, bounds: [1.3, 0.75, 0.659], chunks: 6 },
+      { id: "nightstand", displayName: "Mesa de luz", variants: 2, bounds: [0.45, 0.55, 0.428], chunks: 5 },
+      { id: "stool", displayName: "Banqueta", variants: 2, bounds: [0.34, 0.72, 0.34], chunks: 4 },
+      { id: "bench", displayName: "Banco", variants: 2, bounds: [1.6, 0.45, 0.39], chunks: 5 },
+      { id: "officeChair", displayName: "Silla de oficina", variants: 2, bounds: [0.585, 0.952, 0.578], chunks: 5 },
+    ],
+  },
+  {
+    id: "propsAppliance",
+    displayName: "Electrodomésticos e instalaciones",
+    seed: 20260811,
+    atlasSize: 512,
+    finishes: APPLIANCE_FINISHES,
+    grimeColor: [72, 70, 64],
+    maxGlbBytes: 700 * 1024,
+    maxTrianglesLod0: 3500,
+    maxDrawsPerLod: 3,
+    props: [
+      { id: "fridge", displayName: "Heladera", variants: 2, bounds: [0.7, 1.75, 0.725], chunks: 0 },
+      { id: "washingMachine", displayName: "Lavarropas", variants: 2, bounds: [0.6, 0.85, 0.631], chunks: 0 },
+      { id: "stove", displayName: "Cocina", variants: 2, bounds: [0.6, 0.907, 0.646], chunks: 0 },
+      { id: "kitchenCounter", displayName: "Mesada", variants: 2, bounds: [1.2, 0.9, 0.65], chunks: 6 },
+      { id: "bathtub", displayName: "Bañera", variants: 1, bounds: [1.7, 0.67, 0.75], chunks: 5 },
+      { id: "toilet", displayName: "Inodoro", variants: 1, bounds: [0.4, 0.78, 0.65], chunks: 4 },
+      { id: "sink", displayName: "Lavatorio", variants: 2, bounds: [0.58, 0.935, 0.48], chunks: 4 },
+      { id: "lockerBank", displayName: "Lockers", variants: 2, bounds: [0.92, 1.8, 0.543], chunks: 0 },
+    ],
+  },
+  {
+    id: "propsDebris",
+    displayName: "Escombro",
+    seed: 20260812,
+    atlasSize: 512,
+    finishes: DEBRIS_FINISHES,
+    grimeColor: [82, 76, 66],
+    maxGlbBytes: 700 * 1024,
+    maxTrianglesLod0: 3500,
+    maxDrawsPerLod: 3,
+    props: [
+      { id: "concreteSlab", displayName: "Losa", variants: 2, bounds: [1.25, 0.26, 1.001], chunks: 5 },
+      { id: "brokenPillar", displayName: "Columna partida", variants: 2, bounds: [0.44, 1.407, 0.44], chunks: 5 },
+      { id: "brickPile", displayName: "Pila de ladrillos", variants: 2, bounds: [0.78, 0.41, 0.6], chunks: 6 },
+      { id: "rebarBundle", displayName: "Atado de hierros", variants: 2, bounds: [1.7, 0.111, 0.11], chunks: 0 },
+      { id: "iBeam", displayName: "Viga doble T", variants: 2, bounds: [2.2, 0.24, 0.2], chunks: 0 },
+      { id: "metalPanel", displayName: "Chapa doblada", variants: 2, bounds: [1.101, 0.85, 0.21], chunks: 0 },
+      { id: "scrapHeap", displayName: "Chatarra", variants: 2, bounds: [0.95, 0.501, 0.8], chunks: 6 },
+      { id: "scaffoldPipe", displayName: "Tubo de andamio", variants: 2, bounds: [1.9, 0.088, 0.104], chunks: 0 },
+      { id: "plasterSlab", displayName: "Placa de yeso", variants: 2, bounds: [1.05, 0.135, 0.72], chunks: 4 },
+      { id: "sandbag", displayName: "Bolsa de arena", variants: 2, bounds: [0.52, 0.2, 0.32], chunks: 0 },
+      { id: "barricadeWood", displayName: "Barricada", variants: 2, bounds: [1.503, 1.052, 0.082], chunks: 6 },
+    ],
+  },
+  {
+    id: "propsTech",
+    displayName: "Electrónica y Combine",
+    seed: 20260813,
+    atlasSize: 512,
+    finishes: TECH_FINISHES,
+    grimeColor: [58, 58, 60],
+    /** Cian Combine: el mismo de los emisores de los vehículos. */
+    emissiveColor: [0.12, 0.78, 1],
+    /**
+     * Como `propsInterior`: es el pack más cargado del catálogo. Catorce props
+     * con TRES materiales (atlas, vidrio y emisivo), dos unidades de casi 1.9 m
+     * y detalle fino en casi todos. Antes de subirlo se bajaron variantes en
+     * rack y expendedora, y se cambiaron los botones sueltos del teclado y la
+     * expendedora por tiras: cada `chamferBox` es un casco convexo entero.
+     */
+    maxGlbBytes: 768 * 1024,
+    maxTrianglesLod0: 3500,
+    maxDrawsPerLod: 3,
+    props: [
+      { id: "monitor", displayName: "Monitor", variants: 2, bounds: [0.42, 0.365, 0.429], chunks: 5 },
+      { id: "serverRack", displayName: "Rack de servidores", variants: 1, bounds: [0.6, 1.85, 0.825], chunks: 6 },
+      { id: "harddrive", displayName: "Disco rígido", variants: 2, bounds: [0.15, 0.033, 0.106], chunks: 0 },
+      { id: "powerBox", displayName: "Caja de energía", variants: 2, bounds: [0.344, 0.46, 0.197], chunks: 5 },
+      { id: "keypad", displayName: "Teclado de acceso", variants: 2, bounds: [0.128, 0.26, 0.19], chunks: 4 },
+      { id: "radio", displayName: "Radio", variants: 2, bounds: [0.3, 0.253, 0.198], chunks: 4 },
+      { id: "vendingMachine", displayName: "Expendedora", variants: 1, bounds: [0.82, 1.88, 0.783], chunks: 6, hasGlass: true },
+      { id: "waterCooler", displayName: "Dispenser", variants: 2, bounds: [0.34, 1.112, 0.353], chunks: 5, hasGlass: true },
+      { id: "labJar", displayName: "Frasco de laboratorio", variants: 2, bounds: [0.146, 0.26, 0.15], chunks: 4, hasGlass: true },
+      { id: "partsBin", displayName: "Bandeja de repuestos", variants: 2, bounds: [0.42, 0.18, 0.3], chunks: 4 },
+      { id: "combineCrate", displayName: "Cajón Combine", variants: 2, bounds: [0.768, 0.696, 0.776], chunks: 6 },
+      { id: "combineBarrier", displayName: "Barricada Combine", variants: 2, bounds: [1.25, 1.063, 0.429], chunks: 0 },
+      { id: "combineEmitter", displayName: "Emisor Combine", variants: 2, bounds: [0.36, 0.92, 0.36], chunks: 5 },
+      { id: "combineLamp", displayName: "Lámpara Combine", variants: 2, bounds: [0.42, 0.24, 0.267], chunks: 4 },
     ],
   },
 ];

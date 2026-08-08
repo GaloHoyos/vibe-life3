@@ -17,4 +17,6 @@ export type SurfaceType =
   | "glass"
   | "plastic"
   | "cardboard"
-  | "rubber";
+  | "rubber"
+  /** Tapizado, colchones, bolsas: absorbe en vez de devolver. */
+  | "fabric";

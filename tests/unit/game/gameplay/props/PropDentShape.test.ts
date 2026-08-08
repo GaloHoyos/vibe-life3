@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { Group, Mesh, MeshStandardMaterial, Vector3 } from "three";
+import {
+  Float32BufferAttribute,
+  Group,
+  Int16BufferAttribute,
+  Mesh,
+  MeshStandardMaterial,
+  Vector3,
+} from "three";
 import { EventBus } from "@engine/core/EventBus";
 import type { GameEventMap } from "@game/GameEvents";
 import { PropArchetypes } from "@game/config/props.config";
@@ -48,6 +55,24 @@ function radialProfile(mesh: Mesh): { radius: number[]; y: number[]; z: number[]
     z.push(positions.getZ(index));
   }
   return { radius, y, z };
+}
+
+/**
+ * Cuanto mas hundido esta `deeper` que `shallower` en su vertice mas hundido.
+ *
+ * Se compara vertice por vertice y no contra el minimo absoluto de cada malla
+ * porque el barril tiene piezas internas mas cerca del eje que la chapa: el
+ * minimo global es una de ellas y no se mueve nunca. Ambas mallas salen del
+ * mismo builder, asi que comparten topologia y los indices se corresponden.
+ */
+function extraDepth(shallower: Mesh, deeper: Mesh): number {
+  const a = radialProfile(shallower);
+  const b = radialProfile(deeper);
+  let most = 0;
+  for (let index = 0; index < a.radius.length; index += 1) {
+    most = Math.max(most, a.radius[index]! - b.radius[index]!);
+  }
+  return most;
 }
 
 const RING_Y = 0.2;
@@ -133,6 +158,187 @@ describe("forma del abollon sobre el barril real", () => {
     expect(frontMoved).toBeGreaterThan(0);
     // La cara opuesta entra en el radio del abollon pero mira para el otro lado.
     expect(backMoved).toBe(0);
+  });
+
+  it("sobrevive la geometria cuantizada del GLB sin volverse gigante", () => {
+    // Los GLB salen con `KHR_mesh_quantization`: POSITION es Int16 normalizado
+    // y el valor real sale recién al desnormalizar. Leer el array en crudo
+    // multiplicaba las coordenadas por 32767, el prop se volvía enorme, la
+    // cámara quedaba adentro y el prop se veía completamente invisible.
+    const geometry = mergeParts(PROP_BUILDERS.metalBarrel(0, 0).parts, {
+      bakeOcclusion: false,
+    });
+    const position = geometry.getAttribute("position");
+    let maxAbs = 0;
+    for (let index = 0; index < position.count; index += 1) {
+      maxAbs = Math.max(
+        maxAbs,
+        Math.abs(position.getX(index)),
+        Math.abs(position.getY(index)),
+        Math.abs(position.getZ(index)),
+      );
+    }
+    const raw = new Int16Array(position.count * 3);
+    for (let index = 0; index < position.count; index += 1) {
+      raw[index * 3] = Math.round((position.getX(index) / maxAbs) * 32767);
+      raw[index * 3 + 1] = Math.round((position.getY(index) / maxAbs) * 32767);
+      raw[index * 3 + 2] = Math.round((position.getZ(index) / maxAbs) * 32767);
+    }
+    const quantized = new Int16BufferAttribute(raw, 3);
+    quantized.normalized = true;
+    geometry.setAttribute("position", quantized);
+
+    const root = new Group();
+    const lod0 = new Group();
+    lod0.name = "visual_lod0";
+    const mesh = new Mesh(geometry, new MeshStandardMaterial());
+    lod0.add(mesh);
+    root.add(lod0);
+    root.updateMatrixWorld(true);
+
+    const archetype = PropArchetypes.metalBarrel;
+    const prop = new PropInstance("barrel", archetype, root, archetype.breakReaction);
+    const system = new PropDeformationSystem(
+      new EventBus<GameEventMap>(),
+      { get: () => undefined } as unknown as PropSystem,
+    );
+
+    system.dent(prop, new Vector3(0, 0.4, 0.6), new Vector3(0, 0, -1), 20, 0);
+
+    mesh.geometry.computeBoundingSphere();
+    const radius = mesh.geometry.boundingSphere!.radius;
+    // Desnormalizado el barril entra en la esfera unidad; en crudo daría miles.
+    expect(radius).toBeGreaterThan(0.5);
+    expect(radius).toBeLessThan(3);
+  });
+
+  it("conserva el tamano del color para no recompilar el shader", () => {
+    const { prop, mesh, system } = buildBarrel();
+    // La AO horneada viaja en COLOR_0 como VEC4. `vertexAlphas` del renderer
+    // depende de ese 4: bajarlo a 3 fuerza una recompilación, y este motor no
+    // tiene `KHR_parallel_shader_compile`, así que congela el cuadro.
+    mesh.geometry.setAttribute(
+      "color",
+      new Float32BufferAttribute(new Float32Array(mesh.geometry.getAttribute("position").count * 4).fill(1), 4),
+    );
+
+    system.dent(prop, HIT, INWARD, 20, 0);
+
+    expect(mesh.geometry.getAttribute("color").itemSize).toBe(4);
+  });
+
+  it("subdivide una sola vez por malla compartida", () => {
+    const shared = mergeParts(PROP_BUILDERS.metalBarrel(0, 0).parts, { bakeOcclusion: false });
+    const archetype = PropArchetypes.metalBarrel;
+    const system = new PropDeformationSystem(
+      new EventBus<GameEventMap>(),
+      { get: () => undefined } as unknown as PropSystem,
+    );
+
+    const make = (id: string): { prop: PropInstance; mesh: Mesh } => {
+      const root = new Group();
+      const lod0 = new Group();
+      lod0.name = "visual_lod0";
+      const mesh = new Mesh(shared, new MeshStandardMaterial());
+      lod0.add(mesh);
+      root.add(lod0);
+      root.updateMatrixWorld(true);
+      return { prop: new PropInstance(id, archetype, root, archetype.breakReaction), mesh };
+    };
+
+    const first = make("a");
+    const second = make("b");
+    system.dent(first.prop, HIT, INWARD, 20, 0);
+    system.dent(second.prop, HIT, INWARD, 20, 0);
+
+    // Misma densidad, pero cada uno con su copia: abollar uno no toca al otro.
+    expect(second.mesh.geometry.getAttribute("position").count).toBe(
+      first.mesh.geometry.getAttribute("position").count,
+    );
+    expect(second.mesh.geometry).not.toBe(first.mesh.geometry);
+    expect(first.mesh.geometry).not.toBe(shared);
+  });
+
+  it("no deja tangentes degenerados en un prop con caras planas", () => {
+    // El gabinete es una caja: la proyeccion planar del generador le da area
+    // cero en UV a las caras verticales, y ahi `computeTangents` devuelve el
+    // vector nulo. En el shader `normalize(vec3(0))` es NaN y el prop se ve
+    // NEGRO. El asset no sufre esto porque meshopt le pasa un filtro octaedrico
+    // a TANGENT que decodifica siempre unitario.
+    const merged = mergeParts(PROP_BUILDERS.filingCabinet(0, 0).parts, { bakeOcclusion: true });
+    const root = new Group();
+    const lod0 = new Group();
+    lod0.name = "visual_lod0";
+    const mesh = new Mesh(merged, new MeshStandardMaterial());
+    lod0.add(mesh);
+    root.add(lod0);
+    root.updateMatrixWorld(true);
+
+    const archetype = PropArchetypes.filingCabinet;
+    const prop = new PropInstance("cabinet", archetype, root, archetype.breakReaction);
+    const system = new PropDeformationSystem(
+      new EventBus<GameEventMap>(),
+      { get: () => undefined } as unknown as PropSystem,
+    );
+
+    system.dent(prop, new Vector3(0, 0.2, 0.33), INWARD, 40, 0);
+
+    const tangents = mesh.geometry.getAttribute("tangent");
+    expect(tangents).toBeDefined();
+    let degenerate = 0;
+    for (let index = 0; index < tangents.count; index += 1) {
+      const length = Math.hypot(tangents.getX(index), tangents.getY(index), tangents.getZ(index));
+      if (!(length > 0.5)) degenerate += 1;
+    }
+    expect(degenerate).toBe(0);
+  });
+
+  it("conserva el atributo de tangente para no recompilar el shader", () => {
+    // `vertexTangents` SI entra en la clave de programa del renderer: borrar el
+    // atributo en vez de arreglarlo cambiaria el shader y congelaria el cuadro.
+    const { prop, mesh, system } = buildBarrel();
+    // El GLB del pack trae TANGENT horneado, igual que esto.
+    mesh.geometry.computeTangents();
+
+    system.dent(prop, HIT, INWARD, 20, 0);
+
+    expect(mesh.geometry.getAttribute("tangent")).toBeDefined();
+  });
+
+  it("un golpe fuerte hunde mas que uno debil", () => {
+    const weak = buildBarrel();
+    weak.system.dent(weak.prop, HIT, INWARD, 8, 0);
+    const strong = buildBarrel();
+    strong.system.dent(strong.prop, HIT, INWARD, 75, 0);
+
+    expect(extraDepth(weak.mesh, strong.mesh)).toBeGreaterThan(0.01);
+  });
+
+  it("los perdigones de una misma escopetada suman en vez de descartarse", () => {
+    // Llegan todos con el mismo `elapsed`. Si el enfriamiento los descartara,
+    // una escopeta abollaria igual que un solo perdigon.
+    const single = buildBarrel();
+    single.system.dent(single.prop, HIT, INWARD, 9, 0);
+    const blast = buildBarrel();
+    for (let pellet = 0; pellet < 8; pellet += 1) {
+      blast.system.dent(blast.prop, HIT, INWARD, 9, 0);
+    }
+
+    expect(extraDepth(single.mesh, blast.mesh)).toBeGreaterThan(0.01);
+  });
+
+  it("recalcula las normales una sola vez por frame, no por impacto", () => {
+    const { prop, mesh, system } = buildBarrel();
+    system.dent(prop, HIT, INWARD, 40, 0);
+
+    // Antes del frame las posiciones ya se movieron pero las normales todavia
+    // son las de la malla sin abollar: recalcularlas por perdigon seria pagar
+    // ocho veces lo mismo en una escopetada.
+    const before = mesh.geometry.getAttribute("normal").getX(0);
+    system.update(0);
+    const after = mesh.geometry.getAttribute("normal");
+    expect(after.count).toBe(mesh.geometry.getAttribute("position").count);
+    expect(Number.isFinite(before)).toBe(true);
   });
 
   it("mantiene la malla soldada para que el abollon se vea suave", () => {

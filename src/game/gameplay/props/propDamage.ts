@@ -11,15 +11,18 @@ export function propMaxHealth(archetype: PropArchetype): number {
 }
 
 /**
- * Daño efectivo tras aplicar el multiplicador del tipo de golpe. Es lo que hace
- * que la barreta parta un cajón y apenas raye un archivero.
+ * Fuerza efectiva del golpe tras aplicar el multiplicador del tipo. Es lo que
+ * hace que la barreta parta un cajón y apenas raye un archivero.
+ *
+ * NO mira si el prop es destructible: un balde indestructible igual tiene que
+ * poder abollarse y sonar al recibir el tiro. Quién pierde vida lo decide
+ * `PropInstance`, que es el único que sabe si le queda.
  */
 export function resolvePropDamage(
   archetype: PropArchetype,
   amount: number,
   damageType?: DamageType,
 ): number {
-  if (!isPropDestructible(archetype)) return 0;
   if (!Number.isFinite(amount) || amount <= 0) return 0;
   const multiplier =
     (damageType ? archetype.damage.multipliers?.[damageType] : undefined) ?? 1;

@@ -758,6 +758,18 @@ export class Game {
     eventBus.on("npc.weapon.dropped", (payload) => {
       void this.handleWeaponDrop(payload.npcId, payload.weaponId, payload.position);
     });
+    // El mapa táctico se analiza una vez al cargar. Un prop hecho astillas
+    // seguiría figurando como parapeto, así que su cobertura se da de baja acá:
+    // lee `this.tacticalMap` en el momento del evento, que es el del nivel en
+    // curso y no el que existía al construir el juego.
+    eventBus.on("prop.broken", ({ propId }) => {
+      this.tacticalMap?.invalidateSource(propId);
+    });
+    // Y lo mismo si sigue entero pero ya no está ahí: una pila derrumbada, o un
+    // cajón que el jugador empujó, dejaban puntos de cobertura sobre el aire.
+    eventBus.on("prop.displaced", ({ propId }) => {
+      this.tacticalMap?.invalidateSource(propId);
+    });
     eventBus.on("npc.killed", ({ id, characterId }) => {
       if (characterId === "gunship") {
         this.crashingGunships.set(id, { startedAt: null });
@@ -2929,6 +2941,7 @@ export class Game {
     s.resolve(GameTokens.PropScrapeSounds).update(time.delta, time.elapsed, playerPosition);
     s.resolve(GameTokens.PropDeformation).update(time.elapsed);
     s.resolve(GameTokens.PropStructures).update(time.elapsed);
+    s.resolve(GameTokens.Props).update(time.elapsed);
     s.resolve(GameTokens.PropBreaks).update(time.delta, time.elapsed, player.getPosition());
     s.resolve(GameTokens.PlayerSounds).update(time.delta);
     this.updateGunshipCrashes(time.elapsed, raycast, grenades);
@@ -3433,6 +3446,7 @@ export class Game {
       explosiveBarrels,
       services.resolve(GameTokens.Props),
       services.resolve(GameTokens.PropStructures),
+      services.resolve(GameTokens.PropDeformation),
       characters,
       assets,
       this.buildNpcPortalServices(),

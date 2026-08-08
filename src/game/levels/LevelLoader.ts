@@ -39,6 +39,7 @@ import type { HazardVolumeSystem } from './HazardVolumeSystem';
 import { ExplosiveBarrelSystem } from '@game/gameplay/hazards/ExplosiveBarrelSystem';
 import type { PropSystem } from '@game/gameplay/props/PropSystem';
 import type { PropStructureSystem } from '@game/gameplay/props/PropStructureSystem';
+import type { PropDeformationSystem } from '@game/gameplay/props/PropDeformationSystem';
 
 /**
  * Wiring de portales para los NPCs del nivel (LOS/disparo portal-aware, cruce
@@ -85,6 +86,7 @@ export class LevelLoader {
     private readonly explosiveBarrels: ExplosiveBarrelSystem,
     private readonly props: PropSystem,
     private readonly propStructures: PropStructureSystem,
+    private readonly propDeformation: PropDeformationSystem,
     private readonly characters: CharacterFactory,
     private readonly assets: AssetManager,
     private readonly npcPortalServices: NpcPortalServices,
@@ -434,6 +436,9 @@ export class LevelLoader {
     if (level.propStructures && level.propStructures.length > 0) {
       this.propStructures.build(level.propStructures);
     }
+    // Subdividir las mallas abollables acá cuesta unas decenas de ms detrás de
+    // la pantalla de carga, en vez de un tirón en el primer disparo.
+    this.propDeformation.warm();
 
     (level.hazardVolumes ?? []).forEach((definition) => {
       this.hazardVolumes.addVolume(definition);

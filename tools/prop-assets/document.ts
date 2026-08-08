@@ -7,6 +7,7 @@ import {
 
 import {
   countNode,
+  createEmissiveMaterial,
   createGlassMaterial,
   createVisualNode,
   createWeatheredMaterial,
@@ -85,6 +86,11 @@ export function createPropPackDocument(
   const buffer = document.createBuffer(`${spec.id}_buffer`);
   const material = createWeatheredMaterial(document, spec.id, textures);
   const glassMaterial = createGlassMaterial(document, spec.id);
+  const emissiveMaterial = createEmissiveMaterial(
+    document,
+    spec.id,
+    spec.emissiveColor ?? [0.12, 0.78, 1],
+  );
   const scene = document.createScene(spec.id);
   const context: BuildContext = {
     document,
@@ -114,7 +120,9 @@ export function createPropPackDocument(
     // Todas las variantes y LODs comparten el marco de la variante 0: si cada
     // una se centrara sola, cambiar de variante o de LOD movería el prop.
     const probe = build(0, 0);
-    const offset = centeringOffset(boundsOf([...probe.parts, ...(probe.glass ?? [])]));
+    const offset = centeringOffset(
+      boundsOf([...probe.parts, ...(probe.glass ?? []), ...(probe.emissive ?? [])]),
+    );
 
     const lods: LodStats[] = [];
     for (const lod of [0, 1] as PropLod[]) {
@@ -142,6 +150,16 @@ export function createPropPackDocument(
             { material: glassMaterial, bakeOcclusion: false },
           );
         }
+        if (geometry.emissive && geometry.emissive.length > 0) {
+          // Sin AO horneada: una pieza que emite no puede tener sombra propia.
+          createVisualNode(
+            context,
+            variantRoot,
+            `${prop.id}_lod${lod}_v${variant}_emissive`,
+            centerParts(geometry.emissive, offset),
+            { material: emissiveMaterial, bakeOcclusion: false },
+          );
+        }
       }
       lods.push(countNode(lodRoot));
     }
@@ -149,7 +167,10 @@ export function createPropPackDocument(
     // El casco y los fragmentos salen de la variante 0: todas comparten
     // proporciones dentro del jitter, y un casco por variante multiplicaría el
     // costo físico sin que nadie note la diferencia de dos centímetros.
-    const solidParts = centerParts([...probe.parts, ...(probe.glass ?? [])], offset);
+    const solidParts = centerParts(
+      [...probe.parts, ...(probe.glass ?? []), ...(probe.emissive ?? [])],
+      offset,
+    );
     const bounds = boundsOf(solidParts);
     const points = colliderPoints(bounds, CYLINDRICAL.has(prop.id));
     if (points.length / 3 > MAX_COLLIDER_VERTICES) {
@@ -202,6 +223,7 @@ export function createPropPackDocument(
   }
 
   cleanupUnusedMaterial(glassMaterial);
+  cleanupUnusedMaterial(emissiveMaterial);
   return { document, props: stats, nodeNames: context.nodeNames };
 }
 

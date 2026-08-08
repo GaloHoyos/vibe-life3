@@ -114,19 +114,31 @@ export class PropInstance implements Damageable {
     hitPoint?: Vector3,
     damageType?: DamageType,
   ): void {
-    if (this.dead || !this.destructible) return;
+    if (this.dead) return;
     const effective = resolvePropDamage(this.archetype, amount, damageType);
     if (effective <= 0) return;
 
     if (attackerId) this.lastAttackerId = attackerId;
-    this.health -= effective;
-    if (this.health > 0) {
+    const feedback = (): void => {
       this.onDamaged?.(this, {
         damage: effective,
         ...(attackerId === undefined ? {} : { attackerId }),
         ...(hitPoint ? { point: hitPoint } : {}),
         ...(hitDirection ? { direction: hitDirection } : {}),
       });
+    };
+
+    // Indestructible no es "no le pasa nada": un balde o un tacho se siguen
+    // abollando con cada tiro, sólo que no llegan nunca a romperse. Cortar acá
+    // sin avisar los dejaba inmunes también a la deformación.
+    if (!this.destructible) {
+      feedback();
+      return;
+    }
+
+    this.health -= effective;
+    if (this.health > 0) {
+      feedback();
       return;
     }
 

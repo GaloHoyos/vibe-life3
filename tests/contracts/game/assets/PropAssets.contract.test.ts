@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PROP_ARCHETYPE_IDS, PropArchetypes } from "@game/config/props.config";
+import { PROP_PACK_SPECS } from "../../../../tools/prop-assets/types";
 
 /**
  * La tabla de props del juego y los GLB generados describen los mismos objetos
@@ -37,7 +38,9 @@ const generated = new Map(
 describe("assets de props contra props.config", () => {
   it("el manifiesto es de la version esperada", () => {
     expect(manifest.schemaVersion).toBe(1);
-    expect(manifest.packs).toHaveLength(3);
+    // Tantos packs como specs: el número crece con el catálogo, y fijarlo acá
+    // sólo obliga a tocar el test cada vez que se agrega uno.
+    expect(manifest.packs).toHaveLength(PROP_PACK_SPECS.length);
   });
 
   it("cada arquetipo tiene su asset generado, en el pack que declara", () => {
@@ -113,7 +116,12 @@ describe("assets de props contra props.config", () => {
 
   it("los packs entran en el presupuesto de peso", () => {
     for (const pack of manifest.packs) {
-      expect(pack.glbBytes, pack.id).toBeLessThanOrEqual(700 * 1024);
+      // El presupuesto sale del spec del pack y no de un número acá: no todos
+      // valen lo mismo. `propsInterior` lleva un sillón de 2 m y una cama, que
+      // no entran en el techo pensado para botellas y latas.
+      const spec = PROP_PACK_SPECS.find((candidate) => candidate.id === pack.id);
+      expect(spec, `${pack.id} no está en PROP_PACK_SPECS`).toBeDefined();
+      expect(pack.glbBytes, pack.id).toBeLessThanOrEqual(spec!.maxGlbBytes);
     }
   });
 });

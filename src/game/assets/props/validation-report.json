@@ -2,7 +2,7 @@
   "packs": [
     {
       "id": "propsWood",
-      "bytes": 458952,
+      "bytes": 566760,
       "budgetBytes": 716800,
       "props": [
         {
@@ -32,6 +32,27 @@
           "lod1Triangles": 440,
           "colliderVertices": 8,
           "chunks": 7
+        },
+        {
+          "id": "cardboardBox",
+          "lod0Triangles": 1056,
+          "lod1Triangles": 924,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "milkCarton",
+          "lod0Triangles": 352,
+          "lod1Triangles": 176,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "woodPlank",
+          "lod0Triangles": 232,
+          "lod1Triangles": 184,
+          "colliderVertices": 8,
+          "chunks": 4
         }
       ],
       "khronos": {
@@ -41,7 +62,7 @@
     },
     {
       "id": "propsMetal",
-      "bytes": 428432,
+      "bytes": 617112,
       "budgetBytes": 716800,
       "props": [
         {
@@ -78,6 +99,62 @@
           "lod1Triangles": 132,
           "colliderVertices": 8,
           "chunks": 0
+        },
+        {
+          "id": "metalBucket",
+          "lod0Triangles": 400,
+          "lod1Triangles": 224,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "paintCan",
+          "lod0Triangles": 496,
+          "lod1Triangles": 224,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "soupCan",
+          "lod0Triangles": 576,
+          "lod1Triangles": 216,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "trashBin",
+          "lod0Triangles": 640,
+          "lod1Triangles": 192,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "gasCan",
+          "lod0Triangles": 608,
+          "lod1Triangles": 88,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "propaneTank",
+          "lod0Triangles": 576,
+          "lod1Triangles": 192,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "concreteChunk",
+          "lod0Triangles": 312,
+          "lod1Triangles": 276,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "metalPipe",
+          "lod0Triangles": 288,
+          "lod1Triangles": 48,
+          "colliderVertices": 8,
+          "chunks": 0
         }
       ],
       "khronos": {
@@ -87,7 +164,7 @@
     },
     {
       "id": "propsSynthetic",
-      "bytes": 380208,
+      "bytes": 547084,
       "budgetBytes": 716800,
       "props": [
         {
@@ -117,6 +194,393 @@
           "lod1Triangles": 72,
           "colliderVertices": 16,
           "chunks": 0
+        },
+        {
+          "id": "plasticBottle",
+          "lod0Triangles": 1152,
+          "lod1Triangles": 288,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "glassJar",
+          "lod0Triangles": 384,
+          "lod1Triangles": 168,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "plasticCrate",
+          "lod0Triangles": 1496,
+          "lod1Triangles": 792,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "tire",
+          "lod0Triangles": 812,
+          "lod1Triangles": 54,
+          "colliderVertices": 8,
+          "chunks": 0
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0
+      }
+    },
+    {
+      "id": "propsInterior",
+      "bytes": 729980,
+      "budgetBytes": 786432,
+      "props": [
+        {
+          "id": "couch",
+          "lod0Triangles": 360,
+          "lod1Triangles": 240,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "armchair",
+          "lod0Triangles": 632,
+          "lod1Triangles": 480,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "mattress",
+          "lod0Triangles": 176,
+          "lod1Triangles": 88,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "bed",
+          "lod0Triangles": 272,
+          "lod1Triangles": 196,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "dresser",
+          "lod0Triangles": 1144,
+          "lod1Triangles": 792,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "wardrobe",
+          "lod0Triangles": 712,
+          "lod1Triangles": 616,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "bookshelf",
+          "lod0Triangles": 1056,
+          "lod1Triangles": 792,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "desk",
+          "lod0Triangles": 1144,
+          "lod1Triangles": 616,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "nightstand",
+          "lod0Triangles": 704,
+          "lod1Triangles": 528,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "stool",
+          "lod0Triangles": 336,
+          "lod1Triangles": 144,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "bench",
+          "lod0Triangles": 616,
+          "lod1Triangles": 352,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "officeChair",
+          "lod0Triangles": 1104,
+          "lod1Triangles": 816,
+          "colliderVertices": 8,
+          "chunks": 5
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0
+      }
+    },
+    {
+      "id": "propsAppliance",
+      "bytes": 422688,
+      "budgetBytes": 716800,
+      "props": [
+        {
+          "id": "fridge",
+          "lod0Triangles": 440,
+          "lod1Triangles": 264,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "washingMachine",
+          "lod0Triangles": 552,
+          "lod1Triangles": 232,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "stove",
+          "lod0Triangles": 928,
+          "lod1Triangles": 352,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "kitchenCounter",
+          "lod0Triangles": 616,
+          "lod1Triangles": 264,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "bathtub",
+          "lod0Triangles": 260,
+          "lod1Triangles": 132,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "toilet",
+          "lod0Triangles": 184,
+          "lod1Triangles": 112,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "sink",
+          "lod0Triangles": 328,
+          "lod1Triangles": 176,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "lockerBank",
+          "lod0Triangles": 1496,
+          "lod1Triangles": 440,
+          "colliderVertices": 8,
+          "chunks": 0
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0
+      }
+    },
+    {
+      "id": "propsDebris",
+      "bytes": 673692,
+      "budgetBytes": 716800,
+      "props": [
+        {
+          "id": "concreteSlab",
+          "lod0Triangles": 336,
+          "lod1Triangles": 216,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "brokenPillar",
+          "lod0Triangles": 312,
+          "lod1Triangles": 216,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "brickPile",
+          "lod0Triangles": 1056,
+          "lod1Triangles": 792,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "rebarBundle",
+          "lod0Triangles": 552,
+          "lod1Triangles": 192,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "iBeam",
+          "lod0Triangles": 544,
+          "lod1Triangles": 264,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "metalPanel",
+          "lod0Triangles": 440,
+          "lod1Triangles": 176,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "scrapHeap",
+          "lod0Triangles": 672,
+          "lod1Triangles": 392,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "scaffoldPipe",
+          "lod0Triangles": 416,
+          "lod1Triangles": 296,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "plasterSlab",
+          "lod0Triangles": 344,
+          "lod1Triangles": 80,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "sandbag",
+          "lod0Triangles": 352,
+          "lod1Triangles": 176,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "barricadeWood",
+          "lod0Triangles": 704,
+          "lod1Triangles": 440,
+          "colliderVertices": 8,
+          "chunks": 6
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0
+      }
+    },
+    {
+      "id": "propsTech",
+      "bytes": 737612,
+      "budgetBytes": 786432,
+      "props": [
+        {
+          "id": "monitor",
+          "lod0Triangles": 512,
+          "lod1Triangles": 352,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "serverRack",
+          "lod0Triangles": 748,
+          "lod1Triangles": 176,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "harddrive",
+          "lod0Triangles": 264,
+          "lod1Triangles": 88,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "powerBox",
+          "lod0Triangles": 640,
+          "lod1Triangles": 240,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "keypad",
+          "lod0Triangles": 440,
+          "lod1Triangles": 176,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "radio",
+          "lod0Triangles": 792,
+          "lod1Triangles": 224,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "vendingMachine",
+          "lod0Triangles": 396,
+          "lod1Triangles": 220,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "waterCooler",
+          "lod0Triangles": 576,
+          "lod1Triangles": 200,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "labJar",
+          "lod0Triangles": 448,
+          "lod1Triangles": 224,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "partsBin",
+          "lod0Triangles": 880,
+          "lod1Triangles": 440,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "combineCrate",
+          "lod0Triangles": 704,
+          "lod1Triangles": 440,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "combineBarrier",
+          "lod0Triangles": 792,
+          "lod1Triangles": 528,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "combineEmitter",
+          "lod0Triangles": 728,
+          "lod1Triangles": 232,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "combineLamp",
+          "lod0Triangles": 528,
+          "lod1Triangles": 176,
+          "colliderVertices": 8,
+          "chunks": 4
         }
       ],
       "khronos": {

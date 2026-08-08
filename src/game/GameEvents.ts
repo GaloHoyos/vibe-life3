@@ -148,6 +148,15 @@ export interface GameEventMap {
     reaction: PropBreakReaction["kind"];
     sourceId?: string;
   };
+  /**
+   * Un prop dejó el lugar donde lo autoraron. Se emite UNA vez por prop, no por
+   * frame: es un cambio de estado del nivel, no un seguimiento de posición.
+   */
+  "prop.displaced": {
+    propId: string;
+    /** Cuánto se alejó de su posición de origen, en metros. */
+    distance: number;
+  };
   /** Un NPC murió congelado (ice gun al llenar el medidor de freeze). */
   "ice.frozen": {
     targetId: string;

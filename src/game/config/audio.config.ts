@@ -76,6 +76,9 @@ export const SurfaceAbsorption: Readonly<Record<SurfaceType, number>> = {
   plastic: 0.06,
   rubber: 0.3,
   cardboard: 0.45,
+  // Lo más absorbente del cuadro, por encima de la nieve: un cuarto tapizado no
+  // devuelve nada. Es lo que hace que un dormitorio suene distinto a un pasillo.
+  fabric: 0.88,
 };
 
 /**
@@ -345,7 +348,8 @@ export type ImpactMaterial =
   | "water"
   | "plaster"
   | "cardboard"
-  | "rubber";
+  | "rubber"
+  | "fabric";
 
 export const SurfaceBulletImpacts: Record<ImpactMaterial, readonly string[]> = {
   concrete: [
@@ -400,6 +404,10 @@ export const SurfaceBulletImpacts: Record<ImpactMaterial, readonly string[]> = {
   plaster: ["physics.hl2.surfaces.plasterBullet1"],
   cardboard: ["physics.hl2.surfaces.cardboardSoft1"],
   rubber: ["physics.hl2.surfaces.rubberSoft1"],
+  // El tapizado no tiene pool propio en HL2. Los impactos de cuerpo blando son
+  // lo más cercano que hay bundleado: golpe sordo, sin cola ni rattle, que es
+  // justo lo que separa una bala en un sillón de una en una caja de cartón.
+  fabric: ["physics.hl2.body.soft1", "physics.hl2.body.soft2"],
 };
 
 /** Golpe físico (prop lanzado, cuerpo que cae) por material y energía. */
@@ -491,6 +499,12 @@ export const MaterialImpacts: Record<ImpactMaterial, ImpactSoundMap> = {
   rubber: {
     soft: ["physics.hl2.surfaces.rubberSoft1"],
     hard: ["physics.hl2.surfaces.rubberHard1"],
+  },
+  fabric: {
+    soft: ["physics.hl2.body.soft1", "physics.hl2.body.soft2", "physics.hl2.body.soft3"],
+    // Ni siquiera el golpe fuerte suena duro: un colchón que cae hace ruido a
+    // bulto, no a impacto.
+    hard: ["physics.hl2.body.soft1", "physics.hl2.body.soft3"],
   },
 };
 
@@ -605,11 +619,12 @@ export const PropMaterialAudio: Record<ImpactMaterial, PropBreakAudio> = {
     break: ["physics.hl2.surfaces.cardboardHard1"],
     debris: ["physics.hl2.surfaces.cardboardSoft1"],
   },
-  // Arena, agua y goma no se rompen: ceden. Sin pool, `pickSound` devuelve null
-  // y el sistema de rotura simplemente no suena, que es lo correcto.
+  // Arena, agua, goma y tela no se rompen: ceden. Sin pool, `pickSound` devuelve
+  // null y el sistema de rotura simplemente no suena, que es lo correcto.
   sand: { break: [], debris: [] },
   water: { break: [], debris: [] },
   rubber: { break: [], debris: [] },
+  fabric: { break: [], debris: [] },
 };
 
 export const PropBreakAudioConfig = {
@@ -678,6 +693,7 @@ export const SurfaceImpactMaterial: Record<SurfaceType, ImpactMaterial> = {
   plastic: "plastic",
   cardboard: "cardboard",
   rubber: "rubber",
+  fabric: "fabric",
 };
 
 export const ImpactAudioConfig = {
@@ -1068,6 +1084,9 @@ export const SurfaceFootsteps: Record<SurfaceType, readonly string[]> = {
   plastic: FootstepPools.metal,
   cardboard: FootstepPools.dirt,
   rubber: FootstepPools.dirt,
+  // Sobre tela sí se camina: un colchón tirado en el piso es superficie. La
+  // nieve es el pool más apagado que hay, que es lo que corresponde.
+  fabric: FootstepPools.snow,
 };
 
 export const FootstepsConfig = {

@@ -58,6 +58,50 @@ describe("PropArchetypes", () => {
     }
   });
 
+  it("todo prop de metal se abolla, salvo el barril explosivo", () => {
+    for (const archetype of archetypes) {
+      if (archetype.surface !== "metal") continue;
+      // El explosivo es la excepción a propósito: con 25 de vida muere en dos
+      // tiros, así que el abollón no llegaría a verse y encima gastaría una de
+      // las 12 mallas clonadas. Además se lee mejor como "disparame y vuelo".
+      if (archetype.id === "explosiveBarrel") {
+        expect(archetype.deform).toBeUndefined();
+        continue;
+      }
+      expect(archetype.deform, `${archetype.id} es de metal y no se abolla`).toBeDefined();
+    }
+  });
+
+  it("el hundimiento máximo no atraviesa el prop", () => {
+    for (const archetype of archetypes) {
+      if (!archetype.deform) continue;
+      // Un abollón hunde vértices de UNA cara hacia adentro. Pasada la mitad
+      // del grosor, la cara cruza el eje y la malla se da vuelta sola.
+      const thinnest = Math.min(...archetype.bounds);
+      expect(
+        archetype.deform.maxDepth,
+        `${archetype.id}: hunde ${archetype.deform.maxDepth} sobre ${thinnest} de grosor`,
+      ).toBeLessThan(thinnest / 2);
+    }
+  });
+
+  it("un metal rompible aguanta lo suficiente como para mostrarse abollado", () => {
+    for (const archetype of archetypes) {
+      if (!archetype.deform || archetype.damage.health === false) continue;
+      if (archetype.breakReaction.kind === "explode") continue;
+      // Sólo la chapa. El televisor también se abolla pero es frágil a
+      // propósito: el tubo implota a los pocos tiros y eso es lo que se quiere
+      // ver. Su abollón es para cuando lo revoleás, no para cuando lo baleás.
+      if (archetype.surface !== "metal") continue;
+      // El enfriamiento entre abollones es 0.15 s: si el prop muere en pocos
+      // impactos, la deformación no llega a leerse antes de que reviente.
+      expect(
+        archetype.damage.health,
+        `${archetype.id} muere antes de mostrarse abollado`,
+      ).toBeGreaterThanOrEqual(40);
+    }
+  });
+
   it("las masas caen dentro de los umbrales de agarre", () => {
     for (const archetype of archetypes) {
       expect(archetype.physics.mass).toBeGreaterThan(0);

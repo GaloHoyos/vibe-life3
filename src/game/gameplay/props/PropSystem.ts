@@ -32,11 +32,34 @@ export interface PropSystemSaveSnapshot {
  * sistema crea, este sistema lo libera. `clear()` va SIEMPRE antes de
  * `PhysicsWorld.reset()`.
  */
+/** Cada cuánto se muestrea el desplazamiento, en segundos. */
+const DISPLACEMENT_CHECK_INTERVAL = 0.5;
+/**
+ * Cuánto tiene que alejarse un prop para considerarlo movido.
+ *
+ * Los puntos de cobertura se colocan a 0.85 m de la cara del obstáculo, así que
+ * por debajo de esto el parapeto sigue tapando de todos modos y avisar sería
+ * ruido. Un cajón que apenas se asentó al despertar no cuenta como movido.
+ */
+const DISPLACEMENT_THRESHOLD = 0.6;
+
+const tmpPosition = new Vector3();
+
+/** Altura del centro del cuerpo sobre el apoyo autorado. */
+function spawnCenterOffset(definition: PropDefinition): number {
+  const archetype = PropArchetypes[definition.archetypeId];
+  if (!archetype) return 0;
+  return propBoundsForScale(archetype, definition.scale)[1] / 2;
+}
+
 export class PropSystem implements Disposable {
   private readonly props: PropInstance[] = [];
   private readonly byId = new Map<string, PropInstance>();
   private readonly definitions = new Map<string, PropDefinition>();
   private readonly leases = new Map<string, PropModelLease>();
+  /** Props que ya avisaron que se movieron: el aviso es una sola vez. */
+  private readonly displaced = new Set<string>();
+  private nextDisplacementCheck = 0;
 
   constructor(
     private readonly physics: PhysicsWorld,
@@ -190,11 +213,43 @@ export class PropSystem implements Disposable {
     return this.props;
   }
 
+  /**
+   * Avisa qué props dejaron el lugar donde los autoraron.
+   *
+   * Existe porque hay cosas horneadas al cargar el nivel —la cobertura del mapa
+   * táctico, sin ir más lejos— que quedan apuntando a donde el prop ya no está.
+   * Se muestrea a baja frecuencia y una sola vez por prop: no es seguimiento de
+   * posición, es enterarse de que el nivel cambió.
+   */
+  update(elapsed: number): void {
+    if (elapsed < this.nextDisplacementCheck) return;
+    this.nextDisplacementCheck = elapsed + DISPLACEMENT_CHECK_INTERVAL;
+
+    for (const prop of this.props) {
+      if (this.displaced.has(prop.id)) continue;
+      const definition = this.definitions.get(prop.id);
+      if (!definition) continue;
+      prop.position(tmpPosition);
+      const [x, y, z] = definition.position;
+      // La posición autorada es el APOYO y la del cuerpo es el centro: sin
+      // subir el origen la mitad de la altura, todo prop nacería desplazado.
+      const distance = Math.hypot(
+        tmpPosition.x - x,
+        tmpPosition.y - (y + spawnCenterOffset(definition)),
+        tmpPosition.z - z,
+      );
+      if (distance < DISPLACEMENT_THRESHOLD) continue;
+      this.displaced.add(prop.id);
+      this.eventBus.emit("prop.displaced", { propId: prop.id, distance });
+    }
+  }
+
   /** Retira un prop del mundo (rotura, restore de save o limpieza de nivel). */
   remove(prop: PropInstance): void {
     const index = this.props.indexOf(prop);
     if (index >= 0) this.props.splice(index, 1);
     this.byId.delete(prop.id);
+    this.displaced.delete(prop.id);
     this.disposeProp(prop);
   }
 
@@ -230,6 +285,8 @@ export class PropSystem implements Disposable {
     this.props.length = 0;
     this.byId.clear();
     this.definitions.clear();
+    this.displaced.clear();
+    this.nextDisplacementCheck = 0;
   }
 
   dispose(): void {

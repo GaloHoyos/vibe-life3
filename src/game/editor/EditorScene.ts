@@ -273,7 +273,23 @@ export class EditorScene {
         return groupFromBoxes(buildRamp(entity.spec));
       case 'prop': {
         const art = buildProp(entity.prop);
-        return groupFromBoxes([...art.staticBoxes, ...art.dynamicBoxes]);
+        const group = groupFromBoxes([...art.staticBoxes, ...art.dynamicBoxes]);
+        // Los cajones ya son props del catalogo. Van con su caja de bounds y no
+        // con su GLB porque una pila son N props bajo una sola entidad, y el
+        // lease del preview es uno por entidad; el playtest si muestra la malla.
+        for (const def of art.props) {
+          const archetype = PropArchetypes[def.archetypeId];
+          const bounds = propBoundsForScale(archetype, def.scale);
+          group.add(
+            placeholder(
+              [def.position[0], def.position[1] + bounds[1] / 2, def.position[2]],
+              bounds,
+              PropSurfaceMaterials[archetype.surface],
+              def.rotation,
+            ),
+          );
+        }
+        return group;
       }
       case 'propEntity':
         return this.propEntityPreview(entity.eid, entity.def);

@@ -1150,10 +1150,10 @@ export class InspectorView implements Disposable {
     switch (prop.prop) {
       case 'crate': {
         const s = prop.spec;
+        // Ni material ni masa: ahora es un prop del catalogo y los dos salen de
+        // `PropArchetypes.woodenCrate`.
         this.append(numberField('Tamano', s.size ?? 0.9, (v) => { s.size = v; this.commit(); }, 0.1));
-        this.append(selectField('Material', s.material ?? 'crate', MATERIAL_KEYS, (v) => { s.material = v as MaterialKey; this.commit(); }));
         this.append(checkboxField('Dinamico', s.dynamic ?? false, (v) => { s.dynamic = v; this.commit(); }));
-        this.append(numberField('Masa', s.mass ?? 18, (v) => { s.mass = v; this.commit(); }, 1));
         return;
       }
       case 'crateStack': {
@@ -1162,7 +1162,6 @@ export class InspectorView implements Disposable {
         this.append(numberField('Columnas', s.cols ?? 2, (v) => { s.cols = Math.round(v); this.commit(); }, 1));
         this.append(numberField('Capas', s.layers ?? 1, (v) => { s.layers = Math.round(v); this.commit(); }, 1));
         this.append(numberField('Tamano caja', s.crateSize ?? 0.9, (v) => { s.crateSize = v; this.commit(); }, 0.1));
-        this.append(selectField('Material', s.material ?? 'crate', MATERIAL_KEYS, (v) => { s.material = v as MaterialKey; this.commit(); }));
         this.append(numberField('Seed', s.seed ?? 0, (v) => { s.seed = Math.round(v); this.commit(); }, 1));
         return;
       }

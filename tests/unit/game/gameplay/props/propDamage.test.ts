@@ -36,10 +36,17 @@ describe("resolvePropDamage", () => {
     );
   });
 
-  it("un prop indestructible ignora todo daño", () => {
+  it("un prop indestructible no puede morir pero sí acusa el golpe", () => {
     expect(isPropDestructible(cone)).toBe(false);
     expect(propMaxHealth(cone)).toBe(Infinity);
-    expect(resolvePropDamage(cone, 999, "explosive")).toBe(0);
+    // La fuerza del golpe se calcula igual: la inmunidad vive en
+    // `PropInstance`, que es el único que sabe si al prop le queda vida. Poner
+    // el cero acá dejaba a un balde de metal inmune también a abollarse, porque
+    // sin daño efectivo nunca se emitía `prop.damaged`.
+    expect(resolvePropDamage(cone, 999, "explosive")).toBeGreaterThan(0);
+    // Y lo que sí tiene que seguir en cero: el daño que se hace a sí mismo al
+    // chocar. Un cono no se destruye solo por rodar contra una pared.
+    expect(impactDamageToProp(cone, 50)).toBe(0);
   });
 
   it("ignora montos no positivos o no finitos", () => {
