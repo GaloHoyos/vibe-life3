@@ -98,7 +98,10 @@ export class PropSystem implements Disposable {
 
     // El pack ya está precargado por el loader, así que esto resuelve al toque;
     // si falló la carga se cae al placeholder y el nivel sigue jugable.
-    const lease = this.assets?.acquireSync(archetype.id, definition.variant ?? 0) ?? null;
+    // El id de la instancia alimenta el tinte: dos cajones del mismo arquetipo
+    // y la misma variante salen con matiz apenas distinto en vez de idénticos.
+    const lease =
+      this.assets?.acquireSync(archetype.id, definition.variant ?? 0, definition.id) ?? null;
     const mesh = new Group();
     mesh.name = definition.id;
     if (lease?.root) {

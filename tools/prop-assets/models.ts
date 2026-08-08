@@ -306,12 +306,26 @@ const milkCarton: PropBuilder = (variant, lod) => {
       tile: 3,
     },
   ];
-  if (lod === 0) {
+  // La cresta plegada: dos alas que se juntan arriba. Va en los dos LODs porque
+  // es la silueta que dice "cartón de leche" — sin ella el techo a dos aguas se
+  // lee como una bolsa de papel.
+  for (const sx of [-1, 1]) {
     parts.push({
-      geometry: chamferBox(side * 0.14, gableHeight * 0.5, side * 0.98, 0.002),
-      position: [0, height / 2 - gableHeight * 0.12, 0],
+      geometry: chamferBox(side * 0.07, gableHeight * 0.46, side * 0.99, 0.0015),
+      position: [sx * side * 0.035, height / 2 - gableHeight * 0.2, 0],
       tile: 3,
     });
+  }
+  if (lod === 0) {
+    // Los pliegues diagonales del plegado, uno por cara.
+    for (const sz of [-1, 1]) {
+      parts.push({
+        geometry: chamferBox(side * 1.005, 0.004, gableHeight * 0.5, 0.001),
+        position: [0, height / 2 - gableHeight * 0.55, sz * side * 0.5],
+        rotation: [sz * 0.6, 0, 0],
+        tile: 3,
+      });
+    }
     // Franja impresa: le da escala y un frente reconocible.
     parts.push({
       geometry: chamferBox(side * 1.01, bodyHeight * (0.3 + random() * 0.12), side * 1.01, 0.002),

@@ -172,6 +172,42 @@ Rango cubierto de punta a punta: de 0.2 kg (botella de plástico) a 210 kg
 
 ---
 
+## Acabado
+
+El catálogo se autora en dos mitades. **La geometría, las UVs y los datos por
+vértice son TypeScript**: deterministas, testeados y sin dependencias externas.
+**Los materiales los autora Blender** (`tools/prop-assets/bake-atlas.py`), que es
+lo único que sabe hacer estructura real —veta, árido, trama, corrugado— en vez de
+ruido teñido. Los atlas horneados se commitean, así que `npm run build` no
+necesita Blender: sólo hace falta para *cambiar* el aspecto, y si no está el
+generador de TS sigue de reserva.
+
+Cinco cosas que definen el acabado y conviene no deshacer:
+
+- **Proyección de caja con densidad de mundo** (`METERS_PER_TILE` en
+  `tools/shared/gltf/build.ts`). Antes se proyectaba desde arriba y toda cara
+  vertical muestreaba una LÍNEA de téxeles: el 55% de las caras de un cajón eran
+  degeneradas y se veía como plástico liso.
+- **Desgaste en cantos y mugre en huecos** por convexidad, sobre el `COLOR_0`
+  que ya existía. Se calcula sobre la malla soldada por posición, porque la
+  proyección de caja parte los vértices de arista y cada copia mediría su
+  esquina como plana.
+- **Los rayones destapan el material de abajo**, no metal desnudo. Pintar metal
+  bajo todo dejaba rayas blancas sobre un cajón de pino.
+- **Tinte leve por instancia** (`PropAssetRegistry`), determinista por id. Ocho
+  cajones idénticos en pantalla delatan un set generado.
+- **La suciedad la manda la mancha, no el chorreado.** `build_grime` mezcla
+  manchas de escala grande (68%) con corridas verticales estiradas (32%) y las
+  pasa por un umbral. Lo que hace que la mugre se lea como mugre es que HAYA
+  superficie limpia al lado; un chorreado de frecuencia alta sobre toda la
+  casilla vuelve a ser el peinado parejo del que veníamos. Cuánto junta cada
+  familia sale de `GRIME_BY_FAMILY` (`bakedAtlas.ts`): la porcelana y el
+  plástico quedan casi limpios, el hormigón se ensucia de verdad, y el óxido va
+  bajo a propósito porque su color ya es color de mugre.
+
+Para auditar hay que **mirar**: `tools/prop-assets/preview/` tiene los scripts de
+render, sonda de UVs y volcado de atlas. Así se encontró todo lo de arriba.
+
 ## Qué queda
 
 La hoja de ruta está cerrada. Lo que sigue son huecos concretos, no etapas:
@@ -428,3 +464,4 @@ Trampas que ya costaron sangre y están documentadas en el código:
 | 2026-08-07 | **Prioridad 3 completa: 48 → 59 arquetipos.** Pack `propsDebris` |
 | 2026-08-07 | **Prioridad 4 completa: 59 → 73 arquetipos.** Pack `propsTech`; el pipeline aprendió piezas **emisivas** (tercer bucket de `PropGeometry`, material propio como el vidrio) |
 | 2026-08-08 | **Prioridad 5 completa: 73 → 87 arquetipos.** Pack `propsKit`; implementada la reacción **`spawnItem`** (evento `prop.dropped`, pickups instanciados por `Game`). **Hoja de ruta terminada** |
+| 2026-08-08 | **Acabado profesional.** Blender pasa a autorar los materiales (12 familias con estructura real); UVs por proyección de caja con densidad de mundo; desgaste en cantos por convexidad; atlas a 1024²; 12 props rehechos; tinte por instancia |

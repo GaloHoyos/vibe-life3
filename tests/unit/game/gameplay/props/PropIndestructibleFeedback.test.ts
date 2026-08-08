@@ -54,6 +54,20 @@ function buildProp(archetypeId: PropArchetypeId): {
   return { prop, mesh, system, bus };
 }
 
+/** Vértice de mayor Z: la superficie que un golpe frontal encuentra primero. */
+function frontmostVertex(mesh: Mesh): Vector3 {
+  const positions = mesh.geometry.getAttribute("position");
+  const best = new Vector3();
+  let maxZ = -Infinity;
+  for (let index = 0; index < positions.count; index += 1) {
+    const z = positions.getZ(index);
+    if (z <= maxZ) continue;
+    maxZ = z;
+    best.set(positions.getX(index), positions.getY(index), z);
+  }
+  return best;
+}
+
 /** Cuánto se movió el vértice más desplazado respecto de la malla original. */
 function maxDisplacement(mesh: Mesh, before: Float32Array): number {
   const positions = mesh.geometry.getAttribute("position");
@@ -104,9 +118,11 @@ describe("un prop indestructible igual se abolla", () => {
   it.each(DEFORMABLE)("%s se hunde de verdad al recibir un golpe", (archetypeId) => {
     const { prop, mesh, system } = buildProp(archetypeId);
     const archetype = PropArchetypes[archetypeId];
-    // Golpe frontal desde +Z contra el centro de la cara del AABB.
-    const depth = archetype.bounds[2] / 2;
-    const point = new Vector3(0, 0, depth);
+    // El golpe apunta al vértice más adelantado, no al centro de la cara del
+    // AABB: en un montón suelto o en un cartel de dos chapas cruzadas ese
+    // centro cae al aire, y el test acusaba "no se abolla" cuando el problema
+    // era la puntería.
+    const point = frontmostVertex(mesh);
     const direction = new Vector3(0, 0, -1);
 
     system.dent(prop, point, direction, 40, 0);

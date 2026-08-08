@@ -10,7 +10,7 @@
   "packs": [
     {
       "id": "propsWood",
-      "glbBytes": 566760,
+      "glbBytes": 652888,
       "props": [
         {
           "id": "woodenCrate",
@@ -132,16 +132,16 @@
           "pack": "propsWood",
           "bounds": [
             0.091,
-            0.249,
-            0.091
+            0.242,
+            0.12
           ],
           "lods": [
             {
-              "triangles": 352,
+              "triangles": 616,
               "draws": 2
             },
             {
-              "triangles": 176,
+              "triangles": 352,
               "draws": 2
             }
           ],
@@ -323,7 +323,7 @@
     },
     {
       "id": "propsMetal",
-      "glbBytes": 617112,
+      "glbBytes": 537000,
       "props": [
         {
           "id": "metalBarrel",
@@ -846,7 +846,7 @@
     },
     {
       "id": "propsSynthetic",
-      "glbBytes": 547084,
+      "glbBytes": 580024,
       "props": [
         {
           "id": "plasticDrum",
@@ -1185,7 +1185,7 @@
     },
     {
       "id": "propsInterior",
-      "glbBytes": 729980,
+      "glbBytes": 904704,
       "props": [
         {
           "id": "couch",
@@ -1238,12 +1238,12 @@
           "pack": "propsInterior",
           "bounds": [
             1.355,
-            0.22,
+            0.224,
             1.958
           ],
           "lods": [
             {
-              "triangles": 176,
+              "triangles": 2480,
               "draws": 2
             },
             {
@@ -1677,7 +1677,7 @@
     },
     {
       "id": "propsAppliance",
-      "glbBytes": 422688,
+      "glbBytes": 313484,
       "props": [
         {
           "id": "fridge",
@@ -1981,7 +1981,7 @@
     },
     {
       "id": "propsDebris",
-      "glbBytes": 673692,
+      "glbBytes": 701392,
       "props": [
         {
           "id": "concreteSlab",
@@ -2034,7 +2034,7 @@
           "pack": "propsDebris",
           "bounds": [
             0.78,
-            0.41,
+            0.43,
             0.6
           ],
           "lods": [
@@ -2125,17 +2125,17 @@
           "id": "scrapHeap",
           "pack": "propsDebris",
           "bounds": [
-            0.95,
-            0.501,
-            0.8
+            1.055,
+            0.497,
+            1.023
           ],
           "lods": [
             {
-              "triangles": 672,
+              "triangles": 992,
               "draws": 2
             },
             {
-              "triangles": 392,
+              "triangles": 608,
               "draws": 2
             }
           ],
@@ -2171,13 +2171,13 @@
           "id": "plasterSlab",
           "pack": "propsDebris",
           "bounds": [
-            1.05,
-            0.135,
+            1.06,
+            0.111,
             0.72
           ],
           "lods": [
             {
-              "triangles": 344,
+              "triangles": 872,
               "draws": 2
             },
             {
@@ -2195,16 +2195,16 @@
           "pack": "propsDebris",
           "bounds": [
             0.52,
-            0.2,
+            0.195,
             0.32
           ],
           "lods": [
             {
-              "triangles": 352,
+              "triangles": 568,
               "draws": 2
             },
             {
-              "triangles": 176,
+              "triangles": 160,
               "draws": 2
             }
           ],
@@ -2413,7 +2413,7 @@
     },
     {
       "id": "propsTech",
-      "glbBytes": 720068,
+      "glbBytes": 806364,
       "props": [
         {
           "id": "monitor",
@@ -2466,12 +2466,12 @@
           "pack": "propsTech",
           "bounds": [
             0.15,
-            0.033,
-            0.106
+            0.035,
+            0.108
           ],
           "lods": [
             {
-              "triangles": 264,
+              "triangles": 632,
               "draws": 2
             },
             {
@@ -3023,7 +3023,7 @@
     },
     {
       "id": "propsKit",
-      "glbBytes": 702860,
+      "glbBytes": 816520,
       "props": [
         {
           "id": "ladder",
@@ -3167,17 +3167,17 @@
           "id": "wheelbarrow",
           "pack": "propsKit",
           "bounds": [
-            0.66,
-            1.333,
-            1.231
+            0.707,
+            0.512,
+            1.335
           ],
           "lods": [
             {
-              "triangles": 648,
+              "triangles": 1176,
               "draws": 2
             },
             {
-              "triangles": 428,
+              "triangles": 956,
               "draws": 2
             }
           ],
@@ -3190,17 +3190,17 @@
           "id": "shoppingCart",
           "pack": "propsKit",
           "bounds": [
-            0.592,
-            0.993,
-            0.87
+            0.598,
+            1.007,
+            0.852
           ],
           "lods": [
             {
-              "triangles": 1480,
+              "triangles": 3152,
               "draws": 2
             },
             {
-              "triangles": 696,
+              "triangles": 1400,
               "draws": 2
             }
           ],
@@ -3215,11 +3215,11 @@
           "bounds": [
             1.72,
             1.161,
-            0.13
+            0.275
           ],
           "lods": [
             {
-              "triangles": 952,
+              "triangles": 1576,
               "draws": 2
             },
             {
@@ -3236,13 +3236,13 @@
           "id": "streetSign",
           "pack": "propsKit",
           "bounds": [
-            0.602,
+            0.6,
             2.35,
-            0.18
+            0.488
           ],
           "lods": [
             {
-              "triangles": 336,
+              "triangles": 496,
               "draws": 2
             },
             {
@@ -3261,11 +3261,11 @@
           "bounds": [
             0.44,
             1.24,
-            0.404
+            0.43
           ],
           "lods": [
             {
-              "triangles": 328,
+              "triangles": 680,
               "draws": 2
             },
             {

@@ -10,6 +10,7 @@ import {
 import { meshopt } from "@gltf-transform/functions";
 import { MeshoptEncoder } from "meshoptimizer";
 
+import { bakeAtlasesWithBlender, findBlender } from "../shared/gltf/bakedAtlas.js";
 import { createPbrAtlases } from "../shared/gltf/textures.js";
 import { createPropPackDocument } from "./document.js";
 import { MANIFEST_PATH, MODELS_ROOT, OUTPUT_ROOT, TEXTURES_ROOT } from "./paths.js";
@@ -35,8 +36,17 @@ async function main(): Promise<void> {
     .registerDependencies({ "meshopt.encoder": MeshoptEncoder });
   const packStats: GeneratedPackStats[] = [];
 
+  const blender = findBlender();
+  if (!blender) {
+    console.warn(
+      "[props] Blender no encontrado: los atlas salen del generador procedural de TS.\n" +
+        "        Para el acabado bueno, instalá Blender o apuntá BLENDER al ejecutable.",
+    );
+  }
+
   for (const spec of PROP_PACK_SPECS) {
-    const textures = await createPbrAtlases(spec, { atlasSize: spec.atlasSize });
+    const baked = await bakeAtlasesWithBlender(spec, { atlasSize: spec.atlasSize });
+    const textures = baked ?? (await createPbrAtlases(spec, { atlasSize: spec.atlasSize }));
     await Promise.all([
       writeFile(resolve(TEXTURES_ROOT, `${spec.id}-albedo.webp`), textures.albedo),
       writeFile(resolve(TEXTURES_ROOT, `${spec.id}-normal.webp`), textures.normal),

@@ -163,6 +163,21 @@ const mattress: PropBuilder = (variant, lod) => {
       position: [0, (random() - 0.5) * 0.02, 0],
       tile: 2,
     });
+    // Capitoné: la grilla de botones hundidos. Es LO que dice "colchón" — sin
+    // ella la pieza es un prisma blando y leía como una sábana tirada.
+    for (let row = 0; row < 6; row += 1) {
+      for (let column = 0; column < 3; column += 1) {
+        const x = (column - 1) * width * 0.3;
+        const z = (row - 2.5) * depth * 0.155;
+        for (const sy of [-1, 1]) {
+          parts.push({
+            geometry: new CylinderGeometry(0.022, 0.028, 0.02, 8, 1),
+            position: [x, sy * (height / 2 - 0.008), z],
+            tile: 2,
+          });
+        }
+      }
+    }
   }
   return { parts };
 };

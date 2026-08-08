@@ -663,7 +663,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: SHATTER,
     gibs: { minChunks: 3, maxChunks: 4, coreSurvives: false, burstSpeed: 1.5 },
-    bounds: [0.091, 0.249, 0.091],
+    bounds: [0.091, 0.242, 0.12],
   },
 
   woodPlank: {
@@ -1099,7 +1099,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
       impactDamageScale: 0,
     },
     breakReaction: INDESTRUCTIBLE,
-    bounds: [1.355, 0.22, 1.958],
+    bounds: [1.355, 0.224, 1.958],
   },
 
   bed: {
@@ -1651,7 +1651,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: SHATTER,
     gibs: { minChunks: 4, maxChunks: 6, coreSurvives: false, burstSpeed: 3.2 },
-    bounds: [0.78, 0.41, 0.6],
+    bounds: [0.78, 0.43, 0.6],
   },
 
   rebarBundle: {
@@ -1758,7 +1758,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     breakReaction: SHATTER,
     gibs: { minChunks: 4, maxChunks: 6, coreSurvives: false, burstSpeed: 3.4 },
     deform: metalDeform(0.18, 0.02, 0.08),
-    bounds: [0.95, 0.501, 0.8],
+    bounds: [1.055, 0.497, 1.023],
   },
 
   scaffoldPipe: {
@@ -1810,7 +1810,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: SHATTER,
     gibs: { minChunks: 3, maxChunks: 4, coreSurvives: false, burstSpeed: 2.2 },
-    bounds: [1.05, 0.135, 0.72],
+    bounds: [1.06, 0.111, 0.72],
   },
 
   sandbag: {
@@ -1835,7 +1835,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
       impactDamageScale: 0,
     },
     breakReaction: INDESTRUCTIBLE,
-    bounds: [0.52, 0.2, 0.32],
+    bounds: [0.52, 0.195, 0.32],
   },
 
   barricadeWood: {
@@ -1950,7 +1950,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: INDESTRUCTIBLE,
     deform: metalDeform(0.04, 0.003, 0.008),
-    bounds: [0.15, 0.033, 0.106],
+    bounds: [0.15, 0.035, 0.108],
   },
 
   powerBox: {
@@ -2459,7 +2459,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: INDESTRUCTIBLE,
     deform: metalDeform(0.2, 0.025, 0.09),
-    bounds: [0.66, 1.333, 1.231],
+    bounds: [0.707, 0.512, 1.335],
   },
 
   shoppingCart: {
@@ -2485,7 +2485,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: INDESTRUCTIBLE,
     deform: metalDeform(0.18, 0.02, 0.07),
-    bounds: [0.592, 0.993, 0.87],
+    bounds: [0.598, 1.007, 0.852],
   },
 
   bicycle: {
@@ -2512,7 +2512,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     // cuadro de bicicleta son tubos de 18 mm, no chapa. Un tubo se dobla, no se
     // abolla, y el kernel de abollón no tiene superficie donde morder.
     breakReaction: INDESTRUCTIBLE,
-    bounds: [1.72, 1.161, 0.13],
+    bounds: [1.72, 1.161, 0.275],
   },
 
   streetSign: {
@@ -2537,7 +2537,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: INDESTRUCTIBLE,
     deform: metalDeform(0.14, 0.014, 0.05),
-    bounds: [0.602, 2.35, 0.18],
+    bounds: [0.6, 2.35, 0.488],
   },
 
   mailbox: {
@@ -2562,7 +2562,7 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     },
     breakReaction: INDESTRUCTIBLE,
     deform: metalDeform(0.16, 0.018, 0.07),
-    bounds: [0.44, 1.24, 0.404],
+    bounds: [0.44, 1.24, 0.43],
   },
 
   flowerPot: {

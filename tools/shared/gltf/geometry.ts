@@ -373,6 +373,7 @@ export function bakeVertexOcclusion(
   const normal = geometry.getAttribute("normal");
   if (position === undefined || normal === undefined) return;
 
+  const curvatures = computeCurvature(geometry);
   const grid = voxelize(geometry, resolution);
   const step = Math.max(grid.size.x, grid.size.y, grid.size.z) / resolution;
   const reach = step * 9;
@@ -411,13 +412,126 @@ export function bakeVertexOcclusion(
     }
 
     const ao = total > 0 ? 1 - (occluded / total) * strength : 1;
-    const clamped = Math.max(0.25, Math.min(1, ao));
-    colors[index * 3] = clamped;
-    colors[index * 3 + 1] = clamped;
-    colors[index * 3 + 2] = clamped;
+    // Desgaste por convexidad: la pintura se va primero en las aristas y la
+    // mugre se junta en los rincones. Es lo que más hace leer un objeto como
+    // usado, y sin esto un prop procedural queda parejo y plano por más buena
+    // que sea su textura.
+    const curvature = curvatures[index]!;
+    const worn = 1 + Math.max(0, curvature) * EDGE_WEAR;
+    const grimy = 1 + Math.min(0, curvature) * CAVITY_DIRT;
+    const shade = Math.max(0.4, Math.min(1, ao * worn * grimy));
+    colors[index * 3] = shade;
+    colors[index * 3 + 1] = shade;
+    colors[index * 3 + 2] = shade;
   }
 
   geometry.setAttribute("color", new Float32BufferAttribute(colors, 3));
+}
+
+/** Cuánto aclara una arista viva. `COLOR_0` multiplica, así que el tope es 1. */
+const EDGE_WEAR = 0.22;
+/** Cuánto oscurece un rincón por encima de la oclusión. */
+const CAVITY_DIRT = 0.45;
+
+/**
+ * Convexidad por vértice, en −1..1. Positivo es arista viva, negativo rincón.
+ *
+ * Se mide comparando la normal del vértice contra la dirección al promedio de
+ * sus vecinos por arista: en una esquina saliente los vecinos quedan "detrás"
+ * de la normal, y en un rincón quedan por delante.
+ */
+function computeCurvature(geometry: BufferGeometry): Float32Array {
+  const position = geometry.getAttribute("position")!;
+  const index = geometry.getIndex();
+  const count = position.count;
+
+  // Se trabaja sobre la malla SOLDADA POR POSICIÓN, no sobre la partida.
+  // La proyección de caja parte cada vértice de arista en una copia por cara, y
+  // cada copia sólo ve a los vecinos de su propia cara: la esquina se mediría
+  // plana y no habría desgaste justo donde más importa.
+  const byPosition = new Map<string, number>();
+  const representative = new Uint32Array(count);
+  const key = (vertex: number): string =>
+    `${Math.round(position.getX(vertex) * 1e4)},` +
+    `${Math.round(position.getY(vertex) * 1e4)},` +
+    `${Math.round(position.getZ(vertex) * 1e4)}`;
+  for (let vertex = 0; vertex < count; vertex += 1) {
+    const id = key(vertex);
+    const existing = byPosition.get(id);
+    if (existing === undefined) {
+      byPosition.set(id, vertex);
+      representative[vertex] = vertex;
+    } else {
+      representative[vertex] = existing;
+    }
+  }
+
+  const sums = new Float32Array(count * 3);
+  const degree = new Uint32Array(count);
+  const normalSums = new Float32Array(count * 3);
+  const addEdge = (from: number, to: number): void => {
+    const root = representative[from]!;
+    sums[root * 3] += position.getX(to);
+    sums[root * 3 + 1] += position.getY(to);
+    sums[root * 3 + 2] += position.getZ(to);
+    degree[root] += 1;
+  };
+  const triangles = index ? index.count : count;
+  const edge1 = new Vector3();
+  const edge2 = new Vector3();
+  const faceNormal = new Vector3();
+  const corner = new Vector3();
+  for (let offset = 0; offset < triangles; offset += 3) {
+    const a = index ? index.getX(offset) : offset;
+    const b = index ? index.getX(offset + 1) : offset + 1;
+    const c = index ? index.getX(offset + 2) : offset + 2;
+    addEdge(a, b); addEdge(a, c);
+    addEdge(b, a); addEdge(b, c);
+    addEdge(c, a); addEdge(c, b);
+    // La normal del vértice soldado es el promedio de sus caras, no la partida:
+    // en una arista viva las dos caras miran a lados distintos y su promedio es
+    // justamente la bisectriz que apunta hacia afuera.
+    corner.set(position.getX(a), position.getY(a), position.getZ(a));
+    edge1.set(position.getX(b), position.getY(b), position.getZ(b)).sub(corner);
+    edge2.set(position.getX(c), position.getY(c), position.getZ(c)).sub(corner);
+    faceNormal.crossVectors(edge1, edge2).normalize();
+    for (const vertex of [a, b, c]) {
+      const root = representative[vertex]!;
+      normalSums[root * 3] += faceNormal.x;
+      normalSums[root * 3 + 1] += faceNormal.y;
+      normalSums[root * 3 + 2] += faceNormal.z;
+    }
+  }
+
+  const curvature = new Float32Array(count);
+  const toNeighbours = new Vector3();
+  const vertexNormal = new Vector3();
+  const here = new Vector3();
+  for (let vertex = 0; vertex < count; vertex += 1) {
+    const root = representative[vertex]!;
+    if (degree[root] === 0) continue;
+    here.set(position.getX(root), position.getY(root), position.getZ(root));
+    toNeighbours
+      .set(sums[root * 3]!, sums[root * 3 + 1]!, sums[root * 3 + 2]!)
+      .divideScalar(degree[root]!)
+      .sub(here);
+    const reach = toNeighbours.length();
+    if (reach < 1e-6) continue;
+    vertexNormal.set(
+      normalSums[root * 3]!,
+      normalSums[root * 3 + 1]!,
+      normalSums[root * 3 + 2]!,
+    );
+    if (vertexNormal.lengthSq() < 1e-12) continue;
+    vertexNormal.normalize();
+    // Vecinos por detrás de la normal ⇒ convexo. Se divide por el alcance para
+    // que el resultado no dependa de lo densa que sea la malla.
+    curvature[vertex] = Math.max(
+      -1,
+      Math.min(1, (-toNeighbours.dot(vertexNormal) / reach) * 3.2),
+    );
+  }
+  return curvature;
 }
 
 function voxelize(geometry: BufferGeometry, resolution: number): OcclusionGrid {

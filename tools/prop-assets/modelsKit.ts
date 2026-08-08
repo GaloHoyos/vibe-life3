@@ -268,52 +268,98 @@ const wheelbarrow: PropBuilder = (variant, lod) => {
   const width = 0.66;
   const height = 0.62;
   const depth = 1.42;
+  // Batea armada con paredes y no como bloque macizo: una carretilla es un
+  // recipiente, y desde arriba tiene que verse el hueco. Maciza leía como una
+  // piedra sobre dos palos.
+  const trayWidth = width;
+  const trayDepth = depth * 0.5;
+  const trayHeight = height * 0.34;
+  const trayY = height * 0.16;
+  const wall = 0.014;
   const parts: GeometryPart[] = [
-    // Batea: se abre hacia arriba y hacia atrás.
     {
-      geometry: chamferWedge({
-        length: depth * 0.52,
-        height: height * 0.42,
-        frontWidth: width * 0.44,
-        rearWidth: width,
-        topFrontWidth: width * 0.66,
-        topRearWidth: width,
-        chamfer: 0.02,
-      }),
-      position: [0, height * 0.14, -depth * 0.12],
+      geometry: chamferBox(trayWidth * 0.86, wall, trayDepth * 0.9, 0.006),
+      position: [0, trayY - trayHeight / 2, -depth * 0.1],
       tile: 0,
     },
   ];
-  // Manijas y pata: fijan el largo declarado.
+  // Pared trasera vertical y frontal inclinada: es el perfil de la batea.
+  parts.push({
+    geometry: chamferBox(trayWidth, trayHeight, wall, 0.006),
+    position: [0, trayY, -depth * 0.1 - trayDepth * 0.45],
+    tile: 0,
+  });
+  parts.push({
+    geometry: chamferBox(trayWidth * 0.8, trayHeight * 1.1, wall, 0.006),
+    position: [0, trayY, -depth * 0.1 + trayDepth * 0.45],
+    rotation: [-0.45, 0, 0],
+    tile: 0,
+  });
+  for (const sx of [-1, 1]) {
+    parts.push({
+      geometry: chamferWedge({
+        length: trayDepth,
+        height: trayHeight,
+        frontWidth: wall,
+        rearWidth: wall,
+        topFrontWidth: wall,
+        topRearWidth: wall,
+        chamfer: 0.004,
+      }),
+      position: [sx * trayWidth * 0.5, trayY, -depth * 0.1],
+      rotation: [0, 0, sx * 0.16],
+      tile: 0,
+    });
+  }
+  // Los dos varales corren por DEBAJO de la batea y la sostienen. Antes iban a
+  // media altura y la batea flotaba por encima, sin tocarlos: el prop leía como
+  // piezas sueltas en el aire.
+  const railY = trayY - trayHeight / 2 - 0.02;
   for (const sx of [-1, 1]) {
     parts.push({
       geometry: new CylinderGeometry(0.022, 0.022, depth * 0.94, lod === 0 ? 8 : 5, 1),
-      position: [sx * width * 0.3, -height * 0.06, 0],
-      rotation: [0.1, 0, 0],
+      position: [sx * width * 0.3, railY, 0],
+      // Tumbado sobre Z: `CylinderGeometry` nace vertical, y sin este giro los
+      // varales quedaban como dos postes parados atravesando la batea.
+      rotation: [Math.PI / 2, 0, 0],
       tile: 2,
     });
+    // Pata: del varal al piso, en la punta trasera.
     parts.push({
-      geometry: chamferBox(0.04, height * 0.34, 0.05, 0.006),
-      position: [sx * width * 0.3, -height * 0.3, -depth * 0.18],
+      geometry: chamferBox(0.04, height * 0.32, 0.05, 0.006),
+      position: [sx * width * 0.3, railY - height * 0.16, -depth * 0.3],
       tile: 1,
     });
   }
+  // La rueda va adelante, entre los dos varales, con su horquilla colgando de
+  // ellos: es lo que cierra la lectura de carretilla.
+  const wheelRadius = 0.18;
   const { tire } = wheel({
-    radius: 0.18,
+    radius: wheelRadius,
     width: 0.08,
     rimRatio: 0.5,
     segments: lod === 0 ? 14 : 7,
     treadCount: 0,
   });
+  const wheelY = -height / 2 + wheelRadius;
   parts.push({
     geometry: tire,
-    position: [0, -height / 2 + 0.18, depth * 0.36],
+    position: [0, wheelY, depth * 0.36],
+    rotation: [0, Math.PI / 2, 0],
     tile: 3,
   });
-  if (lod === 0) {
+  for (const sx of [-1, 1]) {
     parts.push({
-      geometry: chamferBox(0.05, 0.24, 0.05, 0.006),
-      position: [0, -height * (0.1 + random() * 0.04), depth * 0.36],
+      geometry: chamferBox(0.022, railY - wheelY, 0.05, 0.005),
+      position: [sx * width * 0.16, (railY + wheelY) / 2, depth * 0.36],
+      tile: 1,
+    });
+  }
+  if (lod === 0) {
+    // Refuerzo transversal entre varales.
+    parts.push({
+      geometry: chamferBox(width * 0.62, 0.024, 0.03, 0.005),
+      position: [0, railY - 0.02, -depth * (0.1 + random() * 0.05)],
       tile: 1,
     });
   }
@@ -327,67 +373,108 @@ const shoppingCart: PropBuilder = (variant, lod) => {
   const height = 1.02;
   const depth = 0.95;
   const basketBottom = -height / 2 + 0.42;
-  const parts: GeometryPart[] = [
-    // Canasto: se abre hacia atrás, como uno de verdad.
-    {
-      geometry: chamferWedge({
-        length: depth * 0.72,
-        height: 0.34,
-        frontWidth: width * 0.72,
-        rearWidth: width,
-        topFrontWidth: width * 0.84,
-        topRearWidth: width * 1.02,
-        chamfer: 0.02,
-      }),
-      position: [0, basketBottom + 0.17, -depth * 0.08],
+  // El canasto es REJA, no caja. Es toda la diferencia: un cuerpo macizo con
+  // ruedas no se lee como changuito por más forma que tenga. Se arma con el
+  // marco y los alambres, y el hueco queda por construcción.
+  const basketTop = basketBottom + 0.34;
+  const wire = 0.011;
+  const parts: GeometryPart[] = [];
+
+  // Marco superior e inferior: fijan el envolvente, van en los dos LODs.
+  for (const [y, scale] of [[basketBottom, 0.76], [basketTop, 1.0]] as const) {
+    parts.push({
+      geometry: chamferBox(width * scale, wire * 1.6, wire * 1.6, 0.003),
+      position: [0, y, -depth * 0.34 * scale],
       tile: 1,
-    },
-  ];
+    });
+    parts.push({
+      geometry: chamferBox(width * scale, wire * 1.6, wire * 1.6, 0.003),
+      position: [0, y, depth * 0.3 * scale],
+      tile: 1,
+    });
+    for (const sx of [-1, 1]) {
+      parts.push({
+        geometry: chamferBox(wire * 1.6, wire * 1.6, depth * 0.66 * scale, 0.003),
+        position: [sx * width * 0.5 * scale, y, -depth * 0.02],
+        tile: 1,
+      });
+    }
+  }
+  // Piso del canasto.
+  parts.push({
+    geometry: chamferBox(width * 0.72, wire, depth * 0.6, 0.003),
+    position: [0, basketBottom, -depth * 0.04],
+    tile: 1,
+  });
+  if (lod === 0) {
+    // Alambres verticales de los cuatro lados: la reja propiamente dicha.
+    for (let index = 0; index < 5; index += 1) {
+      const t = (index / 4 - 0.5) * 2;
+      for (const sz of [-1, 1]) {
+        parts.push({
+          geometry: chamferBox(wire, 0.34, wire, 0.002),
+          position: [t * width * 0.46, basketBottom + 0.17, sz * depth * 0.32],
+          tile: 1,
+        });
+      }
+    }
+    for (const sx of [-1, 1]) {
+      for (let index = 0; index < 3; index += 1) {
+        parts.push({
+          geometry: chamferBox(wire, 0.34, wire, 0.002),
+          position: [sx * width * 0.48, basketBottom + 0.17, (index / 2 - 0.5) * depth * 0.6],
+          tile: 1,
+        });
+      }
+    }
+  }
   parts.push(
     ...tubeFrame(
       [
         // Manija.
         [0, height / 2 - 0.04, -depth / 2 + 0.06, width * 0.9, 0, Math.PI / 2],
-        // Montantes traseros.
-        [-width * 0.4, basketBottom + 0.08, -depth / 2 + 0.08, 0.5, 0.2, 0],
-        [width * 0.4, basketBottom + 0.08, -depth / 2 + 0.08, 0.5, 0.2, 0],
+        // Montantes traseros: del canasto a la manija.
+        [-width * 0.4, basketTop + 0.09, -depth / 2 + 0.08, 0.32, 0.2, 0],
+        [width * 0.4, basketTop + 0.09, -depth / 2 + 0.08, 0.32, 0.2, 0],
       ],
       0.016,
       lod === 0 ? 8 : 4,
       1,
     ),
   );
-  // Ruedas: fijan el fondo y el ancho.
+  // Patas y ruedas. El largo se calcula para que la pata NAZCA en el piso del
+  // canasto y termine en la rueda: antes era fijo y quedaban 14 cm de aire
+  // entre medio, con el changuito flotando sobre ruedas sueltas.
+  const casterY = -height / 2 + 0.055;
+  const legTop = basketBottom;
+  const legLength = legTop - (casterY + 0.055);
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
       parts.push({
         geometry: new CylinderGeometry(0.055, 0.055, 0.026, lod === 0 ? 10 : 5, 1),
-        position: [sx * (width / 2 - 0.05), -height / 2 + 0.055, sz * (depth / 2 - 0.12)],
+        position: [sx * (width / 2 - 0.05), casterY, sz * (depth / 2 - 0.12)],
         rotation: [0, 0, Math.PI / 2],
         tile: 3,
       });
       parts.push({
-        geometry: chamferBox(0.03, 0.2, 0.03, 0.004),
-        position: [sx * (width / 2 - 0.05), -height / 2 + 0.18, sz * (depth / 2 - 0.12)],
+        geometry: chamferBox(0.026, legLength, 0.026, 0.004),
+        position: [
+          sx * (width / 2 - 0.05),
+          casterY + 0.055 + legLength / 2,
+          sz * (depth / 2 - 0.12),
+        ],
         tile: 1,
       });
     }
   }
   if (lod === 0) {
-    // Rejas del canasto: tres nervios por lado alcanzan a esta escala.
-    for (const sx of [-1, 1]) {
-      for (let index = 0; index < 3; index += 1) {
-        parts.push({
-          geometry: chamferBox(0.012, 0.3, 0.012, 0.003),
-          position: [
-            sx * width * 0.44,
-            basketBottom + 0.17,
-            (index - 1) * depth * 0.2 + (random() - 0.5) * 0.02,
-          ],
-          tile: 1,
-        });
-      }
-    }
+    // Bandeja para bebé: el detalle que remata la lectura de changuito.
+    parts.push({
+      geometry: chamferBox(width * 0.6, wire, depth * 0.16, 0.003),
+      position: [0, basketTop - 0.06 + (random() - 0.5) * 0.01, -depth * 0.28],
+      rotation: [0.4, 0, 0],
+      tile: 1,
+    });
   }
   return { parts };
 };
@@ -447,11 +534,46 @@ const bicycle: PropBuilder = (variant, lod) => {
     tile: 3,
   });
   if (lod === 0) {
+    // Plato, pedales y cadena: son las tres piezas que separan una bicicleta de
+    // dos ruedas con caños. Sin ellas la silueta se lee como un esquema.
     parts.push({
-      geometry: new CylinderGeometry(0.052, 0.052, 0.03, 10, 1),
-      position: [-0.16, axleY + (random() - 0.5) * 0.02, 0],
-      rotation: [0, Math.PI / 2, 0],
+      geometry: new CylinderGeometry(0.075, 0.075, 0.012, 12, 1),
+      position: [-0.16, axleY + (random() - 0.5) * 0.02, 0.02],
+      rotation: [0, 0, Math.PI / 2],
       tile: 1,
+    });
+    for (const sz of [-1, 1]) {
+      // Bielas opuestas, con su pedal en la punta.
+      parts.push({
+        geometry: chamferBox(0.022, 0.15, 0.016, 0.004),
+        position: [-0.16, axleY + sz * 0.055, sz * 0.055],
+        rotation: [sz * 0.9, 0, 0],
+        tile: 1,
+      });
+      parts.push({
+        geometry: chamferBox(0.03, 0.012, 0.075, 0.004),
+        position: [-0.16 + sz * 0.03, axleY + sz * 0.1, sz * 0.1],
+        tile: 3,
+      });
+    }
+    // Cadena: el tramo recto de arriba, del plato al piñón trasero.
+    parts.push({
+      geometry: chamferBox(0.37, 0.012, 0.008, 0.002),
+      position: [-0.36, axleY + 0.065, 0.02],
+      tile: 1,
+    });
+    parts.push({
+      geometry: new CylinderGeometry(0.035, 0.035, 0.01, 10, 1),
+      position: [-0.52, axleY, 0.02],
+      rotation: [0, 0, Math.PI / 2],
+      tile: 1,
+    });
+    // Guardabarros trasero: una chapa curvada sobre la rueda.
+    parts.push({
+      geometry: chamferBox(0.26, 0.012, 0.06, 0.004),
+      position: [-0.52, axleY + wheelRadius * 0.92, 0],
+      rotation: [0, 0, 0.12],
+      tile: 2,
     });
   }
   return { parts };
@@ -469,19 +591,29 @@ const streetSign: PropBuilder = (variant, lod) => {
       tile: 1,
     },
     // La chapa define el ancho declarado: va en los dos LODs.
+    // Chapa alta: es la que hace legible el cartel. Antes eran dos plaquitas de
+    // 20 cm sobre un poste de 2.35 m y a distancia de juego desaparecían.
     {
-      geometry: chamferBox(width, 0.2, 0.016, 0.005),
-      position: [width * 0.36, height / 2 - 0.22, 0],
+      geometry: chamferBox(width, 0.32, 0.016, 0.005),
+      position: [width * 0.28, height / 2 - 0.25, 0],
       tile: 0,
     },
   ];
   if (lod === 0) {
+    // Segunda chapa cruzada, como un cartel de esquina.
     parts.push({
-      geometry: chamferBox(width * 0.72, 0.16, 0.014, 0.004),
-      position: [width * 0.3, height / 2 - 0.48, (random() - 0.5) * 0.01],
-      rotation: [0, 0.35, 0],
+      geometry: chamferBox(width * 0.88, 0.26, 0.014, 0.004),
+      position: [width * 0.22, height / 2 - 0.62, (random() - 0.5) * 0.01],
+      rotation: [0, 1.15, 0],
       tile: 0,
     });
+    for (const y of [height / 2 - 0.25, height / 2 - 0.62]) {
+      parts.push({
+        geometry: new CylinderGeometry(0.042, 0.042, 0.032, segments, 1),
+        position: [0, y, 0],
+        tile: 1,
+      });
+    }
     parts.push({
       geometry: new CylinderGeometry(0.075, 0.09, 0.06, segments, 1),
       position: [0, -height / 2 + 0.03, 0],
@@ -520,16 +652,39 @@ const mailbox: PropBuilder = (variant, lod) => {
     },
   ];
   if (lod === 0) {
-    // Boca y bisagra.
+    // Boca con visera: la ranura hundida más el alero que la tapa de la lluvia.
+    // Sin la visera el buzón es un bulto sobre un palo.
     parts.push({
-      geometry: chamferBox(width * 0.6, 0.09, 0.02, 0.005),
-      position: [0, bodyBottom + bodyHeight * 0.55, depth / 2 - 0.008],
-      rotation: [(random() - 0.5) * 0.2, 0, 0],
+      geometry: chamferBox(width * 0.62, 0.055, 0.03, 0.006),
+      position: [0, bodyBottom + bodyHeight * 0.6, depth / 2 - 0.01],
+      tile: 3,
+    });
+    parts.push({
+      geometry: chamferBox(width * 0.72, 0.016, 0.07, 0.005),
+      position: [0, bodyBottom + bodyHeight * 0.68, depth / 2 - 0.005],
+      rotation: [-0.5, 0, 0],
+      tile: 1,
+    });
+    // Puerta de recolección abajo, con su manija y bisagra.
+    parts.push({
+      geometry: panel(width * 0.8, bodyHeight * 0.36, 0.016),
+      position: [0, bodyBottom + bodyHeight * 0.2, depth / 2 - 0.012],
       tile: 1,
     });
     parts.push({
-      geometry: chamferBox(width * 0.86, 0.02, 0.03, 0.004),
-      position: [0, bodyBottom + 0.03, -depth / 2 + 0.02],
+      geometry: chamferBox(width * 0.16, 0.024, 0.026, 0.005),
+      position: [0, bodyBottom + bodyHeight * 0.2, depth / 2 + 0.004],
+      tile: 3,
+    });
+    // Base con brida: el poste apoya en algo, no sale del piso.
+    parts.push({
+      geometry: chamferBox(width * 0.44, 0.03, width * 0.44, 0.006),
+      position: [0, -height / 2 + 0.015, 0],
+      tile: 1,
+    });
+    parts.push({
+      geometry: chamferBox(width * 0.9, 0.022, depth * 0.9, 0.006),
+      position: [0, bodyBottom + (random() - 0.5) * 0.01, 0],
       tile: 1,
     });
   }

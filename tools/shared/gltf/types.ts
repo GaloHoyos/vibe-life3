@@ -13,6 +13,29 @@ export type Euler = readonly [number, number, number];
 export type AtlasTile = 0 | 1 | 2 | 3;
 
 /**
+ * Estructura física de una superficie. Elige el grafo de nodos con el que
+ * Blender la hornea (`tools/prop-assets/bake-atlas.py`).
+ *
+ * Existe porque el vocabulario anterior —color, rugosidad, metalicidad, wear y
+ * grain— sólo sabía apilar ruido de nubes teñido distinto. Una veta de madera,
+ * el árido de un hormigón y la trama de un tapizado son estructuras, no ruido,
+ * y es justamente lo que separa un asset de producción de uno generado.
+ */
+export type MaterialFamily =
+  | "rawWood"
+  | "paintedWood"
+  | "paintedSteel"
+  | "bareSteel"
+  | "rustedSteel"
+  | "concrete"
+  | "plaster"
+  | "fabric"
+  | "cardboard"
+  | "rubber"
+  | "plastic"
+  | "porcelain";
+
+/**
  * Acabado de una casilla del atlas. Las cuatro casillas son el vocabulario de
  * materiales de un asset: cada pieza de geometría elige `tile` y de acá salen
  * color, PBR y cuánto castigo acumuló esa superficie.
@@ -22,10 +45,19 @@ export interface AtlasFinish {
   readonly color: readonly [number, number, number];
   readonly roughness: number;
   readonly metallic: number;
-  /** Pintura saltada, óxido y rayones con metal expuesto, 0..1. */
+  /** Pintura saltada, óxido y rayones, 0..1. */
   readonly wear: number;
   /** Frecuencia del grano: 1 chapa grande, >2 goma o fundición. */
   readonly grain: number;
+  /** Estructura del material. Sin declararla cae a chapa pintada. */
+  readonly family?: MaterialFamily;
+  /**
+   * Qué asoma donde el rayón levanta la superficie. Por defecto sale de la
+   * familia: madera clara bajo la madera, fibra bajo el cartón, metal desnudo
+   * sólo bajo el metal. Pintar metal bajo TODO era el defecto que dejaba rayas
+   * blancas sobre un cajón de pino.
+   */
+  readonly exposedColor?: readonly [number, number, number];
 }
 
 /** Lo mínimo que `createPbrAtlases` necesita saber de un asset. */

@@ -1,4 +1,4 @@
-import { BufferGeometry, LOD, Material, Matrix4, Mesh, Object3D, Texture, Vector3 } from "three";
+import { BufferGeometry, Color, LOD, Material, Matrix4, Mesh, Object3D, Texture, Vector3 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "meshoptimizer";
 import type { ColliderSpec } from "@engine/physics/ColliderSpec";
@@ -100,7 +100,11 @@ export class PropAssetRegistry implements Disposable {
     this.warnOnFallback = options.warnOnFallback ?? true;
   }
 
-  async acquire(archetypeId: PropArchetypeId, variant = 0): Promise<PropModelLease> {
+  async acquire(
+    archetypeId: PropArchetypeId,
+    variant = 0,
+    instanceId = "",
+  ): Promise<PropModelLease> {
     const archetype = PropArchetypes[archetypeId];
     if (this.disposed || !archetype) {
       return fallbackLease(archetypeId, new Error("El registro de props ya fue liberado."));
@@ -124,6 +128,7 @@ export class PropAssetRegistry implements Disposable {
       selectVariant(root, variant, archetype.asset.variants);
       installLod(root);
       cloneInstanceMaterials(root);
+      if (instanceId) tintInstance(root, instanceId);
       prepareRenderableMeshes(root);
 
       let leaseDisposed = false;
@@ -164,7 +169,11 @@ export class PropAssetRegistry implements Disposable {
    * sus packs y recién después spawnea, así el cuerpo se arma con su casco real
    * de una vez en vez de nacer como caja y reconstruirse a mitad de camino.
    */
-  acquireSync(archetypeId: PropArchetypeId, variant = 0): PropModelLease | null {
+  acquireSync(
+    archetypeId: PropArchetypeId,
+    variant = 0,
+    instanceId = "",
+  ): PropModelLease | null {
     const archetype = PropArchetypes[archetypeId];
     if (this.disposed || !archetype) return null;
     const pack = archetype.asset.pack;
@@ -179,6 +188,7 @@ export class PropAssetRegistry implements Disposable {
     selectVariant(root, variant, archetype.asset.variants);
     installLod(root);
     cloneInstanceMaterials(root);
+    if (instanceId) tintInstance(root, instanceId);
     prepareRenderableMeshes(root);
 
     let leaseDisposed = false;
@@ -461,6 +471,40 @@ function cloneInstanceMaterials(root: Object3D): void {
       ? node.material.map((material) => material.clone())
       : node.material.clone();
   });
+}
+
+/**
+ * Corre apenas el tono de una instancia respecto de sus hermanas.
+ *
+ * Ocho cajones idénticos en pantalla se leen como copias pegadas, que es de las
+ * cosas que más delatan a un set generado. El material ya es propio de cada
+ * instancia —se clona arriba—, así que esto no cuesta un draw call extra.
+ *
+ * Los márgenes son deliberadamente chicos: alcanza con romper la igualdad
+ * exacta. Más que esto y los props del mismo arquetipo dejan de leerse como el
+ * mismo objeto, que es peor que el problema original.
+ */
+function tintInstance(root: Object3D, seed: string): void {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (Math.imul(hash, 31) + seed.charCodeAt(index)) >>> 0;
+  }
+  const unit = (salt: number): number => {
+    const mixed = Math.imul(hash ^ salt, 0x85ebca6b) >>> 0;
+    return ((mixed ^ (mixed >>> 15)) >>> 0) / 0xffffffff - 0.5;
+  };
+  const brightness = 1 + unit(0x9e37) * 0.16;
+  const warmth = unit(0x2545) * 0.05;
+
+  for (const material of collectMaterials(root)) {
+    const tinted = material as Material & { color?: Color };
+    if (!tinted.color) continue;
+    tinted.color.multiplyScalar(brightness);
+    // El sesgo cálido/frío es lo que hace que dos cajones no parezcan el mismo
+    // cajón con distinta luz: cambiar sólo el brillo se lee como sombra.
+    tinted.color.r = Math.min(1, Math.max(0, tinted.color.r + warmth));
+    tinted.color.b = Math.min(1, Math.max(0, tinted.color.b - warmth));
+  }
 }
 
 function disposeInstanceMaterials(root: Object3D): void {

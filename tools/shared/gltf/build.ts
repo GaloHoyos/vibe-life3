@@ -14,7 +14,7 @@ import {
   Quaternion,
   Vector3,
 } from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { mergeGeometries, mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
 import { bakeVertexOcclusion } from "./geometry.js";
 import type {
@@ -75,16 +75,132 @@ export function mirrorUnit(value: number): number {
   return wrapped > 1 ? 2 - wrapped : wrapped;
 }
 
-export function remapUv(geometry: BufferGeometry, tile: AtlasTile): void {
-  const uv = geometry.getAttribute("uv");
-  if (uv === undefined) {
-    const position = geometry.getAttribute("position");
-    const generated = new Float32Array(position.count * 2);
-    for (let index = 0; index < position.count; index += 1) {
-      generated[index * 2] = mirrorUnit(position.getX(index) * 0.25 + 0.5);
-      generated[index * 2 + 1] = mirrorUnit(position.getZ(index) * 0.25 + 0.5);
+/**
+ * UVs por proyección de CAJA: cada cara se proyecta sobre el plano al que
+ * realmente mira, elegido por su normal dominante.
+ *
+ * Reemplaza una proyección cenital (x, z) que era el peor defecto del pipeline.
+ * Sobre una cara vertical la coordenada X o Z es constante, así que la cara
+ * entera muestreaba una LÍNEA de téxeles: un cajón medía 484 caras con 264
+ * degeneradas —el 55%— y su cara más grande usaba 37×37 píxeles estirados sobre
+ * 86 cm. Se veía como plástico liso, y de paso es lo que producía tangentes
+ * nulas y props negros al abollarlos.
+ *
+ * La malla se desindexa a propósito: dos caras que miran a distinta pared
+ * necesitan UVs distintas en el mismo vértice, y con índice compartido eso no se
+ * puede expresar. Estas piezas tienen decenas de triángulos, no miles.
+ */
+/**
+ * Cuántos metros de mundo cubre una casilla del atlas.
+ *
+ * Fija la densidad de téxel de TODO el catálogo: con casillas de 512 px son
+ * ~430 px/m parejos, de una lata a un ropero. Bajarlo da más detalle pero manda
+ * más caras al camino de reducción; subirlo lo contrario.
+ */
+const METERS_PER_TILE = 1.2;
+
+function clamp01(value: number): number {
+  return value < 0 ? 0 : value > 1 ? 1 : value;
+}
+
+/** Desplazamiento estable por cara, para que no todas muestreen el mismo rincón. */
+function hashUnit(seed: number, salt: number): number {
+  let value = Math.imul(seed + salt, 0x85ebca6b);
+  value = Math.imul(value ^ (value >>> 13), 0xc2b2ae35);
+  return ((value ^ (value >>> 16)) >>> 0) / 0xffffffff;
+}
+
+function boxProjectUv(geometry: BufferGeometry): void {
+  const source = geometry.index ? geometry.toNonIndexed() : geometry;
+  const position = source.getAttribute("position");
+  const uvs = new Float32Array(position.count * 2);
+
+  const ax = new Vector3();
+  const bx = new Vector3();
+  const cx = new Vector3();
+  const edge1 = new Vector3();
+  const edge2 = new Vector3();
+  const normal = new Vector3();
+  for (let triangle = 0; triangle < position.count; triangle += 3) {
+    ax.fromBufferAttribute(position, triangle);
+    bx.fromBufferAttribute(position, triangle + 1);
+    cx.fromBufferAttribute(position, triangle + 2);
+    edge1.subVectors(bx, ax);
+    edge2.subVectors(cx, ax);
+    normal.crossVectors(edge1, edge2);
+
+    const absX = Math.abs(normal.x);
+    const absY = Math.abs(normal.y);
+    const absZ = Math.abs(normal.z);
+    // Ejes del plano al que la cara mira de frente.
+    let uAxis: "x" | "y" | "z" = "x";
+    let vAxis: "x" | "y" | "z" = "y";
+    if (absX >= absY && absX >= absZ) {
+      uAxis = "z";
+      vAxis = "y";
+    } else if (absY >= absX && absY >= absZ) {
+      uAxis = "x";
+      vAxis = "z";
     }
-    geometry.setAttribute("uv", new Float32BufferAttribute(generated, 2));
+
+    // Escala de MUNDO, no relativa a la pieza: así una lata de 11 cm y un
+    // ropero de 1.9 m muestran el grano al mismo tamaño de téxel. Antes cada
+    // pieza ocupaba la casilla entera y la densidad variaba 20x entre props.
+    const rawU = [ax[uAxis], bx[uAxis], cx[uAxis]].map((v) => v / METERS_PER_TILE);
+    const rawV = [ax[vAxis], bx[vAxis], cx[vAxis]].map((v) => v / METERS_PER_TILE);
+    const minU = Math.min(...rawU);
+    const minV = Math.min(...rawV);
+    const spanU = Math.max(...rawU) - minU;
+    const spanV = Math.max(...rawV) - minV;
+
+    // La cara se corre entera dentro de la casilla en vez de espejarse por
+    // vértice: espejar vértice a vértice parte la cara al cruzar el borde y deja
+    // una costura reflejada en el medio del triángulo. Una cara más grande que
+    // la casilla se achica, que es degradar la densidad sólo donde hace falta.
+    const fit = Math.min(1, 1 / Math.max(spanU, spanV, 1e-6));
+    const room = 1 - Math.max(spanU, spanV) * fit;
+    const jitterU = room * hashUnit(triangle, 0x9e37);
+    const jitterV = room * hashUnit(triangle, 0x85eb);
+
+    for (let corner = 0; corner < 3; corner += 1) {
+      const target = (triangle + corner) * 2;
+      uvs[target] = clamp01((rawU[corner]! - minU) * fit + jitterU);
+      uvs[target + 1] = clamp01((rawV[corner]! - minV) * fit + jitterV);
+    }
+  }
+  source.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
+
+  if (source === geometry) return;
+  // Se vuelca sobre la geometría original porque `remapUv` muta en el lugar y
+  // el llamador sigue usando la misma referencia.
+  geometry.setIndex(null);
+  for (const name of Object.keys(geometry.attributes)) geometry.deleteAttribute(name);
+  for (const [name, attribute] of Object.entries(source.attributes)) {
+    geometry.setAttribute(name, attribute);
+  }
+  // Índice secuencial: aguas abajo `createMesh` exige malla indexada, y sin él
+  // la pieza se descarta por incompleta.
+  const vertices = geometry.getAttribute("position").count;
+  geometry.setIndex(Array.from({ length: vertices }, (_, index) => index));
+  source.dispose();
+
+  // Y se vuelve a soldar: desindexar triplica los vértices, y dentro de una
+  // misma cara ya comparten posición, normal y UV. Sólo quedan partidos los
+  // bordes entre caras que proyectan a planos distintos, que es justo lo que
+  // hay que conservar. Sin esto los packs crecían un 30%.
+  const welded = mergeVertices(geometry, 1e-5);
+  if (welded !== geometry) {
+    geometry.setIndex(welded.getIndex());
+    for (const name of Object.keys(welded.attributes)) {
+      geometry.setAttribute(name, welded.getAttribute(name));
+    }
+    welded.dispose();
+  }
+}
+
+export function remapUv(geometry: BufferGeometry, tile: AtlasTile): void {
+  if (geometry.getAttribute("uv") === undefined) {
+    boxProjectUv(geometry);
   }
 
   const targetUv = geometry.getAttribute("uv");

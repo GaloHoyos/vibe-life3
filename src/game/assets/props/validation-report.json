@@ -2,7 +2,7 @@
   "packs": [
     {
       "id": "propsWood",
-      "bytes": 566760,
+      "bytes": 661496,
       "budgetBytes": 716800,
       "props": [
         {
@@ -42,8 +42,8 @@
         },
         {
           "id": "milkCarton",
-          "lod0Triangles": 352,
-          "lod1Triangles": 176,
+          "lod0Triangles": 616,
+          "lod1Triangles": 352,
           "colliderVertices": 8,
           "chunks": 4
         },
@@ -62,7 +62,7 @@
     },
     {
       "id": "propsMetal",
-      "bytes": 617112,
+      "bytes": 553144,
       "budgetBytes": 716800,
       "props": [
         {
@@ -164,7 +164,7 @@
     },
     {
       "id": "propsSynthetic",
-      "bytes": 547084,
+      "bytes": 583944,
       "budgetBytes": 716800,
       "props": [
         {
@@ -231,8 +231,8 @@
     },
     {
       "id": "propsInterior",
-      "bytes": 729980,
-      "budgetBytes": 786432,
+      "bytes": 911232,
+      "budgetBytes": 917504,
       "props": [
         {
           "id": "couch",
@@ -250,7 +250,7 @@
         },
         {
           "id": "mattress",
-          "lod0Triangles": 176,
+          "lod0Triangles": 2480,
           "lod1Triangles": 88,
           "colliderVertices": 8,
           "chunks": 0
@@ -326,7 +326,7 @@
     },
     {
       "id": "propsAppliance",
-      "bytes": 422688,
+      "bytes": 326736,
       "budgetBytes": 716800,
       "props": [
         {
@@ -393,7 +393,7 @@
     },
     {
       "id": "propsDebris",
-      "bytes": 673692,
+      "bytes": 711664,
       "budgetBytes": 716800,
       "props": [
         {
@@ -440,8 +440,8 @@
         },
         {
           "id": "scrapHeap",
-          "lod0Triangles": 672,
-          "lod1Triangles": 392,
+          "lod0Triangles": 992,
+          "lod1Triangles": 608,
           "colliderVertices": 8,
           "chunks": 6
         },
@@ -454,15 +454,15 @@
         },
         {
           "id": "plasterSlab",
-          "lod0Triangles": 344,
+          "lod0Triangles": 872,
           "lod1Triangles": 80,
           "colliderVertices": 8,
           "chunks": 4
         },
         {
           "id": "sandbag",
-          "lod0Triangles": 352,
-          "lod1Triangles": 176,
+          "lod0Triangles": 568,
+          "lod1Triangles": 160,
           "colliderVertices": 8,
           "chunks": 0
         },
@@ -481,8 +481,8 @@
     },
     {
       "id": "propsTech",
-      "bytes": 720068,
-      "budgetBytes": 786432,
+      "bytes": 817620,
+      "budgetBytes": 917504,
       "props": [
         {
           "id": "monitor",
@@ -500,7 +500,7 @@
         },
         {
           "id": "harddrive",
-          "lod0Triangles": 264,
+          "lod0Triangles": 632,
           "lod1Triangles": 88,
           "colliderVertices": 8,
           "chunks": 0
@@ -590,8 +590,8 @@
     },
     {
       "id": "propsKit",
-      "bytes": 777368,
-      "budgetBytes": 786432,
+      "bytes": 830260,
+      "budgetBytes": 917504,
       "props": [
         {
           "id": "ladder",
@@ -637,38 +637,38 @@
         },
         {
           "id": "wheelbarrow",
-          "lod0Triangles": 648,
-          "lod1Triangles": 428,
+          "lod0Triangles": 1176,
+          "lod1Triangles": 956,
           "colliderVertices": 8,
-          "chunks": 5
+          "chunks": 0
         },
         {
           "id": "shoppingCart",
-          "lod0Triangles": 1480,
-          "lod1Triangles": 696,
+          "lod0Triangles": 3152,
+          "lod1Triangles": 1400,
           "colliderVertices": 8,
-          "chunks": 5
+          "chunks": 0
         },
         {
           "id": "bicycle",
-          "lod0Triangles": 952,
+          "lod0Triangles": 1576,
           "lod1Triangles": 480,
           "colliderVertices": 8,
-          "chunks": 5
+          "chunks": 0
         },
         {
           "id": "streetSign",
-          "lod0Triangles": 336,
+          "lod0Triangles": 496,
           "lod1Triangles": 128,
           "colliderVertices": 8,
-          "chunks": 4
+          "chunks": 0
         },
         {
           "id": "mailbox",
-          "lod0Triangles": 328,
+          "lod0Triangles": 680,
           "lod1Triangles": 128,
           "colliderVertices": 8,
-          "chunks": 4
+          "chunks": 0
         },
         {
           "id": "flowerPot",

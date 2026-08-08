@@ -1,6 +1,6 @@
 import { CylinderGeometry } from "three";
 
-import { chamferBox, chamferWedge } from "../shared/gltf/geometry.js";
+import { chamferBox, chamferWedge, loftedBody } from "../shared/gltf/geometry.js";
 import { variantRandom, type PropBuilder } from "./builderKit.js";
 import type { AtlasTile, GeometryPart } from "./types.js";
 
@@ -128,24 +128,28 @@ const brickPile: PropBuilder = (variant, lod) => {
       tile: 0,
     });
   }
-  // Los sueltos se desparraman DENTRO de ese borde. El margen no es estético:
-  // un ladrillo girado al azar que se pase del borde hace que cada variante
-  // mida distinto, y todas comparten un solo casco de colisión.
+  // Hiladas trabadas y SEPARADAS. La clave para que se lean como ladrillos
+  // sueltos y no como un bloque blanco es el hueco entre ellos: sin junta la
+  // pila se funde en una sola masa al mirarla de lejos.
+  const gap = 0.022;
   const reach = width / 2 - brick.w * 0.78;
   const rows = lod === 0 ? 4 : 2;
   for (let row = 0; row < rows; row += 1) {
-    // Cada hilada más corta y más girada: es un montón, no una pared.
+    // Cada hilada más corta: es un montón, no una pared.
     const count = Math.max(1, 4 - row);
+    // Traba de media pieza en las hiladas impares, como una pila de verdad.
+    const stagger = row % 2 === 0 ? 0 : brick.w * 0.5;
     for (let index = 0; index < count; index += 1) {
       const slot = count === 1 ? 0 : ((index - (count - 1) / 2) / ((count - 1) / 2)) * reach;
       parts.push({
-        geometry: chamferBox(brick.w, brick.h, brick.d, 0.006),
+        geometry: chamferBox(brick.w - gap, brick.h - gap * 0.4, brick.d - gap, 0.008),
         position: [
-          slot,
-          -height / 2 + brick.h / 2 + row * (brick.h * (rows === 2 ? 2 : 1)),
-          (random() - 0.5) * depth * 0.4,
+          slot + stagger * 0.4,
+          -height / 2 + brick.h / 2 + row * (brick.h + gap * 0.5) * (rows === 2 ? 2 : 1),
+          (random() - 0.5) * depth * 0.34,
         ],
-        rotation: [0, (random() - 0.5) * 0.7, (random() - 0.5) * 0.12],
+        // Poco giro y sólo en Y: un ladrillo apilado no queda de canto.
+        rotation: [0, (random() - 0.5) * 0.35, (random() - 0.5) * 0.05],
         tile: 0,
       });
     }
@@ -280,18 +284,19 @@ const scrapHeap: PropBuilder = (variant, lod) => {
   const height = 0.5;
   const depth = 0.8;
   const parts: GeometryPart[] = [
-    // Base: la masa que sostiene el resto y fija la huella.
+    // Base: dos chapas grandes cruzadas que fijan la huella. Antes era una cuña
+    // maciza, y una masa lisa con óxido encima lee como cerámica, no como
+    // chatarra: el montón parecía una vasija de terracota.
     {
-      geometry: chamferWedge({
-        length: depth,
-        height: height * 0.5,
-        frontWidth: width,
-        rearWidth: width * 0.7,
-        topFrontWidth: width * 0.72,
-        topRearWidth: width * 0.5,
-        chamfer: 0.03,
-      }),
-      position: [0, -height * 0.25, 0],
+      geometry: chamferBox(width, 0.016, depth * 0.78, 0.005),
+      position: [0, -height * 0.42, 0],
+      rotation: [0.06, 0.2, 0.04],
+      tile: 1,
+    },
+    {
+      geometry: chamferBox(width * 0.78, 0.016, depth, 0.005),
+      position: [0, -height * 0.34, 0],
+      rotation: [-0.05, 1.1, 0.07],
       tile: 1,
     },
   ];
@@ -299,27 +304,44 @@ const scrapHeap: PropBuilder = (variant, lod) => {
   // por eso las piezas sueltas pueden ir donde quieran sin cambiar el
   // envolvente. Sin un ancla así, cada variante mide y se centra distinto.
   parts.push({
-    geometry: chamferBox(0.36, 0.05, 0.26, 0.008),
+    geometry: chamferBox(0.36, 0.02, 0.26, 0.004),
     position: [0, height * 0.4, 0],
     rotation: [0.18, 0.5, -0.12],
     tile: 1,
   });
 
-  // Los sueltos van de largo FIJO y encerrados bien adentro del ancla: es la
-  // rotación libre la que da el desorden, no el tamaño ni el alcance.
-  const pieces = lod === 0 ? 7 : 3;
-  for (let index = 0; index < pieces; index += 1) {
-    const long = random() > 0.5;
+  // Chatarra = chapas dobladas y hierros, NUNCA una masa lisa. El montón tenía
+  // una base maciza y con el óxido encima leía como una vasija de terracota.
+  // Todo lo suelto vive DENTRO de las chapas ancla. Los márgenes de abajo no
+  // son estéticos: cualquier pieza que se pase hace que la variante mida
+  // distinto, y las tres comparten un solo casco de colisión.
+  const plates = lod === 0 ? 6 : 3;
+  for (let index = 0; index < plates; index += 1) {
     parts.push({
-      geometry: long
-        ? new CylinderGeometry(0.018, 0.014, 0.36, 5, 1)
-        : chamferBox(0.3, 0.014, 0.2, 0.005),
+      geometry: chamferBox(0.26 + random() * 0.08, 0.012, 0.2 + random() * 0.06, 0.004),
       position: [
-        (random() - 0.5) * 0.36,
-        random() * 0.08 - 0.06,
-        (random() - 0.5) * 0.28,
+        (random() - 0.5) * 0.3,
+        -height * 0.32 + index * (height * 0.09),
+        (random() - 0.5) * 0.24,
       ],
-      rotation: [random() * 2, random() * 3, random() * 2],
+      // Casi planas y cruzadas entre sí: es como cae la chapa.
+      rotation: [(random() - 0.5) * 0.4, random() * 3, (random() - 0.5) * 0.4],
+      tile: 1,
+    });
+  }
+  const rods = lod === 0 ? 5 : 2;
+  for (let index = 0; index < rods; index += 1) {
+    parts.push({
+      geometry: new CylinderGeometry(0.014, 0.011, 0.36, 5, 1),
+      position: [
+        (random() - 0.5) * 0.26,
+        -height * 0.06 + random() * height * 0.2,
+        (random() - 0.5) * 0.2,
+      ],
+      // `CylinderGeometry` nace sobre Y: hay que tumbarlo con el giro en Z. Sin
+      // eso quedaban casi parados, sobresalían por arriba de las chapas y cada
+      // variante medía distinto de alto.
+      rotation: [0, random() * 3, Math.PI / 2 + (random() - 0.5) * 0.4],
       tile: 1,
     });
   }
@@ -367,7 +389,8 @@ const plasterSlab: PropBuilder = (variant, lod) => {
     brokenSlab("plasterSlab", variant, width, height, depth, 2),
   ];
   if (lod === 0) {
-    // Listones del bastidor pegados atrás y papel colgando del canto.
+    // Listones del bastidor asomando por el canto roto: es lo que dice que la
+    // placa se arrancó de una pared y no que salió así de fábrica.
     for (const z of [-0.2, 0.18]) {
       parts.push({
         geometry: chamferBox(width * 0.8, 0.026, 0.05, 0.004),
@@ -375,49 +398,94 @@ const plasterSlab: PropBuilder = (variant, lod) => {
         tile: 3,
       });
     }
-    parts.push({
-      geometry: chamferBox(width * 0.3, 0.004, depth * 0.34, 0.002),
-      position: [width * 0.28, height / 2 - 0.01, -depth * 0.2],
-      rotation: [0.2, 0.3, 0],
-      tile: 2,
-    });
+    // Papel despegado: tiras finas levantadas del canto y de una cara. Sin
+    // esto la placa es una lámina blanca lisa y no se lee como escombro.
+    // Tamaño e inclinación FIJOS, y apoyadas por debajo del canto: levantarlas
+    // desde la cara con ángulo de semilla las sacaba del envolvente y cada
+    // variante medía y se centraba distinto.
+    for (let index = 0; index < 3; index += 1) {
+      parts.push({
+        geometry: chamferBox(width * 0.26, 0.003, depth * 0.2, 0.001),
+        position: [
+          (random() - 0.5) * width * 0.44,
+          height / 2 - 0.032,
+          (random() - 0.5) * depth * 0.44,
+        ],
+        rotation: [0.14, random() * 3, -0.1],
+        tile: 2,
+      });
+    }
+    // Yeso desmoronado en un borde: el canto nunca queda recto.
+    for (let index = 0; index < 4; index += 1) {
+      parts.push({
+        geometry: chamferBox(0.05, height * 0.7, 0.05, 0.008),
+        position: [
+          -width / 2 + 0.02,
+          0,
+          (index / 3 - 0.5) * depth * 0.8,
+        ],
+        rotation: [0, (random() - 0.5) * 0.6, 0],
+        tile: 2,
+      });
+    }
   }
   return { parts };
 };
 
-/** Bolsa de arena: cobertura blanda que se apila. */
+/**
+ * Bolsa de arena.
+ *
+ * Se arma por rebanadas transversales que se ensanchan hacia el centro, en vez
+ * de una cuña con una caja encima. Es lo que le da la panza: una bolsa llena no
+ * tiene lados rectos, se abomba donde está el peso y se pellizca en las puntas.
+ * Antes leía como una piedra justamente por eso.
+ */
 const sandbag: PropBuilder = (variant, lod) => {
   const random = variantRandom("sandbag", variant);
   const width = 0.52;
   const height = 0.2;
   const depth = 0.32;
+  const half = width / 2;
+  const belly = depth / 2;
+  const rise = height / 2;
+
+  // Cuerpo barrido de una sola pieza. Apilar cajas —con chaflán o con esquinas
+  // esféricas— daba bultos facetados y la bolsa leía como una piedra. Un barrido
+  // con secciones que se abren y se vuelven a pellizcar es lo que da la tela
+  // llena: panza continua en el medio y puntas atadas en los extremos.
+  const sections = [
+    { z: -half, halfWidth: belly * 0.1, top: rise * 0.16, bottom: rise * 0.16, y: -rise * 0.5 },
+    { z: -half * 0.66, halfWidth: belly * 0.62, top: rise * 0.66, bottom: rise * 0.72, y: -rise * 0.16 },
+    { z: -half * 0.24, halfWidth: belly * 0.97, top: rise * 0.97, bottom: rise, y: 0 },
+    { z: half * 0.24, halfWidth: belly, top: rise, bottom: rise, y: 0 },
+    { z: half * 0.66, halfWidth: belly * 0.62, top: rise * 0.66, bottom: rise * 0.72, y: -rise * 0.16 },
+    { z: half, halfWidth: belly * 0.1, top: rise * 0.16, bottom: rise * 0.16, y: -rise * 0.5 },
+  ];
   const parts: GeometryPart[] = [
-    // Panza: más ancha en el medio que en las puntas.
     {
-      geometry: chamferWedge({
-        length: width,
-        height,
-        frontWidth: depth * 0.66,
-        rearWidth: depth * 0.66,
-        topFrontWidth: depth * 0.52,
-        topRearWidth: depth * 0.52,
-        chamfer: 0.05,
-      }),
+      // Exponente cerca de 1: sección elíptica, o sea sin cantos. Más alto
+      // volvería a darle esquinas y con eso vuelve a parecer una piedra.
+      geometry: loftedBody(sections, lod === 0 ? 14 : 8, 1.05),
+      // El barrido corre sobre Z y la bolsa es larga en X.
       rotation: [0, Math.PI / 2, 0],
       tile: 3,
     },
-    {
-      geometry: chamferBox(width * 0.72, height * 0.92, depth, 0.06),
-      position: [0, (random() - 0.5) * 0.008, 0],
-      tile: 3,
-    },
   ];
+
   if (lod === 0) {
-    // Costuras de las puntas atadas.
-    for (const sx of [-1, 1]) {
+    // Pliegues de la costura: aros HUNDIDOS en la panza. A ras de superficie
+    // sobresalían por las esquinas de la sección y la bolsa parecía tener
+    // aletas; un pliegue de tela va hacia adentro, no hacia afuera.
+    for (let index = 0; index < 3; index += 1) {
+      // El radio se toma de la media ALTURA, no de la media profundidad: un
+      // cilindro reparte su radio entre Y y Z por igual, y usando la
+      // profundidad el aro medía en Y exactamente lo mismo que la bolsa y
+      // asomaba justo por arriba, como tres aletas.
       parts.push({
-        geometry: chamferBox(0.04, height * 0.5, depth * 0.4, 0.008),
-        position: [sx * (width / 2 - 0.02), 0, 0],
+        geometry: new CylinderGeometry(rise * 0.82, rise * 0.82, 0.012, 12, 1),
+        position: [(index - 1) * width * 0.2 + (random() - 0.5) * 0.015, 0, 0],
+        rotation: [0, 0, Math.PI / 2],
+        scale: [1, 1, belly / rise],
         tile: 3,
       });
     }

@@ -165,7 +165,7 @@ const harddrive: PropBuilder = (variant, lod) => {
     { geometry: chamferBox(width, height, depth, 0.004), tile: 0 },
   ];
   if (lod === 0) {
-    // Tapa atornillada arriba y placa verde abajo: las dos caras del disco.
+    // Tapa atornillada arriba y placa abajo: las dos caras del disco.
     parts.push({
       geometry: chamferBox(width * 0.88, 0.004, depth * 0.86, 0.002),
       position: [0, height / 2 - 0.001, 0],
@@ -175,6 +175,28 @@ const harddrive: PropBuilder = (variant, lod) => {
       geometry: chamferBox(width * 0.8, 0.004, depth * 0.78, 0.002),
       position: [(random() - 0.5) * 0.006, -height / 2 + 0.002, 0],
       tile: 3,
+    });
+    // Los tornillos de esquina y el conector: sin ellos es una tablita. Es lo
+    // que a esta escala dice "aparato" en vez de "pedazo de material".
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        parts.push({
+          geometry: new CylinderGeometry(0.005, 0.005, 0.004, 6, 1),
+          position: [sx * width * 0.4, height / 2, sz * depth * 0.36],
+          tile: 3,
+        });
+      }
+    }
+    parts.push({
+      geometry: chamferBox(0.042, 0.009, 0.014, 0.002),
+      position: [-width * 0.22, -height * 0.1, -depth / 2 + 0.005],
+      tile: 3,
+    });
+    // Etiqueta: la mancha clara que rompe el bloque oscuro.
+    parts.push({
+      geometry: chamferBox(width * 0.6, 0.002, depth * 0.5, 0.001),
+      position: [width * 0.08, height / 2 + 0.002, 0],
+      tile: 2,
     });
   }
   return { parts };

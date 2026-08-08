@@ -5,7 +5,7 @@
   "vehicles": [
     {
       "id": "buggy",
-      "bytes": 1375908,
+      "bytes": 1706668,
       "budgetBytes": 8388608,
       "lods": [
         {
@@ -30,7 +30,7 @@
     },
     {
       "id": "airboat",
-      "bytes": 1244312,
+      "bytes": 1453776,
       "budgetBytes": 8388608,
       "lods": [
         {
@@ -55,7 +55,7 @@
     },
     {
       "id": "helicopter",
-      "bytes": 1359916,
+      "bytes": 1762464,
       "budgetBytes": 14680064,
       "lods": [
         {
@@ -80,7 +80,7 @@
     },
     {
       "id": "rebelCrawler",
-      "bytes": 1222224,
+      "bytes": 1500300,
       "budgetBytes": 9437184,
       "lods": [
         {
@@ -105,7 +105,7 @@
     },
     {
       "id": "combineGlider",
-      "bytes": 766040,
+      "bytes": 812216,
       "budgetBytes": 9437184,
       "lods": [
         {
@@ -130,7 +130,7 @@
     },
     {
       "id": "combineSwimmer",
-      "bytes": 1032344,
+      "bytes": 1181136,
       "budgetBytes": 9437184,
       "lods": [
         {
