@@ -61,10 +61,12 @@ describe("PropArchetypes", () => {
   it("todo prop de metal se abolla, salvo el barril explosivo", () => {
     for (const archetype of archetypes) {
       if (archetype.surface !== "metal") continue;
-      // El explosivo es la excepción a propósito: con 25 de vida muere en dos
-      // tiros, así que el abollón no llegaría a verse y encima gastaría una de
-      // las 12 mallas clonadas. Además se lee mejor como "disparame y vuelo".
-      if (archetype.id === "explosiveBarrel") {
+      // Dos excepciones, las dos a propósito. El barril explosivo: con 25 de
+      // vida muere en dos tiros, así que el abollón no llegaría a verse y encima
+      // gastaría una de las 12 mallas clonadas; se lee mejor como "disparame y
+      // vuelo". La bicicleta: son tubos de 18 mm, no chapa — un tubo se dobla,
+      // no se abolla, y el kernel no tiene superficie donde morder.
+      if (archetype.id === "explosiveBarrel" || archetype.id === "bicycle") {
         expect(archetype.deform).toBeUndefined();
         continue;
       }

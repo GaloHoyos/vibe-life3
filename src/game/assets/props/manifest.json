@@ -3020,6 +3020,558 @@
         "chunk_2",
         "chunk_3"
       ]
+    },
+    {
+      "id": "propsKit",
+      "glbBytes": 702860,
+      "props": [
+        {
+          "id": "ladder",
+          "pack": "propsKit",
+          "bounds": [
+            0.44,
+            2.6,
+            0.12
+          ],
+          "lods": [
+            {
+              "triangles": 928,
+              "draws": 2
+            },
+            {
+              "triangles": 376,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "handrail",
+          "pack": "propsKit",
+          "bounds": [
+            2.02,
+            1.06,
+            0.14
+          ],
+          "lods": [
+            {
+              "triangles": 496,
+              "draws": 2
+            },
+            {
+              "triangles": 424,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "fenceSection",
+          "pack": "propsKit",
+          "bounds": [
+            2.2,
+            1.9,
+            0.06
+          ],
+          "lods": [
+            {
+              "triangles": 392,
+              "draws": 2
+            },
+            {
+              "triangles": 248,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 5,
+          "variants": 2
+        },
+        {
+          "id": "ammoCrate",
+          "pack": "propsKit",
+          "bounds": [
+            0.796,
+            0.46,
+            0.521
+          ],
+          "lods": [
+            {
+              "triangles": 792,
+              "draws": 2
+            },
+            {
+              "triangles": 528,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "medCrate",
+          "pack": "propsKit",
+          "bounds": [
+            0.796,
+            0.46,
+            0.521
+          ],
+          "lods": [
+            {
+              "triangles": 792,
+              "draws": 2
+            },
+            {
+              "triangles": 528,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "toolCart",
+          "pack": "propsKit",
+          "bounds": [
+            0.707,
+            0.918,
+            0.491
+          ],
+          "lods": [
+            {
+              "triangles": 1088,
+              "draws": 2
+            },
+            {
+              "triangles": 336,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "wheelbarrow",
+          "pack": "propsKit",
+          "bounds": [
+            0.66,
+            1.333,
+            1.231
+          ],
+          "lods": [
+            {
+              "triangles": 648,
+              "draws": 2
+            },
+            {
+              "triangles": 428,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "shoppingCart",
+          "pack": "propsKit",
+          "bounds": [
+            0.592,
+            0.993,
+            0.87
+          ],
+          "lods": [
+            {
+              "triangles": 1480,
+              "draws": 2
+            },
+            {
+              "triangles": 696,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "bicycle",
+          "pack": "propsKit",
+          "bounds": [
+            1.72,
+            1.161,
+            0.13
+          ],
+          "lods": [
+            {
+              "triangles": 952,
+              "draws": 2
+            },
+            {
+              "triangles": 480,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "streetSign",
+          "pack": "propsKit",
+          "bounds": [
+            0.602,
+            2.35,
+            0.18
+          ],
+          "lods": [
+            {
+              "triangles": 336,
+              "draws": 2
+            },
+            {
+              "triangles": 128,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "mailbox",
+          "pack": "propsKit",
+          "bounds": [
+            0.44,
+            1.24,
+            0.404
+          ],
+          "lods": [
+            {
+              "triangles": 328,
+              "draws": 2
+            },
+            {
+              "triangles": 128,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 0,
+          "variants": 2
+        },
+        {
+          "id": "flowerPot",
+          "pack": "propsKit",
+          "bounds": [
+            0.393,
+            0.34,
+            0.403
+          ],
+          "lods": [
+            {
+              "triangles": 336,
+              "draws": 2
+            },
+            {
+              "triangles": 112,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 3,
+          "variants": 2
+        },
+        {
+          "id": "crateLong",
+          "pack": "propsKit",
+          "bounds": [
+            1.55,
+            0.422,
+            0.462
+          ],
+          "lods": [
+            {
+              "triangles": 748,
+              "draws": 2
+            },
+            {
+              "triangles": 528,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 6,
+          "variants": 2
+        },
+        {
+          "id": "crateHuge",
+          "pack": "propsKit",
+          "bounds": [
+            1.625,
+            1.6,
+            1.625
+          ],
+          "lods": [
+            {
+              "triangles": 1056,
+              "draws": 2
+            },
+            {
+              "triangles": 880,
+              "draws": 2
+            }
+          ],
+          "colliderNodes": 1,
+          "colliderVertices": 8,
+          "chunkNodes": 8,
+          "variants": 2
+        }
+      ],
+      "nodeNames": [
+        "propsKit_pack",
+        "prop_ladder",
+        "visual_lod0",
+        "variant_0",
+        "ladder_lod0_v0",
+        "variant_1",
+        "ladder_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "ladder_lod1_v0",
+        "variant_1",
+        "ladder_lod1_v1",
+        "collider_0",
+        "prop_handrail",
+        "visual_lod0",
+        "variant_0",
+        "handrail_lod0_v0",
+        "variant_1",
+        "handrail_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "handrail_lod1_v0",
+        "variant_1",
+        "handrail_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_fenceSection",
+        "visual_lod0",
+        "variant_0",
+        "fenceSection_lod0_v0",
+        "variant_1",
+        "fenceSection_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "fenceSection_lod1_v0",
+        "variant_1",
+        "fenceSection_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "prop_ammoCrate",
+        "visual_lod0",
+        "variant_0",
+        "ammoCrate_lod0_v0",
+        "variant_1",
+        "ammoCrate_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "ammoCrate_lod1_v0",
+        "variant_1",
+        "ammoCrate_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_medCrate",
+        "visual_lod0",
+        "variant_0",
+        "medCrate_lod0_v0",
+        "variant_1",
+        "medCrate_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "medCrate_lod1_v0",
+        "variant_1",
+        "medCrate_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_toolCart",
+        "visual_lod0",
+        "variant_0",
+        "toolCart_lod0_v0",
+        "variant_1",
+        "toolCart_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "toolCart_lod1_v0",
+        "variant_1",
+        "toolCart_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_wheelbarrow",
+        "visual_lod0",
+        "variant_0",
+        "wheelbarrow_lod0_v0",
+        "variant_1",
+        "wheelbarrow_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "wheelbarrow_lod1_v0",
+        "variant_1",
+        "wheelbarrow_lod1_v1",
+        "collider_0",
+        "prop_shoppingCart",
+        "visual_lod0",
+        "variant_0",
+        "shoppingCart_lod0_v0",
+        "variant_1",
+        "shoppingCart_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "shoppingCart_lod1_v0",
+        "variant_1",
+        "shoppingCart_lod1_v1",
+        "collider_0",
+        "prop_bicycle",
+        "visual_lod0",
+        "variant_0",
+        "bicycle_lod0_v0",
+        "variant_1",
+        "bicycle_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "bicycle_lod1_v0",
+        "variant_1",
+        "bicycle_lod1_v1",
+        "collider_0",
+        "prop_streetSign",
+        "visual_lod0",
+        "variant_0",
+        "streetSign_lod0_v0",
+        "variant_1",
+        "streetSign_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "streetSign_lod1_v0",
+        "variant_1",
+        "streetSign_lod1_v1",
+        "collider_0",
+        "prop_mailbox",
+        "visual_lod0",
+        "variant_0",
+        "mailbox_lod0_v0",
+        "variant_1",
+        "mailbox_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "mailbox_lod1_v0",
+        "variant_1",
+        "mailbox_lod1_v1",
+        "collider_0",
+        "prop_flowerPot",
+        "visual_lod0",
+        "variant_0",
+        "flowerPot_lod0_v0",
+        "variant_1",
+        "flowerPot_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "flowerPot_lod1_v0",
+        "variant_1",
+        "flowerPot_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "prop_crateLong",
+        "visual_lod0",
+        "variant_0",
+        "crateLong_lod0_v0",
+        "variant_1",
+        "crateLong_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "crateLong_lod1_v0",
+        "variant_1",
+        "crateLong_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "prop_crateHuge",
+        "visual_lod0",
+        "variant_0",
+        "crateHuge_lod0_v0",
+        "variant_1",
+        "crateHuge_lod0_v1",
+        "visual_lod1",
+        "variant_0",
+        "crateHuge_lod1_v0",
+        "variant_1",
+        "crateHuge_lod1_v1",
+        "collider_0",
+        "chunks",
+        "chunk_0",
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+        "chunk_4",
+        "chunk_5",
+        "chunk_6",
+        "chunk_7"
+      ]
     }
   ]
 }

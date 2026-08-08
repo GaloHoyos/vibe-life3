@@ -1,4 +1,4 @@
-﻿import { Color, Vector3 } from "three";
+import { Color, Vector3 } from "three";
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { BackgroundAmbienceSystem } from "@engine/audio/systems/BackgroundAmbienceSystem";
 import { AcousticSpaceSystem } from "@engine/audio/spatial/AcousticSpaceSystem";
@@ -139,6 +139,7 @@ import {
   type PropSystemSaveSnapshot,
 } from "@game/gameplay/props/PropSystem";
 import { PropAssetRegistry } from "@game/assets/props/PropAssetRegistry";
+import type { PropDrop } from "@game/config/props.config";
 import { PropContactMonitor } from "@game/gameplay/props/PropContactMonitor";
 import { PropDeformationSystem } from "@game/gameplay/props/PropDeformationSystem";
 import { PropStructureSystem } from "@game/gameplay/props/PropStructureSystem";
@@ -769,6 +770,9 @@ export class Game {
     // cajón que el jugador empujó, dejaban puntos de cobertura sobre el aire.
     eventBus.on("prop.displaced", ({ propId }) => {
       this.tacticalMap?.invalidateSource(propId);
+    });
+    eventBus.on("prop.dropped", (payload) => {
+      void this.spawnPropDrops(payload.propId, payload.position, payload.drops);
     });
     eventBus.on("npc.killed", ({ id, characterId }) => {
       if (characterId === "gunship") {
@@ -1624,6 +1628,58 @@ export class Game {
         position,
       });
       this.ammoPickups.push(pickup);
+    }
+    this.refreshSaveEntityRegistry();
+  }
+
+  /**
+   * Instancia lo que dejó un cajón al abrirse.
+   *
+   * Vive acá y no en `PropBreakSystem` porque los pickups necesitan el
+   * `AssetManager` y las listas de guardado, que son de `Game`. El sistema de
+   * rotura sólo avisa qué y dónde.
+   */
+  private async spawnPropDrops(
+    propId: string,
+    position: Vector3,
+    drops: readonly PropDrop[],
+  ): Promise<void> {
+    const services = this.engine.services;
+    const scene = services.resolve(EngineTokens.Scene);
+    const physics = services.resolve(EngineTokens.Physics);
+    const assets = services.resolve(EngineTokens.Assets);
+    const eventBus = services.resolve(GameTokens.EventBus);
+
+    let index = 0;
+    for (const drop of drops) {
+      const count = Math.max(1, drop.count ?? 1);
+      for (let copy = 0; copy < count; copy += 1) {
+        // Repartidos en un anillo chico: apilados en el mismo punto se empujan
+        // entre sí al despertar y salen disparados.
+        const angle = (index / 6) * Math.PI * 2;
+        const at = position
+          .clone()
+          .add(new Vector3(Math.cos(angle) * 0.22, 0.25, Math.sin(angle) * 0.22));
+        const id = `${propId}-drop-${index}`;
+        index += 1;
+        if ("item" in drop) {
+          this.itemPickups.push(
+            await ItemPickup.create(scene.scene, physics, assets, services.resolve(GameTokens.EventBus), {
+              id,
+              itemId: drop.item,
+              position: at,
+            }),
+          );
+        } else {
+          this.ammoPickups.push(
+            await AmmoPickup.create(scene.scene, physics, assets, {
+              id,
+              ammoId: drop.ammo,
+              position: at,
+            }),
+          );
+        }
+      }
     }
     this.refreshSaveEntityRegistry();
   }

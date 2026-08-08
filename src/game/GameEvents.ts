@@ -11,7 +11,7 @@ import type { ChargerKind } from "@game/config/items.config";
 import type { DifficultyLevel } from "@game/config/difficulty.config";
 import type { DamageType } from "@shared/types/lifecycle";
 import type { SurfaceType } from "@shared/types/Surface";
-import type { PropArchetypeId, PropBreakReaction } from "@game/config/props.config";
+import type { PropArchetypeId, PropBreakReaction, PropDrop } from "@game/config/props.config";
 import type { ActivatorRef } from "@game/script/ActivatorRef";
 import type {
   VehicleArchetypeId,
@@ -147,6 +147,12 @@ export interface GameEventMap {
     /** `collapse` derrumba la estructura entera, no sólo las uniones del muerto. */
     reaction: PropBreakReaction["kind"];
     sourceId?: string;
+  };
+  /** Un prop se abrió y dejó lo que tenía adentro. Lo instancia `Game`. */
+  "prop.dropped": {
+    propId: string;
+    position: Vector3;
+    drops: readonly PropDrop[];
   };
   /**
    * Un prop dejó el lugar donde lo autoraron. Se emite UNA vez por prop, no por

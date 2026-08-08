@@ -73,6 +73,7 @@ function makeRegistry(scene: Object3D): PropAssetRegistry {
       propsAppliance: "appliance",
       propsDebris: "debris",
       propsTech: "tech",
+      propsKit: "kit",
     },
   });
 }

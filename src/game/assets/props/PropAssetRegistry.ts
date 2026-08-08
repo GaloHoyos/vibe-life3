@@ -70,6 +70,7 @@ export const PROP_PACK_URLS: Readonly<Record<PropPackId, string>> = {
   propsAppliance: new URL("./models/propsAppliance.glb", import.meta.url).href,
   propsDebris: new URL("./models/propsDebris.glb", import.meta.url).href,
   propsTech: new URL("./models/propsTech.glb", import.meta.url).href,
+  propsKit: new URL("./models/propsKit.glb", import.meta.url).href,
 };
 
 /** Distancia (m) a la que un prop pasa a su malla simplificada. */

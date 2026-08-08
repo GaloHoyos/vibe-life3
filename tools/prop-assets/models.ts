@@ -13,6 +13,7 @@ import type { PropBuilder, PropLod } from "./builderKit.js";
 import { variantRandom } from "./builderKit.js";
 import { DEBRIS_BUILDERS } from "./modelsDebris.js";
 import { INTERIOR_BUILDERS } from "./modelsInterior.js";
+import { KIT_BUILDERS } from "./modelsKit.js";
 import { TECH_BUILDERS } from "./modelsTech.js";
 import type { Euler, GeometryPart, PropAssetId, Vec3 } from "./types.js";
 
@@ -1205,6 +1206,7 @@ export const PROP_BUILDERS: Readonly<Record<PropAssetId, PropBuilder>> = {
   ...INTERIOR_BUILDERS,
   ...DEBRIS_BUILDERS,
   ...TECH_BUILDERS,
+  ...KIT_BUILDERS,
 };
 
 // ---------------------------------------------------------------------------

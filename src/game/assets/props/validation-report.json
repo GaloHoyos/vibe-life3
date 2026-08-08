@@ -481,7 +481,7 @@
     },
     {
       "id": "propsTech",
-      "bytes": 737612,
+      "bytes": 720068,
       "budgetBytes": 786432,
       "props": [
         {
@@ -566,7 +566,7 @@
           "lod0Triangles": 792,
           "lod1Triangles": 528,
           "colliderVertices": 8,
-          "chunks": 5
+          "chunks": 0
         },
         {
           "id": "combineEmitter",
@@ -581,6 +581,115 @@
           "lod1Triangles": 176,
           "colliderVertices": 8,
           "chunks": 4
+        }
+      ],
+      "khronos": {
+        "errors": 0,
+        "warnings": 0
+      }
+    },
+    {
+      "id": "propsKit",
+      "bytes": 777368,
+      "budgetBytes": 786432,
+      "props": [
+        {
+          "id": "ladder",
+          "lod0Triangles": 928,
+          "lod1Triangles": 376,
+          "colliderVertices": 8,
+          "chunks": 0
+        },
+        {
+          "id": "handrail",
+          "lod0Triangles": 496,
+          "lod1Triangles": 424,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "fenceSection",
+          "lod0Triangles": 392,
+          "lod1Triangles": 248,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "ammoCrate",
+          "lod0Triangles": 792,
+          "lod1Triangles": 528,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "medCrate",
+          "lod0Triangles": 792,
+          "lod1Triangles": 528,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "toolCart",
+          "lod0Triangles": 1088,
+          "lod1Triangles": 336,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "wheelbarrow",
+          "lod0Triangles": 648,
+          "lod1Triangles": 428,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "shoppingCart",
+          "lod0Triangles": 1480,
+          "lod1Triangles": 696,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "bicycle",
+          "lod0Triangles": 952,
+          "lod1Triangles": 480,
+          "colliderVertices": 8,
+          "chunks": 5
+        },
+        {
+          "id": "streetSign",
+          "lod0Triangles": 336,
+          "lod1Triangles": 128,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "mailbox",
+          "lod0Triangles": 328,
+          "lod1Triangles": 128,
+          "colliderVertices": 8,
+          "chunks": 4
+        },
+        {
+          "id": "flowerPot",
+          "lod0Triangles": 336,
+          "lod1Triangles": 112,
+          "colliderVertices": 8,
+          "chunks": 3
+        },
+        {
+          "id": "crateLong",
+          "lod0Triangles": 748,
+          "lod1Triangles": 528,
+          "colliderVertices": 8,
+          "chunks": 6
+        },
+        {
+          "id": "crateHuge",
+          "lod0Triangles": 1056,
+          "lod1Triangles": 880,
+          "colliderVertices": 8,
+          "chunks": 8
         }
       ],
       "khronos": {

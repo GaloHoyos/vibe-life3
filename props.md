@@ -4,7 +4,7 @@ Documento de trabajo de la rama de props. Registra qué hay, qué falta y con qu
 criterio se decide. No es documentación de arquitectura: eso vive en `CLAUDE.md`
 y en los comentarios del código.
 
-**Estado:** 73 de ~90 arquetipos objetivo. Prioridades 1 a 4 completas.
+**Estado:** 87 arquetipos en 8 packs. **Hoja de ruta completa.**
 
 ---
 
@@ -92,8 +92,8 @@ que el jugador los mire. El mobiliario es la otra mitad. Los objetos "de guion"
 
 ## Lo que ya existe
 
-73 arquetipos en 7 packs GLB. La tabla lista los de las prioridades 1 y 2; el
-escombro y la electrónica están más abajo, en sus etapas.
+87 arquetipos en 8 packs GLB. La tabla lista los de las prioridades 1 y 2; el
+escombro, la electrónica y la utilería están más abajo, en sus etapas.
 
 | # | id | Nombre | Pack | Superficie | Bounds (m) | Rotura | Abolla |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -167,10 +167,26 @@ Rango cubierto de punta a punta: de 0.2 kg (botella de plástico) a 210 kg
 | `shatter` | 18 | — |
 | `explode` | 3 | Barril, bidón de nafta (chico) y garrafa (grande) |
 | `none` | 7 | Cono, bloque, balde, lata, tacho, caño, neumático |
+| `spawnItem` | 2 | Cajón de munición y cajón médico |
 | `collapse` | **0** | Estantería, andamio, torre (los builders existen, sin arquetipo propio) |
-| `spawnItem` | **0** | Cajón de munición, botiquín roto, caja de suministros |
 
 ---
+
+## Qué queda
+
+La hoja de ruta está cerrada. Lo que sigue son huecos concretos, no etapas:
+
+- **`collapse` sigue sin arquetipo propio.** Los builders de estructura existen
+  y las pilas de cajones ya se derrumban, pero ningún arquetipo declara esa
+  reacción por sí mismo.
+- **`scaffoldTowerStructure` arma sus torres con `concreteBlock`** —un ladrillo
+  de 40 cm indestructible— aunque ya existen `iBeam` y `scaffoldPipe`, que son
+  los miembros naturales. Cambiarlo toca los mapas que ya la usan.
+- **Falta vidrio plano** (ventana, vitrina suelta): el vidrio existe sólo en
+  botellas, frascos y pantallas.
+- **Ningún prop pasa de 250 kg**, que es el techo de la gravity gun. Si alguna
+  vez hace falta algo que de verdad no se pueda mover, hay que decidir si vive
+  como prop o como `staticBoxes`.
 
 ## Objetivo
 
@@ -184,7 +200,8 @@ presupuesto de atlas: cada pack comparte 4 tiles PBR.
 | `propsSynthetic` | Plástico, vidrio, goma | 8 | 16 | 534 KB |
 | `propsInterior` | Mobiliario y tapizado | 12 | 14 | 713 KB |
 | `propsAppliance` | Electrodomésticos, baño, lockers | 8 | 10 | 413 KB |
-| `propsDebris` | Escombro, chatarra, yeso | 11 | 12 | 658 KB |
+| `propsDebris` | Escombro, chatarra, yeso | 11 | 11 | 658 KB |
+| `propsKit` | Utilería de autoría | 14 | 14 | 686 KB |
 | `propsTech` | Electrónica, laboratorio, Combine | 14 | 14 | 703 KB |
 
 ### ~~Prioridad 1 — lo que más cambia el juego~~ ✅ HECHA
@@ -316,13 +333,31 @@ lo que hace un parapeto.
 Los dos props de casi 1.9 m —rack y expendedora— son además pesos pesados de
 145 y 195 kg.
 
-### Prioridad 5 — utilería de mapa custom
+### ~~Prioridad 5 — utilería de mapa custom~~ ✅ HECHA
 
-No son de campaña; son para el editor. Objetos que un autor quiere tener a mano.
+14 props en `propsKit`. No son de campaña: son para vestir un espacio sin
+modelar nada. Traen la última capacidad que faltaba del plan original.
 
-`ladder`, `handrail`, `fenceSection`, `sandbagWall`, `ammoCrate` (`spawnItem`),
-`medCrate` (`spawnItem`), `toolCart`, `wheelbarrow`, `shoppingCart`, `bicycle`,
-`streetSign`, `mailbox`, `flowerPot`, `crateLong`, `crateHuge`.
+**`spawnItem`**, la reacción de rotura que estaba en cero. Un cajón se abre y
+deja pickups reales: `ammoCrate` suelta dos de SMG y una de pistola, `medCrate`
+dos botiquines y una batería. No reemplaza a la rotura — el cajón se parte
+igual, y sin fragmentos desaparecería de golpe dejando los pickups flotando.
+
+El reparto vive en `Game` y no en `PropBreakSystem`: los pickups necesitan el
+`AssetManager` y las listas de guardado. El sistema de rotura sólo emite
+`prop.dropped` con qué y dónde. Salen en anillo y no apilados, porque juntos en
+el mismo punto se empujan al despertar y salen disparados.
+
+**Los que ruedan.** Changuito (fricción 0.30, la más baja del catálogo), carro
+de herramientas y carretilla. Junto con la silla de oficina son los únicos
+objetos que no se frenan solos.
+
+Se descartó `sandbagWall`: es una pila de `sandbag`, o sea un preset de
+estructura, no un arquetipo.
+
+**La bicicleta es la segunda excepción de metal sin abollón**, después del
+barril explosivo. Un cuadro son tubos de 18 mm: se dobla, no se abolla, y el
+kernel no tiene superficie donde morder. Está anotado en el test de invariantes.
 
 ---
 
@@ -392,3 +427,4 @@ Trampas que ya costaron sangre y están documentadas en el código:
 | 2026-08-07 | Superficie `fabric` agregada: absorción 0.88 (la más alta), impactos sobre `physics.hl2.body.soft*`, sin pool de rotura. Sillón, sillón individual y colchón migrados |
 | 2026-08-07 | **Prioridad 3 completa: 48 → 59 arquetipos.** Pack `propsDebris` |
 | 2026-08-07 | **Prioridad 4 completa: 59 → 73 arquetipos.** Pack `propsTech`; el pipeline aprendió piezas **emisivas** (tercer bucket de `PropGeometry`, material propio como el vidrio) |
+| 2026-08-08 | **Prioridad 5 completa: 73 → 87 arquetipos.** Pack `propsKit`; implementada la reacción **`spawnItem`** (evento `prop.dropped`, pickups instanciados por `Game`). **Hoja de ruta terminada** |

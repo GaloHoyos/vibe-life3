@@ -174,6 +174,16 @@ export class PropBreakSystem implements Disposable {
         // esta reacción: derribar la estructura desde acá exigiría quitar
         // joints mientras se resuelve una rotura, que es donde vive el peligro.
         return;
+      case "spawnItem":
+        // Los pickups los crea `Game`, que es quien tiene el AssetManager y las
+        // listas donde viven. Acá sólo se avisa QUÉ y DÓNDE: este sistema no
+        // tiene por qué saber cómo se instancia un botiquín.
+        this.eventBus.emit("prop.dropped", {
+          propId: prop.id,
+          position: position.clone(),
+          drops: reaction.drops,
+        });
+        return;
     }
   }
 

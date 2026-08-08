@@ -14,7 +14,8 @@ export type PropPackId =
   | "propsInterior"
   | "propsAppliance"
   | "propsDebris"
-  | "propsTech";
+  | "propsTech"
+  | "propsKit";
 
 export type PropAssetId =
   | "woodenCrate"
@@ -89,7 +90,21 @@ export type PropAssetId =
   | "combineCrate"
   | "combineBarrier"
   | "combineEmitter"
-  | "combineLamp";
+  | "combineLamp"
+  | "ladder"
+  | "handrail"
+  | "fenceSection"
+  | "ammoCrate"
+  | "medCrate"
+  | "toolCart"
+  | "wheelbarrow"
+  | "shoppingCart"
+  | "bicycle"
+  | "streetSign"
+  | "mailbox"
+  | "flowerPot"
+  | "crateLong"
+  | "crateHuge";
 
 export interface PropAssetSpec {
   readonly id: PropAssetId;
@@ -217,6 +232,14 @@ const TECH_FINISHES: readonly [AtlasFinish, AtlasFinish, AtlasFinish, AtlasFinis
   { color: [58, 66, 72], roughness: 0.42, metallic: 0.8, wear: 0.4, grain: 1.4 },
   { color: [186, 178, 156], roughness: 0.68, metallic: 0.02, wear: 0.6, grain: 2.2 },
   { color: [42, 42, 44], roughness: 0.7, metallic: 0.1, wear: 0.3, grain: 2.4 },
+];
+
+const KIT_FINISHES: readonly [AtlasFinish, AtlasFinish, AtlasFinish, AtlasFinish] = [
+  // 0 chapa pintada, 1 acero galvanizado, 2 madera y terracota, 3 goma y plastico.
+  { color: [128, 118, 96], roughness: 0.6, metallic: 0.5, wear: 0.6, grain: 1.9 },
+  { color: [164, 168, 170], roughness: 0.48, metallic: 0.9, wear: 0.5, grain: 1.3 },
+  { color: [158, 118, 82], roughness: 0.88, metallic: 0.01, wear: 0.55, grain: 2.8 },
+  { color: [52, 50, 50], roughness: 0.78, metallic: 0.05, wear: 0.35, grain: 2.6 },
 ];
 
 export const PROP_PACK_SPECS: readonly PropPackSpec[] = [
@@ -398,6 +421,33 @@ export const PROP_PACK_SPECS: readonly PropPackSpec[] = [
       { id: "combineBarrier", displayName: "Barricada Combine", variants: 2, bounds: [1.25, 1.063, 0.429], chunks: 0 },
       { id: "combineEmitter", displayName: "Emisor Combine", variants: 2, bounds: [0.36, 0.92, 0.36], chunks: 5 },
       { id: "combineLamp", displayName: "Lámpara Combine", variants: 2, bounds: [0.42, 0.24, 0.267], chunks: 4 },
+    ],
+  },
+  {
+    id: "propsKit",
+    displayName: "Utilería de mapa",
+    seed: 20260814,
+    atlasSize: 512,
+    finishes: KIT_FINISHES,
+    grimeColor: [74, 68, 58],
+    maxGlbBytes: 768 * 1024,
+    maxTrianglesLod0: 3500,
+    maxDrawsPerLod: 3,
+    props: [
+      { id: "ladder", displayName: "Escalera", variants: 2, bounds: [0.44, 2.6, 0.12], chunks: 0 },
+      { id: "handrail", displayName: "Baranda", variants: 2, bounds: [2.02, 1.06, 0.14], chunks: 5 },
+      { id: "fenceSection", displayName: "Tramo de cerco", variants: 2, bounds: [2.2, 1.9, 0.06], chunks: 5 },
+      { id: "ammoCrate", displayName: "Cajón de munición", variants: 2, bounds: [0.796, 0.46, 0.521], chunks: 6 },
+      { id: "medCrate", displayName: "Cajón médico", variants: 2, bounds: [0.796, 0.46, 0.521], chunks: 6 },
+      { id: "toolCart", displayName: "Carro de herramientas", variants: 2, bounds: [0.707, 0.918, 0.491], chunks: 6 },
+      { id: "wheelbarrow", displayName: "Carretilla", variants: 2, bounds: [0.66, 1.333, 1.231], chunks: 0 },
+      { id: "shoppingCart", displayName: "Changuito", variants: 2, bounds: [0.592, 0.993, 0.87], chunks: 0 },
+      { id: "bicycle", displayName: "Bicicleta", variants: 2, bounds: [1.72, 1.161, 0.13], chunks: 0 },
+      { id: "streetSign", displayName: "Cartel de calle", variants: 2, bounds: [0.602, 2.35, 0.18], chunks: 0 },
+      { id: "mailbox", displayName: "Buzón", variants: 2, bounds: [0.44, 1.24, 0.404], chunks: 0 },
+      { id: "flowerPot", displayName: "Maceta", variants: 2, bounds: [0.393, 0.34, 0.403], chunks: 3 },
+      { id: "crateLong", displayName: "Cajón largo", variants: 2, bounds: [1.55, 0.422, 0.462], chunks: 6 },
+      { id: "crateHuge", displayName: "Cajón grande", variants: 2, bounds: [1.625, 1.6, 1.625], chunks: 8 },
     ],
   },
 ];

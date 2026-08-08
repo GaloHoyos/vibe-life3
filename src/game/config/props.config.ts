@@ -1,5 +1,7 @@
 import type { DamageType } from "@shared/types/lifecycle";
 import type { SurfaceType } from "@shared/types/Surface";
+import type { AmmoId } from "./ammo.config";
+import type { ItemId } from "./items.config";
 
 /**
  * Tabla de props, análoga a `prop_data.txt` de HL2: masa, vida, material y qué
@@ -85,6 +87,20 @@ export const PROP_ARCHETYPE_IDS = [
   "combineBarrier",
   "combineEmitter",
   "combineLamp",
+  "ladder",
+  "handrail",
+  "fenceSection",
+  "ammoCrate",
+  "medCrate",
+  "toolCart",
+  "wheelbarrow",
+  "shoppingCart",
+  "bicycle",
+  "streetSign",
+  "mailbox",
+  "flowerPot",
+  "crateLong",
+  "crateHuge",
 ] as const;
 
 export type PropArchetypeId = (typeof PROP_ARCHETYPE_IDS)[number];
@@ -109,7 +125,17 @@ export type PropBreakReaction =
       readonly impulse: number;
     }
   /** Suelta las juntas de su estructura y deja caer a los miembros. */
-  | { readonly kind: "collapse" };
+  | { readonly kind: "collapse" }
+  /**
+   * Se parte y deja lo que tenía adentro. El cajón desaparece igual que con
+   * `shatter`; lo que cambia es que además spawnea pickups.
+   */
+  | { readonly kind: "spawnItem"; readonly drops: readonly PropDrop[] };
+
+/** Qué suelta un prop al abrirse. Uno u otro, nunca los dos. */
+export type PropDrop =
+  | { readonly item: ItemId; readonly count?: number }
+  | { readonly ammo: AmmoId; readonly count?: number };
 
 export interface PropDamageProfile {
   /** `false` = indestructible (cono de tránsito, bloque de hormigón). */
@@ -173,7 +199,8 @@ export type PropPackId =
   | "propsInterior"
   | "propsAppliance"
   | "propsDebris"
-  | "propsTech";
+  | "propsTech"
+  | "propsKit";
 
 export interface PropAssetRef {
   readonly pack: PropPackId;
@@ -2230,6 +2257,395 @@ export const PropArchetypes: Readonly<Record<PropArchetypeId, PropArchetype>> = 
     gibs: { minChunks: 3, maxChunks: 4, coreSurvives: false, burstSpeed: 3.2 },
     deform: metalDeform(0.08, 0.008, 0.03),
     bounds: [0.42, 0.24, 0.267],
+  },
+
+  // -------------------------------------------------------------------------
+  // Utilería de mapa
+  //
+  // No es contenido de campaña: es lo que un autor quiere tener a mano para
+  // vestir un espacio. Trae las dos primeras cosas de su tipo — los cajones que
+  // se abren y dejan pickups, y los objetos que ruedan de verdad.
+  // -------------------------------------------------------------------------
+
+  ladder: {
+    id: "ladder",
+    displayName: "Escalera",
+    asset: { pack: "propsKit", node: "prop_ladder", variants: 2 },
+    surface: "metal",
+    physicsMode: "dynamic",
+    physics: {
+      mass: 22,
+      linearDamping: 0.15,
+      angularDamping: 0.35,
+      friction: 0.55,
+      restitution: 0.08,
+      grabbable: true,
+      impactDamage: true,
+    },
+    damage: {
+      health: false,
+      impactDamageSpeed: 7,
+      impactDamageScale: 3,
+    },
+    breakReaction: INDESTRUCTIBLE,
+    deform: metalDeform(0.1, 0.01, 0.04),
+    bounds: [0.44, 2.6, 0.12],
+  },
+
+  handrail: {
+    id: "handrail",
+    displayName: "Baranda",
+    asset: { pack: "propsKit", node: "prop_handrail", variants: 2 },
+    surface: "metal",
+    physicsMode: "dynamic",
+    physics: {
+      mass: 26,
+      linearDamping: 0.15,
+      angularDamping: 0.35,
+      friction: 0.55,
+      restitution: 0.08,
+      grabbable: true,
+      impactDamage: true,
+    },
+    damage: {
+      health: 70,
+      multipliers: { melee: 1.2, bullet: 0.6, explosive: 2.5 },
+      impactDamageSpeed: 7,
+      impactDamageScale: 2.5,
+    },
+    breakReaction: SHATTER,
+    gibs: { minChunks: 3, maxChunks: 5, coreSurvives: false, burstSpeed: 3.4 },
+    deform: metalDeform(0.12, 0.012, 0.045),
+    bounds: [2.02, 1.06, 0.14],
+  },
+
+  fenceSection: {
+    id: "fenceSection",
+    displayName: "Tramo de cerco",
+    asset: { pack: "propsKit", node: "prop_fenceSection", variants: 2 },
+    surface: "metal",
+    physicsMode: "dynamic",
+    physics: {
+      mass: 34,
+      linearDamping: 0.2,
+      angularDamping: 0.45,
+      friction: 0.6,
+      restitution: 0.05,
+      grabbable: true,
+      impactDamage: true,
+    },
+    damage: {
+      health: 60,
+      multipliers: { melee: 1.5, bullet: 0.5, explosive: 2.8 },
+      impactDamageSpeed: 8,
+      impactDamageScale: 2,
+    },
+    breakReaction: SHATTER,
+    gibs: { minChunks: 3, maxChunks: 5, coreSurvives: false, burstSpeed: 3.2 },
+    // Es panel de malla: se hunde entero antes que romperse.
+    deform: metalDeform(0.3, 0.02, 0.028),
+    bounds: [2.2, 1.9, 0.06],
+    navBlocking: true,
+  },
+
+  ammoCrate: {
+    id: "ammoCrate",
+    displayName: "Cajón de munición",
+    asset: { pack: "propsKit", node: "prop_ammoCrate", variants: 2 },
+    surface: "metal",
+    physicsMode: "dynamic",
+    physics: {
+      mass: 38,
+      linearDamping: 0.15,
+      angularDamping: 0.4,
+      friction: 0.7,
+      restitution: 0.04,
+      grabbable: true,
+      impactDamage: true,
+    },
+    damage: {
+      health: 60,
+      multipliers: { melee: 2, bullet: 1.2, explosive: 2.5 },
+      impactDamageSpeed: 7,
+      impactDamageScale: 2.5,
+    },
+    // Se abre y deja lo que tenía adentro: es la recompensa por gastar balas.
+    breakReaction: {
+      kind: "spawnItem",
+      drops: [{ ammo: "smg", count: 2 }, { ammo: "pistol" }],
+    },
+    gibs: { minChunks: 4, maxChunks: 6, coreSurvives: false, burstSpeed: 3 },
+    deform: metalDeform(0.16, 0.018, 0.07),
+    bounds: [0.796, 0.46, 0.521],
+  },
+
+  medCrate: {
+    id: "medCrate",
+    displayName: "Cajón médico",
+    asset: { pack: "propsKit", node: "prop_medCrate", variants: 2 },
+    surface: "metal",
+    physicsMode: "dynamic",
+    physics: {
+      mass: 34,
+      linearDamping: 0.15,
+      angularDamping: 0.4,
+      friction: 0.7,
+      restitution: 0.04,
+      grabbable: true,
+      impactDamage: true,
+    },
+    damage: {
+      health: 55,
+      multipliers: { melee: 2, bullet: 1.2, explosive: 2.5 },
+      impactDamageSpeed: 7,
+      impactDamageScale: 2.5,
+    },
+    breakReaction: {
+      kind: "spawnItem",
+      drops: [{ item: "medkit", count: 2 }, { item: "hevBattery" }],
+    },
+    gibs: { minChunks: 4, maxChunks: 6, coreSurvives: false, burstSpeed: 3 },
+    deform: metalDeform(0.16, 0.018, 0.07),
+    bounds: [0.796, 0.46, 0.521],
+  },
+
+  toolCart: {
+    id: "toolCart",
+    displayName: "Carro de herramientas",
+    asset: { pack: "propsKit", node: "prop_toolCart", variants: 2 },
+    surface: "metal",
+    physicsMode: "dynamic",
+    physics: {
+      mass: 48,
+      // Rueda: poca fricción y poco freno, como la silla de oficina.
+      linearDamping: 0.08,
+      angularDamping: 0.3,
+      friction: 0.35,
+      restitution: 0.06,
+      grabbable: true,
+      impactDamage: true,
+    },
+    damage: {
+      health: 90,
+      multipliers: { melee: 1.2, bullet: 0.9, explosive: 2.2 },
+      impactDamageSpeed: 7,
+      impactDamageScale: 2.5,
+    },
+    breakReaction: SHATTER,
+    gibs: { minChunks: 4, maxChunks: 6, coreSurvives: false, burstSpeed: 3 },
+    deform: metalDeform(0.18, 0.02, 0.08),
+    bounds: [0.707, 0.918, 0.491],
+  },
+
+  wheelbarrow: {
+    id: "wheelbarrow",
+    displayName: "Carretilla",
+    asset: { pack: "propsKit", node: "prop_wheelbarrow", variants: 2 },
+    surface: "metal",
+    physicsMode: "dynamic",
+    physics: {
+      mass: 24,
+      linearDamping: 0.12,
+      angularDamping: 0.3,
+      friction: 0.45,
+      restitution: 0.08,
+      grabbable: true,
+      impactDamage: true,
+    },
+    damage: {
+      health: false,
+      impactDamageSpeed: 7,
+      impactDamageScale: 2.5,
+    },
+    breakReaction: INDESTRUCTIBLE,
+    deform: metalDeform(0.2, 0.025, 0.09),
+    bounds: [0.66, 1.333, 1.231],
+  },
+
+  shoppingCart: {
+    id: "shoppingCart",
+    displayName: "Changuito",
+    asset: { pack: "propsKit", node: "prop_shoppingCart", variants: 2 },
+    surface: "metal",
+    physicsMode: "dynamic",
+    physics: {
+      mass: 16,
+      // El que más rueda del catálogo: es media la gracia del objeto.
+      linearDamping: 0.05,
+      angularDamping: 0.22,
+      friction: 0.3,
+      restitution: 0.15,
+      grabbable: true,
+      impactDamage: true,
+    },
+    damage: {
+      health: false,
+      impactDamageSpeed: 7,
+      impactDamageScale: 2,
+    },
+    breakReaction: INDESTRUCTIBLE,
+    deform: metalDeform(0.18, 0.02, 0.07),
+    bounds: [0.592, 0.993, 0.87],
+  },
+
+  bicycle: {
+    id: "bicycle",
+    displayName: "Bicicleta",
+    asset: { pack: "propsKit", node: "prop_bicycle", variants: 2 },
+    surface: "metal",
+    physicsMode: "dynamic",
+    physics: {
+      mass: 13,
+      linearDamping: 0.1,
+      angularDamping: 0.3,
+      friction: 0.4,
+      restitution: 0.12,
+      grabbable: true,
+      impactDamage: true,
+    },
+    damage: {
+      health: false,
+      impactDamageSpeed: 7,
+      impactDamageScale: 2,
+    },
+    // Sin `deform`, y es la única excepción de metal además del explosivo: un
+    // cuadro de bicicleta son tubos de 18 mm, no chapa. Un tubo se dobla, no se
+    // abolla, y el kernel de abollón no tiene superficie donde morder.
+    breakReaction: INDESTRUCTIBLE,
+    bounds: [1.72, 1.161, 0.13],
+  },
+
+  streetSign: {
+    id: "streetSign",
+    displayName: "Cartel de calle",
+    asset: { pack: "propsKit", node: "prop_streetSign", variants: 2 },
+    surface: "metal",
+    physicsMode: "dynamic",
+    physics: {
+      mass: 19,
+      linearDamping: 0.15,
+      angularDamping: 0.35,
+      friction: 0.5,
+      restitution: 0.1,
+      grabbable: true,
+      impactDamage: true,
+    },
+    damage: {
+      health: false,
+      impactDamageSpeed: 7,
+      impactDamageScale: 3,
+    },
+    breakReaction: INDESTRUCTIBLE,
+    deform: metalDeform(0.14, 0.014, 0.05),
+    bounds: [0.602, 2.35, 0.18],
+  },
+
+  mailbox: {
+    id: "mailbox",
+    displayName: "Buzón",
+    asset: { pack: "propsKit", node: "prop_mailbox", variants: 2 },
+    surface: "metal",
+    physicsMode: "dynamic",
+    physics: {
+      mass: 32,
+      linearDamping: 0.15,
+      angularDamping: 0.38,
+      friction: 0.6,
+      restitution: 0.06,
+      grabbable: true,
+      impactDamage: true,
+    },
+    damage: {
+      health: false,
+      impactDamageSpeed: 7,
+      impactDamageScale: 3,
+    },
+    breakReaction: INDESTRUCTIBLE,
+    deform: metalDeform(0.16, 0.018, 0.07),
+    bounds: [0.44, 1.24, 0.404],
+  },
+
+  flowerPot: {
+    id: "flowerPot",
+    displayName: "Maceta",
+    asset: { pack: "propsKit", node: "prop_flowerPot", variants: 2 },
+    surface: "tile",
+    physicsMode: "dynamic",
+    physics: {
+      mass: 9,
+      linearDamping: 0.2,
+      angularDamping: 0.45,
+      friction: 0.7,
+      restitution: 0.03,
+      grabbable: true,
+      impactDamage: false,
+    },
+    damage: {
+      health: 14,
+      // Terracota: estalla de una y no le importan las balas.
+      multipliers: { melee: 3.5, bullet: 1.5, explosive: 3.5 },
+      impactDamageSpeed: 4,
+      impactDamageScale: 5,
+    },
+    breakReaction: SHATTER,
+    gibs: { minChunks: 3, maxChunks: 3, coreSurvives: false, burstSpeed: 2.8 },
+    bounds: [0.393, 0.34, 0.403],
+  },
+
+  crateLong: {
+    id: "crateLong",
+    displayName: "Cajón largo",
+    asset: { pack: "propsKit", node: "prop_crateLong", variants: 2 },
+    surface: "wood",
+    physicsMode: "dynamic",
+    physics: {
+      mass: 32,
+      linearDamping: 0.15,
+      angularDamping: 0.4,
+      friction: 0.7,
+      restitution: 0.05,
+      grabbable: true,
+      impactDamage: true,
+    },
+    damage: {
+      health: 50,
+      multipliers: { melee: 2.2, bullet: 0.7, explosive: 2 },
+      impactDamageSpeed: 6,
+      impactDamageScale: 3,
+    },
+    breakReaction: SHATTER,
+    gibs: { minChunks: 4, maxChunks: 6, coreSurvives: false, burstSpeed: 3.4 },
+    bounds: [1.55, 0.422, 0.462],
+    navBlocking: true,
+  },
+
+  crateHuge: {
+    id: "crateHuge",
+    displayName: "Cajón grande",
+    asset: { pack: "propsKit", node: "prop_crateHuge", variants: 2 },
+    surface: "wood",
+    physicsMode: "dynamic",
+    physics: {
+      // Cobertura de cuerpo entero: 1.6 m de lado y demasiado pesado para
+      // levantarlo con las manos.
+      mass: 130,
+      linearDamping: 0.15,
+      angularDamping: 0.4,
+      friction: 0.75,
+      restitution: 0.04,
+      grabbable: true,
+      impactDamage: true,
+    },
+    damage: {
+      health: 140,
+      multipliers: { melee: 2.2, bullet: 0.7, explosive: 2 },
+      impactDamageSpeed: 6,
+      impactDamageScale: 3,
+    },
+    breakReaction: SHATTER,
+    gibs: { minChunks: 5, maxChunks: 8, coreSurvives: false, burstSpeed: 3.6 },
+    bounds: [1.625, 1.6, 1.625],
+    navBlocking: true,
   },
 };
 
