@@ -27,6 +27,7 @@ import {
 } from "@engine/physics/PhysicsWorld";
 import { Raycast } from "@engine/physics/Raycast";
 import { CHARACTER_MEDIUM_COLLISION_GROUPS } from "@engine/physics/CollisionGroups";
+import { isSolidWorldKind } from "@engine/physics/metadataKinds";
 import type { PortalFrame } from "@engine/portals/PortalFrame";
 import {
   portalNormal,
@@ -1881,10 +1882,7 @@ export class BlobArmorAnimator implements NpcAnimator {
       body,
       this.options.id,
       (metadata) =>
-        metadata?.impactOwnerId !== this.options.id &&
-        (metadata?.kind === "static" ||
-          metadata?.kind === "door" ||
-          metadata?.kind === "dynamic"),
+        metadata?.impactOwnerId !== this.options.id && isSolidWorldKind(metadata?.kind),
     );
     return hit !== null && (hit.normal?.y ?? 0) > 0.35;
   }

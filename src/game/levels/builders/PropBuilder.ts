@@ -3,10 +3,15 @@ import { makeSeededRandom } from '@shared/math/Random';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import type {
   DynamicBoxDefinition,
+  PropDefinition,
+  PropStructureDefinition,
+  PropStructureJointDefinition,
+  RotationTuple,
   StaticBoxDefinition,
 } from '@game/levels/LevelDefinition';
+import { PropArchetypes } from '@game/config/props.config';
 import { buildRamp, suggestStepCount } from './RampBuilder';
-import { rotateBoxesAbout } from './transform';
+import { rotateBoxesAbout, rotatePropsAbout } from './transform';
 
 /** Campos comunes a todos los props (rotacion opcional alrededor de su ancla). */
 interface PropBase {
@@ -14,12 +19,16 @@ interface PropBase {
   rotation?: VectorTuple;
 }
 
-/** Hornea la rotacion del prop (si la hay) en sus cajas, alrededor del `pivot`. */
+/** Hornea la rotacion del prop (si la hay) en su geometria, alrededor del `pivot`. */
 function finishProp(artifact: PropArtifact, pivot: VectorTuple, rotation: VectorTuple | undefined): PropArtifact {
   if (!rotation) return artifact;
   return {
     staticBoxes: rotateBoxesAbout(artifact.staticBoxes, pivot, rotation),
     dynamicBoxes: rotateBoxesAbout(artifact.dynamicBoxes, pivot, rotation),
+    props: rotatePropsAbout(artifact.props, pivot, rotation),
+    // Las anclas de las juntas son locales al prop salvo la del mundo, que ya
+    // sale rotada porque se calcula desde la posicion final de su prop.
+    structures: artifact.structures,
   };
 }
 
@@ -35,10 +44,30 @@ function finishProp(artifact: PropArtifact, pivot: VectorTuple, rotation: Vector
 export interface PropArtifact {
   staticBoxes: StaticBoxDefinition[];
   dynamicBoxes: DynamicBoxDefinition[];
+  /** Props del catalogo: malla real, vida, rotura y sonido por material. */
+  props: PropDefinition[];
+  /** Uniones entre esos props, para lo que se derrumba como unidad. */
+  structures: PropStructureDefinition[];
 }
 
 function staticOnly(boxes: StaticBoxDefinition[]): PropArtifact {
-  return { staticBoxes: boxes, dynamicBoxes: [] };
+  return { staticBoxes: boxes, dynamicBoxes: [], props: [], structures: [] };
+}
+
+function propsOnly(props: PropDefinition[], structures: PropStructureDefinition[] = []): PropArtifact {
+  return { staticBoxes: [], dynamicBoxes: [], props, structures };
+}
+
+/**
+ * El cajon del catalogo mide 0.887 de lado; los mapas autoran en metros. Un
+ * `size` explicito se traduce a escala uniforme sobre esa medida.
+ */
+const CRATE_FOOTPRINT = PropArchetypes.woodenCrate.bounds[0];
+const CRATE_HEIGHT = PropArchetypes.woodenCrate.bounds[1];
+
+function crateScale(size: number | undefined): number | undefined {
+  if (size === undefined) return undefined;
+  return size / CRATE_FOOTPRINT;
 }
 
 export interface CrateSpec extends PropBase {
@@ -46,20 +75,43 @@ export interface CrateSpec extends PropBase {
   /** Centro de la base [x, y, z]: y es el APOYO (cara inferior), no el centro. */
   at: VectorTuple;
   size?: number;
-  material?: MaterialKey;
   /** Si es dinamico, el player lo puede empujar / gravity-gunear. */
   dynamic?: boolean;
-  mass?: number;
+  /** Variante de malla. Default derivada del id. */
+  variant?: number;
 }
 
 export function crate(spec: CrateSpec): PropArtifact {
-  const s = spec.size ?? 0.9;
-  const material = spec.material ?? 'crate';
-  const position: VectorTuple = [spec.at[0], spec.at[1] + s / 2, spec.at[2]];
-  const artifact = spec.dynamic
-    ? { staticBoxes: [], dynamicBoxes: [{ id: spec.id, position, size: [s, s, s] as VectorTuple, mass: spec.mass ?? 18, material }] }
-    : staticOnly([{ id: spec.id, position, size: [s, s, s], material }]);
-  return finishProp(artifact, [...spec.at], spec.rotation);
+  const scale = crateScale(spec.size);
+  return finishProp(
+    propsOnly([
+      {
+        id: spec.id,
+        archetypeId: 'woodenCrate',
+        position: [...spec.at] as VectorTuple,
+        // Un cajon suelto es dinamico; uno de decorado se ancla para que no se
+        // vaya solo, pero sigue siendo rompible y suena a madera igual.
+        physicsMode: spec.dynamic ? 'dynamic' : 'anchored',
+        variant: spec.variant ?? variantFor(spec.id),
+        ...(scale === undefined ? {} : { scale }),
+      },
+    ]),
+    [...spec.at],
+    spec.rotation,
+  );
+}
+
+/**
+ * Variante estable derivada del id. Sirve para que dos cajones vecinos no salgan
+ * clonados sin obligar al autor a numerarlos, y que el mapa no cambie de aspecto
+ * entre corridas.
+ */
+function variantFor(id: string): number {
+  let hash = 0;
+  for (let index = 0; index < id.length; index += 1) {
+    hash = (hash * 31 + id.charCodeAt(index)) >>> 0;
+  }
+  return hash % PropArchetypes.woodenCrate.asset.variants;
 }
 
 export interface CrateStackSpec extends PropBase {
@@ -73,48 +125,101 @@ export interface CrateStackSpec extends PropBase {
   /** Capas verticales: cada capa pierde una fila y una columna (pirâmide). */
   layers?: number;
   crateSize?: number;
-  material?: MaterialKey;
   /** Seed del jitter posicional (det. por seed; 0 = sin jitter). */
   seed?: number;
 }
 
 /**
  * Pila de cajas estilo deposito: grilla con jitter + capas piramidales.
- * A 2 capas (1.8 m con crateSize default) bloquea LOS; a 1 capa es cover medio.
+ * A 2 capas bloquea LOS; a 1 capa es cover medio.
+ *
+ * Con dos capas o mas la pila se une y se derrumba como unidad: romper un
+ * cajon suelta TODAS las juntas y lo que estaba arriba se viene abajo. Una sola
+ * capa no se une, porque unir cajones que ya estan en el piso no ata nada.
+ *
+ * Aguanta el fuego casual —un cajon tiene 40 de vida y multiplicador 0.7 a
+ * balas— y cede ante lo que se propone tirarla: melee (x2.2) o explosivos (x2).
+ * Ese es el punto: la cobertura es un recurso que se puede gastar, no un muro.
  */
 export function crateStack(spec: CrateStackSpec): PropArtifact {
   const rows = spec.rows ?? 2;
   const cols = spec.cols ?? 2;
   const layers = spec.layers ?? 1;
-  const s = spec.crateSize ?? 0.9;
+  const scale = crateScale(spec.crateSize);
+  const footprint = spec.crateSize ?? CRATE_FOOTPRINT;
+  const height = spec.crateSize ? CRATE_HEIGHT * (scale ?? 1) : CRATE_HEIGHT;
   const gap = 0.06;
-  const material = spec.material ?? 'crate';
   const baseY = spec.baseY ?? 0;
   const rand = makeSeededRandom(spec.seed ?? 1);
-  const boxes: StaticBoxDefinition[] = [];
+  const props: PropDefinition[] = [];
+  const cells: { layer: number; row: number; col: number }[] = [];
   for (let layer = 0; layer < layers; layer += 1) {
     const lr = Math.max(1, rows - layer);
     const lc = Math.max(1, cols - layer);
-    const y = baseY + layer * s + s / 2;
+    const y = baseY + layer * height;
     for (let r = 0; r < lr; r += 1) {
       for (let c = 0; c < lc; c += 1) {
         const jx = spec.seed ? (rand() - 0.5) * 0.12 : 0;
         const jz = spec.seed ? (rand() - 0.5) * 0.12 : 0;
-        boxes.push({
-          id: `${spec.id}-l${layer}-${r}-${c}`,
+        // Un poco de guiñada rompe la grilla perfecta ahora que los cajones
+        // tienen malla propia y se nota que estan clonados.
+        const yaw = spec.seed ? (rand() - 0.5) * 0.18 : 0;
+        const id = `${spec.id}-l${layer}-${r}-${c}`;
+        cells.push({ layer, row: r, col: c });
+        props.push({
+          id,
+          archetypeId: 'woodenCrate',
           position: [
-            spec.at[0] + (c - (lc - 1) / 2) * (s + gap) + jx,
+            spec.at[0] + (c - (lc - 1) / 2) * (footprint + gap) + jx,
             y,
-            spec.at[1] + (r - (lr - 1) / 2) * (s + gap) + jz,
+            spec.at[1] + (r - (lr - 1) / 2) * (footprint + gap) + jz,
           ],
-          size: [s, s, s],
-          material,
+          physicsMode: 'anchored',
+          variant: variantFor(id),
+          ...(yaw === 0 ? {} : { rotation: [0, yaw, 0] as RotationTuple }),
+          ...(scale === undefined ? {} : { scale }),
         });
       }
     }
   }
-  return finishProp(staticOnly(boxes), [spec.at[0], spec.baseY ?? 0, spec.at[1]], spec.rotation);
+  // Las juntas se derivan DESPUES de rotar, porque el ancla al mundo es una
+  // posicion global: calcularla antes la dejaria donde estaba la pila sin girar.
+  const placed = spec.rotation
+    ? rotatePropsAbout(props, [spec.at[0], baseY, spec.at[1]], spec.rotation)
+    : props;
+  if (layers < 2) return propsOnly(placed);
+
+  const joints: PropStructureJointDefinition[] = [];
+  const half = height / 2;
+  placed.forEach((prop, index) => {
+    const { layer, row, col } = cells[index]!;
+    if (layer === 0) {
+      joints.push({
+        a: prop.id,
+        b: 'world',
+        anchorA: [0, -half, 0],
+        anchorB: [...prop.position] as VectorTuple,
+        ...CRATE_JOINT_TOLERANCE,
+      });
+      return;
+    }
+    // Se cuelga del que tiene justo debajo. La capa de abajo siempre es mas
+    // ancha —la piramide pierde una fila y una columna por capa—, asi que la
+    // misma (fila, columna) existe seguro.
+    joints.push({
+      a: prop.id,
+      b: `${spec.id}-l${layer - 1}-${row}-${col}`,
+      anchorA: [0, -half, 0],
+      anchorB: [0, half, 0],
+      ...CRATE_JOINT_TOLERANCE,
+    });
+  });
+
+  return propsOnly(placed, [{ id: `${spec.id}-structure`, joints, cascade: true }]);
 }
+
+/** La madera cruje y cede antes que el acero. Mismo criterio que `PropStructureBuilder`. */
+const CRATE_JOINT_TOLERANCE = { breakTranslation: 0.05, breakAngle: 0.16 } as const;
 
 export interface SandbagLineSpec extends PropBase {
   id: string;
@@ -356,5 +461,7 @@ export function mergeProps(...props: PropArtifact[]): PropArtifact {
   return {
     staticBoxes: props.flatMap((p) => p.staticBoxes),
     dynamicBoxes: props.flatMap((p) => p.dynamicBoxes),
+    props: props.flatMap((p) => p.props),
+    structures: props.flatMap((p) => p.structures),
   };
 }

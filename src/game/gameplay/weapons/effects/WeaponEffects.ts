@@ -9,6 +9,7 @@ import {
   Vector3,
 } from "three";
 import type { Faction } from "@engine/ai/Faction";
+import type { PhysicsMetadata } from "@engine/physics/PhysicsWorld";
 import type { Raycast } from "@engine/physics/Raycast";
 import { WeaponEffectsConfig } from "@game/config/weapons.config";
 import type { CombatEventSourceKind } from "@game/GameEvents";
@@ -232,15 +233,7 @@ export class WeaponEffects {
   private createDecal(
     point: Vector3,
     normal: Vector3 | undefined,
-    surfaceKind:
-      | "static"
-      | "dynamic"
-      | "door"
-      | "npc"
-      | "player"
-      | "ragdoll"
-      | "weaponPickup"
-      | undefined,
+    surfaceKind: PhysicsMetadata["kind"] | undefined,
   ): void {
     if (surfaceKind !== "static" && surfaceKind !== "door") {
       return;

@@ -2,6 +2,7 @@
 import type { Faction } from "@engine/ai/Faction";
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { EventBus } from "@engine/core/EventBus";
+import type { PhysicsMetadata } from "@engine/physics/PhysicsWorld";
 import type { PortalSlot } from "@engine/portals/PortalFrame";
 import type { WeaponId, WeaponType } from "@game/gameplay/weapons/core/WeaponDefinition";
 import type { HazardKind } from "@game/levels/HazardVolumeSystem";
@@ -10,6 +11,7 @@ import type { ChargerKind } from "@game/config/items.config";
 import type { DifficultyLevel } from "@game/config/difficulty.config";
 import type { DamageType } from "@shared/types/lifecycle";
 import type { SurfaceType } from "@shared/types/Surface";
+import type { PropArchetypeId, PropBreakReaction, PropDrop } from "@game/config/props.config";
 import type { ActivatorRef } from "@game/script/ActivatorRef";
 import type {
   VehicleArchetypeId,
@@ -121,6 +123,46 @@ export interface GameEventMap {
     /** Atacante atribuido ("player" si lo lanzó el jugador); undefined = entorno. */
     sourceId?: string;
   };
+  /** Un prop del catálogo perdió vida sin llegar a romperse. */
+  "prop.damaged": {
+    propId: string;
+    archetypeId: PropArchetypeId;
+    health: number;
+    maxHealth: number;
+    /** Daño ya efectivo (con el multiplicador del tipo de golpe aplicado). */
+    damage: number;
+    /** Dónde pegó y hacia dónde: lo consume la deformación plástica. */
+    point?: Vector3;
+    direction?: Vector3;
+    sourceId?: string;
+  };
+  /** Un prop del catálogo cedió: su reacción de rotura ya se despachó. */
+  "prop.broken": {
+    propId: string;
+    archetypeId: PropArchetypeId;
+    position: Vector3;
+    surface: SurfaceType;
+    /** Fragmentos que llegaron a spawnear (el pool puede recortarlos). */
+    debrisCount: number;
+    /** `collapse` derrumba la estructura entera, no sólo las uniones del muerto. */
+    reaction: PropBreakReaction["kind"];
+    sourceId?: string;
+  };
+  /** Un prop se abrió y dejó lo que tenía adentro. Lo instancia `Game`. */
+  "prop.dropped": {
+    propId: string;
+    position: Vector3;
+    drops: readonly PropDrop[];
+  };
+  /**
+   * Un prop dejó el lugar donde lo autoraron. Se emite UNA vez por prop, no por
+   * frame: es un cambio de estado del nivel, no un seguimiento de posición.
+   */
+  "prop.displaced": {
+    propId: string;
+    /** Cuánto se alejó de su posición de origen, en metros. */
+    distance: number;
+  };
   /** Un NPC murió congelado (ice gun al llenar el medidor de freeze). */
   "ice.frozen": {
     targetId: string;
@@ -129,14 +171,7 @@ export interface GameEventMap {
   "weapon.hit": {
     weaponName: string;
     targetId?: string;
-    surfaceKind?:
-      | "static"
-      | "dynamic"
-      | "door"
-      | "npc"
-      | "player"
-      | "ragdoll"
-      | "weaponPickup";
+    surfaceKind?: PhysicsMetadata["kind"];
     /**
      * Material físico del blanco, tomado del collider. Es lo que hace que una
      * bala contra chapa no suene igual que contra hormigón; sin esto el audio

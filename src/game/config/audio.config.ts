@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Tablas declarativas que mapean *quÃ©* evento del juego dispara *quÃ©*
  * sonido del catÃ¡logo. Los sistemas reactivos (`WeaponSoundSystem`,
  * `EnemySoundSystem`, etc.) consultan estas tablas; agregar un sonido
@@ -9,6 +9,7 @@
 import type { CharacterId } from "@engine/characters/CharacterDefinition";
 import type { ReverbSpace } from "@engine/audio/dsp/ReverbRack";
 import type { AcousticResponseTuning } from "@engine/audio/spatial/AcousticResponse";
+import type { PhysicsMetadata } from "@engine/physics/PhysicsWorld";
 import type { HazardKind } from "@game/levels/HazardVolumeSystem";
 import type { DamageType } from "@shared/types/lifecycle";
 import type { SurfaceType } from "@shared/types/Surface";
@@ -71,6 +72,13 @@ export const SurfaceAbsorption: Readonly<Record<SurfaceType, number>> = {
   mud: 0.6,
   grass: 0.65,
   snow: 0.8,
+  glass: 0.03,
+  plastic: 0.06,
+  rubber: 0.3,
+  cardboard: 0.45,
+  // Lo más absorbente del cuadro, por encima de la nieve: un cuarto tapizado no
+  // devuelve nada. Es lo que hace que un dormitorio suene distinto a un pasillo.
+  fabric: 0.88,
 };
 
 /**
@@ -184,14 +192,7 @@ export const HevDamageDiagnosis = {
   generic: "hev.fvox.damage",
 } as const satisfies Record<string, SoundRef>;
 
-export type WeaponHitSurface =
-  | "static"
-  | "dynamic"
-  | "door"
-  | "npc"
-  | "player"
-  | "ragdoll"
-  | "weaponPickup";
+export type WeaponHitSurface = PhysicsMetadata["kind"];
 
 export interface WeaponSoundMap {
   shot?: SoundRef;
@@ -345,7 +346,10 @@ export type ImpactMaterial =
   | "sand"
   | "tile"
   | "water"
-  | "plaster";
+  | "plaster"
+  | "cardboard"
+  | "rubber"
+  | "fabric";
 
 export const SurfaceBulletImpacts: Record<ImpactMaterial, readonly string[]> = {
   concrete: [
@@ -398,6 +402,12 @@ export const SurfaceBulletImpacts: Record<ImpactMaterial, readonly string[]> = {
     "physics.hl2.surfaces.waterBullet2",
   ],
   plaster: ["physics.hl2.surfaces.plasterBullet1"],
+  cardboard: ["physics.hl2.surfaces.cardboardSoft1"],
+  rubber: ["physics.hl2.surfaces.rubberSoft1"],
+  // El tapizado no tiene pool propio en HL2. Los impactos de cuerpo blando son
+  // lo más cercano que hay bundleado: golpe sordo, sin cola ni rattle, que es
+  // justo lo que separa una bala en un sillón de una en una caja de cartón.
+  fabric: ["physics.hl2.body.soft1", "physics.hl2.body.soft2"],
 };
 
 /** Golpe físico (prop lanzado, cuerpo que cae) por material y energía. */
@@ -463,6 +473,9 @@ export const MaterialImpacts: Record<ImpactMaterial, ImpactSoundMap> = {
     soft: ["physics.hl2.plastic.soft1", "physics.hl2.plastic.soft2"],
     hard: ["physics.hl2.plastic.hard1", "physics.hl2.plastic.hard2"],
   },
+  // HL2 no trae impactos físicos de arena: sus superficies blandas caen al
+  // default del motor. Estos clips de cartón son un suplente por su golpe sordo,
+  // no la respuesta correcta; un material propio necesitaría grabarlo.
   sand: {
     soft: ["physics.hl2.surfaces.cardboardSoft1"],
     hard: ["physics.hl2.surfaces.cardboardHard1"],
@@ -479,7 +492,187 @@ export const MaterialImpacts: Record<ImpactMaterial, ImpactSoundMap> = {
     soft: ["physics.hl2.surfaces.plasterSoft1"],
     hard: ["physics.hl2.surfaces.plasterHard1"],
   },
+  cardboard: {
+    soft: ["physics.hl2.surfaces.cardboardSoft1"],
+    hard: ["physics.hl2.surfaces.cardboardHard1"],
+  },
+  rubber: {
+    soft: ["physics.hl2.surfaces.rubberSoft1"],
+    hard: ["physics.hl2.surfaces.rubberHard1"],
+  },
+  fabric: {
+    soft: ["physics.hl2.body.soft1", "physics.hl2.body.soft2", "physics.hl2.body.soft3"],
+    // Ni siquiera el golpe fuerte suena duro: un colchón que cae hace ruido a
+    // bulto, no a impacto.
+    hard: ["physics.hl2.body.soft1", "physics.hl2.body.soft3"],
+  },
 };
+
+/**
+ * Rotura de un prop, por material. `break` es el estallido en el momento en que
+ * cede; `debris` son los pedazos asentándose un instante después. Los dos
+ * juntos son lo que hace que romper algo se lea como un evento con duración y
+ * no como un pop.
+ *
+ * Salvo metal, HL2 no trae sonidos de debris dedicados: para el resto se usan
+ * sus impactos suaves, que es literalmente lo que son unos pedazos cayendo.
+ */
+export interface PropBreakAudio {
+  readonly break: readonly string[];
+  readonly debris: readonly string[];
+  /**
+   * Arrastre continuo y crujido bajo carga, que consume `PropScrapeSystem`.
+   * Los materiales sin pool (vidrio, cartón, carne) quedan mudos al rozar:
+   * `pickSound` devuelve null y el sistema no arma la voz.
+   */
+  readonly scrapeRough?: readonly string[];
+  readonly scrapeSmooth?: readonly string[];
+  readonly strain?: readonly string[];
+}
+
+export const PropMaterialAudio: Record<ImpactMaterial, PropBreakAudio> = {
+  concrete: {
+    break: ["physics.hl2.concrete.break1", "physics.hl2.concrete.break2"],
+    debris: ["physics.hl2.concrete.rock1", "physics.hl2.concrete.rock2"],
+    scrapeRough: ["physics.hl2.concrete.scrapeRough1", "physics.hl2.concrete.scrapeRough2"],
+    scrapeSmooth: ["physics.hl2.concrete.scrapeSmooth1"],
+  },
+  metal: {
+    break: ["physics.hl2.metal.break1", "physics.hl2.metal.break2"],
+    debris: ["physics.hl2.metal.debris1", "physics.hl2.metal.debris2"],
+    scrapeRough: [
+      "physics.hl2.metal.scrapeRough1",
+      "physics.hl2.metal.scrapeRough2",
+      "physics.hl2.metal.scrapeRough3",
+    ],
+    scrapeSmooth: ["physics.hl2.metal.scrapeSmooth1", "physics.hl2.metal.scrapeSmooth2"],
+    strain: [
+      "physics.hl2.metal.strain1",
+      "physics.hl2.metal.strain2",
+      "physics.hl2.metal.strain3",
+      "physics.hl2.metal.strain4",
+      "physics.hl2.metal.strain5",
+    ],
+  },
+  wood: {
+    break: [
+      "physics.hl2.wood.break1",
+      "physics.hl2.wood.break2",
+      "physics.hl2.wood.break3",
+      "physics.hl2.wood.break4",
+      "physics.hl2.wood.break5",
+      "physics.hl2.wood.break6",
+      "physics.hl2.wood.break7",
+    ],
+    debris: ["physics.hl2.wood.soft1", "physics.hl2.wood.soft2", "physics.hl2.wood.soft3"],
+    scrapeRough: ["physics.hl2.wood.scrapeRough1", "physics.hl2.wood.scrapeRough2"],
+    scrapeSmooth: ["physics.hl2.wood.scrapeSmooth1", "physics.hl2.wood.scrapeSmooth2"],
+    strain: ["physics.hl2.wood.strain1", "physics.hl2.wood.strain2", "physics.hl2.wood.strain3"],
+  },
+  glass: {
+    break: [
+      "physics.hl2.glass.break1",
+      "physics.hl2.glass.break2",
+      "physics.hl2.glass.break3",
+      "physics.hl2.glass.break4",
+      "physics.hl2.glass.break5",
+      "physics.hl2.glass.break6",
+      "physics.hl2.glass.break7",
+      "physics.hl2.glass.break8",
+    ],
+    debris: ["physics.hl2.glass.soft1", "physics.hl2.glass.soft2"],
+    // El vidrio no se arrastra: se astilla. Sin pool de scrape queda mudo.
+  },
+  flesh: {
+    break: ["physics.hl2.flesh.break1"],
+    debris: ["physics.hl2.flesh.soft1", "physics.hl2.flesh.soft2"],
+  },
+  fleshArmored: {
+    break: ["physics.hl2.body.break1"],
+    debris: ["physics.hl2.body.soft1", "physics.hl2.body.soft2"],
+  },
+  plastic: {
+    break: [
+      "physics.hl2.plastic.break1",
+      "physics.hl2.plastic.break2",
+      "physics.hl2.plastic.break3",
+      "physics.hl2.plastic.break4",
+    ],
+    debris: ["physics.hl2.plastic.soft1", "physics.hl2.plastic.soft2"],
+    scrapeRough: ["physics.hl2.plastic.scrapeRough1"],
+    scrapeSmooth: [
+      "physics.hl2.plastic.scrapeSmooth1",
+      "physics.hl2.plastic.scrapeSmooth2",
+      "physics.hl2.plastic.scrapeSmooth3",
+    ],
+  },
+  tile: {
+    // La cerámica estalla como el hormigón; su propio clip de rotura no existe.
+    break: ["physics.hl2.concrete.break1", "physics.hl2.concrete.break2"],
+    debris: ["physics.hl2.concrete.soft1", "physics.hl2.concrete.soft2"],
+  },
+  plaster: {
+    break: ["physics.hl2.surfaces.plasterHard1"],
+    debris: ["physics.hl2.surfaces.plasterSoft1"],
+  },
+  cardboard: {
+    break: ["physics.hl2.surfaces.cardboardHard1"],
+    debris: ["physics.hl2.surfaces.cardboardSoft1"],
+  },
+  // Arena, agua, goma y tela no se rompen: ceden. Sin pool, `pickSound` devuelve
+  // null y el sistema de rotura simplemente no suena, que es lo correcto.
+  sand: { break: [], debris: [] },
+  water: { break: [], debris: [] },
+  rubber: { break: [], debris: [] },
+  fabric: { break: [], debris: [] },
+};
+
+export const PropBreakAudioConfig = {
+  /** Retardo (s) entre el estallido y el ruido de los pedazos asentándose. */
+  debrisDelay: 0.28,
+  refDistance: 4,
+  maxDistance: 55,
+} as const;
+
+/**
+ * Arrastre continuo. Las voces son caras (un loop posicional cada una) y el
+ * impulso tangencial se consulta con una llamada a WASM por candidato, así que
+ * sólo suenan los pocos props que el jugador puede efectivamente oír.
+ */
+export const PropScrapeConfig = {
+  /** Loops simultáneos. Cuatro alcanzan para una pila derrumbándose. */
+  maxVoices: 4,
+  /** Fuera de esta banda el prop está quieto o volando, no arrastrándose. */
+  minSpeed: 0.6,
+  maxSpeed: 6,
+  /** Si cae o sube rápido no está raspando el piso. */
+  maxVerticalSpeed: 1.5,
+  /** Impulso tangencial acumulado que ya da volumen pleno. */
+  fullScrapeImpulse: 2.5,
+  /** Segundos que la condición debe fallar antes de soltar la voz. */
+  releaseDelay: 0.2,
+  /** Cada cuánto (s) se vuelve a mirar contra qué superficie roza. */
+  surfaceProbeInterval: 1,
+  refDistance: 2.5,
+  maxDistance: 30,
+} as const;
+
+/** Superficies que suenan a raspón áspero; el resto, a liso. */
+export const RoughScrapeSurfaces: ReadonlySet<SurfaceType> = new Set<SurfaceType>([
+  "concrete",
+  "gravel",
+  "sand",
+  "dirt",
+  "mud",
+  "cardboard",
+]);
+
+export const PropStrainConfig = {
+  /** Silencio (s) entre crujidos del mismo prop. */
+  cooldown: 0.9,
+  /** Fracción del umbral de rotura de una junta a partir de la cual cruje. */
+  jointDriftRatio: 0.4,
+} as const;
 
 /**
  * Material acústico por `SurfaceType` física. La superficie del collider ya
@@ -496,6 +689,11 @@ export const SurfaceImpactMaterial: Record<SurfaceType, ImpactMaterial> = {
   sand: "sand",
   mud: "sand",
   snow: "sand",
+  glass: "glass",
+  plastic: "plastic",
+  cardboard: "cardboard",
+  rubber: "rubber",
+  fabric: "fabric",
 };
 
 export const ImpactAudioConfig = {
@@ -880,6 +1078,15 @@ export const SurfaceFootsteps: Record<SurfaceType, readonly string[]> = {
   snow: FootstepPools.snow,
   tile: FootstepPools.tile,
   mud: FootstepPools.mud,
+  // Materiales de prop: nadie camina sobre ellos, pero el Record es total. Se
+  // apuntan al pool existente más cercano en vez de inventar uno.
+  glass: FootstepPools.tile,
+  plastic: FootstepPools.metal,
+  cardboard: FootstepPools.dirt,
+  rubber: FootstepPools.dirt,
+  // Sobre tela sí se camina: un colchón tirado en el piso es superficie. La
+  // nieve es el pool más apagado que hay, que es lo que corresponde.
+  fabric: FootstepPools.snow,
 };
 
 export const FootstepsConfig = {

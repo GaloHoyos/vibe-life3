@@ -69,7 +69,8 @@ function isPbr(def: MaterialDef): def is PbrMaterialDef {
   return 'textureSet' in def;
 }
 
-const definitions: Record<MaterialKey, MaterialDef> = {
+/** Tabla de materiales. Exportada para que la UI derive su lista en vez de copiarla. */
+export const MaterialDefinitions: Record<MaterialKey, MaterialDef> = {
   floor: { textureSet: 'weatheredConcrete', color: 0x66727a, roughness: 0.9, metalness: 0.02 },
   asphalt: { textureSet: 'cityAsphalt', color: 0x9aa0a2, roughness: 0.94, metalness: 0 },
   wall: { textureSet: 'industrialWall', color: 0x87969c, roughness: 0.86, metalness: 0.06 },
@@ -150,7 +151,7 @@ const materials = new Map<MaterialKey, MeshStandardMaterial>();
 export function getMaterial(key: MaterialKey): MeshStandardMaterial {
   let material = materials.get(key);
   if (!material) {
-    material = buildMaterial(definitions[key]);
+    material = buildMaterial(MaterialDefinitions[key]);
     materials.set(key, material);
   }
   return material.clone();
@@ -162,7 +163,7 @@ export function getMaterial(key: MaterialKey): MeshStandardMaterial {
  * meshes lo usan para copiar `uv` → `uv1` antes de asignar el material.
  */
 export function materialNeedsUv1(key: MaterialKey): boolean {
-  const def = definitions[key];
+  const def = MaterialDefinitions[key];
   if (!isPbr(def)) return false;
   const textureDef: TextureSetDefinition = TextureSets[def.textureSet];
   return Boolean(textureDef.maps.ao);
@@ -173,7 +174,7 @@ export function materialNeedsUv1(key: MaterialKey): boolean {
  * por eso se compensa aquí para que el tamaño final sea exactamente `tileSize`.
  */
 export function materialUvPreScale(key: MaterialKey): number | null {
-  const def = definitions[key];
+  const def = MaterialDefinitions[key];
   if (!isPbr(def)) return null;
   const textureDef: TextureSetDefinition = TextureSets[def.textureSet];
   return textureDef.tileSize && textureDef.tileSize > 0

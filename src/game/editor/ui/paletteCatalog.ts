@@ -1,12 +1,22 @@
 import type { PropKind } from '../EditorDocument';
 import type { PaletteKind } from '../editorFactory';
+import {
+  PROP_ARCHETYPE_IDS,
+  PropArchetypes,
+  type PropArchetypeId,
+} from '@game/config/props.config';
 import type { LogicEntityKind } from '@game/script/EntityIOTypes';
 import type { EditorIconName } from './editorIcons';
 
-/** Una entrada de la paleta: crea una entidad (`kind`), un prop (`prop`) o una lógica de I/O (`logic`). */
+/**
+ * Una entrada de la paleta: crea una entidad (`kind`), un smart object de
+ * arquitectura (`prop`), un prop del catálogo (`propArchetype`) o una lógica de
+ * I/O (`logic`).
+ */
 export type PaletteEntry =
   | { label: string; icon: EditorIconName; kind: PaletteKind }
   | { label: string; icon: EditorIconName; prop: PropKind }
+  | { label: string; icon: EditorIconName; propArchetype: PropArchetypeId }
   | { label: string; icon: EditorIconName; logic: LogicEntityKind };
 
 export interface PaletteGroup {
@@ -56,6 +66,16 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
       { label: 'Municion', icon: 'ammo', kind: 'ammoPickup' },
       { label: 'Item', icon: 'item', kind: 'itemPickup' },
     ],
+  },
+  {
+    title: 'Props',
+    icon: 'cube',
+    // Derivado de la tabla: un arquetipo nuevo aparece solo en la paleta.
+    items: PROP_ARCHETYPE_IDS.map((id) => ({
+      label: PropArchetypes[id].displayName,
+      icon: 'cube' as const,
+      propArchetype: id,
+    })),
   },
   {
     title: 'Peligros',

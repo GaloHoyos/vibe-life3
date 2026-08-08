@@ -15,6 +15,8 @@ import type {
   LevelDefinition,
   NPCDefinition,
   ObjectiveDefinition,
+  PropDefinition,
+  PropStructureDefinition,
   StaticBoxDefinition,
   TerrainDefinition,
   TriggerDefinition,
@@ -37,6 +39,9 @@ import { buildBuilding, type BuildingSpec } from './BuildingBuilder';
 import { buildHouse, type HouseSpec } from './HouseBuilder';
 import { buildRamp, type RampSpec } from './RampBuilder';
 import type { PropArtifact } from './PropBuilder';
+import type { PropStructureArtifact } from './PropStructureBuilder';
+import { PropArchetypes, PropTuning } from '@game/config/props.config';
+import { propBoundsForScale } from '@game/gameplay/props/propDamage';
 import type { LandmarkReference } from '@game/levels/LevelTransition';
 
 export interface MapMeta {
@@ -98,6 +103,9 @@ export function createMap(meta: MapMeta): MapBuilder {
 export class MapBuilder {
   private readonly staticBoxList: StaticBoxDefinition[] = [];
   private readonly dynamicBoxList: DynamicBoxDefinition[] = [];
+  private readonly propList: PropDefinition[] = [];
+  private readonly propStructureList: PropStructureDefinition[] = [];
+  private readonly navBlockerList: StaticBoxDefinition[] = [];
   private readonly buildingList: BuildingArtifact[] = [];
   private readonly doorList: DoorDefinition[] = [];
   private readonly actionButtonList: ActionButtonDefinition[] = [];
@@ -192,6 +200,24 @@ export class MapBuilder {
     for (const p of props) {
       this.staticBoxList.push(...p.staticBoxes);
       this.dynamicBoxList.push(...p.dynamicBoxes);
+      // Por `propEntity` y no al array directo: es quien emite el bloqueador de
+      // navegacion, sin el cual los NPCs atraviesan un cajon anclado.
+      this.propEntity(...p.props);
+      this.propStructureList.push(...p.structures);
+    }
+    return this;
+  }
+
+  /**
+   * Instancia props del catálogo. Un prop anclado con `navBlocking` emite
+   * además su caja invisible de navegación, porque el bake sólo lee geometría
+   * estática y un cuerpo fijo nunca pasa por `syncDynamicObstacles`.
+   */
+  propEntity(...defs: PropDefinition[]): this {
+    for (const def of defs) {
+      this.propList.push(def);
+      const blocker = navBlockerFor(def);
+      if (blocker) this.navBlockerList.push(blocker);
     }
     return this;
   }
@@ -398,6 +424,10 @@ export class MapBuilder {
       staticBoxes: this.staticBoxList,
       buildings: this.buildingList,
       dynamicBoxes: this.dynamicBoxList,
+      props: this.propList.length > 0 ? this.propList : undefined,
+      propStructures:
+        this.propStructureList.length > 0 ? this.propStructureList : undefined,
+      navBlockers: this.navBlockerList.length > 0 ? this.navBlockerList : undefined,
       doors: this.doorList,
       actionButtons: this.actionButtonList.length > 0 ? this.actionButtonList : undefined,
       npcs: this.npcList,
@@ -420,6 +450,20 @@ export class MapBuilder {
     };
   }
 
+  /** Estructura articulada: sus props mas sus uniones. */
+  propStructure(...artifacts: PropStructureArtifact[]): this {
+    for (const artifact of artifacts) {
+      this.propEntity(...artifact.props);
+      this.propStructureList.push(artifact.structure);
+    }
+    return this;
+  }
+
+  /** Props del catalogo ya instanciados (para validaciones cruzadas). */
+  get props(): readonly PropDefinition[] {
+    return this.propList;
+  }
+
   /** Ids duplicados rompen metadata de fisica y debug: fallar al armar el mapa, no en runtime. */
   private validateUniqueIds(): void {
     const seen = new Set<string>();
@@ -431,6 +475,9 @@ export class MapBuilder {
     this.staticBoxList.forEach((b) => check(b.id));
     this.buildingList.forEach((b) => b.boxes.forEach((box) => check(box.id)));
     this.dynamicBoxList.forEach((b) => check(b.id));
+    this.propList.forEach((p) => check(p.id));
+    this.propStructureList.forEach((s) => check(s.id));
+    this.navBlockerList.forEach((b) => check(b.id));
     this.doorList.forEach((d) => {
       check(d.id);
       check(d.button.id);
@@ -547,4 +594,24 @@ export class MapBuilder {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * Caja invisible de navegacion para un prop anclado que debe cortar el
+ * pathing. Solo la merecen los props anchos: una silla anclada no debe abrir
+ * un agujero en el navmesh, y un contenedor si.
+ */
+export function navBlockerFor(def: PropDefinition): StaticBoxDefinition | null {
+  const archetype = PropArchetypes[def.archetypeId];
+  if (!archetype?.navBlocking) return null;
+  if ((def.physicsMode ?? archetype.physicsMode) !== 'anchored') return null;
+  const size = propBoundsForScale(archetype, def.scale);
+  if (Math.max(size[0], size[2]) < PropTuning.navBlockerMinFootprint) return null;
+  return {
+    id: `${def.id}-nav`,
+    position: [def.position[0], def.position[1] + size[1] / 2, def.position[2]],
+    size,
+    material: 'trim',
+    ...(def.rotation ? { rotation: [...def.rotation] as VectorTuple } : {}),
+  };
 }

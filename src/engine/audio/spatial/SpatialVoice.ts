@@ -143,6 +143,7 @@ export class SpatialVoice {
   }
 
   setPlaybackRate(value: number): void {
+    if (!Number.isFinite(value)) return;
     this.source.playbackRate.value = MathUtils.clamp(value, 0.25, 4);
   }
 
@@ -237,12 +238,21 @@ export class SpatialVoice {
   }
 }
 
+/**
+ * Embudo único de escritura a los `AudioParam` de la voz.
+ *
+ * Descarta valores no finitos en vez de escribirlos: `setTargetAtTime(NaN)`
+ * tira `TypeError` en Firefox y en Chrome deja el parámetro envenenado para
+ * siempre, así que un solo NaN de un sistema de gameplay silenciaría la voz de
+ * forma permanente. Conservar el último valor bueno es estrictamente mejor.
+ */
 function setSmoothed(
   param: AudioParam,
   value: number,
   now: number,
   timeConstant: number,
 ): void {
+  if (!Number.isFinite(value)) return;
   if (param.setTargetAtTime) {
     param.setTargetAtTime(value, now, timeConstant);
   } else {

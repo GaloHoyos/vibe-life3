@@ -6,6 +6,12 @@ import type { HeightField } from '@shared/math/HeightField';
 import type { Faction } from '@engine/ai/Faction';
 import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import { createBoxCollider } from './Colliders';
+import {
+  colliderDescFromPart,
+  colliderSpecBounds,
+  toBoxPart,
+  type ColliderSpec,
+} from './ColliderSpec';
 
 /**
  * Magnitud de la gravedad del mundo. Es la de Half-Life, no la terrestre: todo
@@ -38,7 +44,25 @@ export interface PhysicsMetadata {
    * raycasts y targeting, no otra hitbox del actor original.
    */
   impactOwnerId?: string;
-  kind: 'static' | 'dynamic' | 'door' | 'npc' | 'player' | 'ragdoll' | 'weaponPickup';
+  /**
+   * `dynamic` es el cajón de sastre histórico: chasis de vehículo, granadas
+   * vivas y placas de armadura lo usan y sólo se distinguen por el opt-out
+   * `propImpactExcluded`. `prop` es el opt-in explícito, así un cuerpo dinámico
+   * nuevo no se convierte por descuido en un proyectil letal que suena a cajón.
+   */
+  kind:
+    | 'static'
+    | 'dynamic'
+    | 'prop'
+    | 'door'
+    | 'npc'
+    | 'player'
+    | 'ragdoll'
+    | 'weaponPickup';
+  /** Sólo para `kind: 'prop'`: distingue el prop vivo de sus propios restos. */
+  propKind?: 'prop' | 'debris';
+  /** El cuerpo no se puede agarrar (gravity gun / carry) pese a ser dinámico. */
+  grabExcluded?: boolean;
   damageable?: Damageable;
   /** Character preset id for actor-owned colliders. Used by hit effects. */
   characterId?: CharacterId;
@@ -120,6 +144,20 @@ export interface PhysicsBoxOptions {
   /** Orientacion del cuerpo. Si se omite, queda alineado a los ejes. */
   rotation?: Quaternion;
   mass?: number;
+  /** Interaction groups de Rapier. Si se omite, colisiona con todo. */
+  collisionGroups?: number;
+  metadata?: Partial<PhysicsMetadata>;
+}
+
+export interface PhysicsCompoundOptions {
+  id: string;
+  position: Vector3;
+  rotation?: Quaternion;
+  /** Masa total del cuerpo, repartida entre las partes por volumen real. */
+  mass?: number;
+  parts: ColliderSpec;
+  linearDamping?: number;
+  angularDamping?: number;
   metadata?: Partial<PhysicsMetadata>;
 }
 
@@ -187,6 +225,21 @@ export class PhysicsWorld {
   private readonly bindings: InterpolatedPhysicsBinding[] = [];
   private readonly metadataByCollider = new Map<number, PhysicsMetadata>();
   /**
+   * Metadata principal del cuerpo: la de su primer collider registrado. Un
+   * compound registra el MISMO objeto en todas sus partes, así que los sitios
+   * que leen `collider(0)` siguen viendo lo mismo sin importar qué parte tocó
+   * el rayo.
+   */
+  private readonly metadataByBody = new Map<number, PhysicsMetadata>();
+  /**
+   * Índice por `kind`, en orden de creación. Evita que cada sistema barra
+   * `world.bodies.forEach` entero para encontrar los pocos cuerpos que le
+   * importan.
+   */
+  private readonly bodiesByKind = new Map<PhysicsMetadata['kind'], RAPIER.RigidBody[]>();
+  /** Collider que define la identidad de cada cuerpo (el primero registrado). */
+  private readonly primaryColliderByBody = new Map<number, number>();
+  /**
    * Visual de un body cuyo dueño sincroniza su propia malla (pickups, etc.) y
    * por eso no está en `bindings`. Lo consulta `getBoundMesh` para que sistemas
    * como el clon de portales puedan replicar su visual.
@@ -200,6 +253,8 @@ export class PhysicsWorld {
   private readonly heldBodyHandles = new Set<number>();
   /** Gravedad que debe recuperar un body si su dueño cambia mientras está held. */
   private readonly heldRestoreGravityScales = new Map<number, number>();
+  /** Un aviso por id: un hull degenerado no debe inundar la consola por frame. */
+  private readonly warnedDegradedHulls = new Set<string>();
   private initialized = false;
   private hooks: RAPIER.PhysicsHooks | null = null;
   // Rapier-compat solo aplica hooks via `stepWithEvents`, que exige una
@@ -236,6 +291,9 @@ export class PhysicsWorld {
     this.preStepHooks.clear();
     this.postStepHooks.clear();
     this.metadataByCollider.clear();
+    this.metadataByBody.clear();
+    this.bodiesByKind.clear();
+    this.primaryColliderByBody.clear();
     this.bodyVisuals.clear();
     this.heldBodyHandles.clear();
     this.heldRestoreGravityScales.clear();
@@ -336,7 +394,11 @@ export class PhysicsWorld {
     );
     const volume = Math.max(options.size.x * options.size.y * options.size.z, 0.001);
     const density = (options.mass ?? 1) / volume;
-    const collider = this.world.createCollider(createBoxCollider(options.size).setDensity(density), rigidBody);
+    let colliderDesc = createBoxCollider(options.size).setDensity(density);
+    if (options.collisionGroups !== undefined) {
+      colliderDesc = colliderDesc.setCollisionGroups(options.collisionGroups);
+    }
+    const collider = this.world.createCollider(colliderDesc, rigidBody);
     this.bindMesh(mesh, rigidBody);
     this.registerCollider(collider, {
       id: options.id,
@@ -370,6 +432,100 @@ export class PhysicsWorld {
       ...options.metadata,
     });
     return rigidBody;
+  }
+
+  /**
+   * Cuerpo dinámico compound: N formas (cajas, esferas, cápsulas o cascos
+   * convexos) bajo un único rigid body.
+   *
+   * La masa se reparte como densidad UNIFORME sobre el volumen real de cada
+   * parte, así Rapier deriva masa y tensor de inercia de las formas mismas.
+   * `setAdditionalMass` sería masa puntual y daría una inercia equivocada, y
+   * calcular el tensor a mano es peor que dejárselo al solver.
+   */
+  createDynamicCompound(options: PhysicsCompoundOptions, mesh: Object3D): RAPIER.RigidBody {
+    let desc = applyRotation(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(
+        options.position.x,
+        options.position.y,
+        options.position.z,
+      ),
+      options.rotation,
+    );
+    if (options.linearDamping !== undefined) desc = desc.setLinearDamping(options.linearDamping);
+    if (options.angularDamping !== undefined) desc = desc.setAngularDamping(options.angularDamping);
+    const rigidBody = this.world.createRigidBody(desc);
+
+    const colliders = this.createCompoundColliders(options.parts, options.id, rigidBody);
+    if (colliders.length > 0) {
+      let totalVolume = 0;
+      for (const collider of colliders) totalVolume += collider.volume();
+      const density = (options.mass ?? 1) / Math.max(totalVolume, 1e-4);
+      for (const collider of colliders) collider.setDensity(density);
+      // Sin esto el cuerpo conserva la masa que calculó al crear los colliders
+      // (densidad 1) y el `mass` pedido queda ignorado en silencio.
+      rigidBody.recomputeMassPropertiesFromColliders();
+    }
+
+    const bounds = colliderSpecBounds(options.parts);
+    this.bindMesh(mesh, rigidBody);
+    const metadata: PhysicsMetadata = {
+      id: options.id,
+      kind: 'dynamic',
+      navigationObstacleSize: bounds,
+      ...options.metadata,
+    };
+    for (const collider of colliders) this.registerCollider(collider, metadata);
+    return rigidBody;
+  }
+
+  createStaticCompound(options: PhysicsCompoundOptions): RAPIER.RigidBody {
+    const rigidBody = this.world.createRigidBody(
+      applyRotation(
+        RAPIER.RigidBodyDesc.fixed().setTranslation(
+          options.position.x,
+          options.position.y,
+          options.position.z,
+        ),
+        options.rotation,
+      ),
+    );
+    const colliders = this.createCompoundColliders(options.parts, options.id, rigidBody);
+    const metadata: PhysicsMetadata = {
+      id: options.id,
+      kind: 'static',
+      ...options.metadata,
+    };
+    for (const collider of colliders) this.registerCollider(collider, metadata);
+    return rigidBody;
+  }
+
+  private createCompoundColliders(
+    parts: ColliderSpec,
+    id: string,
+    body: RAPIER.RigidBody,
+  ): RAPIER.Collider[] {
+    const colliders: RAPIER.Collider[] = [];
+    for (const part of parts) {
+      const desc = colliderDescFromPart(part);
+      if (!desc) continue;
+      let collider = this.world.createCollider(desc, body);
+      // Un hull coplanar o colineal pasa la construcción del descriptor y recién
+      // acá se revela sin volumen. Degradarlo a su caja envolvente evita que el
+      // prop atraviese el piso; tirar mataría el nivel entero por un asset malo.
+      if (part.shape.kind === 'hull' && collider.volume() <= 1e-6) {
+        this.world.removeCollider(collider, false);
+        const boxDesc = colliderDescFromPart(toBoxPart(part));
+        if (!boxDesc) continue;
+        collider = this.world.createCollider(boxDesc, body);
+        if (!this.warnedDegradedHulls.has(id)) {
+          this.warnedDegradedHulls.add(id);
+          console.warn(`[PhysicsWorld] Hull sin volumen en "${id}": se usa su caja envolvente.`);
+        }
+      }
+      colliders.push(collider);
+    }
+    return colliders;
   }
 
   createHeightfield(field: HeightField, options: PhysicsHeightfieldOptions): RAPIER.RigidBody {
@@ -435,6 +591,48 @@ export class PhysicsWorld {
 
   registerCollider(collider: RAPIER.Collider, metadata: PhysicsMetadata): void {
     this.metadataByCollider.set(collider.handle, metadata);
+    const body = collider.parent();
+    if (!body) return;
+
+    const primary = this.primaryColliderByBody.get(body.handle);
+    // Las partes extra de un compound no pisan la identidad del cuerpo, pero
+    // re-registrar el collider primario SÍ la actualiza: es como un fragmento
+    // que se desprende de un actor se reclasifica en pleno vuelo.
+    if (primary !== undefined && primary !== collider.handle) return;
+
+    const previous = this.metadataByBody.get(body.handle);
+    this.metadataByBody.set(body.handle, metadata);
+    if (primary === undefined) this.primaryColliderByBody.set(body.handle, collider.handle);
+    if (previous?.kind === metadata.kind) return;
+    if (previous) this.removeFromKindBucket(previous.kind, body);
+
+    const bucket = this.bodiesByKind.get(metadata.kind);
+    if (bucket) {
+      bucket.push(body);
+    } else {
+      this.bodiesByKind.set(metadata.kind, [body]);
+    }
+  }
+
+  private removeFromKindBucket(kind: PhysicsMetadata['kind'], body: RAPIER.RigidBody): void {
+    const bucket = this.bodiesByKind.get(kind);
+    const index = bucket?.indexOf(body) ?? -1;
+    if (bucket && index >= 0) bucket.splice(index, 1);
+  }
+
+  /** Metadata del cuerpo (la de su primer collider registrado). */
+  getBodyMetadata(body: RAPIER.RigidBody): PhysicsMetadata | undefined {
+    return this.metadataByBody.get(body.handle);
+  }
+
+  /**
+   * Cuerpos vivos de ese `kind`, en orden de creación. Devuelve una copia: es
+   * seguro crear o remover cuerpos mientras se la itera, cosa que hacer dentro
+   * de `world.bodies.forEach` corrompe el WASM de Rapier.
+   */
+  getBodiesByKind(kind: PhysicsMetadata['kind']): readonly RAPIER.RigidBody[] {
+    const bucket = this.bodiesByKind.get(kind);
+    return bucket ? bucket.slice() : [];
   }
 
   /** Malla ligada a un rigid body (para sistemas que necesitan clonar su visual). */
@@ -474,11 +672,44 @@ export class PhysicsWorld {
         .setTranslation(position.x, position.y, position.z)
         .setRotation({ x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w }),
     );
+    // La pose local es parte de la forma en un compound: sin copiarla, todas
+    // las partes del clon colapsan sobre el origen del cuerpo. rapier-compat no
+    // expone getters de pose local, así que se despeja de la pose mundial.
+    const sourcePosition = source.translation();
+    const sourceRotation = source.rotation();
+    const inverseRotation = new Quaternion(
+      sourceRotation.x,
+      sourceRotation.y,
+      sourceRotation.z,
+      sourceRotation.w,
+    ).invert();
+    const localPosition = new Vector3();
+    const localRotation = new Quaternion();
+
     for (let i = 0; i < source.numColliders(); i += 1) {
       const src = source.collider(i);
+      const colliderPosition = src.translation();
+      const colliderRotation = src.rotation();
+      localPosition
+        .set(
+          colliderPosition.x - sourcePosition.x,
+          colliderPosition.y - sourcePosition.y,
+          colliderPosition.z - sourcePosition.z,
+        )
+        .applyQuaternion(inverseRotation);
+      localRotation
+        .set(colliderRotation.x, colliderRotation.y, colliderRotation.z, colliderRotation.w)
+        .premultiply(inverseRotation);
       const desc = cloneColliderDesc(src)
         .setDensity(src.density())
-        .setCollisionGroups(src.collisionGroups());
+        .setCollisionGroups(src.collisionGroups())
+        .setTranslation(localPosition.x, localPosition.y, localPosition.z)
+        .setRotation({
+          x: localRotation.x,
+          y: localRotation.y,
+          z: localRotation.z,
+          w: localRotation.w,
+        });
       this.world.createCollider(desc, body);
     }
     return body;
@@ -620,6 +851,12 @@ export class PhysicsWorld {
     for (let i = 0; i < body.numColliders(); i += 1) {
       this.metadataByCollider.delete(body.collider(i).handle);
     }
+    const metadata = this.metadataByBody.get(body.handle);
+    if (metadata) {
+      this.metadataByBody.delete(body.handle);
+      this.removeFromKindBucket(metadata.kind, body);
+    }
+    this.primaryColliderByBody.delete(body.handle);
     this.world.removeRigidBody(body);
   }
 
@@ -771,11 +1008,51 @@ function cloneColliderDesc(collider: RAPIER.Collider): RAPIER.ColliderDesc {
       const capsule = shape as RAPIER.Capsule;
       return RAPIER.ColliderDesc.capsule(capsule.halfHeight, capsule.radius);
     }
-    default:
-      // Props del juego son cajas/esferas/cápsulas; otras formas (raras) usan
-      // una caja chica como aproximación.
+    case RAPIER.ShapeType.ConvexPolyhedron: {
+      const hull = shape as RAPIER.ConvexPolyhedron;
+      return (
+        RAPIER.ColliderDesc.convexHull(hull.vertices) ?? boxDescFromPoints(hull.vertices)
+      );
+    }
+    case RAPIER.ShapeType.RoundCuboid: {
+      const rounded = shape as RAPIER.RoundCuboid;
+      const h = rounded.halfExtents;
+      return RAPIER.ColliderDesc.roundCuboid(h.x, h.y, h.z, rounded.borderRadius);
+    }
+    case RAPIER.ShapeType.Cylinder: {
+      const cylinder = shape as RAPIER.Cylinder;
+      return RAPIER.ColliderDesc.cylinder(cylinder.halfHeight, cylinder.radius);
+    }
+    case RAPIER.ShapeType.Cone: {
+      const cone = shape as RAPIER.Cone;
+      return RAPIER.ColliderDesc.cone(cone.halfHeight, cone.radius);
+    }
+    default: {
+      // Trimesh, polyline y heightfield son geometría estática que nunca se
+      // clona; si aun así llega una, su AABB real es una aproximación mucho
+      // menos sorprendente que una caja de tamaño arbitrario.
+      const vertices = (shape as { vertices?: Float32Array }).vertices;
+      if (vertices && vertices.length >= 3) return boxDescFromPoints(vertices);
+      console.warn(`[PhysicsWorld] cloneColliderDesc: forma ${shape.type} sin equivalente.`);
       return RAPIER.ColliderDesc.cuboid(0.25, 0.25, 0.25);
+    }
   }
+}
+
+/** Caja envolvente de una nube de puntos, para hulls que Rapier rechaza. */
+function boxDescFromPoints(points: Float32Array): RAPIER.ColliderDesc {
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i + 2 < points.length; i += 3) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      const value = points[i + axis] as number;
+      if (value < (min[axis] as number)) min[axis] = value;
+      if (value > (max[axis] as number)) max[axis] = value;
+    }
+  }
+  const half = (axis: number): number =>
+    Math.max(((max[axis] as number) - (min[axis] as number)) / 2, 1e-3);
+  return RAPIER.ColliderDesc.cuboid(half(0), half(1), half(2));
 }
 
 function buildTerrainTrimesh(

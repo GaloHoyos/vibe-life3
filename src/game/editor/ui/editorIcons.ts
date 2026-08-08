@@ -65,6 +65,7 @@ const KIND_ICONS: Record<EditorEntityKind, EditorIconName> = {
   charger: 'bolt',
   trigger: 'target',
   explosiveBarrel: 'cube',
+  propEntity: 'cube',
   hazardVolume: 'warning',
   vehicle: 'gear',
   vehicleWaypoint: 'target',

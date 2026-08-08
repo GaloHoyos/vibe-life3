@@ -23,5 +23,5 @@
       "@tests/*": ["./tests/*"]
     }
   },
-  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "tests", "tools", "scripts", "vite.config.ts", "vitest.config.ts"]
 }

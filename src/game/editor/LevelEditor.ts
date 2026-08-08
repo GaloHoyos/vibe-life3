@@ -10,6 +10,7 @@ import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { Disposable } from '@shared/types/lifecycle';
 import { EditorCamera } from './EditorCamera';
 import { EditorScene, PLAYER_START_EID } from './EditorScene';
+import type { PropAssetRegistry } from '@game/assets/props/PropAssetRegistry';
 import { EditorSelection, type TransformMode } from './EditorSelection';
 import { getPosition, translateEntity } from './EditorEntityOps';
 import { cloneEntity } from './editorFactory';
@@ -68,9 +69,10 @@ export class LevelEditor implements Disposable {
     private readonly environment: EnvironmentSystem,
     private readonly lighting: LightingSystem,
     private readonly callbacks: LevelEditorCallbacks,
+    propAssets: PropAssetRegistry | null = null,
   ) {
     this.editorCamera = new EditorCamera(camera.camera, canvas);
-    this.editorScene = new EditorScene(scene);
+    this.editorScene = new EditorScene(scene, propAssets);
     this.selection = new EditorSelection(scene, camera.camera, canvas, this.editorScene, {
       getEntity: (eid) => this.doc.entities.find((e) => e.eid === eid),
       getDocument: () => this.doc,

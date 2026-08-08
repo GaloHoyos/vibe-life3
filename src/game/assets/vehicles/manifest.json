@@ -11,7 +11,7 @@
   "vehicles": [
     {
       "id": "buggy",
-      "glbBytes": 1375908,
+      "glbBytes": 1706668,
       "lods": [
         {
           "triangles": 17268,
@@ -74,7 +74,7 @@
     },
     {
       "id": "airboat",
-      "glbBytes": 1244312,
+      "glbBytes": 1453776,
       "lods": [
         {
           "triangles": 13960,
@@ -129,7 +129,7 @@
     },
     {
       "id": "helicopter",
-      "glbBytes": 1359916,
+      "glbBytes": 1762464,
       "lods": [
         {
           "triangles": 21828,
@@ -198,7 +198,7 @@
     },
     {
       "id": "rebelCrawler",
-      "glbBytes": 1222224,
+      "glbBytes": 1500300,
       "lods": [
         {
           "triangles": 11816,
@@ -258,7 +258,7 @@
     },
     {
       "id": "combineGlider",
-      "glbBytes": 766040,
+      "glbBytes": 812216,
       "lods": [
         {
           "triangles": 4552,
@@ -317,7 +317,7 @@
     },
     {
       "id": "combineSwimmer",
-      "glbBytes": 1032344,
+      "glbBytes": 1181136,
       "lods": [
         {
           "triangles": 14532,

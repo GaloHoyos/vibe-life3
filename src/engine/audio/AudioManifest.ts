@@ -398,6 +398,102 @@ const physicsClips: ClipSpec[] = [
     ["rubberHard1", "rubber_tire_impact_hard1.wav"],
     ["rubberSoft1", "rubber_tire_impact_soft1.wav"],
   ]),
+
+  // Roturas que faltaban: madera de mueble, plástico y vidrio fino.
+  ...hl2Clips("physics.hl2.wood", "physics/wood", "world", [
+    ["break5", "wood_furniture_break1.wav"],
+    ["break6", "wood_furniture_break2.wav"],
+    ["break7", "wood_panel_break1.wav"],
+  ]),
+  ...hl2Clips("physics.hl2.plastic", "physics/plastic", "world", [
+    ["break2", "plastic_barrel_break2.wav"],
+    ["break3", "plastic_box_break1.wav"],
+    ["break4", "plastic_box_break2.wav"],
+  ]),
+  ...hl2Clips("physics.hl2.glass", "physics/glass", "world", [
+    ["break4", "glass_cup_break1.wav"],
+    ["break5", "glass_cup_break2.wav"],
+    ["break6", "glass_pottery_break1.wav"],
+    ["break7", "glass_pottery_break2.wav"],
+    ["break8", "glass_largesheet_break1.wav"],
+  ]),
+
+  // Arrastre y tensión. `inferAudioRole` manda todo lo que empieza con
+  // `physics.` a `impact` (-18 LUFS, objetivo de un golpe seco): un loop
+  // sostenido normalizado a eso se come la mezcla, y un crujido de tensión
+  // suena como un martillazo. Por eso ambos declaran su rol.
+  ...hl2Clips(
+    "physics.hl2.wood",
+    "physics/wood",
+    "world",
+    [
+      ["scrapeRough1", "wood_box_scrape_rough_loop1.wav"],
+      ["scrapeRough2", "wood_crate_scrape_rough_loop1.wav"],
+      ["scrapeSmooth1", "wood_box_scrape_smooth_loop1.wav"],
+      ["scrapeSmooth2", "wood_plank_scrape_smooth_loop1.wav"],
+    ],
+    { loop: true, role: "engineLoop" },
+  ),
+  ...hl2Clips(
+    "physics.hl2.wood",
+    "physics/wood",
+    "world",
+    [
+      ["strain1", "wood_strain2.wav"],
+      ["strain2", "wood_strain3.wav"],
+      ["strain3", "wood_strain4.wav"],
+    ],
+    { role: "weaponHandling" },
+  ),
+  ...hl2Clips(
+    "physics.hl2.metal",
+    "physics/metal",
+    "world",
+    [
+      ["scrapeRough1", "metal_box_scrape_rough_loop1.wav"],
+      ["scrapeRough2", "metal_box_scrape_rough_loop2.wav"],
+      ["scrapeRough3", "canister_scrape_rough_loop1.wav"],
+      ["scrapeSmooth1", "metal_box_scrape_smooth_loop1.wav"],
+      ["scrapeSmooth2", "canister_scrape_smooth_loop1.wav"],
+    ],
+    { loop: true, role: "engineLoop" },
+  ),
+  ...hl2Clips(
+    "physics.hl2.metal",
+    "physics/metal",
+    "world",
+    [
+      ["strain1", "metal_box_strain1.wav"],
+      ["strain2", "metal_box_strain2.wav"],
+      ["strain3", "metal_solid_strain1.wav"],
+      ["strain4", "metal_solid_strain2.wav"],
+      ["strain5", "metal_solid_strain3.wav"],
+    ],
+    { role: "weaponHandling" },
+  ),
+  ...hl2Clips(
+    "physics.hl2.plastic",
+    "physics/plastic",
+    "world",
+    [
+      ["scrapeRough1", "plastic_barrel_scrape_rough_loop1.wav"],
+      ["scrapeSmooth1", "plastic_barrel_scrape_smooth_loop1.wav"],
+      ["scrapeSmooth2", "plastic_box_scrape_smooth_loop1.wav"],
+      ["scrapeSmooth3", "plastic_box_scrape_smooth_loop2.wav"],
+    ],
+    { loop: true, role: "engineLoop" },
+  ),
+  ...hl2Clips(
+    "physics.hl2.concrete",
+    "physics/concrete",
+    "world",
+    [
+      ["scrapeRough1", "concrete_block_scrape_rough_loop1.wav"],
+      ["scrapeRough2", "rock_scrape_rough_loop1.wav"],
+      ["scrapeSmooth1", "concrete_scrape_smooth_loop1.wav"],
+    ],
+    { loop: true, role: "engineLoop" },
+  ),
 ];
 
 /**

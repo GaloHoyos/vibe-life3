@@ -13,4 +13,10 @@ export type SurfaceType =
   | "gravel"
   | "snow"
   | "tile"
-  | "mud";
+  | "mud"
+  | "glass"
+  | "plastic"
+  | "cardboard"
+  | "rubber"
+  /** Tapizado, colchones, bolsas: absorbe en vez de devolver. */
+  | "fabric";

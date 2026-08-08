@@ -6,27 +6,18 @@ export type VehicleAssetId =
   | "combineGlider"
   | "combineSwimmer";
 
-export type Vec3 = readonly [number, number, number];
+import type { AtlasFinish, LodStats } from "../shared/gltf/types.js";
 
-export type Euler = readonly [number, number, number];
-
-export type AtlasTile = 0 | 1 | 2 | 3;
-
-/**
- * Acabado de una casilla del atlas. Las cuatro casillas son el vocabulario de
- * materiales del vehículo: cada pieza de geometría elige `tile` y de acá salen
- * color, PBR y cuánto castigo acumuló esa superficie.
- */
-export interface AtlasFinish {
-  /** Color base en sRGB 0..255. */
-  readonly color: readonly [number, number, number];
-  readonly roughness: number;
-  readonly metallic: number;
-  /** Pintura saltada, óxido y rayones con metal expuesto, 0..1. */
-  readonly wear: number;
-  /** Frecuencia del grano: 1 chapa grande, >2 goma o fundición. */
-  readonly grain: number;
-}
+// El vocabulario genérico de atlas y geometría vive en el kit compartido; acá
+// sólo queda lo que es propio del parque vehicular.
+export type {
+  AtlasFinish,
+  AtlasTile,
+  Euler,
+  GeneratedTextureSet,
+  LodStats,
+  Vec3,
+} from "../shared/gltf/types.js";
 
 export interface VehicleAssetSpec {
   readonly id: VehicleAssetId;
@@ -43,17 +34,6 @@ export interface VehicleAssetSpec {
    */
   readonly grimeColor?: readonly [number, number, number];
   readonly requiredNodes: readonly string[];
-}
-
-export interface GeneratedTextureSet {
-  readonly albedo: Uint8Array;
-  readonly normal: Uint8Array;
-  readonly pbr: Uint8Array;
-}
-
-export interface LodStats {
-  readonly triangles: number;
-  readonly draws: number;
 }
 
 export interface GeneratedVehicleStats {

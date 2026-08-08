@@ -3,6 +3,11 @@ import type { CharacterId } from '@engine/characters/CharacterDefinition';
 import type { WeaponId } from '@game/gameplay/weapons/core/WeaponDefinition';
 import type { AmmoId } from '@game/config/ammo.config';
 import type { ChargerKind, ItemId } from '@game/config/items.config';
+import type {
+  PropArchetypeId,
+  PropBreakReaction,
+  PropPhysicsMode,
+} from '@game/config/props.config';
 import type { MaterialKey } from '@engine/render/material/Materials';
 import type { SkyboxId } from '@engine/render/environment/Skybox';
 import type { SunOptions } from '@engine/render/environment/LightingSystem';
@@ -30,7 +35,7 @@ import type {
 import type { LandmarkReference } from '@game/levels/LevelTransition';
 
 /** Rotacion Euler XYZ en radianes. Omitida = alineado a los ejes. */
-type RotationTuple = VectorTuple;
+export type RotationTuple = VectorTuple;
 
 export interface StaticBoxDefinition {
   id: string;
@@ -38,6 +43,62 @@ export interface StaticBoxDefinition {
   size: VectorTuple;
   material: MaterialKey;
   rotation?: RotationTuple;
+}
+
+/**
+ * Instancia de un prop del catálogo (`PropArchetypes`). A diferencia de
+ * `dynamicBoxes`, conserva su identidad en runtime: tiene vida, material, forma
+ * real y sabe qué hacer al romperse.
+ */
+export interface PropDefinition {
+  id: string;
+  archetypeId: PropArchetypeId;
+  /** Base/apoyo (cara inferior), como los crates y los barriles. */
+  position: VectorTuple;
+  rotation?: RotationTuple;
+  /** Variante de malla. Default 0. */
+  variant?: number;
+  /** Escala uniforme; la masa escala al cubo. Default 1. */
+  scale?: number;
+  /** Override del modo del arquetipo (p. ej. anclar un cajón a una repisa). */
+  physicsMode?: PropPhysicsMode;
+  /** Override de vida; `false` lo vuelve indestructible en esta instancia. */
+  health?: number | false;
+  /** Override de la reacción, para que un barril autore su propio radio. */
+  breakOverride?: PropBreakReaction;
+}
+
+/**
+ * Unión entre dos props de una estructura. Cede por deriva: cuando la pose
+ * relativa entre los dos cuerpos se aleja de la que tenían al armarse más de lo
+ * tolerado, la junta se suelta.
+ *
+ * Se mide deriva y no fuerza porque `ImpulseJoint` de Rapier 0.14 no expone ni
+ * fuerza de rotura ni sus impulsos.
+ */
+export interface PropStructureJointDefinition {
+  /** Id del prop de un extremo. */
+  a: string;
+  /** Id del otro prop, o `'world'` para atornillarlo a la geometría fija. */
+  b: string;
+  /** Punto de anclaje en espacio local de `a`. */
+  anchorA: VectorTuple;
+  /** Punto de anclaje en espacio local de `b` (o world si `b` es `'world'`). */
+  anchorB: VectorTuple;
+  /** Deriva de traslación (m) tolerada antes de ceder. */
+  breakTranslation: number;
+  /** Giro (rad) tolerado antes de ceder. */
+  breakAngle: number;
+}
+
+export interface PropStructureDefinition {
+  id: string;
+  joints: PropStructureJointDefinition[];
+  /**
+   * Todas las uniones ceden juntas. Una estantería se viene abajo como unidad,
+   * no tornillo por tornillo.
+   */
+  cascade?: boolean;
 }
 
 export interface DynamicBoxDefinition {
@@ -410,6 +471,17 @@ export interface LevelDefinition {
    */
   buildings?: BuildingArtifact[];
   dynamicBoxes: DynamicBoxDefinition[];
+  /** Props del catálogo. Si se omite, el nivel no trae. */
+  props?: PropDefinition[];
+  /** Props unidos por juntas que colapsan (estanterías, andamios, pilas). */
+  propStructures?: PropStructureDefinition[];
+  /**
+   * Cajas invisibles que sólo alimentan el bake de navegación: sin render, sin
+   * física y sin identidad. Las emiten los props anclados que deben cortar el
+   * pathing, porque el bake sólo lee geometría estática y un cuerpo fijo no
+   * pasa por `syncDynamicObstacles`.
+   */
+  navBlockers?: StaticBoxDefinition[];
   doors: DoorDefinition[];
   actionButtons?: ActionButtonDefinition[];
   npcs: NPCDefinition[];

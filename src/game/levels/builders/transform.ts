@@ -2,6 +2,8 @@ import { Euler, Quaternion, Vector3 } from 'three';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import type {
   DynamicBoxDefinition,
+  PropDefinition,
+  RotationTuple,
   StaticBoxDefinition,
 } from '@game/levels/LevelDefinition';
 import type { BuildingArtifact, BuildingEnvelope, Doorway, Room } from '@game/levels/buildings/BuildingArtifact';
@@ -67,6 +69,30 @@ export function rotateBoxesAbout<T extends StaticBoxDefinition | DynamicBoxDefin
   const p = tmpPivot.set(pivot[0], pivot[1], pivot[2]).clone();
   const quat = quatFromEuler(euler);
   return boxes.map((box) => rotateBox(box, p, quat));
+}
+
+/**
+ * Igual que `rotateBoxesAbout` pero para props del catalogo.
+ *
+ * No se puede reusar aquel: la posicion de una caja es su centro y la de un prop
+ * es su APOYO. Rotar el punto de apoyo alrededor del pivote es exacto mientras
+ * la rotacion sea sobre Y —el unico caso que los mapas usan para orientar una
+ * pila o una fila— y aproximado si se inclina, que es la misma licencia que ya
+ * se toma el AABB de las habitaciones.
+ */
+export function rotatePropsAbout(
+  props: readonly PropDefinition[],
+  pivot: VectorTuple,
+  euler: VectorTuple,
+): PropDefinition[] {
+  if (isIdentityRotation(euler)) return [...props];
+  const p = new Vector3(pivot[0], pivot[1], pivot[2]);
+  const quat = quatFromEuler(euler);
+  return props.map((prop) => ({
+    ...prop,
+    position: rotatePoint(prop.position, p, quat),
+    rotation: composeEuler(prop.rotation, quat) as RotationTuple,
+  }));
 }
 
 function rotateAabb(min: VectorTuple, max: VectorTuple, pivot: Vector3, quat: Quaternion): { min: VectorTuple; max: VectorTuple } {

@@ -8,6 +8,7 @@ import type {
   DynamicBoxDefinition,
   ItemPickupDefinition,
   NPCDefinition,
+  PropDefinition,
   StaticBoxDefinition,
   TerrainDefinition,
   TriggerDefinition,
@@ -83,6 +84,12 @@ export type EditorEntity = EditorEntityBase &
     | { kind: 'charger'; def: ChargerDefinition }
     | { kind: 'trigger'; def: TriggerDefinition }
     | { kind: 'explosiveBarrel'; def: ExplosiveBarrelDefinition }
+    /**
+     * Prop del catálogo. Lleva un `def` plano (no un spec de smart object), así
+     * que cae en las ramas genéricas de posición/rotación/id y sobrevive el
+     * round-trip: `fromLevelDefinition` lo reconstruye tal cual.
+     */
+    | { kind: 'propEntity'; def: PropDefinition }
     | { kind: 'hazardVolume'; def: HazardVolumeDefinition }
     | { kind: 'vehicle'; def: VehicleDefinition }
     | { kind: 'vehicleWaypoint'; def: VehicleWaypointDefinition }
@@ -194,6 +201,7 @@ const KIND_LABELS: Record<EditorEntityKind, string> = {
   charger: 'Cargador',
   trigger: 'Trigger',
   explosiveBarrel: 'Barril explosivo',
+  propEntity: 'Prop',
   hazardVolume: 'Kill-volume',
   vehicle: 'Vehículo',
   vehicleWaypoint: 'Waypoint vehicular',

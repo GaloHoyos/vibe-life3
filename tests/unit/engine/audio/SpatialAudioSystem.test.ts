@@ -116,6 +116,27 @@ describe("SpatialAudioSystem", () => {
     expect(paramValue(panner, "positionZ")).toBeCloseTo(-4);
   });
 
+  it("un volumen no finito no llega al AudioParam", async () => {
+    const { context, flush, resolveBuffers, spatial } = setup();
+    const object = new Object3D();
+    const handle = spatial.attachControllable("arrastre", object, { volume: 0.5 });
+    resolveBuffers();
+    await flush();
+
+    const gains = nodesOfKind(context, "gain");
+    const before = gains.map((node) => paramValue(node, "gain"));
+
+    // Un NaN de un sistema de gameplay tira TypeError en Firefox y deja el
+    // parámetro envenenado en Chrome: la voz quedaría muda para siempre.
+    expect(() => handle.setVolume(Number.NaN)).not.toThrow();
+    expect(() => handle.setPlaybackRate(Number.NaN)).not.toThrow();
+
+    expect(gains.map((node) => paramValue(node, "gain"))).toEqual(before);
+    for (const value of gains.map((node) => paramValue(node, "gain"))) {
+      expect(Number.isFinite(value)).toBe(true);
+    }
+  });
+
   it("clear frena tambien las voces sin objeto", async () => {
     const { context, flush, resolveBuffers, spatial } = setup();
 

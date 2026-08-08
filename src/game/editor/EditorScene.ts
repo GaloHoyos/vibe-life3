@@ -19,12 +19,20 @@ import { buildRamp } from '@game/levels/builders/RampBuilder';
 import { quatFromEuler } from '@game/levels/builders/transform';
 import type {
   DynamicBoxDefinition,
+  PropDefinition,
   StaticBoxDefinition,
 } from '@game/levels/LevelDefinition';
 import type { VectorTuple } from '@shared/math/VectorTuple';
 import type { EditorDocument, EditorEntity } from './EditorDocument';
 import { buildProp } from './propRuntime';
 import { VehiclePresets } from '@game/config/vehicles.config';
+import { PropArchetypes } from '@game/config/props.config';
+import { propBoundsForScale } from '@game/gameplay/props/propDamage';
+import { PropSurfaceMaterials } from '@game/gameplay/props/propMaterials';
+import type {
+  PropAssetRegistry,
+  PropModelLease,
+} from '@game/assets/props/PropAssetRegistry';
 
 /** Id sentinela del marcador de spawn del jugador (vive en `meta`, no en `entities`). */
 export const PLAYER_START_EID = '__playerStart__';
@@ -39,8 +47,12 @@ export class EditorScene {
   private readonly eidByObject = new WeakMap<Object3D, string>();
   private terrainMesh: Object3D | null = null;
   private playerMarker: Object3D | null = null;
+  private readonly propLeases = new Map<string, PropModelLease>();
 
-  constructor(private readonly scene: Scene) {}
+  constructor(
+    private readonly scene: Scene,
+    private readonly propAssets: PropAssetRegistry | null = null,
+  ) {}
 
   mount(doc: EditorDocument): void {
     this.clear();
@@ -52,6 +64,10 @@ export class EditorScene {
   }
 
   clear(): void {
+    // Los leases primero: devuelven el refcount del pack y sacan el GLB del
+    // grupo, así `disposeObject` no le toca la geometría compartida.
+    for (const lease of this.propLeases.values()) lease.dispose();
+    this.propLeases.clear();
     for (const obj of this.objects.values()) {
       this.scene.remove(obj);
       disposeObject(obj);
@@ -257,8 +273,26 @@ export class EditorScene {
         return groupFromBoxes(buildRamp(entity.spec));
       case 'prop': {
         const art = buildProp(entity.prop);
-        return groupFromBoxes([...art.staticBoxes, ...art.dynamicBoxes]);
+        const group = groupFromBoxes([...art.staticBoxes, ...art.dynamicBoxes]);
+        // Los cajones ya son props del catalogo. Van con su caja de bounds y no
+        // con su GLB porque una pila son N props bajo una sola entidad, y el
+        // lease del preview es uno por entidad; el playtest si muestra la malla.
+        for (const def of art.props) {
+          const archetype = PropArchetypes[def.archetypeId];
+          const bounds = propBoundsForScale(archetype, def.scale);
+          group.add(
+            placeholder(
+              [def.position[0], def.position[1] + bounds[1] / 2, def.position[2]],
+              bounds,
+              PropSurfaceMaterials[archetype.surface],
+              def.rotation,
+            ),
+          );
+        }
+        return group;
       }
+      case 'propEntity':
+        return this.propEntityPreview(entity.eid, entity.def);
       case 'prebuiltBuilding':
         return groupFromBoxes(entity.artifact.boxes);
       case 'sequence':
@@ -267,6 +301,45 @@ export class EditorScene {
         // Entidades lógicas sin cuerpo físico: cubo pequeño para verlas/moverlas.
         return placeholder(entity.position, [0.4, 0.4, 0.4], 'trim');
     }
+  }
+
+  /**
+   * Caja del tamaño del prop, reemplazada por su GLB cuando el pack resuelve.
+   * `build()` es síncrono y tiene que seguir siéndolo (el editor reconstruye la
+   * escena en cada edición), así que el modelo llega después, como en
+   * `GrenadeSystem`.
+   */
+  private propEntityPreview(eid: string, def: PropDefinition): Object3D {
+    const archetype = PropArchetypes[def.archetypeId];
+    const bounds = propBoundsForScale(archetype, def.scale);
+    const group = placeholder(
+      [def.position[0], def.position[1] + bounds[1] / 2, def.position[2]],
+      bounds,
+      PropSurfaceMaterials[archetype.surface],
+      def.rotation,
+    );
+    if (!this.propAssets) return group;
+
+    void this.propAssets.acquire(def.archetypeId, def.variant ?? 0).then((lease) => {
+      // Entre el pedido y la respuesta el usuario pudo borrar o mover el prop.
+      if (!lease.root || this.objects.get(eid) !== group) {
+        lease.dispose();
+        return;
+      }
+      this.releasePropLease(eid);
+      group.clear();
+      if (def.scale !== undefined && def.scale !== 1) lease.root.scale.setScalar(def.scale);
+      group.add(lease.root);
+      this.propLeases.set(eid, lease);
+    });
+    return group;
+  }
+
+  private releasePropLease(eid: string): void {
+    const previous = this.propLeases.get(eid);
+    if (!previous) return;
+    previous.dispose();
+    this.propLeases.delete(eid);
   }
 }
 

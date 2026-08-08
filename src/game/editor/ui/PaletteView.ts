@@ -1,6 +1,7 @@
 import type { Disposable } from '@shared/types/lifecycle';
 import type { PropKind } from '../EditorDocument';
 import type { PaletteKind } from '../editorFactory';
+import type { PropArchetypeId } from '@game/config/props.config';
 import type { LogicEntityKind } from '@game/script/EntityIOTypes';
 import { iconSpan } from './editorIcons';
 import { PALETTE_GROUPS } from './paletteCatalog';
@@ -8,6 +9,7 @@ import { PALETTE_GROUPS } from './paletteCatalog';
 export interface PaletteCallbacks {
   onAdd(kind: PaletteKind): void;
   onAddProp(prop: PropKind): void;
+  onAddPropEntity(archetypeId: PropArchetypeId): void;
   onAddLogic(logic: LogicEntityKind): void;
 }
 
@@ -52,6 +54,7 @@ export class PaletteView implements Disposable {
         button.append(label);
         button.addEventListener('click', () => {
           if ('prop' in item) callbacks.onAddProp(item.prop);
+          else if ('propArchetype' in item) callbacks.onAddPropEntity(item.propArchetype);
           else if ('logic' in item) callbacks.onAddLogic(item.logic);
           else callbacks.onAdd(item.kind);
         });
